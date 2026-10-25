@@ -1,0 +1,15 @@
+{
+  "title": "Navegación",
+  "marca": "Dra. Elena Ríos",
+  "enlaces": [
+    {
+      "etiqueta": "Sobre mí",
+      "href": "#sobre-mi"
+    },
+    {
+      "etiqueta": "Servicios",
+      "href": "#servicios"
+    }
+  ],
+  "contacto": "Contacto"
+}

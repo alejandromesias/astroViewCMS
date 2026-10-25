@@ -1,0 +1,180 @@
+---
+import { Image } from "astro:assets";
+import Icon from "../Icon.astro";
+
+const { block, index } = Astro.props;
+---
+
+<section data-block-index={index} class="relative overflow-hidden bg-[var(--color-bg)]">
+  <div class="hero-shell relative mx-auto flex flex-col items-center gap-7 px-7 py-14 md:flex-row md:items-center md:py-0">
+    <div class="hero-portrait relative order-1 flex h-[320px] w-[260px] shrink-0 items-center justify-center md:order-2 md:h-full">
+      <div
+        class="hero-portrait-glow animate-enter-glow pointer-events-none absolute -inset-10 rounded-full bg-[radial-gradient(circle,var(--color-accent-teal)_0%,transparent_70%)] blur-3xl [animation-delay:60ms]"
+        aria-hidden="true"
+      >
+      </div>
+      <div class="hero-portrait-frame animate-enter-portrait relative transition-transform duration-300 ease-out [animation-delay:140ms]">
+        <Image
+          src={block.retrato}
+          alt={block.retratoAlt}
+          width={480}
+          height={480}
+          class="hero-portrait-img h-[260px] w-[260px] rounded-[20px] object-cover shadow-[0_6px_16px_rgba(44,58,77,0.25),0_16px_36px_rgba(44,58,77,0.28)] md:shadow-[0_10px_24px_rgba(44,58,77,0.28),0_28px_64px_rgba(44,58,77,0.32)]"
+        />
+        <div
+          class="hero-portrait-dot absolute -top-1.5 -right-1.5 h-3.5 w-3.5 rounded-full bg-[var(--color-accent-mist)] opacity-90"
+        >
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="order-2 flex w-full flex-col items-center gap-7 text-center md:order-1 md:h-full md:w-full md:items-start md:justify-center md:gap-7 md:text-left"
+    >
+      <p class="hero-eyebrow animate-enter font-body text-[11px] font-bold tracking-[1.5px] text-[var(--color-accent-teal-deep)] [animation-delay:80ms]">
+        {block.eyebrow}
+      </p>
+
+      <div class="flex flex-col items-center gap-0.5 md:items-start md:gap-1">
+        <p class="hero-headline-line animate-enter font-accent text-[32px] leading-tight font-light text-[var(--color-text-primary)] italic [animation-delay:150ms]">
+          {block.titularCursiva}
+        </p>
+        <p class="hero-headline-line animate-enter font-heading text-[32px] leading-tight font-bold text-[var(--color-text-primary)] [animation-delay:220ms]">
+          {block.titularNegrita}
+        </p>
+      </div>
+
+      <p class="hero-subtext animate-enter w-[300px] font-body leading-[1.5] text-[var(--color-text-secondary)] md:w-full md:max-w-[460px] md:text-left md:leading-[1.55] [animation-delay:290ms]">
+        {block.titulo}
+      </p>
+
+      <div class="hero-cta animate-enter flex flex-col items-center gap-3.5 md:flex-row [animation-delay:360ms]">
+        <a
+          href="#agendar"
+          class="hero-btn-primary rounded-full bg-[var(--color-text-primary)] px-7 py-3.5 font-body text-sm font-semibold text-[var(--color-bg)] transition-colors hover:bg-[var(--color-accent-denim)]"
+        >
+          {block.botonPrincipal}
+        </a>
+        <a
+          href="#saber-mas"
+          class="hero-link-secondary group flex items-center gap-1.5 font-body text-sm font-semibold text-[var(--color-accent-denim)] hover:underline"
+        >
+          {block.botonSecundario}
+          <Icon
+            name="arrow-right"
+            class="hero-icon-arrow h-[15px] w-[15px] transition-transform group-hover:translate-x-1"
+          />
+        </a>
+      </div>
+
+      <p class="hero-trust animate-enter font-body text-[var(--color-text-secondary)] italic md:text-left [animation-delay:430ms]">
+        {block.subtitulo}
+      </p>
+    </div>
+  </div>
+</section>
+
+<style>
+  /*
+    Fluid zone: viewport 768–1280px. Below 768 the mobile stacked layout owns
+    its own fixed values (untouched). At/above 1280 every clamp() is pinned to
+    its max, which is exactly the original desktop design's pixel values (the
+    already-approved 1440 look), so nothing changes there. In between, every
+    dimension interpolates linearly with viewport width so the desktop layout
+    compresses smoothly instead of overflowing between ~800–1100px.
+
+    hero-subtext and hero-trust font-size clamps sit outside this block: they
+    scale continuously across the full viewport range (mobile through
+    desktop) since those two elements are no longer split into separate
+    mobile/desktop nodes.
+  */
+  @media (min-width: 768px) {
+    .hero-shell {
+      height: clamp(460px, calc(-40px + 62.5vw), 760px);
+      gap: clamp(28px, calc(-25.3px + 6.67vw), 60px);
+      padding-inline: clamp(32px, calc(-48px + 10vw), 80px);
+      padding-block: 0;
+    }
+
+    .hero-portrait {
+      width: clamp(300px, calc(-133.3px + 54.17vw), 560px);
+    }
+
+    .hero-portrait-img {
+      height: clamp(300px, calc(-133.3px + 54.17vw), 560px);
+      width: clamp(300px, calc(-133.3px + 54.17vw), 560px);
+    }
+
+    .hero-eyebrow {
+      font-size: clamp(10px, calc(5px + 0.625vw), 13px);
+      letter-spacing: clamp(1.2px, calc(-0.13px + 0.1667vw), 2px);
+    }
+
+    .hero-headline-line {
+      font-size: clamp(34px, calc(-6px + 5vw), 58px);
+    }
+
+    .hero-cta {
+      gap: clamp(14px, calc(-2.67px + 2.083vw), 24px);
+    }
+
+    .hero-btn-primary {
+      padding-inline: clamp(20px, 2.5vw, 32px);
+      padding-block: clamp(11px, calc(2.67px + 1.042vw), 16px);
+      font-size: clamp(13px, calc(9.67px + 0.4167vw), 15px);
+    }
+
+    .hero-link-secondary {
+      font-size: clamp(13px, calc(9.67px + 0.4167vw), 15px);
+    }
+
+    .hero-icon-arrow {
+      height: clamp(13px, calc(8px + 0.625vw), 16px);
+      width: clamp(13px, calc(8px + 0.625vw), 16px);
+    }
+  }
+
+  .hero-subtext {
+    font-size: clamp(14px, calc(9px + 0.625vw), 17px);
+  }
+
+  .hero-trust {
+    font-size: clamp(11px, calc(7.67px + 0.4167vw), 13px);
+  }
+
+  .hero-portrait-frame:hover {
+    animation: hero-portrait-float 3s ease-in-out infinite;
+  }
+
+  @keyframes hero-portrait-float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero-portrait-frame:hover {
+      animation: none;
+    }
+  }
+</style>
+
+<script>
+  // Once the load-in entrance finishes, drop the class that supplies it.
+  // Otherwise the "animation" property never settles on "none": ending a
+  // hover falls back to this same entrance animation, which replays from
+  // scratch (invisible + shrunk) instead of leaving transition-transform
+  // to ease the picture back to rest — the "disappears and reloads" jump.
+  const portraitFrame = document.querySelector<HTMLElement>(".hero-portrait-frame");
+
+  portraitFrame?.addEventListener("animationend", (event) => {
+    if (event.animationName === "portrait-rise") {
+      portraitFrame.classList.remove("animate-enter-portrait");
+    }
+  });
+</script>
+

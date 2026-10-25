@@ -1,0 +1,30 @@
+---
+import { getEntry } from "astro:content";
+import Layout from "../layouts/Layout.astro";
+import Navbar from "../components/Navbar.astro";
+import HeroBlock from "../components/blocks/HeroBlock.astro";
+import ServiciosBlock from "../components/blocks/ServiciosBlock.astro";
+
+const components = {
+  hero: HeroBlock,
+  servicios: ServiciosBlock,
+};
+
+const page = await getEntry("pages", "home");
+
+if (!page) {
+  throw new Error("Missing pages home content collection entry");
+}
+---
+
+<Layout title="Dra. Elena Ríos — Psicóloga Clínica">
+  <Navbar />
+  <main>
+    {
+      page.data.blocks.map((block, index) => {
+        const Block = components[block.type];
+        return <Block block={block} index={index} />;
+      })
+    }
+  </main>
+</Layout>

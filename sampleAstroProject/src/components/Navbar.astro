@@ -1,0 +1,161 @@
+---
+import { getEntry } from "astro:content";
+import Icon from "./Icon.astro";
+
+const navbar = await getEntry("navbar", "navegacion");
+
+if (!navbar) {
+  throw new Error("Missing navbar navegacion content collection entry");
+}
+
+const navLinks = navbar.data.enlaces.map(({ etiqueta, href }) => ({ label: etiqueta, href }));
+const contacto = navbar.data.contacto;
+---
+
+<header class="animate-enter sticky top-0 z-50 w-full bg-[var(--color-nav-bg)] backdrop-blur-md [animation-delay:0ms]">
+  <div class="navbar-bar flex h-[72px] w-full items-center justify-between border-b border-[#C9DCE380] px-5">
+    <p class="navbar-brand font-heading text-[19px] font-semibold text-[var(--color-text-primary)]">
+      {navbar.data.marca}
+    </p>
+
+    <nav aria-label="Principal" class="navbar-links hidden items-center md:flex">
+      {
+        navLinks.map((link) => (
+          <a
+            href={link.href}
+            class="navbar-link font-body text-[15px] font-bold tracking-[0.2px] text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text-primary)]"
+          >
+            {link.label}
+          </a>
+        ))
+      }
+      <a
+        href="#contacto"
+        class="navbar-contact rounded-full bg-[var(--color-text-primary)] px-6 py-2.5 font-body text-sm font-bold text-[var(--color-bg)] transition-colors hover:bg-[var(--color-accent-denim)]"
+      >
+        {contacto}
+      </a>
+    </nav>
+
+    <button
+      id="menu-toggle"
+      type="button"
+      class="flex items-center justify-center md:hidden"
+      aria-expanded="false"
+      aria-controls="mobile-menu"
+      aria-label="Abrir menú"
+    >
+      <Icon name="menu" data-icon="open" class="h-6 w-6 text-[var(--color-text-primary)]" />
+      <Icon name="x" data-icon="close" class="hidden h-6 w-6 text-[var(--color-text-primary)]" />
+    </button>
+  </div>
+
+  <div
+    id="mobile-menu"
+    class="hidden absolute top-full left-0 w-full border-t border-[#C9DCE380] bg-[var(--color-nav-bg)] shadow-[0_8px_24px_rgba(44,58,77,0.13)] backdrop-blur-md md:hidden"
+  >
+    <nav aria-label="Principal móvil" class="flex flex-col px-5 pt-1 pb-7">
+      {
+        navLinks.map((link) => (
+          <a
+            href={link.href}
+            class="flex items-center justify-between border-b border-[#C9DCE360] py-4 font-body text-base font-bold text-[var(--color-text-secondary)]"
+          >
+            {link.label}
+            <Icon name="chevron-right" class="h-[18px] w-[18px] text-[var(--color-text-secondary)]" />
+          </a>
+        ))
+      }
+      <a
+        href="#contacto"
+        class="mt-3 flex w-full items-center justify-center rounded-full bg-[var(--color-text-primary)] py-3.5 font-body text-[15px] font-bold text-[var(--color-bg)] transition-colors hover:bg-[var(--color-accent-denim)]"
+      >
+        {contacto}
+      </a>
+    </nav>
+  </div>
+</header>
+
+<style>
+  /* See HeroBlock.astro for the fluid-zone rationale (768–1280px, pinned to the
+     original desktop values at 1280+, nothing changes below 768). */
+  @media (min-width: 768px) {
+    .navbar-bar {
+      height: clamp(64px, calc(10.7px + 6.67vw), 96px);
+      padding-inline: clamp(32px, calc(-48px + 10vw), 80px);
+    }
+
+    .navbar-brand {
+      font-size: clamp(19px, calc(10.67px + 1.042vw), 24px);
+    }
+
+    .navbar-links {
+      gap: clamp(20px, calc(-13.3px + 4.167vw), 40px);
+    }
+
+    .navbar-link {
+      font-size: clamp(13px, calc(9.67px + 0.4167vw), 15px);
+    }
+
+    .navbar-contact {
+      padding-inline: clamp(14px, calc(-2.67px + 2.083vw), 24px);
+      padding-block: clamp(7px, calc(2px + 0.625vw), 10px);
+      font-size: clamp(12px, calc(8.67px + 0.4167vw), 14px);
+    }
+  }
+
+  #mobile-menu {
+    transform: translateY(-8px);
+    opacity: 0;
+    transition:
+      opacity 200ms ease-out,
+      transform 200ms ease-out;
+  }
+
+  #mobile-menu.is-open {
+    transform: translateY(0);
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #mobile-menu {
+      transition: none;
+    }
+  }
+</style>
+
+<script>
+  const toggle = document.getElementById("menu-toggle");
+  const menu = document.getElementById("mobile-menu");
+  const iconOpen = toggle?.querySelector('[data-icon="open"]');
+  const iconClose = toggle?.querySelector('[data-icon="close"]');
+
+  // Keep this in sync with the transition-duration set on #mobile-menu.
+  const MENU_TRANSITION_MS = 200;
+  let closeTimeout: ReturnType<typeof setTimeout> | undefined;
+
+  toggle?.addEventListener("click", () => {
+    const isOpen = toggle.getAttribute("aria-expanded") === "true";
+    const willOpen = !isOpen;
+
+    toggle.setAttribute("aria-expanded", String(willOpen));
+    toggle.setAttribute("aria-label", willOpen ? "Cerrar menú" : "Abrir menú");
+    iconOpen?.classList.toggle("hidden", willOpen);
+    iconClose?.classList.toggle("hidden", !willOpen);
+
+    if (willOpen) {
+      clearTimeout(closeTimeout);
+      menu?.classList.remove("hidden");
+      // Force a reflow so the "hidden" removal is painted before the
+      // "is-open" transition starts — otherwise the browser can collapse
+      // both changes into one frame and skip the animation entirely.
+      menu?.offsetHeight;
+      menu?.classList.add("is-open");
+    } else {
+      menu?.classList.remove("is-open");
+      closeTimeout = setTimeout(() => {
+        menu?.classList.add("hidden");
+      }, MENU_TRANSITION_MS);
+    }
+  });
+</script>

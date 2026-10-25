@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+:root {
+  --color-bg: #eef1f4;
+  --color-nav-bg: rgba(222, 230, 236, 0.82); /* translucent — paired with backdrop-blur on the header */
+  --color-text-primary: #2c3a4d;
+  --color-text-secondary: #5c6b7d;
+  --color-accent-denim: #3f5f8f;
+  --color-accent-teal: #7fa0ac; /* decorative only (glows, tints) — too light for text */
+  --color-accent-teal-deep: #456773; /* same hue, darkened for AA-safe small text */
+  --color-accent-mist: #c9dce3;
+}
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--color-bg);
+  }
+
+  a,
+  button {
+    outline-offset: 3px;
+  }
+
+  a:focus-visible,
+  button:focus-visible {
+    outline: 2px solid var(--color-accent-denim);
+    outline-offset: 3px;
+  }
+
+  .font-heading {
+    font-family: "Fraunces", serif;
+  }
+
+  .font-accent {
+    font-family: "Bricolage Grotesque", sans-serif;
+  }
+
+  .font-body {
+    font-family: "Nunito", sans-serif;
+  }
+
+  /* Page-load entrance sequence — one orchestrated cascade, staggered via
+     [animation-delay:_] on each element. `both` fill-mode keeps things
+     invisible before their delay elapses and settled after they land, so
+     nothing flashes unstyled on first paint. */
+  @keyframes fade-rise {
+    from {
+      opacity: 0;
+      transform: translateY(14px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes portrait-rise {
+    from {
+      opacity: 0;
+      transform: translateY(22px) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes glow-bloom {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 0.4;
+    }
+  }
+
+  .animate-enter {
+    animation: fade-rise 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .animate-enter-portrait {
+    animation: portrait-rise 750ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .animate-enter-glow {
+    animation: glow-bloom 900ms ease-out both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-enter,
+    .animate-enter-portrait {
+      animation: none;
+      opacity: 1;
+      transform: none;
+    }
+
+    .animate-enter-glow {
+      animation: none;
+      opacity: 0.4; /* matches its resting opacity-40 */
+    }
+  }
+}

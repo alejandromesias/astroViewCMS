@@ -1,0 +1,39 @@
+---
+const { block, index } = Astro.props;
+---
+
+<section id="servicios" data-block-index={index} class="bg-[var(--color-bg)]">
+  <div class="servicios-shell mx-auto flex flex-col items-center gap-5 px-7 py-14 text-center md:items-start md:text-left">
+    <h2 class="servicios-title font-heading text-[28px] leading-tight font-bold text-[var(--color-text-primary)]">
+      {block.encabezado}
+    </h2>
+    <div class="servicios-text font-body leading-[1.5] text-[var(--color-text-secondary)]">
+      <p>{block.texto}</p>
+    </div>
+  </div>
+</section>
+
+<style>
+  /* Same fluid zone as HeroBlock.astro: 768–1280px interpolates, 1280+ is pinned. */
+  @media (min-width: 768px) {
+    .servicios-shell {
+      padding-inline: clamp(32px, calc(-48px + 10vw), 80px);
+      padding-block: clamp(48px, calc(-16px + 10vw), 96px);
+    }
+
+    .servicios-title {
+      font-size: clamp(34px, calc(-6px + 5vw), 58px);
+    }
+  }
+
+  .servicios-text {
+    max-width: 460px;
+    font-size: clamp(14px, calc(9px + 0.625vw), 17px);
+  }
+
+  @media (min-width: 768px) {
+    .servicios-text {
+      max-width: 560px;
+    }
+  }
+</style>
