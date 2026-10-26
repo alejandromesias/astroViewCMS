@@ -29,11 +29,21 @@ editor ──postMessage draft──▶ bridge (in the iframe) ──POST /__pre
   them (same-site JSON only).
 - `src/media-route.ts`: draft image upload (`POST /__preview-media/new`) and
   serving.
-- `src/client/bridge.ts`: runs in the previewed page and speaks `postMessage`
-  with any editor.
-- `test-editor/editor.astro`: a test editor at `/__editor`, with a JSON
-  textbox per island next to the site in an iframe.
+- `src/client/bridge.ts`: `startBridge()`, which runs in the previewed page
+  and speaks `postMessage` with any editor. `bridge-entry.ts` is the
+  one-line script added to every page.
+- `src/protocol.ts`: the `postMessage` message types and runtime checks,
+  shared by the bridge and the editor.
+- `src/types.ts` and `src/virtual.d.ts`: site config types and the generated
+  virtual module's types.
+- `test-editor/`: a test editor at `/__editor`, with a JSON textbox per island
+  next to the site in an iframe (`editor.astro` markup, `editor.ts` logic).
 - `src/start.ts`: runs `.build/<site>/server/entry.mjs`.
+- `test/`: test fixtures and helpers for the unit tests, and the end-to-end
+  suite (`test/e2e/`). Unit tests sit next to each source file.
+
+The full annotated tree, with where each file runs, is in
+[the docs](../DOCS/PREVIEW-RENDER-SERVER.md#the-pieces).
 
 Rebuild when code changes (markup, CSS, schemas, new block types). Content
 changes never need a rebuild. Drafts live only in the editor tab; nothing is

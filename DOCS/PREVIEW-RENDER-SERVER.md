@@ -66,7 +66,8 @@ reloads the iframe. We skip all of that.
                 preview-render-server/.build/
                 ├─ sampleAstroProject/          client/ + server/entry.mjs
                 ├─ sampleAstroProject-islands/  generated wrappers
-                └─ sampleAstroProject-media/    uploaded draft images
+                ├─ sampleAstroProject-media/    uploaded draft images
+                └─ e2e-*/                       temporary, during npm run test:e2e
 
 
  RUN (npm start): long-lived, ~80 MB
@@ -91,7 +92,8 @@ Three parts, each of which knows only its neighbor:
 
 ```text
  EDITOR (/__editor)            PAGE IN IFRAME (/)               SERVER
- parent window                 site HTML + bridge.ts            same origin
+ parent window                 site HTML + bridge               same origin
+ startEditor() (editor.ts)     startBridge() (bridge.ts)        preview-route.ts
  ────────────────────          ─────────────────────────        ──────────────────
 
  sets iframe.src = "/" ──────▶ page loads, bridge starts
@@ -142,6 +144,11 @@ Three parts, each of which knows only its neighbor:
   `finish()` on the island's animations. The first page load still animates.
 
 ### Message protocol
+
+Defined once in `src/protocol.ts`, as TypeScript types (`DraftMessage`,
+`PageMessage`) plus runtime checks (`isDraftMessage`, `isPageMessage`). The
+bridge and the editor both import it. Each side ignores any message that
+fails its check, so a malformed or foreign message does nothing.
 
 | Direction | Message |
 |---|---|
@@ -205,21 +212,46 @@ the editor side:
 
 ## The pieces
 
-| File | Role |
-|---|---|
-| `sites/<site>.config.ts` | Site folder, port, and islands: name → component, content file plus the keys that become props, `contentDir`. |
-| `src/site-config.ts` | Loads a site config and resolves paths under `.build/`. |
-| `src/build.ts` | Calls Astro's programmatic `build()` with the site root, the Node adapter, the integration and our `outDir`. Astro merges this with the site's own `astro.config.mjs`. |
-| `src/integration.ts` | Astro integration, added only by `build.ts`. It adds the routes, the island wrappers, the bridge script and `virtual:preview-islands`. |
-| `src/preview-route.ts` | `GET` returns saved props; `POST` renders. |
-| `src/media-route.ts` | Draft image upload and serving. |
-| `src/request-guard.ts` | Shared checks: content type, cross-site, method. |
-| `src/client/bridge.ts` | `startBridge()`: runs in the previewed page; the browser half of the render route. `bridge-entry.ts` calls it. |
-| `src/protocol.ts` | The `postMessage` message types and their runtime checks, shared by bridge and editor. |
-| `src/types.ts` | Site config types. `virtual.d.ts` types the generated virtual module. |
-| `src/start.ts` | Sets `HOST`/`PORT` and imports the built `entry.mjs`. |
-| `test-editor/editor.astro` + `editor.ts` | The test editor at `/__editor` (markup + `startEditor()`). A separate piece, served here only for convenience. |
-| `test/e2e/` | End-to-end suite: builds the sample site, starts the server, checks it over HTTP. |
+Each source file has its unit test next to it (`*.test.ts`, not shown). The
+right-hand column says where the code runs.
+
+```text
+preview-render-server/
+├─ sites/
+│  └─ sampleAstroProject.config.ts  one site: folder, port, islands     loaded by Node
+├─ src/
+│  ├─ build.ts          astro build() + Node adapter + integration      Node (npm run build)
+│  ├─ start.ts          sets HOST/PORT, imports the built entry.mjs     Node (npm start)
+│  ├─ site-config.ts    loads a site config, resolves .build/ paths     Node
+│  ├─ integration.ts    routes, island wrappers, bridge script,         Node, during the build
+│  │                    virtual:preview-islands
+│  ├─ preview-route.ts  GET saved props · POST render                   built server
+│  ├─ media-route.ts    draft image upload + serving                    built server
+│  ├─ request-guard.ts  content-type / cross-site / method checks       built server
+│  ├─ protocol.ts       postMessage types + runtime checks              browser (bridge + editor)
+│  ├─ types.ts          site config types                               (types only)
+│  ├─ virtual.d.ts      types of the generated virtual module           (types only)
+│  └─ client/
+│     ├─ bridge.ts        startBridge(win, fetch)                       browser, in the iframe
+│     └─ bridge-entry.ts  calls startBridge(), added to every page      browser, in the iframe
+├─ test-editor/         a separate piece, served here for convenience
+│  ├─ editor.astro      /__editor markup and styles                     prerendered page
+│  └─ editor.ts         startEditor(win, fetch)                         browser, parent window
+├─ test/
+│  ├─ fixtures/         Greeting.astro, Broken.astro, and the
+│  │                    virtual-preview-islands.ts double (unit tests)
+│  ├─ e2e/              global-setup.ts (build + start on a free port)
+│  │                    and preview-server.e2e.test.ts
+│  ├─ helpers.ts        callRoute(), jsonRequest() for route tests
+│  └─ astro-modules.d.ts  lets tsc type .astro imports in tests
+├─ vitest.config.ts     unit tests: Astro's Vite config, happy-dom, coverage
+├─ vitest.e2e.config.ts end-to-end tests
+├─ tsconfig.json        typecheck only (no emit, erasable syntax)
+└─ .build/              gitignored: build output, wrappers, uploads, e2e-*
+```
+
+`build.ts`, `start.ts` and `bridge-entry.ts` are thin glue with top-level side
+effects, so they're tested end-to-end rather than unit-tested.
 
 ### TypeScript without a build step
 
@@ -408,7 +440,7 @@ How we measured:
 Baseline: an empty Node HTTP server uses **25 MB** private memory. So our app
 adds ~55 MB on top of Node: the Astro runtime, the compiled components, and
 `sharp`/libvips once an image has been resized. The bundled variant used
-70 MB idle and 82 MB after the (then) smoke test.
+70 MB idle and 82 MB after a full test run.
 
 ### Other runtimes we tried
 
