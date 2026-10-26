@@ -1,0 +1,18 @@
+// Builds a site for preview: the site's own astro.config plus the Node adapter
+// and the preview integration, written to .build/<site>. The site's files and
+// its normal build stay untouched.
+import node from '@astrojs/node';
+import { build } from 'astro';
+import previewRenderServer from './integration.js';
+import { loadSiteConfig } from './site-config.js';
+
+const site = await loadSiteConfig(process.argv[2]);
+
+await build({
+  root: site.root,
+  outDir: site.outDir,
+  adapter: node({ mode: 'standalone' }),
+  integrations: [previewRenderServer(site)],
+});
+
+console.log(`\nPreview build written to ${site.outDir}`);

@@ -1,0 +1,8 @@
+{
+  "name": "astroviewcms",
+  "private": true,
+  "workspaces": [
+    "sampleAstroProject",
+    "preview-render-server"
+  ]
+}

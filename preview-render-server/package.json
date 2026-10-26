@@ -1,0 +1,15 @@
+{
+  "name": "preview-render-server",
+  "type": "module",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "node src/build.js sites/sampleAstroProject.config.js",
+    "start": "node src/start.js sites/sampleAstroProject.config.js",
+    "smoke": "node test/smoke.js"
+  },
+  "dependencies": {
+    "@astrojs/node": "^11.1.9",
+    "astro": "^7.3.1"
+  }
+}
