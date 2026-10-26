@@ -1,0 +1,23 @@
+---
+// Test island: renders its props, an <Image> and a component script (which
+// the container references as a dev-only source script).
+import { Image } from "astro:assets";
+
+interface Props {
+  name: string;
+  items?: string[];
+  photo?: ImageMetadata | string;
+}
+
+const { name, items = [], photo } = Astro.props;
+---
+
+<section class="greeting">
+  <h2>Hola, {name}</h2>
+  <ul>{items.map((item) => <li>{item}</li>)}</ul>
+  {photo && <Image src={photo} alt="" width={40} height={40} />}
+</section>
+
+<script>
+  document.querySelector(".greeting")?.setAttribute("data-ready", "");
+</script>

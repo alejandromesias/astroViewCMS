@@ -1,2 +1,5 @@
 # preview builds of the sites
 .build/
+
+# test coverage reports
+coverage/

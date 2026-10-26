@@ -416,6 +416,38 @@ adds ~55 MB on top of Node: the Astro runtime, the compiled components, and
 | **Bun 1.4.4** (same build, unchanged) | 9/9 checks pass, render 0.7 ms. Working set 89 MB; private memory **342 MB** (Bun's allocator reserves memory up front on Windows). | No memory gain; dropped for now. Switching back is a one-command change, if Linux numbers ever look better. |
 | **workerd** (Tina's Worker, run with `wrangler dev`) | workerd with an empty Worker: 98 MB; with Tina's Worker: 122 MB. So about **24 MB per site** on top of the runtime. Caveat: Tina's render returned empty, because Tina Cloud gave no data locally. | Heavier for one site. Only pays off when many sites share one process (~10 sites: ~350 MB vs ~750 MB on Node). It also costs `sharp`, filesystem access and some npm packages. Revisit only if we need many previews running at once. |
 
+## Testing
+
+| Suite | Command | What it covers |
+|---|---|---|
+| Unit tests (Vitest) | `npm test` (`npm run test:watch` while developing) | one `*.test.ts` next to each source file |
+| Coverage | `npm run coverage` | V8 coverage, text plus an HTML report in `coverage/`. Reported only, no threshold |
+| Typecheck | `npm run typecheck` | `tsc` over source and tests |
+| Smoke | `npm run smoke` | a running server: the built page, all routes, timings |
+
+How the unit tests are set up:
+
+- **Real Astro rendering.** `vitest.config.ts` uses Astro's own Vite config
+  (`getViteConfig`), so tests compile real `.astro` components. The route
+  tests render `test/fixtures/Greeting.astro` (props, `<Image>`, a component
+  script) and `Broken.astro` (throws) through the actual Container API. There
+  is no mocked renderer.
+- **The virtual module is a test double.** `virtual:preview-islands` is
+  aliased to `test/fixtures/virtual-preview-islands.ts`, which exports empty
+  `islands` and `images` for each test file to fill in, and a temporary
+  `mediaDir`.
+- **Dependencies are passed in, not mocked.** `startBridge(win, fetch)` and
+  `startEditor(win, fetch)` take the window and `fetch` as parameters. Tests
+  pass a fake parent window and a `vi.fn()` fetch, with no module mocking.
+- **Browser code runs in happy-dom,** chosen per file
+  (`// @vitest-environment happy-dom`). The editor tests reuse the real markup
+  from `editor.astro`, with the iframe replaced by a plain element.
+- **Left to end-to-end tests:** `build.ts`, `start.ts` and `bridge-entry.ts`
+  are glue with top-level side effects. They're excluded from coverage.
+
+At the time of writing: 114 tests in ~2 s. Coverage is 100% of lines and
+functions, and 91.5% of branches.
+
 ## Known limits and next steps
 
 - **Drafts aren't persisted.** They live only in the editor tab (see "Where the

@@ -48,8 +48,14 @@ of `astro`. Run `npm install` there first.
 npm run build      # preview build of sampleAstroProject
 npm start          # http://localhost:4400, editor at /__editor
 npm run typecheck  # tsc, no emit
+npm test           # unit tests (Vitest); npm run test:watch while developing
+npm run coverage   # unit tests + coverage report in coverage/
 npm run smoke      # checks and timings against the running server
 ```
+
+Each source file has a `*.test.ts` next to it. The tests render real `.astro`
+fixtures (`test/fixtures/`) through Astro's own Vite config. Browser code
+(bridge, editor) runs in happy-dom.
 
 TypeScript runs without a build step: Node 26 runs the `.ts` scripts directly
 (type stripping, so no `enum`s or `namespace`s), and Vite compiles the files

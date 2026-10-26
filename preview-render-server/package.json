@@ -7,6 +7,9 @@
     "build": "node src/build.ts sites/sampleAstroProject.config.ts",
     "start": "node src/start.ts sites/sampleAstroProject.config.ts",
     "typecheck": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
     "smoke": "node test/smoke.js"
   },
   "dependencies": {
