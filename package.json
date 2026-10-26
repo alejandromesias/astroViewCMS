@@ -3,6 +3,7 @@
   "private": true,
   "workspaces": [
     "sampleAstroProject",
-    "preview-render-server"
+    "preview-render-server",
+    "sample-site"
   ]
 }
