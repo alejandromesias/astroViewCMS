@@ -3,8 +3,8 @@
 // its normal build stay untouched.
 import node from '@astrojs/node';
 import { build } from 'astro';
-import previewRenderServer from './integration.js';
-import { loadSiteConfig } from './site-config.js';
+import previewRenderServer from './integration.ts';
+import { loadSiteConfig } from './site-config.ts';
 
 const site = await loadSiteConfig(process.argv[2]);
 

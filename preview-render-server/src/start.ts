@@ -1,8 +1,8 @@
-// Runs a site's preview build: static pages plus the /__preview route, in one
+// Runs a site's preview build: static pages plus the preview routes, in one
 // plain Node process (no Vite, no compiler).
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { loadSiteConfig } from './site-config.js';
+import { loadSiteConfig } from './site-config.ts';
 
 const site = await loadSiteConfig(process.argv[2]);
 

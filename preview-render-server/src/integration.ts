@@ -1,9 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { AstroIntegration } from 'astro';
+import type { Plugin } from 'vite';
+import type { ResolvedSiteConfig } from './types.ts';
 
-const VIRTUAL_ID = 'virtual:preview-islands';
-const RESOLVED_ID = '\0' + VIRTUAL_ID;
+export const VIRTUAL_ID = 'virtual:preview-islands';
+export const RESOLVED_ID = '\0' + VIRTUAL_ID;
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.avif', '.gif']);
 
 // Added only to the preview build. It:
@@ -15,26 +18,27 @@ const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.avif', '.g
 // - adds the bridge script to every page;
 // - generates a virtual module that hands the routes the island components,
 //   every image under src/, and where to keep uploads.
-export default function previewRenderServer(site) {
+export default function previewRenderServer(site: ResolvedSiteConfig): AstroIntegration {
   return {
     name: 'preview-render-server',
     hooks: {
       'astro:config:setup': ({ injectRoute, injectScript, updateConfig }) => {
         injectRoute({
           pattern: '/__preview/[island]',
-          entrypoint: new URL('./preview-route.js', import.meta.url),
+          entrypoint: new URL('./preview-route.ts', import.meta.url),
           prerender: false,
         });
         injectRoute({
           pattern: '/__preview-media/[file]',
-          entrypoint: new URL('./media-route.js', import.meta.url),
+          entrypoint: new URL('./media-route.ts', import.meta.url),
           prerender: false,
         });
         injectRoute({
           pattern: '/__editor',
           entrypoint: new URL('../test-editor/editor.astro', import.meta.url),
         });
-        injectScript('page', `import ${JSON.stringify(toPosix(fileURLToPath(new URL('./client/bridge.js', import.meta.url))))};`);
+        const bridge = fileURLToPath(new URL('./client/bridge-entry.ts', import.meta.url));
+        injectScript('page', `import ${JSON.stringify(toPosix(bridge))};`);
 
         const wrappers = writeIslandWrappers(site);
         updateConfig({
@@ -45,33 +49,39 @@ export default function previewRenderServer(site) {
   };
 }
 
-// One wrapper .astro file per island. `display: contents` keeps the wrapper
-// out of the layout, so the page renders exactly as before.
-function writeIslandWrappers({ root, islands, islandsDir }) {
+/** Writes one wrapper .astro file per island and returns
+ *  normalized component id -> wrapper path. `display: contents` keeps the
+ *  wrapper out of the layout, so the page renders exactly as before. */
+export function writeIslandWrappers({
+  root,
+  islands,
+  islandsDir,
+}: Pick<ResolvedSiteConfig, 'root' | 'islands' | 'islandsDir'>): Map<string, string> {
   fs.mkdirSync(islandsDir, { recursive: true });
-  const wrappers = new Map();
+  const wrappers = new Map<string, string>();
   for (const [name, island] of Object.entries(islands)) {
     const component = path.resolve(root, island.component);
     const wrapper = path.join(islandsDir, `${name}.astro`);
-    fs.writeFileSync(
-      wrapper,
-      [
-        '---',
-        `import Island from ${JSON.stringify(toPosix(component))};`,
-        '---',
-        `<div style="display: contents" data-preview-island=${JSON.stringify(name)}><Island {...Astro.props} /></div>`,
-        '',
-      ].join('\n'),
-    );
+    fs.writeFileSync(wrapper, wrapperSource(name, component));
     wrappers.set(normalizeId(component), toPosix(wrapper));
   }
   return wrappers;
 }
 
-// Points every import of an island component at its wrapper, except the
-// wrapper's own import and the render route's (through the virtual module),
-// which need the bare component.
-function islandWrappers(wrappers) {
+export function wrapperSource(name: string, component: string): string {
+  return [
+    '---',
+    `import Island from ${JSON.stringify(toPosix(component))};`,
+    '---',
+    `<div style="display: contents" data-preview-island=${JSON.stringify(name)}><Island {...Astro.props} /></div>`,
+    '',
+  ].join('\n');
+}
+
+/** Points every import of an island component at its wrapper, except the
+ *  wrapper's own import and the render route's (through the virtual module),
+ *  which need the bare component. */
+export function islandWrappers(wrappers: Map<string, string>): Plugin {
   const wrapperFiles = new Set([...wrappers.values()].map(normalizeId));
   return {
     name: 'preview-render-server:island-wrappers',
@@ -81,12 +91,17 @@ function islandWrappers(wrappers) {
       if (!source.endsWith('.astro')) return;
       const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
       if (!resolved) return;
-      return wrappers.get(normalizeId(resolved.id)) ?? undefined;
+      return wrappers.get(normalizeId(resolved.id));
     },
   };
 }
 
-function islandsModule({ root, islands, mediaDir }) {
+/** The `virtual:preview-islands` module (typed in virtual.d.ts). */
+export function islandsModule({
+  root,
+  islands,
+  mediaDir,
+}: Pick<ResolvedSiteConfig, 'root' | 'islands' | 'mediaDir'>): Plugin {
   return {
     name: 'preview-render-server:islands',
     resolveId(id) {
@@ -95,7 +110,7 @@ function islandsModule({ root, islands, mediaDir }) {
     load(id) {
       if (id !== RESOLVED_ID) return;
 
-      const lines = [];
+      const lines: string[] = [];
       const islandEntries = Object.entries(islands).map(([name, island], i) => {
         lines.push(`import island${i} from ${importPath(root, island.component)};`);
         const fields = {
@@ -120,22 +135,23 @@ function islandsModule({ root, islands, mediaDir }) {
   };
 }
 
-function findImages(dir) {
+export function findImages(dir: string): string[] {
   return fs
     .readdirSync(dir, { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile() && IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))
     .map((entry) => path.join(entry.parentPath, entry.name));
 }
 
-function importPath(root, file) {
+function importPath(root: string, file: string): string {
   return JSON.stringify(toPosix(path.resolve(root, file)));
 }
 
-// Vite ids use forward slashes and may carry a ?query.
-function normalizeId(id) {
+/** Vite ids use forward slashes and may carry a ?query; Windows paths are
+ *  case-insensitive. */
+export function normalizeId(id: string): string {
   return toPosix(id.split('?')[0]).toLowerCase();
 }
 
-function toPosix(p) {
+function toPosix(p: string): string {
   return p.replaceAll('\\', '/');
 }

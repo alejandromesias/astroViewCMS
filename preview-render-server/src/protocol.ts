@@ -1,0 +1,38 @@
+// The postMessage protocol between an editor (parent window) and the bridge
+// (src/client/bridge.ts, inside the previewed page). Any editor that speaks
+// it can drive the preview.
+
+export type Props = Record<string, unknown>;
+
+/** editor -> page */
+export interface DraftMessage {
+  type: 'preview:draft';
+  island: string;
+  props: Props;
+}
+
+/** page -> editor */
+export type PageMessage =
+  | { type: 'preview:ready'; islands: string[] }
+  | { type: 'preview:rendered'; island: string; renderMs: number }
+  | { type: 'preview:error'; island: string; status: number; message: string };
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+export function isDraftMessage(data: unknown): data is DraftMessage {
+  return isObject(data) && data.type === 'preview:draft' && typeof data.island === 'string';
+}
+
+export function isPageMessage(data: unknown): data is PageMessage {
+  if (!isObject(data)) return false;
+  switch (data.type) {
+    case 'preview:ready':
+      return Array.isArray(data.islands);
+    case 'preview:rendered':
+    case 'preview:error':
+      return typeof data.island === 'string';
+    default:
+      return false;
+  }
+}

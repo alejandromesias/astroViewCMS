@@ -7,53 +7,55 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import type { APIRoute } from 'astro';
 import { mediaDir } from 'virtual:preview-islands';
-import { methodNotAllowed, rejectCrossSite, rejectUnlessContentType } from './request-guard.js';
+import { methodNotAllowed, rejectCrossSite, rejectUnlessContentType } from './request-guard.ts';
 
 export const prerender = false;
 
-const MAX_BYTES = 10 * 1024 * 1024;
+export const MAX_BYTES = 10 * 1024 * 1024;
 // No SVG: it can carry scripts.
-const TYPES = {
+const EXTENSIONS: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
   'image/webp': 'webp',
   'image/avif': 'avif',
   'image/gif': 'gif',
 };
-const CONTENT_TYPES = Object.fromEntries(Object.entries(TYPES).map(([type, ext]) => [ext, type]));
+const CONTENT_TYPES = Object.fromEntries(Object.entries(EXTENSIONS).map(([type, ext]) => [ext, type]));
 const FILE_NAME = /^[0-9a-f]{16}\.(png|jpg|webp|avif|gif)$/;
 
-export async function POST({ params, request }) {
+export const POST: APIRoute = async ({ params, request }) => {
   if (params.file !== 'new') return methodNotAllowed('GET');
   const rejection = rejectUnlessContentType(request, /^image\//);
   if (rejection) return rejection;
 
-  const ext = TYPES[request.headers.get('content-type').split(';')[0].trim()];
+  const ext = EXTENSIONS[(request.headers.get('content-type') ?? '').split(';')[0].trim()];
   if (!ext) {
-    return new Response(`Supported types: ${Object.keys(TYPES).join(', ')}`, { status: 415 });
+    return new Response(`Supported types: ${Object.keys(EXTENSIONS).join(', ')}`, { status: 415 });
   }
   const bytes = Buffer.from(await request.arrayBuffer());
   if (bytes.length === 0 || bytes.length > MAX_BYTES) {
     return new Response('Image must be between 1 byte and 10 MB', { status: 413 });
   }
 
-  const name = `${crypto.createHash('sha256').update(bytes).digest('hex').slice(0, 16)}.${ext}`;
+  const name = mediaFileName(bytes, ext);
   await fs.mkdir(mediaDir, { recursive: true });
   await fs.writeFile(path.join(mediaDir, name), bytes);
   return Response.json({ url: `/__preview-media/${name}` }, { status: 201 });
-}
+};
 
-export async function GET({ params, request }) {
+export const GET: APIRoute = async ({ params, request }) => {
   const rejection = rejectCrossSite(request);
   if (rejection) return rejection;
-  if (!FILE_NAME.test(params.file)) return new Response('Not Found', { status: 404 });
+  const file = params.file ?? '';
+  if (!FILE_NAME.test(file)) return new Response('Not Found', { status: 404 });
 
   try {
-    const bytes = await fs.readFile(path.join(mediaDir, params.file));
+    const bytes = await fs.readFile(path.join(mediaDir, file));
     return new Response(bytes, {
       headers: {
-        'Content-Type': CONTENT_TYPES[path.extname(params.file).slice(1)],
+        'Content-Type': CONTENT_TYPES[path.extname(file).slice(1)],
         'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff',
       },
@@ -61,8 +63,11 @@ export async function GET({ params, request }) {
   } catch {
     return new Response('Not Found', { status: 404 });
   }
-}
+};
 
-export function ALL() {
-  return methodNotAllowed('GET, POST');
+export const ALL: APIRoute = () => methodNotAllowed('GET, POST');
+
+/** Content-addressed name: the same image always gets the same file. */
+export function mediaFileName(bytes: Uint8Array, ext: string): string {
+  return `${crypto.createHash('sha256').update(bytes).digest('hex').slice(0, 16)}.${ext}`;
 }

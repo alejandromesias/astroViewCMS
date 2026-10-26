@@ -1,3 +1,5 @@
+import type { SiteConfig } from '../src/types.ts';
+
 // What the preview render server needs to know about one site.
 export default {
   // Site folder, relative to this file.
@@ -9,13 +11,10 @@ export default {
   islands: {
     blocks: {
       component: 'src/components/BlockList.astro',
-      // Saved content: the JSON file and the keys that become props.
       content: { file: 'src/content/pages/home.json', props: ['blocks'] },
-      // Folder of the JSON file the props come from. `image()` fields store
-      // paths relative to it, e.g. "../assets/images/x.png".
       contentDir: 'src/content/pages',
     },
   },
 
   port: 4400,
-};
+} satisfies SiteConfig;

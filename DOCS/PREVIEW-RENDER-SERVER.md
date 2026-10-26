@@ -42,16 +42,16 @@ reloads the iframe. We skip all of that.
  BUILD (npm run build): once per code change, ~25 s
  ─────────────────────────────────────────────────────────────────────────
   sampleAstroProject/                 preview-render-server/
-  ├─ astro.config.mjs ─────┐          ├─ sites/sampleAstroProject.config.js
+  ├─ astro.config.mjs ─────┐          ├─ sites/sampleAstroProject.config.ts
   ├─ src/components/*.astro│          │    (where the site is; for each
   ├─ src/content/*.json    │          │     island: component, content file)
-  └─ src/**/*.png          │          └─ src/build.js
+  └─ src/**/*.png          │          └─ src/build.ts
                            ▼                     │
                 ┌──────────────────────────────────────────────┐
                 │ astro build()                                │
                 │   site's own config                          │
                 │ + @astrojs/node adapter (standalone)         │
-                │ + preview integration (src/integration.js):  │
+                │ + preview integration (src/integration.ts):  │
                 │     · routes /__preview/[island],            │
                 │       /__preview-media/[file], /__editor     │
                 │     · wraps each island component in         │
@@ -91,7 +91,7 @@ Three parts, each of which knows only its neighbor:
 
 ```text
  EDITOR (/__editor)            PAGE IN IFRAME (/)               SERVER
- parent window                 site HTML + bridge.js            same origin
+ parent window                 site HTML + bridge.ts            same origin
  ────────────────────          ─────────────────────────        ──────────────────
 
  sets iframe.src = "/" ──────▶ page loads, bridge starts
@@ -207,17 +207,31 @@ the editor side:
 
 | File | Role |
 |---|---|
-| `sites/<site>.config.js` | Site folder, port, and islands: name → component, content file plus the keys that become props, `contentDir`. |
-| `src/site-config.js` | Loads a site config and resolves paths under `.build/`. |
-| `src/build.js` | Calls Astro's programmatic `build()` with the site root, the Node adapter, the integration and our `outDir`. Astro merges this with the site's own `astro.config.mjs`. |
-| `src/integration.js` | Astro integration, added only by `build.js`. It adds the routes, the island wrappers, the bridge script and `virtual:preview-islands`. |
-| `src/preview-route.js` | `GET` returns saved props; `POST` renders. |
-| `src/media-route.js` | Draft image upload and serving. |
-| `src/request-guard.js` | Shared checks: content type, cross-site, method. |
-| `src/client/bridge.js` | Runs in the previewed page; the browser half of the render route. |
-| `src/start.js` | Sets `HOST`/`PORT` and imports the built `entry.mjs`. |
-| `test-editor/editor.astro` | The test editor at `/__editor`. A separate piece, served here only for convenience. |
+| `sites/<site>.config.ts` | Site folder, port, and islands: name → component, content file plus the keys that become props, `contentDir`. |
+| `src/site-config.ts` | Loads a site config and resolves paths under `.build/`. |
+| `src/build.ts` | Calls Astro's programmatic `build()` with the site root, the Node adapter, the integration and our `outDir`. Astro merges this with the site's own `astro.config.mjs`. |
+| `src/integration.ts` | Astro integration, added only by `build.ts`. It adds the routes, the island wrappers, the bridge script and `virtual:preview-islands`. |
+| `src/preview-route.ts` | `GET` returns saved props; `POST` renders. |
+| `src/media-route.ts` | Draft image upload and serving. |
+| `src/request-guard.ts` | Shared checks: content type, cross-site, method. |
+| `src/client/bridge.ts` | `startBridge()`: runs in the previewed page; the browser half of the render route. `bridge-entry.ts` calls it. |
+| `src/protocol.ts` | The `postMessage` message types and their runtime checks, shared by bridge and editor. |
+| `src/types.ts` | Site config types. `virtual.d.ts` types the generated virtual module. |
+| `src/start.ts` | Sets `HOST`/`PORT` and imports the built `entry.mjs`. |
+| `test-editor/editor.astro` + `editor.ts` | The test editor at `/__editor` (markup + `startEditor()`). A separate piece, served here only for convenience. |
 | `test/smoke.js` | Checks and timings against a running server. |
+
+### TypeScript without a build step
+
+All source is TypeScript, but nothing is compiled ahead of time:
+
+- **Node 26 runs** `build.ts`, `start.ts`, `site-config.ts` and
+  `integration.ts` **directly**, by stripping the types.
+- **Vite compiles** the routes, the bridge and the editor as part of
+  `astro build`.
+- `tsconfig.json` is only for checking (`npm run typecheck`, `noEmit`). It
+  sets `erasableSyntaxOnly`, so only syntax Node can strip is allowed: no
+  `enum`s or `namespace`s. Imports use `.ts` extensions.
 
 ### How the island wrapper is added without touching the site
 
@@ -325,7 +339,7 @@ the same limit.
 `sampleAstroProject` and `preview-render-server`). npm installs one copy of
 `astro` in `astroViewCMS/node_modules`:
 
-- `build.js` imports `astro` and `@astrojs/node` from there;
+- `build.ts` imports `astro` and `@astrojs/node` from there;
 - the site's components import the same copy;
 - at runtime, the built server finds the same copy by walking up from
   `.build/`.
@@ -340,7 +354,7 @@ imports `astro/...` and others from `node_modules` at runtime. We also tested
 a fully bundled variant (step 1 code):
 
 ```js
-// in build.js, passed to build():
+// in build.ts, passed to build():
 vite: { ssr: { noExternal: true, external: ['sharp'] } }
 ```
 
@@ -360,7 +374,7 @@ For comparison, wrangler reports Tina's Worker bundle at 1.2 MB.
   `node_modules`. So build inside the workspace, then copy `client/` and
   `server/` (without `.prerender`) to wherever the server will run.
 - **A relative `outDir` resolves against the site root,** not against the
-  render server. Use absolute paths (`site-config.js` already does).
+  render server. Use absolute paths (`site-config.ts` already does).
 
 So the toolchain is needed once, at build time. Each running preview only
 needs Node plus about 3 MB (bundle + static files), plus `sharp` if images

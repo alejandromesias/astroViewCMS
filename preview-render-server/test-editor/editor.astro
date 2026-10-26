@@ -1,10 +1,8 @@
 ---
-// Test editor: a JSON textbox per island next to the site in an iframe.
-// It only speaks the bridge's postMessage protocol (see src/client/bridge.js)
-// plus two plain requests: GET /__preview/<island> for the saved props and
-// POST /__preview-media/new for uploads. Served by the preview server for
-// convenience (same origin as the site); any other editor can replace it.
-// Open /__editor?page=/some/path to edit another page (default "/").
+// Test editor: a JSON textbox per island next to the site in an iframe. The
+// logic is in editor.ts. Served by the preview server for convenience (same
+// origin as the site); any other editor that speaks src/protocol.ts can
+// replace it. Open /__editor?page=/some/path to edit another page (default "/").
 ---
 
 <!doctype html>
@@ -140,121 +138,7 @@
 </style>
 
 <script>
-  const ORIGIN = window.location.origin;
-  const RENDER_DELAY_MS = 120;
+  import { startEditor } from "./editor.ts";
 
-  const iframe = document.getElementById("preview") as HTMLIFrameElement;
-  const status = document.getElementById("status")!;
-  const islandsRoot = document.getElementById("islands")!;
-  const template = document.getElementById("island-template") as HTMLTemplateElement;
-
-  const textareas = new Map<string, HTMLTextAreaElement>();
-
-  function setStatus(text: string, state = "ok") {
-    status.textContent = text;
-    status.dataset.state = state;
-  }
-
-  function sendDraft(island: string) {
-    const textarea = textareas.get(island)!;
-    const error = textarea.closest(".island")!.querySelector(".error")!;
-    let props: unknown;
-    try {
-      props = JSON.parse(textarea.value);
-    } catch (parseError) {
-      textarea.setAttribute("aria-invalid", "true");
-      error.textContent = (parseError as Error).message;
-      return;
-    }
-    textarea.removeAttribute("aria-invalid");
-    error.textContent = "";
-    iframe.contentWindow?.postMessage({ type: "preview:draft", island, props }, ORIGIN);
-  }
-
-  async function loadSaved(island: string) {
-    const response = await fetch(`/__preview/${encodeURIComponent(island)}`, { cache: "no-store" });
-    if (!response.ok) throw new Error(`GET /__preview/${island}: ${response.status}`);
-    return JSON.stringify(await response.json(), null, 2);
-  }
-
-  async function addIsland(island: string) {
-    const section = template.content.firstElementChild!.cloneNode(true) as HTMLElement;
-    section.querySelector("h2")!.textContent = `Island: ${island}`;
-    const textarea = section.querySelector("textarea")!;
-    textarea.setAttribute("aria-label", `Props for island ${island}`);
-    islandsRoot.append(section);
-    textareas.set(island, textarea);
-
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    textarea.addEventListener("input", () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => sendDraft(island), RENDER_DELAY_MS);
-    });
-    section.querySelector('[data-action="reset"]')!.addEventListener("click", async () => {
-      textarea.value = await loadSaved(island);
-      sendDraft(island);
-    });
-
-    textarea.value = await loadSaved(island);
-  }
-
-  window.addEventListener("message", async (event) => {
-    if (event.source !== iframe.contentWindow || event.origin !== ORIGIN) return;
-    const message = event.data;
-
-    if (message?.type === "preview:ready") {
-      // The page (re)loaded: rebuild the textboxes for the islands it has,
-      // keeping drafts in progress, and send them so the page shows them.
-      const islands: string[] = Array.isArray(message.islands) ? message.islands : [];
-      for (const island of [...textareas.keys()]) {
-        if (!islands.includes(island)) {
-          textareas.get(island)!.closest(".island")!.remove();
-          textareas.delete(island);
-        }
-      }
-      try {
-        for (const island of islands) {
-          if (!textareas.has(island)) await addIsland(island);
-          else sendDraft(island);
-        }
-        setStatus(islands.length ? `Page ready: ${islands.join(", ")}` : "This page has no editable islands");
-      } catch (error) {
-        setStatus(String(error), "error");
-      }
-    } else if (message?.type === "preview:rendered") {
-      setStatus(`Rendered "${message.island}" in ${message.renderMs} ms`);
-    } else if (message?.type === "preview:error") {
-      setStatus(`"${message.island}" failed (${message.status}): ${message.message}`, "error");
-    }
-  });
-
-  // Draft image upload
-  const upload = document.getElementById("upload") as HTMLInputElement;
-  const uploadResult = document.getElementById("upload-result")!;
-  const uploadUrl = document.getElementById("upload-url")!;
-
-  upload.addEventListener("change", async () => {
-    const file = upload.files?.[0];
-    if (!file) return;
-    const response = await fetch("/__preview-media/new", {
-      method: "POST",
-      headers: { "Content-Type": file.type },
-      body: file,
-    });
-    if (!response.ok) {
-      setStatus(`Upload failed (${response.status}): ${await response.text()}`, "error");
-      return;
-    }
-    const { url } = await response.json();
-    uploadUrl.textContent = url;
-    uploadResult.hidden = false;
-    setStatus(`Uploaded ${file.name}`);
-  });
-
-  // Load the page only now, so the listener above catches its first "ready".
-  iframe.src = new URLSearchParams(window.location.search).get("page") ?? "/";
-
-  document.getElementById("upload-copy")!.addEventListener("click", () => {
-    navigator.clipboard?.writeText(uploadUrl.textContent ?? "");
-  });
+  startEditor();
 </script>

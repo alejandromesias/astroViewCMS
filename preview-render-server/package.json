@@ -4,12 +4,21 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "build": "node src/build.js sites/sampleAstroProject.config.js",
-    "start": "node src/start.js sites/sampleAstroProject.config.js",
+    "build": "node src/build.ts sites/sampleAstroProject.config.ts",
+    "start": "node src/start.ts sites/sampleAstroProject.config.ts",
+    "typecheck": "tsc",
     "smoke": "node test/smoke.js"
   },
   "dependencies": {
     "@astrojs/node": "^11.1.9",
     "astro": "^7.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@vitest/coverage-v8": "^5.0.5",
+    "happy-dom": "^21.0.4",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
   }
 }

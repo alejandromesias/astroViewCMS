@@ -14,26 +14,26 @@ editor ──postMessage draft──▶ bridge (in the iframe) ──POST /__pre
 
 ## How it works
 
-- `sites/<site>.config.js`: where the site lives. For each island: its
+- `sites/<site>.config.ts`: where the site lives. For each island: its
   component and the content file it reads.
-- `src/build.js`: runs Astro's `build()` on the site, adding the Node adapter
-  and `src/integration.js`. Output goes to `.build/<site>/`, so the site's
+- `src/build.ts`: runs Astro's `build()` on the site, adding the Node adapter
+  and `src/integration.ts`. Output goes to `.build/<site>/`, so the site's
   files and its normal static build are untouched.
-- `src/integration.js`, which adds:
+- `src/integration.ts`, which adds:
   - the routes;
   - the `<div data-preview-island>` wrappers, by redirecting imports (no site
     change);
   - the bridge script;
   - a virtual module with the island components and every image under `src/`.
-- `src/preview-route.js`: `GET` returns the saved props, `POST` renders
+- `src/preview-route.ts`: `GET` returns the saved props, `POST` renders
   them (same-site JSON only).
-- `src/media-route.js`: draft image upload (`POST /__preview-media/new`) and
+- `src/media-route.ts`: draft image upload (`POST /__preview-media/new`) and
   serving.
-- `src/client/bridge.js`: runs in the previewed page and speaks `postMessage`
+- `src/client/bridge.ts`: runs in the previewed page and speaks `postMessage`
   with any editor.
 - `test-editor/editor.astro`: a test editor at `/__editor`, with a JSON
   textbox per island next to the site in an iframe.
-- `src/start.js`: runs `.build/<site>/server/entry.mjs`.
+- `src/start.ts`: runs `.build/<site>/server/entry.mjs`.
 
 Rebuild when code changes (markup, CSS, schemas, new block types). Content
 changes never need a rebuild. Drafts live only in the editor tab; nothing is
@@ -45,10 +45,15 @@ written to the site yet.
 of `astro`. Run `npm install` there first.
 
 ```sh
-npm run build   # preview build of sampleAstroProject
-npm start       # http://localhost:4400, editor at /__editor
-npm run smoke   # checks and timings against the running server
+npm run build      # preview build of sampleAstroProject
+npm start          # http://localhost:4400, editor at /__editor
+npm run typecheck  # tsc, no emit
+npm run smoke      # checks and timings against the running server
 ```
+
+TypeScript runs without a build step: Node 26 runs the `.ts` scripts directly
+(type stripping, so no `enum`s or `namespace`s), and Vite compiles the files
+that end up in the build.
 
 From an AI agent, run the build with the Astro agent-detection variables
 unset (see the HANDOFF environment notes).
