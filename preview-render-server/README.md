@@ -50,7 +50,7 @@ npm start          # http://localhost:4400, editor at /__editor
 npm run typecheck  # tsc, no emit
 npm test           # unit tests (Vitest); npm run test:watch while developing
 npm run coverage   # unit tests + coverage report in coverage/
-npm run smoke      # checks and timings against the running server
+npm run test:e2e   # builds into .build/e2e-*, starts the server on a free port, checks it over HTTP
 ```
 
 Each source file has a `*.test.ts` next to it. The tests render real `.astro`

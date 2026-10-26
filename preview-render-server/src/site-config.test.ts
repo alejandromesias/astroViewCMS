@@ -36,6 +36,13 @@ describe('loadSiteConfig', () => {
     expect(Object.keys(site.islands)).toEqual(['blocks']);
   });
 
+  it('builds into another folder when given one (PREVIEW_BUILD_DIR)', async () => {
+    const buildDir = path.resolve('/tmp/preview-e2e');
+    const site = await loadSiteConfig(path.resolve(import.meta.dirname, '../sites/sampleAstroProject.config.ts'), buildDir);
+    expect(site.outDir).toBe(path.join(buildDir, 'sampleAstroProject'));
+    expect(site.mediaDir).toBe(path.join(buildDir, 'sampleAstroProject-media'));
+  });
+
   it('explains the usage when no file is given', async () => {
     await expect(loadSiteConfig(undefined)).rejects.toThrow(/Usage/);
   });

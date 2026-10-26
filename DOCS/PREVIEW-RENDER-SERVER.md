@@ -219,7 +219,7 @@ the editor side:
 | `src/types.ts` | Site config types. `virtual.d.ts` types the generated virtual module. |
 | `src/start.ts` | Sets `HOST`/`PORT` and imports the built `entry.mjs`. |
 | `test-editor/editor.astro` + `editor.ts` | The test editor at `/__editor` (markup + `startEditor()`). A separate piece, served here only for convenience. |
-| `test/smoke.js` | Checks and timings against a running server. |
+| `test/e2e/` | End-to-end suite: builds the sample site, starts the server, checks it over HTTP. |
 
 ### TypeScript without a build step
 
@@ -389,8 +389,9 @@ How we measured:
   listed.
 - **Render time** comes from the route's `Server-Timing` header. **Round
   trip** is measured by the test client.
-- `npm run smoke` makes 100 edits in a row. Step 2 added no measurable
-  overhead: the median render is still 0.3 ms, and the round trip is 1.7 ms.
+- The end-to-end suite (`npm run test:e2e`) makes 100 edits in a row. Step 2
+  and the TypeScript rewrite added no measurable overhead: the median render
+  is still 0.3 ms, and the round trip is ~1.8 ms.
 
 ### Against `astro dev` (same site, same machine)
 
@@ -407,7 +408,7 @@ How we measured:
 Baseline: an empty Node HTTP server uses **25 MB** private memory. So our app
 adds ~55 MB on top of Node: the Astro runtime, the compiled components, and
 `sharp`/libvips once an image has been resized. The bundled variant used
-70 MB idle and 82 MB after the smoke test.
+70 MB idle and 82 MB after the (then) smoke test.
 
 ### Other runtimes we tried
 
@@ -423,7 +424,7 @@ adds ~55 MB on top of Node: the Astro runtime, the compiled components, and
 | Unit tests (Vitest) | `npm test` (`npm run test:watch` while developing) | one `*.test.ts` next to each source file |
 | Coverage | `npm run coverage` | V8 coverage, text plus an HTML report in `coverage/`. Reported only, no threshold |
 | Typecheck | `npm run typecheck` | `tsc` over source and tests |
-| Smoke | `npm run smoke` | a running server: the built page, all routes, timings |
+| End-to-end | `npm run test:e2e` | builds the sample site into `.build/e2e-*` (`PREVIEW_BUILD_DIR`), starts the real server on a free port, checks the built page, every route and the timings over HTTP, then cleans up. ~7 s in total on the dev machine, build included |
 
 How the unit tests are set up:
 
@@ -443,10 +444,11 @@ How the unit tests are set up:
   (`// @vitest-environment happy-dom`). The editor tests reuse the real markup
   from `editor.astro`, with the iframe replaced by a plain element.
 - **Left to end-to-end tests:** `build.ts`, `start.ts` and `bridge-entry.ts`
-  are glue with top-level side effects. They're excluded from coverage.
+  are glue with top-level side effects. They're excluded from unit coverage,
+  and the end-to-end suite runs them for real.
 
-At the time of writing: 114 tests in ~2 s. Coverage is 100% of lines and
-functions, and 91.5% of branches.
+At the time of writing: 115 unit tests in ~2 s, plus 15 end-to-end tests.
+Unit coverage is 100% of lines and functions, and 91.5% of branches.
 
 ## Known limits and next steps
 
@@ -473,7 +475,8 @@ cd preview-render-server
 npm run build                       # preview build of sampleAstroProject
 npm start                           # http://localhost:4400
                                     # editor: http://localhost:4400/__editor
-npm run smoke                       # checks + timings
+npm test                            # unit tests
+npm run test:e2e                    # build + real server + HTTP checks
 ```
 
 From an AI agent, unset Astro's agent-detection variables for the build (see
