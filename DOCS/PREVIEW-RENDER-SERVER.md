@@ -1,5 +1,10 @@
 # How the preview render server works (system view)
 
+> **Note (2026-10-26):** this describes the island model. Phase 1 of
+> [WORKPLAN.md](WORKPLAN.md) replaces it with page rendering plus a content
+> overlay ([SYSTEM-DESIGN.md](SYSTEM-DESIGN.md)). The build, bundling, image
+> and performance sections stay valid.
+
 Covers `preview-render-server/` as of 2026-10-25: step 1 (in-memory render
 route) and step 2 (live preview in the browser) of the plan in
 `../../HANDOFF.md`. All numbers were measured on the development machine:
@@ -512,4 +517,4 @@ npm run test:e2e                    # build + real server + HTTP checks
 ```
 
 From an AI agent, unset Astro's agent-detection variables for the build (see
-the environment notes in `../../HANDOFF.md`).
+the environment notes in [WORKPLAN.md](WORKPLAN.md)).

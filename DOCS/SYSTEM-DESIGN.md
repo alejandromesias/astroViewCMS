@@ -1,7 +1,8 @@
 # astroViewCMS system design proposal
 
-Written 2026-10-26. Status: **proposal**. It supersedes the "Next steps" list
-in `../HANDOFF.md` and gives the rules future sessions should follow. How the
+Written 2026-10-26. Status: **agreed** by the user on 2026-10-26. It gives the
+rules future sessions should follow; the tasks that implement it are in
+[WORKPLAN.md](WORKPLAN.md). How the
 current preview server works is in
 [PREVIEW-RENDER-SERVER.md](PREVIEW-RENDER-SERVER.md); this document says where
 it should go and what to change on the way.
@@ -21,7 +22,7 @@ and can hold its built files.
 
 | # | Decision | Replaces |
 |---|---|---|
-| 1 | **The document is the unit of editing, drafting, validation and saving.** A document is one content entry (`pages/home`, `navbar/navegacion`), which is one file. | "Island" as the unit of everything |
+| 1 | **The document is the unit of editing, drafting, validation and saving.** A document is one content entry (`pages/home`, `navbar/navegacion`), usually one file. Entries of a `file()` loader share one file, and JSON data files that components import directly are documents too. | "Island" as the unit of everything |
 | 2 | **The page is the unit of rendering.** The preview re-renders the whole page with a *content overlay*: `getEntry`/`getCollection` return draft data. | Rendering one component with props |
 | 3 | **Regions (today's islands) are only DOM patch hints.** They say where to swap HTML. They carry no data contract and own no content. They are optional: a page without regions still previews. | Islands with `component` + `content.file` + `props` |
 | 4 | **The preview node is read-only and stateless.** It never writes to the site, holds no credentials and stores no drafts. Saving and publishing live in the CMS app. | The save route inside the preview server |
@@ -36,7 +37,7 @@ came from "island" meaning four things at once.
 
 | Term | Meaning | Example |
 |---|---|---|
-| **Document** | One content entry, identified by `collection/id`, stored in one file | `pages/home` → `src/content/pages/home.json` |
+| **Document** | One content entry, identified by `collection/id`, usually stored in one file. Two variants: entries of a `file()` loader share one file, so saving rewrites only that entry inside it. JSON data files imported straight into components (`src/config/menu.json`) are documents keyed `data:<path>` | `pages/home` → `src/content/pages/home.json` |
 | **Draft** | Unsaved edited data of a document, held by the editor | the textbox content today |
 | **Changeset** | The set of documents (and uploaded media) changed since the last publish | home + navbar + one new image |
 | **Page** | One route of the site, rendered as a whole | `/`, `/blog/hola` |
@@ -509,7 +510,11 @@ test setup and the one-shared-Astro workspace.
 ## 8. A better sample site
 
 The current sample has one page, one region and two block types. It can't
-show where the design breaks. A sample that does should have:
+show where the design breaks. On 2026-10-26 the user chose the
+`themefisher/bigspring-light-astro` template as the base, with additions on
+top. WORKPLAN.md sections 5 and 6 (task 0.3) have the evaluation and the
+exact additions. The tree below is the original target list; the template
+covers most of it with its own names. A sample that does should have:
 
 ```text
  src/content/

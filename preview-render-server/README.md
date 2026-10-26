@@ -72,7 +72,7 @@ TypeScript runs without a build step: Node 26 runs the `.ts` scripts directly
 that end up in the build.
 
 From an AI agent, run the build with the Astro agent-detection variables
-unset (see the HANDOFF environment notes).
+unset (see the environment notes in ../DOCS/WORKPLAN.md).
 
 ## Known limits
 
