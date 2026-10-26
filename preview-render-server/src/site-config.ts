@@ -21,6 +21,9 @@ export async function loadSiteConfig(
   return resolveSiteConfig(config, path.dirname(configFile), path.resolve(buildDir));
 }
 
+/** Makes a config's paths absolute: the site root against the config's folder,
+ *  and the output, wrapper and upload folders under `buildDir`, named after the
+ *  site folder. Pure (no file access), so it's the part tests cover. */
 export function resolveSiteConfig(config: SiteConfig, configDir: string, buildDir = BUILD_DIR): ResolvedSiteConfig {
   const root = path.resolve(configDir, config.root);
   const name = path.basename(root);

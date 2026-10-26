@@ -20,10 +20,13 @@ export type PageMessage =
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
+/** Runtime check for what the bridge receives. Only the shape is checked; the
+ *  render route validates the props themselves. */
 export function isDraftMessage(data: unknown): data is DraftMessage {
   return isObject(data) && data.type === 'preview:draft' && typeof data.island === 'string';
 }
 
+/** Runtime check for what the editor receives from the bridge. */
 export function isPageMessage(data: unknown): data is PageMessage {
   if (!isObject(data)) return false;
   switch (data.type) {

@@ -9,8 +9,16 @@ import { isDraftMessage, type PageMessage } from '../protocol.ts';
 
 const ISLAND_ATTR = 'data-preview-island';
 
-/** Starts the bridge; returns a function that stops it (or null when the page
- *  isn't in an iframe). */
+/**
+ * Starts the bridge: listens for drafts from the parent (editor) window,
+ * renders each through POST /__preview/<island> and swaps the HTML into the
+ * island's wrapper. Announces the page's islands with `preview:ready` once
+ * started, so the editor knows when to send drafts.
+ *
+ * `win` and `fetchImpl` are parameters so tests can pass fakes. Returns a
+ * function that stops it, or null when the page isn't in an iframe (the
+ * bridge is then inactive, so previews opened directly behave like the site).
+ */
 export function startBridge(win: Window = window, fetchImpl: typeof fetch = win.fetch.bind(win)): (() => void) | null {
   if (win.parent === win) return null;
 
@@ -19,13 +27,16 @@ export function startBridge(win: Window = window, fetchImpl: typeof fetch = win.
   const latestRequest = new Map<string, number>(); // island -> id of its newest request
   let requestCount = 0;
 
+  // Always an explicit target origin, never '*'.
   const send = (message: PageMessage) => win.parent.postMessage(message, origin);
   const findIsland = (name: string) =>
     Array.from(doc.querySelectorAll<HTMLElement>(`[${ISLAND_ATTR}]`)).find(
       (element) => element.getAttribute(ISLAND_ATTR) === name,
     );
 
+  // One draft from the editor: check the sender, find the island, render, swap.
   const onMessage = async (event: MessageEvent) => {
+    // Only the parent window, from this origin, with a well-formed draft.
     if (event.source !== win.parent || event.origin !== origin) return;
     if (!isDraftMessage(event.data)) return;
 
@@ -48,7 +59,9 @@ export function startBridge(win: Window = window, fetchImpl: typeof fetch = win.
         credentials: 'same-origin',
       });
       const body = await response.text();
+      // A newer draft was sent while this one was rendering: drop this answer.
       if (latestRequest.get(island) !== id) return;
+      // Failures keep the last good HTML on the page and go to the editor.
       if (!response.ok || !response.headers.get('content-type')?.includes('text/html')) {
         send({ type: 'preview:error', island, status: response.status, message: body.slice(0, 500) });
         return;
@@ -64,6 +77,7 @@ export function startBridge(win: Window = window, fetchImpl: typeof fetch = win.
     }
   };
 
+  // Start listening before announcing, so a draft sent in reply isn't missed.
   win.addEventListener('message', onMessage);
   send({
     type: 'preview:ready',
@@ -72,6 +86,7 @@ export function startBridge(win: Window = window, fetchImpl: typeof fetch = win.
   return () => win.removeEventListener('message', onMessage);
 }
 
+/** Render time the server reports in `Server-Timing: render;dur=<ms>` (NaN if absent). */
 function serverRenderMs(response: Response): number {
   return Number(response.headers.get('server-timing')?.match(/dur=([\d.]+)/)?.[1] ?? Number.NaN);
 }

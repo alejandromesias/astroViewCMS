@@ -25,11 +25,19 @@ const EXTENSIONS: Record<string, string> = {
 const CONTENT_TYPES = Object.fromEntries(Object.entries(EXTENSIONS).map(([type, ext]) => [ext, type]));
 const FILE_NAME = /^[0-9a-f]{16}\.(png|jpg|webp|avif|gif)$/;
 
+/**
+ * POST /__preview-media/new: stores an uploaded draft image (the request body
+ * is the raw image) and answers 201 with its URL. Only the types in
+ * EXTENSIONS (no SVG) up to MAX_BYTES; the file is named by its content hash,
+ * so uploading the same image twice is harmless.
+ */
 export const POST: APIRoute = async ({ params, request }) => {
+  // Only "new" accepts uploads; every other name is a GET-only file.
   if (params.file !== 'new') return methodNotAllowed('GET');
   const rejection = rejectUnlessContentType(request, /^image\//);
   if (rejection) return rejection;
 
+  // The extension comes from the declared content type, never from user input.
   const ext = EXTENSIONS[(request.headers.get('content-type') ?? '').split(';')[0].trim()];
   if (!ext) {
     return new Response(`Supported types: ${Object.keys(EXTENSIONS).join(', ')}`, { status: 415 });
@@ -45,6 +53,12 @@ export const POST: APIRoute = async ({ params, request }) => {
   return Response.json({ url: `/__preview-media/${name}` }, { status: 201 });
 };
 
+/**
+ * GET /__preview-media/<file>: serves a stored draft image. Only names that
+ * match FILE_NAME (16 hex characters + a known extension) are looked up, so a
+ * request can't reach any other file. `nosniff` keeps the browser from
+ * treating the bytes as anything but the declared image type.
+ */
 export const GET: APIRoute = async ({ params, request }) => {
   const rejection = rejectCrossSite(request);
   if (rejection) return rejection;
@@ -65,6 +79,7 @@ export const GET: APIRoute = async ({ params, request }) => {
   }
 };
 
+/** Any other method. */
 export const ALL: APIRoute = () => methodNotAllowed('GET, POST');
 
 /** Content-addressed name: the same image always gets the same file. */

@@ -24,10 +24,17 @@ const SOURCE_SCRIPT_TAG = /<script\b[^>]*\bsrc="[^"]*\?astro&(?:amp;)?type=scrip
 // One container for the whole process; renders don't share state.
 let containerPromise: Promise<AstroContainer> | undefined;
 
+/**
+ * GET /__preview/<island>: the island's saved props, for the editor to start
+ * from. Reads the content file on every request (no caching), so content
+ * saved on disk shows up without a rebuild, and returns only the keys the
+ * site config lists as props.
+ */
 export const GET: APIRoute = async ({ params, request }) => {
   const rejection = rejectCrossSite(request);
   if (rejection) return rejection;
 
+  // 404 both for unknown islands and for islands without a content file.
   const island = islands[params.island ?? ''];
   if (!island?.contentFile) {
     return new Response(`No saved content for island "${params.island}"`, { status: 404 });
@@ -38,6 +45,15 @@ export const GET: APIRoute = async ({ params, request }) => {
   return Response.json(props, { headers: { 'Cache-Control': 'no-store' } });
 };
 
+/**
+ * POST /__preview/<island>: renders the island with the JSON body as its
+ * props and answers with the HTML fragment (no page shell, no wrapper: the
+ * bridge swaps it into the page's wrapper).
+ *
+ * Flow: guard the request, look up the island, parse the body, resolve image
+ * paths, render with the Container API, strip dev-only script tags. Render
+ * failures answer 500 with the error message, so the editor can show it.
+ */
 export const POST: APIRoute = async ({ params, request }) => {
   const rejection = rejectUnlessContentType(request, /application\/json/);
   if (rejection) return rejection;
@@ -56,11 +72,13 @@ export const POST: APIRoute = async ({ params, request }) => {
 
   const start = performance.now();
   try {
+    // Created on the first render and reused after that.
     containerPromise ??= AstroContainer.create();
     const container = await containerPromise;
     const html = await container.renderToString(island.component, {
       props: resolveImages(props, island.contentDir, images) as Record<string, unknown>,
     });
+    // Reported to the editor through the Server-Timing header.
     const ms = (performance.now() - start).toFixed(1);
     return new Response(stripSourceScripts(html), {
       headers: {
@@ -76,8 +94,11 @@ export const POST: APIRoute = async ({ params, request }) => {
   }
 };
 
+/** Any other method. */
 export const ALL: APIRoute = () => methodNotAllowed('GET, POST');
 
+/** Removes the dev-only `<script src="...astro?astro&type=script...">` tags the
+ *  container writes for component scripts (see SOURCE_SCRIPT_TAG). */
 export function stripSourceScripts(html: string): string {
   return html.replace(SOURCE_SCRIPT_TAG, '');
 }

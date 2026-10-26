@@ -6,6 +6,12 @@ import { isPageMessage, type DraftMessage, type Props } from '../src/protocol.ts
 
 export const RENDER_DELAY_MS = 120;
 
+/**
+ * Wires up the test editor page (markup in editor.astro): loads the site in
+ * the iframe, builds a JSON textbox per island the page reports, sends
+ * drafts to the bridge as you type, shows render results, and handles draft
+ * image uploads. `win` and `fetchImpl` are parameters so tests can pass fakes.
+ */
 export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.fetch.bind(win)): void {
   const doc = win.document;
   const origin = win.location.origin;
@@ -17,11 +23,14 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
   const template = byId<HTMLTemplateElement>('island-template');
   const textareas = new Map<string, HTMLTextAreaElement>();
 
+  /** Status line under the title; `state` ('ok' | 'error') drives its color. */
   function setStatus(text: string, state = 'ok') {
     status.textContent = text;
     status.dataset.state = state;
   }
 
+  /** Sends an island's textbox content to the page as a draft. Invalid JSON is
+   *  flagged on the textbox and not sent, so the page keeps its last good state. */
   function sendDraft(island: string) {
     const textarea = textareas.get(island)!;
     const error = textarea.closest('.island')!.querySelector('.error')!;
@@ -39,12 +48,15 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
     iframe.contentWindow?.postMessage(message, origin);
   }
 
+  /** The island's saved props (GET /__preview/<island>), as pretty-printed JSON. */
   async function loadSaved(island: string) {
     const response = await fetchImpl(`/__preview/${encodeURIComponent(island)}`, { cache: 'no-store' });
     if (!response.ok) throw new Error(`GET /__preview/${island}: ${response.status}`);
     return JSON.stringify(await response.json(), null, 2);
   }
 
+  /** Adds an island's section (textbox + reset button), filled with its saved
+   *  props. Typing sends a draft after RENDER_DELAY_MS of quiet. */
   async function addIsland(island: string) {
     const section = template.content.firstElementChild!.cloneNode(true) as HTMLElement;
     section.querySelector('h2')!.textContent = `Island: ${island}`;
@@ -66,6 +78,7 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
     textarea.value = await loadSaved(island);
   }
 
+  // Messages from the bridge: only from the iframe, same origin, well-formed.
   win.addEventListener('message', async (event) => {
     if (event.source !== iframe.contentWindow || event.origin !== origin) return;
     const message = event.data;
@@ -97,7 +110,8 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
     }
   });
 
-  // Draft image upload
+  // Draft image upload: POST the file to /__preview-media/new and show the URL
+  // to paste into an image field.
   const upload = byId<HTMLInputElement>('upload');
   const uploadResult = byId<HTMLElement>('upload-result');
   const uploadUrl = byId<HTMLElement>('upload-url');
