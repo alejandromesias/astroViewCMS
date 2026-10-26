@@ -38,12 +38,64 @@ async function check(name, fn) {
   }
 }
 
+const page = await (await fetch(`${BASE}/`)).text();
+
+await check('page wraps the island and loads the bridge', async () => {
+  assert.match(page, /<div style="display: contents" data-preview-island="blocks">/);
+  assert.match(page, /<script type="module" src="\/_astro\/[^"]+\.js"><\/script>/);
+});
+
 await check('matches the static page', async () => {
-  const page = await (await fetch(`${BASE}/`)).text();
   const main = page.match(/<main[^>]*>([\s\S]*)<\/main>/)[1];
+  const island = main.match(/^\s*<div[^>]*data-preview-island="blocks"[^>]*>([\s\S]*)<\/div>\s*$/)[1];
   const { status, html } = await render(saved.blocks);
   assert.equal(status, 200);
-  assert.equal(normalize(html), normalize(main));
+  assert.equal(normalize(html), normalize(island));
+});
+
+await check('GET returns the saved props', async () => {
+  const response = await fetch(`${BASE}/__preview/blocks`);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { blocks: saved.blocks });
+});
+
+await check('editor page is served', async () => {
+  const response = await fetch(`${BASE}/__editor`);
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /<iframe id="preview"/);
+});
+
+await check('draft image: upload, serve, render', async () => {
+  const png = fs.readFileSync(new URL('../../sampleAstroProject/src/content/assets/images/Andre2.png', import.meta.url));
+  const upload = await fetch(`${BASE}/__preview-media/new`, {
+    method: 'POST',
+    headers: { 'content-type': 'image/png' },
+    body: png,
+  });
+  assert.equal(upload.status, 201);
+  const { url } = await upload.json();
+  assert.match(url, /^\/__preview-media\/[0-9a-f]{16}\.png$/);
+
+  const served = await fetch(BASE + url);
+  assert.equal(served.status, 200);
+  assert.equal(served.headers.get('content-type'), 'image/png');
+  assert.equal(Buffer.from(await served.arrayBuffer()).length, png.length);
+
+  const blocks = copy();
+  blocks[0].retrato = url;
+  const { status, html } = await render(blocks);
+  assert.equal(status, 200, html);
+  const src = html.match(/<img[^>]*? src="([^"]*)"/)[1].replaceAll('&amp;', '&');
+  const image = await fetch(BASE + src);
+  assert.equal(image.status, 200, `img src ${src}`);
+});
+
+await check('draft image: bad uploads refused', async () => {
+  const post = (type, body) =>
+    fetch(`${BASE}/__preview-media/new`, { method: 'POST', headers: { 'content-type': type }, body });
+  assert.equal((await post('image/svg+xml', '<svg/>')).status, 415);
+  assert.equal((await post('text/plain', 'x')).status, 404);
+  assert.equal((await fetch(`${BASE}/__preview-media/..%2Fsecret.png`)).status, 404);
 });
 
 await check('no script tags or local paths in fragment', async () => {
@@ -107,7 +159,7 @@ await check('non-JSON or cross-site -> refused', async () => {
   );
 });
 
-// Not a pass/fail check: draft images (paths not in the build) are step 2.
+// Not a pass/fail check: a relative path to an image that is not in the build.
 const draftImage = copy();
 draftImage[0].retrato = '../assets/images/not-in-build.png';
 const draftImageResult = await render(draftImage);
@@ -130,7 +182,7 @@ const stat = (xs) => {
 };
 
 for (const [status, line] of results) console.log(`${status} ${line}`);
-console.log(`\ndraft image not in build: HTTP ${draftImageResult.status}`);
+console.log(`\nrelative image path not in build: HTTP ${draftImageResult.status}`);
 console.log(`\n${runs} renders`);
 console.log(`  render (server): ${stat(server)}`);
 console.log(`  round trip:      ${stat(wall)}`);

@@ -1,15 +1,17 @@
 # How the preview render server works (system view)
 
-Covers `preview-render-server/` as of 2026-10-25 (step 1 of the plan in
-`../../HANDOFF.md`). All numbers were measured on the development machine:
+Covers `preview-render-server/` as of 2026-10-25: step 1 (in-memory render
+route) and step 2 (live preview in the browser) of the plan in
+`../../HANDOFF.md`. All numbers were measured on the development machine:
 Windows 11, Node 26, Astro 7.4.2, 16 GB RAM. They come from the sample site
 (one page, three blocks, one image).
 
 ## In one sentence
 
 Build the site once, keeping its components as compiled functions, then run
-a plain Node process that re-renders those components in memory with draft
-content: no Vite, no compiler and no file watcher at runtime.
+a plain Node process that re-renders them in memory with draft content. A
+small script inside the previewed page swaps the new HTML in as the editor
+types: no Vite, no compiler, no file watcher and no page reload.
 
 ## Why not `astro dev`
 
@@ -24,10 +26,15 @@ So we split the two jobs:
 - **Build** (rarely: when code changes): full toolchain, ~25 s.
 - **Render** (on every edit): compiled functions only, < 1 ms.
 
-This is the same pattern as Tina's live preview (`@tinacms/astro`, the island
-route): a server-rendered route that calls Astro's Container API. Without
-Tina Cloud, we don't fetch saved content and overlay the draft. The editor
-always sends the complete data.
+This is the same pattern as Tina's live preview (`@tinacms/astro` island
+route and `@tinacms/bridge`, Apache-2.0): a server-rendered route that calls
+Astro's Container API, plus a bridge script that swaps the result into the
+page. Without Tina Cloud, we don't fetch saved content and overlay the draft.
+The editor always sends the complete data.
+
+AstroAdmin, the other local editor we studied, saves the file, waits for
+`astro dev` to notice, polls until the page's HTML changes (up to 2.5 s) and
+reloads the iframe. We skip all of that.
 
 ## The two phases
 
@@ -36,8 +43,8 @@ always sends the complete data.
  ─────────────────────────────────────────────────────────────────────────
   sampleAstroProject/                 preview-render-server/
   ├─ astro.config.mjs ─────┐          ├─ sites/sampleAstroProject.config.js
-  ├─ src/components/*.astro│          │    (where the site is, which
-  ├─ src/content/*.json    │          │     component renders each island)
+  ├─ src/components/*.astro│          │    (where the site is; for each
+  ├─ src/content/*.json    │          │     island: component, content file)
   └─ src/**/*.png          │          └─ src/build.js
                            ▼                     │
                 ┌──────────────────────────────────────────────┐
@@ -45,44 +52,147 @@ always sends the complete data.
                 │   site's own config                          │
                 │ + @astrojs/node adapter (standalone)         │
                 │ + preview integration (src/integration.js):  │
-                │     · injects route /__preview/[island]      │
-                │     · virtual module: island components      │
-                │       + every image under src/               │
+                │     · routes /__preview/[island],            │
+                │       /__preview-media/[file], /__editor     │
+                │     · wraps each island component in         │
+                │       <div data-preview-island> (import      │
+                │       redirect; site source untouched)       │
+                │     · adds the bridge script to every page   │
+                │     · virtual module: island components,     │
+                │       every image under src/, media folder   │
                 └──────────────────────────────────────────────┘
                                    │ writes (site's dist/ untouched)
                                    ▼
-                preview-render-server/.build/sampleAstroProject/
-                ├─ client/   static pages, CSS, images
-                └─ server/   entry.mjs + compiled components (568 KB)
+                preview-render-server/.build/
+                ├─ sampleAstroProject/          client/ + server/entry.mjs
+                ├─ sampleAstroProject-islands/  generated wrappers
+                └─ sampleAstroProject-media/    uploaded draft images
 
 
  RUN (npm start): long-lived, ~80 MB
  ─────────────────────────────────────────────────────────────────────────
-                ┌──────────────────────────────────────────────┐
-  browser ────▶ │ node .build/<site>/server/entry.mjs  :4400   │
-                │   GET  /             → prerendered HTML      │
-                │   GET  /_astro/*     → CSS, images           │
-                │   GET  /_image?…     → resize on demand      │
-                │   POST /__preview/*  → in-memory render      │
-                └──────────────────────────────────────────────┘
+                ┌───────────────────────────────────────────────────┐
+  browser ────▶ │ node .build/<site>/server/entry.mjs        :4400  │
+                │   GET  /                  prerendered pages       │
+                │   GET  /_astro/*          CSS, JS, images         │
+                │   GET  /_image?…          resize on demand        │
+                │   GET  /__editor          test editor             │
+                │   GET  /__preview/<i>     saved props (JSON)      │
+                │   POST /__preview/<i>     in-memory render (HTML) │
+                │   POST /__preview-media/new    upload draft image │
+                │   GET  /__preview-media/<f>    serve draft image  │
+                └───────────────────────────────────────────────────┘
                 no Vite · no compiler · no watcher
 ```
 
-## One preview render
+## The live preview loop
+
+Three parts, each of which knows only its neighbor:
 
 ```text
- editor / test             preview server (one Node process)
- ─────────────             ──────────────────────────────────────────────────
+ EDITOR (/__editor)            PAGE IN IFRAME (/)               SERVER
+ parent window                 site HTML + bridge.js            same origin
+ ────────────────────          ─────────────────────────        ──────────────────
 
- POST /__preview/blocks    1. rejectIfUnsafe
+ sets iframe.src = "/" ──────▶ page loads, bridge starts
+                               (only inside an iframe)
+             ◀──── postMessage { preview:ready,
+                               islands: ["blocks"] }
+
+ GET /__preview/blocks ──────────────────────────────────────▶  read home.json
+ textbox ← saved props ◀─────────────────────────────────────── { blocks: [...] }
+
+ user types; 120 ms after
+ the last keystroke,
+ JSON.parse:
+   invalid → red error,
+   nothing sent
+   valid ──── postMessage ───▶ bridge: newest request wins
+              { preview:draft,
+                island, props }
+                               POST /__preview/blocks ──────▶  render BlockList
+                               (JSON body = props)              ~0.3 ms
+                               ◀───────────────────────────── HTML fragment
+                               wrapper.innerHTML = fragment
+                               finish entrance animations
+             ◀──── postMessage { preview:rendered,
+                               island, renderMs }
+ status: "Rendered in 0.3 ms"
+
+ (on error: preview:error { island, status, message } → shown in red)
+```
+
+- **Message checks in both directions:** the bridge accepts messages only from
+  `window.parent`, from the same origin. The editor accepts them only from the
+  iframe, from the same origin. Both send with an explicit target origin, never
+  `'*'`. AstroAdmin's iframe script sends to `'*'` and checks nothing.
+- **The bridge does the fetch, not the editor.** It runs on the site's
+  origin, so no CORS is needed. That's why any editor (this test page, a
+  Sveltia preview template, our own editor later) can drive it with
+  `postMessage` alone.
+- **Newest edit wins:** each draft gets a request id. A slow answer to an older
+  draft is dropped, so the page never steps back. Renders take ~1 ms, so
+  there's no need for Tina's 300 ms debounce. The editor only waits 120 ms
+  after the last keystroke.
+- **A reload resends the draft:** if the iframe reloads (for example, you
+  click a link), the bridge sends `preview:ready` again. The editor then
+  resends the drafts it holds, so the page shows them again.
+- **Animations:** swapped-in HTML carries the site's entrance animation
+  classes, which would replay on every edit. After a swap, the bridge calls
+  `finish()` on the island's animations. The first page load still animates.
+
+### Message protocol
+
+| Direction | Message |
+|---|---|
+| page → editor | `{ type: 'preview:ready', islands: string[] }` |
+| editor → page | `{ type: 'preview:draft', island, props }` |
+| page → editor | `{ type: 'preview:rendered', island, renderMs }` |
+| page → editor | `{ type: 'preview:error', island, status, message }` |
+
+## Where the draft lives
+
+```text
+  EDITOR TAB (browser memory)      SERVER (stateless for content)      SITE FILES
+  ───────────────────────────      ──────────────────────────────      ──────────
+  textbox = the draft  ─────────▶  renders it, keeps nothing           home.json
+  lost on tab close/reload         .build/<site>-media/                (never
+                                   └─ uploaded images (kept)            written)
+
+  another tab, or the editor ─── GET /__preview/blocks ───▶ reads home.json
+  after a reload                                             → saved content
+```
+
+- **The draft only exists in the editor tab's textbox.** The server renders
+  whatever it's sent and forgets it. That's why another tab shows the
+  original site, and why reloading the editor starts from `home.json` again.
+- **Uploaded images are the only thing the server keeps,** in
+  `.build/<site>-media/`. A draft that never gets saved leaves them behind.
+- **Nothing writes to the site yet.** Saving is a later step.
+
+This is deliberate: a stateless render server is simpler, scales by just
+running more copies, and has nothing to lose or clean up. Saving belongs to
+the editor side:
+
+| Later need | Where it would go |
+|---|---|
+| Keep a draft across editor reloads | editor: `localStorage` |
+| Save | a save step that writes `home.json` (then git commit/push, AstroAdmin-style), and moves uploads into `src/content/assets/images/` |
+| Share an unsaved preview, or several editors | a draft store (server or database), keyed by draft id |
+
+## One preview render (inside the server)
+
+```text
+ POST /__preview/blocks    1. request-guard
  content-type: json  ────▶    · must be application/json      else 404
  { "blocks": [ … ] }          · Sec-Fetch-Site ≠ cross-site   else 403
                            2. look up island "blocks"        else 404
-                              → BlockList.astro (compiled)
+                              → BlockList.astro (compiled, unwrapped)
                            3. resolveImages(props)
                               "../assets/images/Andre2.png"
                               + contentDir "src/content/pages"
                               → ImageMetadata (imported at build time)
+                              "/__preview-media/<hash>.png" → left as a URL
                            4. AstroContainer.renderToString(BlockList, props)
                               ~0.3 ms
                            5. strip <script src="….astro?astro&type=script">
@@ -91,63 +201,98 @@ always sends the complete data.
  <section data-block-index="0">…</section>
  <section …>…</section>    headers: Server-Timing: render;dur=0.3
                                     Cache-Control: no-store
-
- (step 2: a bridge script in the preview iframe swaps this fragment
-  into <div data-preview-island="blocks"> on the page)
 ```
 
 ## The pieces
 
 | File | Role |
 |---|---|
-| `sites/<site>.config.js` | Site folder, port, and islands: name → component plus `contentDir`. |
-| `src/site-config.js` | Loads a site config and resolves paths. The output goes to `.build/<site folder name>`. |
+| `sites/<site>.config.js` | Site folder, port, and islands: name → component, content file plus the keys that become props, `contentDir`. |
+| `src/site-config.js` | Loads a site config and resolves paths under `.build/`. |
 | `src/build.js` | Calls Astro's programmatic `build()` with the site root, the Node adapter, the integration and our `outDir`. Astro merges this with the site's own `astro.config.mjs`. |
-| `src/integration.js` | Astro integration, added only by `build.js`. It injects the route and generates `virtual:preview-islands`. |
-| `src/preview-route.js` | The endpoint. It runs inside the built server. |
+| `src/integration.js` | Astro integration, added only by `build.js`. It adds the routes, the island wrappers, the bridge script and `virtual:preview-islands`. |
+| `src/preview-route.js` | `GET` returns saved props; `POST` renders. |
+| `src/media-route.js` | Draft image upload and serving. |
+| `src/request-guard.js` | Shared checks: content type, cross-site, method. |
+| `src/client/bridge.js` | Runs in the previewed page; the browser half of the render route. |
 | `src/start.js` | Sets `HOST`/`PORT` and imports the built `entry.mjs`. |
+| `test-editor/editor.astro` | The test editor at `/__editor`. A separate piece, served here only for convenience. |
 | `test/smoke.js` | Checks and timings against a running server. |
 
-The one site change was `src/components/BlockList.astro`, which moved the
-block loop out of `index.astro`. An island has to be a component, because the
-server can't render half a page.
+### How the island wrapper is added without touching the site
 
-## The request contract
+- **The goal:** the bridge needs a marker around each island
+  (`<div data-preview-island="blocks">`). We don't want it in the site's
+  source or its production HTML.
+- **At build time,** the integration writes one wrapper per island to
+  `.build/<site>-islands/<name>.astro`:
 
-- `POST /__preview/<island>` with a JSON body. **The body is the
-  component's props**: for `blocks`, that's `{ "blocks": [...] }`, the same
-  shape as `pages/home.json`.
-- Responses:
+  ```astro
+  ---
+  import Island from "<site>/src/components/BlockList.astro";
+  ---
+  <div style="display: contents" data-preview-island="blocks"><Island {...Astro.props} /></div>
+  ```
+
+- **A Vite plugin redirects imports.** When the site's pages import
+  `BlockList.astro`, the plugin points them at the wrapper instead. Two
+  imports keep the bare component:
+  - the wrapper's own;
+  - the render route's (through the virtual module), so fragments come
+    without the wrapper and the bridge replaces only its contents.
+- `display: contents` keeps the wrapper out of the layout, so the page renders
+  exactly as before.
+
+The one change in the site was moving the block loop into
+`src/components/BlockList.astro` (step 1). An island has to be a component,
+because the server can't render half a page.
+
+## Request contract
+
+- **`POST /__preview/<island>`**, JSON body. **The body is the component's
+  props**: for `blocks`, that's `{ "blocks": [...] }`, the same shape as
+  `pages/home.json`.
   - `200`: an HTML fragment;
   - `400`: the body isn't JSON;
   - `404`: unknown island, or not a JSON request;
   - `403`: a cross-site request;
-  - `405`: any method other than POST;
-  - `500`: a render error (logged on the server).
-- **Why it refuses cross-site requests:** a page on another origin can't send
-  a JSON body without a CORS preflight, and this route never answers one. The
-  `Sec-Fetch-Site` check refuses the rest. It's the same idea as Tina's
-  `rejectIfUnsafe`.
-- The route only exists in preview builds. The site's normal `npm run build`
-  is plain static, with no route and no markers.
+  - `500`: a render error. The message goes back to the editor and is logged
+    on the server.
+- **`GET /__preview/<island>`** returns the saved props as JSON, read from the
+  content file on each request. Saved content changes need no rebuild.
+- **`POST /__preview-media/new`**, the image bytes as the body,
+  `Content-Type` `image/png|jpeg|webp|avif|gif`, up to 10 MB.
+  - `201` with `{ "url": "/__preview-media/<hash16>.<ext>" }`;
+  - `415` for other image types (no SVG, because it can carry scripts);
+  - `413` if the image is empty or too big.
+- **`GET /__preview-media/<file>`** serves an upload. Only names matching
+  `<16 hex>.<ext>` are accepted, so no path tricks.
+- **Any other method** gets `405`.
+- **Why cross-site requests can't get in:** a page on another origin can't
+  send a JSON or image body without a CORS preflight, and these routes never
+  answer one. The `Sec-Fetch-Site` check refuses the rest. It's the same idea
+  as Tina's `rejectIfUnsafe`.
+- **Preview builds only:** the site's normal `npm run build` is plain static,
+  with no routes, no wrappers and no bridge.
 
 ## Images
 
-- On the real site, `image()` fields turn `"../assets/images/x.png"` into
-  `ImageMetadata` at build time. A draft is plain JSON, so the route has to do
-  that conversion itself.
-- At build time, the integration imports every image under `src/`. Each one
-  is keyed by its path in the project (e.g.
-  `src/content/assets/images/Andre2.png`).
-- At render time, `resolveImages` joins each image-like string with the
-  island's `contentDir`, normalizes it and looks it up. When it finds a match,
-  it swaps the string for the `ImageMetadata`.
-- `<Image>` then outputs `/_image?href=…&w=480&h=480&f=webp`, and the Node
-  server resizes the image on request with `sharp`. The static page uses
-  `/_astro/x.webp` instead, because it optimized the image at build time.
-- **Not handled yet:** images that weren't in the build (new uploads) fail
-  with "Local images must be imported" (500). Step 2 serves them from
-  `/__preview-media/`.
+- **Images already in the build:** on the real site, `image()` fields turn
+  `"../assets/images/x.png"` into `ImageMetadata` at build time. A draft is
+  plain JSON, so the route does that conversion itself.
+  - At build time, the integration imports every image under `src/`, keyed by
+    its path in the project.
+  - At render time, `resolveImages` joins each image-like string with the
+    island's `contentDir` and looks it up.
+  - `<Image>` then outputs `/_image?href=…&w=480&h=480&f=webp`, which the
+    server resizes with `sharp`.
+- **Uploaded draft images:** `/__preview-media/<hash>.png` isn't in that list,
+  so it reaches `<Image>` as a plain string. Width and height are already set,
+  so Astro accepts it and outputs `src="/__preview-media/<hash>.png"`, not
+  resized. That's fine for a preview.
+- **Not handled:** a relative path to an image that isn't in the build (e.g. a
+  typo) fails with "Local images must be imported" (500), and the editor shows
+  the message.
 
 ## Scripts in fragments
 
@@ -164,9 +309,10 @@ these tags. The page already ran the real bundled scripts once, on load.
 
 | Change | Rebuild? |
 |---|---|
-| Text, block order, adding/removing blocks of existing types | no: just POST new data |
+| Text, block order, adding/removing blocks of existing types | no |
 | Pointing to another image that's already in `src/` | no |
-| A new uploaded image | no, once step 2 is done (`/__preview-media/`) |
+| A newly uploaded image | no (`/__preview-media/`) |
+| Saved content changing on disk | no (`GET` reads the file each time) |
 | Markup, CSS/Tailwind classes, a new block type, schema changes | **yes** (~25 s) |
 
 Tailwind classes only exist in the CSS if they appear in source files at
@@ -191,7 +337,7 @@ isolation (e.g. Docker) is left for later.
 
 By default, the server build keeps npm packages **external**: `entry.mjs`
 imports `astro/...` and others from `node_modules` at runtime. We also tested
-a fully bundled variant:
+a fully bundled variant (step 1 code):
 
 ```js
 // in build.js, passed to build():
@@ -229,7 +375,8 @@ How we measured:
   listed.
 - **Render time** comes from the route's `Server-Timing` header. **Round
   trip** is measured by the test client.
-- `npm run smoke` makes 100 edits in a row.
+- `npm run smoke` makes 100 edits in a row. Step 2 added no measurable
+  overhead: the median render is still 0.3 ms, and the round trip is 1.7 ms.
 
 ### Against `astro dev` (same site, same machine)
 
@@ -239,7 +386,7 @@ How we measured:
 | Working set | 200–230 MB | 63–100 MB |
 | JavaScript heap (V8) | — | 17 MB |
 | Startup | ~4 s to "ready" | starts from a prebuilt bundle |
-| Rendering a change | re-renders after a file write, plus HMR | **0.3 ms** median render, 1.6–1.9 ms round trip (0.6–1.2 ms render with the machine under load) |
+| Showing a content change | write the file → watcher → re-render; the editor reloads the iframe (AstroAdmin polls up to 2.5 s) | **0.3 ms** render, ~2 ms round trip, HTML swapped in place, scroll kept |
 | Needs at runtime | full `node_modules` (155 MB) | bundled: ~1 MB + `sharp` 20 MB |
 | When code changes | instant (HMR) | rebuild, ~25 s |
 
@@ -257,18 +404,20 @@ adds ~55 MB on top of Node: the Astro runtime, the compiled components, and
 
 ## Known limits and next steps
 
-- **Draft images** that aren't in the build → step 2, `/__preview-media/`.
+- **Drafts aren't persisted.** They live only in the editor tab (see "Where the
+  draft lives").
 - **Component scripts** don't run on swapped HTML.
+- **Uploads accumulate** in `.build/<site>-media/`, with no cleanup.
 - **`experimental_AstroContainer`** can change in any Astro release.
   Tina has the same exposure.
-- **Step 2:**
-  - the `data-preview-island` wrapper and a bridge script (preview builds
-    only), using `postMessage` → POST → swap, plus a render right after load
-    ("priming");
-  - a test editor page that shows the site in an iframe;
-  - draft images.
-- **Later:** a `--bundle` option in `build.js`, `data-field` markers for
-  click-to-focus, more islands (the navbar), and per-site isolation.
+- **Next:**
+  - a save step (write `home.json`, move uploads into the site), probably
+    followed by git commit/push;
+  - forms generated from the Zod schemas instead of the JSON textbox
+    (AstroAdmin converts them to JSON Schema);
+  - click-to-focus using the blocks' `data-block-index`, AstroAdmin's
+    `focusBlock` idea;
+  - more islands (the navbar), a `--bundle` option, per-site isolation.
 
 ## Running it
 
@@ -277,6 +426,7 @@ cd astroViewCMS && npm install      # once: workspace install
 cd preview-render-server
 npm run build                       # preview build of sampleAstroProject
 npm start                           # http://localhost:4400
+                                    # editor: http://localhost:4400/__editor
 npm run smoke                       # checks + timings
 ```
 

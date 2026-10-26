@@ -2,9 +2,14 @@
 // island's HTML, rendered in memory from the components compiled at build
 // time. Same pattern as Tina's island route (@tinacms/astro, Apache-2.0),
 // without the fetch-and-overlay step: the editor always sends complete data.
+//
+// GET /__preview/<island> returns the island's saved props, read from the
+// site's content file on each request, so the editor starts from what's saved.
+import fs from 'node:fs/promises';
 import path from 'node:path/posix';
 import { experimental_AstroContainer as AstroContainer } from 'astro/container';
 import { images, islands } from 'virtual:preview-islands';
+import { methodNotAllowed, rejectCrossSite, rejectUnlessContentType } from './request-guard.js';
 
 export const prerender = false;
 
@@ -18,8 +23,22 @@ const SOURCE_SCRIPT_TAG = /<script\b[^>]*\bsrc="[^"]*\?astro&(?:amp;)?type=scrip
 // One container for the whole process; renders don't share state.
 let containerPromise;
 
+export async function GET({ params, request }) {
+  const rejection = rejectCrossSite(request);
+  if (rejection) return rejection;
+
+  const island = islands[params.island];
+  if (!island?.contentFile) {
+    return new Response(`No saved content for island "${params.island}"`, { status: 404 });
+  }
+
+  const content = JSON.parse(await fs.readFile(island.contentFile, 'utf8'));
+  const props = Object.fromEntries(island.contentProps.map((key) => [key, content[key]]));
+  return Response.json(props, { headers: { 'Cache-Control': 'no-store' } });
+}
+
 export async function POST({ params, request }) {
-  const rejection = rejectIfUnsafe(request);
+  const rejection = rejectUnlessContentType(request, /application\/json/);
   if (rejection) return rejection;
 
   const island = islands[params.island];
@@ -51,32 +70,18 @@ export async function POST({ params, request }) {
     });
   } catch (error) {
     console.error(`[preview] render of "${params.island}" failed:`, error);
-    return new Response('Island render failed', { status: 500 });
+    return new Response(`Island render failed: ${error?.message ?? error}`, { status: 500 });
   }
 }
 
 export function ALL() {
-  return new Response('Method Not Allowed', { status: 405, headers: { Allow: 'POST' } });
-}
-
-// Only same-site JSON POSTs get through (copied in spirit from Tina's
-// rejectIfUnsafe). A cross-origin page can't send a JSON body without a CORS
-// preflight, and this route never answers one.
-function rejectIfUnsafe(request) {
-  const contentType = request.headers.get('content-type') ?? '';
-  if (!contentType.includes('application/json')) {
-    return new Response('Not Found', { status: 404 });
-  }
-  if (request.headers.get('sec-fetch-site') === 'cross-site') {
-    return new Response('Forbidden', { status: 403 });
-  }
-  return null;
+  return methodNotAllowed('GET, POST');
 }
 
 // Content JSON stores images as paths relative to the JSON file. Swap each one
 // that names an image compiled into the build for its ImageMetadata, which is
-// what `image()` fields give components on the real site. Unknown paths stay
-// strings (draft uploads are handled later).
+// what `image()` fields give components on the real site. Other paths stay
+// strings: uploaded drafts (/__preview-media/...) render as plain URLs.
 function resolveImages(value, contentDir) {
   if (typeof value === 'string') {
     if (!IMAGE_PATH.test(value)) return value;
