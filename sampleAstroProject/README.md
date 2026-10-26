@@ -13,6 +13,7 @@ It runs locally only: static output, no adapter, no deployment setup.
 │   └── favicon.svg
 └── src/
     ├── components/
+    │   ├── BlockList.astro          # maps each block's `type` to its component
     │   ├── Icon.astro
     │   ├── Navbar.astro             # reads the navbar collection
     │   └── blocks/
@@ -24,7 +25,7 @@ It runs locally only: static output, no adapter, no deployment setup.
     │   └── pages/home.json          # title + blocks[] (hero | servicios)
     ├── content.config.ts            # Zod schemas for both collections
     ├── layouts/Layout.astro
-    ├── pages/index.astro            # maps each block's `type` to its component
+    ├── pages/index.astro
     └── styles/global.css
 ```
 
@@ -32,7 +33,7 @@ It runs locally only: static output, no adapter, no deployment setup.
 
 - `pages/home.json` holds `blocks[]`, a discriminated union on `type`.
   To add a block kind, add it to the schema in `content.config.ts`, create its
-  component in `src/components/blocks/`, and register it in `index.astro`.
+  component in `src/components/blocks/`, and register it in `BlockList.astro`.
 - Image fields use the `image()` schema helper, so paths are relative to the
   JSON file (e.g. `../assets/images/Andre2.png`). `HeroBlock` renders them
   with `<Image>` from `astro:assets`.

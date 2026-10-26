@@ -1,0 +1,23 @@
+---
+import type { CollectionEntry } from "astro:content";
+import HeroBlock from "./blocks/HeroBlock.astro";
+import ServiciosBlock from "./blocks/ServiciosBlock.astro";
+
+interface Props {
+  blocks: CollectionEntry<"pages">["data"]["blocks"];
+}
+
+const components = {
+  hero: HeroBlock,
+  servicios: ServiciosBlock,
+};
+
+const { blocks } = Astro.props;
+---
+
+{
+  blocks.map((block, index) => {
+    const Block = components[block.type];
+    return <Block block={block} index={index} />;
+  })
+}
