@@ -1,0 +1,20 @@
+---
+import Base from "@/layouts/Base.astro";
+import BlockList from "@/layouts/blocks/BlockList.astro";
+import { getCollection } from "astro:content";
+
+// One page per entry of the `landing` collection, passed through props.
+export async function getStaticPaths() {
+  const pages = await getCollection("landing");
+  return pages.map((entry) => ({
+    params: { slug: entry.id },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props;
+---
+
+<Base title={entry.data.title} description={entry.data.description}>
+  <BlockList blocks={entry.data.blocks} />
+</Base>

@@ -1,0 +1,9 @@
+---
+import Cta from "@/components/Cta.astro";
+
+const { block } = Astro.props;
+// Cta.astro reads `cta.button.enable`, so always give it a button object.
+const cta = { ...block, button: block.button ?? { enable: false } };
+---
+
+<Cta cta={cta} />

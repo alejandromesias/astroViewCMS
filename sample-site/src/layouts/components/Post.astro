@@ -1,18 +1,21 @@
 ---
 import { Image } from "astro:assets";
+import AuthorCard from "@/components/AuthorCard.astro";
 import config from "@/config/config.json";
 import { plainify } from "@/lib/utils/textConverter";
 
 const { post, index } = Astro.props;
 const { summary_length } = config.settings;
+// cover (image() field) wins over the older string `image`
+const picture = post.data.cover ?? post.data.image;
 ---
 
 <div class="post">
   {
-    post.data.image && (
+    picture && (
       <Image
         class="rounded-lg"
-        src={post.data.image}
+        src={picture}
         alt={post.data.title}
         width={index === 0 ? 925 : 445}
         height={index === 0 ? 475 : 230}
@@ -24,6 +27,7 @@ const { summary_length } = config.settings;
       {post.data.title}
     </a>
   </h2>
+  <AuthorCard author={post.data.author} compact />
   <p set:html={plainify(post.body.slice(0, summary_length))} />
   <a class="btn btn-primary mt-4" href={`/blog/${post.id}`}> Read More </a>
 </div>

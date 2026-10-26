@@ -1,0 +1,89 @@
+---
+// Alternating image/text rows. Rows with several images use a Swiper carousel;
+// the pagination selector is unique per row so many blocks can share a page.
+import { Image } from "astro:assets";
+import {
+  Swiper,
+  SwiperPagination,
+  SwiperSlide,
+  SwiperWrapper,
+} from "astro-swiper";
+import type { SwiperOptions } from "swiper/types";
+
+const { block, index = 0 } = Astro.props;
+---
+
+{
+  block.items.map((service, i) => {
+    const isOdd = i % 2 > 0;
+    const id = `svc-${index}-${i}`;
+    const swiperOptions: SwiperOptions = {
+      autoplay: { delay: 3000 },
+      pagination: {
+        type: "bullets",
+        el: `#${id} .pagination`,
+        clickable: true,
+      },
+    };
+    return (
+      <section class={`section ${isOdd ? "bg-light" : ""}`}>
+        <div class="container">
+          <div class="items-center gap-8 md:grid md:grid-cols-2">
+            <div
+              id={id}
+              class={`service-carousel ${!isOdd ? "md:order-2" : ""}`}
+            >
+              {service.images.length > 1 ? (
+                <Swiper class=".service-carousel" options={swiperOptions}>
+                  <SwiperWrapper>
+                    {service.images.map((image) => (
+                      <SwiperSlide>
+                        <Image
+                          class="mx-auto"
+                          src={image}
+                          width={538}
+                          height={328}
+                          alt=""
+                        />
+                      </SwiperSlide>
+                    ))}
+                  </SwiperWrapper>
+                  <SwiperPagination class="pagination" />
+                </Swiper>
+              ) : (
+                <Image
+                  class="mx-auto"
+                  src={service.images[0]}
+                  width={538}
+                  height={328}
+                  alt=""
+                />
+              )}
+            </div>
+            <div
+              class={`service-content mt-5 md:mt-0 ${!isOdd ? "md:order-1" : ""}`}
+            >
+              <h2 class="font-bold leading-[40px]">{service.title}</h2>
+              <p class="mt-4 mb-2">{service.content}</p>
+              {service.button?.enable && (
+                <a
+                  href={service.button.link}
+                  class="cta-link inline-flex items-center text-primary"
+                >
+                  {service.button.label}
+                  <img
+                    class="ml-1"
+                    src="/images/arrow-right.svg"
+                    width={18}
+                    height={14}
+                    alt="arrow"
+                  />
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  })
+}

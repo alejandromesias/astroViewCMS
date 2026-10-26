@@ -1,0 +1,44 @@
+---
+// Author block for a post. `author` is a reference('authors') value
+// ({ collection, id }); the card loads the author entry itself, so editing an
+// author document updates every post that references it.
+// `compact` renders a one-line byline (blog lists); otherwise a full card.
+import { Image } from "astro:assets";
+import { getEntry } from "astro:content";
+
+const { author, compact = false } = Astro.props;
+const entry = author ? await getEntry(author) : undefined;
+---
+
+{
+  entry && compact && (
+    <p class="mb-2 flex items-center gap-2 text-sm">
+      <Image
+        class="rounded-full"
+        src={entry.data.avatar}
+        alt=""
+        width={24}
+        height={24}
+      />
+      <span>{entry.data.name}</span>
+    </p>
+  )
+}
+{
+  entry && !compact && (
+    <aside class="author-card mt-12 flex items-center gap-5 rounded-xl bg-light p-6 text-left">
+      <Image
+        class="shrink-0 rounded-full"
+        src={entry.data.avatar}
+        alt={entry.data.name}
+        width={72}
+        height={72}
+      />
+      <div>
+        <p class="h5 mb-0">{entry.data.name}</p>
+        <p class="mb-2 text-sm">{entry.data.role}</p>
+        <p class="mb-0">{entry.data.bio}</p>
+      </div>
+    </aside>
+  )
+}

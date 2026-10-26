@@ -1,5 +1,6 @@
 ---
 import Base from "@/layouts/Base.astro";
+import PricingPlans from "@/components/PricingPlans";
 import Cta from "@/layouts/components/Cta.astro";
 import type { CollectionEntry } from "astro:content";
 import { getEntry } from "astro:content";
@@ -15,39 +16,7 @@ const { title, description, plans, call_to_action } = entry.data;
   <section class="section pb-0">
     <div class="container">
       <h1 class="text-center font-normal">{title}</h1>
-      <div class="section row -mt-10 justify-center md:mt-0">
-        {
-          plans?.map((plan) => (
-            <div
-              class={`col-12 md:col-4 ${
-                !plan.recommended ? "lg:px-0" : "col-recommended"
-              }`}
-            >
-              <div class="card text-center">
-                <h4>{plan.title}</h4>
-                <div class="mt-5">
-                  <span class="text-5xl text-text-dark">${plan.price}</span>
-                  <span>/ {plan.type}</span>
-                </div>
-                <h6 class="mt-2 font-normal text-text">{plan.subtitle}</h6>
-                <ul class="mt-5">
-                  {plan?.features?.map((feature) => (
-                    <li class="mb-[10px] leading-5">{feature}</li>
-                  ))}
-                </ul>
-                <a
-                  class={`btn mt-5 ${
-                    plan.recommended ? "btn-primary" : "btn-outline-primary"
-                  }`}
-                  href={plan.button.link}
-                >
-                  {plan.button.label}
-                </a>
-              </div>
-            </div>
-          ))
-        }
-      </div>
+      {plans && <PricingPlans client:visible plans={plans} />}
     </div>
   </section>
   <Cta cta={call_to_action} />

@@ -1,0 +1,39 @@
+---
+// A callout block with scoped styles. The body is Markdown rendered through
+// set:html, so its <strong> and <a> elements have no scope attribute: they are
+// styled with :global() under the scoped wrapper class.
+import { markdownify } from "@/lib/utils/textConverter";
+
+const { block } = Astro.props;
+---
+
+<section class="section">
+  <div class="container">
+    <div class="highlight mx-auto max-w-3xl rounded-xl p-10 text-center">
+      <h2 class="highlight-title">{block.title}</h2>
+      <div class="highlight-body mt-4" set:html={markdownify(block.body)} />
+    </div>
+  </div>
+</section>
+
+<style>
+  .highlight {
+    background: linear-gradient(135deg, #eef2ff, #fdf2f8);
+    border: 2px dashed #6366f1;
+  }
+  .highlight-title {
+    color: #4338ca;
+    letter-spacing: 0.02em;
+  }
+  /* elements created by set:html carry no scope attribute */
+  .highlight-body :global(strong) {
+    color: #be185d;
+    background: #fce7f3;
+    padding: 0 0.25em;
+    border-radius: 4px;
+  }
+  .highlight-body :global(a) {
+    color: #4338ca;
+    text-decoration: underline wavy;
+  }
+</style>

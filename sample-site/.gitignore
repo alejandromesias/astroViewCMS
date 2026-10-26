@@ -22,3 +22,6 @@ package-lock.json
 
 # ignore .astro directory
 .astro
+
+# generated blog posts (npm run generate:posts)
+src/content/blog/generated/

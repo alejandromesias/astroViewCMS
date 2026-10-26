@@ -1,0 +1,39 @@
+---
+import { markdownify } from "@/lib/utils/textConverter";
+import { Image } from "astro:assets";
+
+const { block } = Astro.props;
+---
+
+<section class="section pb-[50px]">
+  <div class="container">
+    <div class="row text-center">
+      <div class="mx-auto lg:col-10">
+        <h1 class="font-primary font-bold">{block.title}</h1>
+        {
+          block.content && (
+            <p class="mt-4" set:html={markdownify(block.content)} />
+          )
+        }
+        {
+          block.button?.enable && (
+            <a class="btn btn-primary mt-4" href={block.button.link}>
+              {block.button.label}
+            </a>
+          )
+        }
+        {
+          block.image && (
+            <Image
+              class="mx-auto mt-12"
+              src={block.image}
+              width={750}
+              height={390}
+              alt="banner image"
+            />
+          )
+        }
+      </div>
+    </div>
+  </div>
+</section>

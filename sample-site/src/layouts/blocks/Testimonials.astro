@@ -1,0 +1,39 @@
+---
+// Testimonials are references into the file()-loaded `testimonials`
+// collection: many documents, one file.
+import { Image } from "astro:assets";
+import { getEntries } from "astro:content";
+
+const { block } = Astro.props;
+const items = await getEntries(block.items);
+---
+
+<section class="section bg-light">
+  <div class="container">
+    <h2 class="text-center">{block.title}</h2>
+    <div class="mt-8 grid gap-6 md:grid-cols-2">
+      {
+        items.map((t) => (
+          <figure class="testimonial rounded-xl bg-white p-8">
+            <blockquote class="mb-6">“{t.data.quote}”</blockquote>
+            <figcaption class="flex items-center gap-4">
+              {t.data.avatar && (
+                <Image
+                  class="rounded-full"
+                  src={t.data.avatar}
+                  alt=""
+                  width={48}
+                  height={48}
+                />
+              )}
+              <span>
+                <strong class="block">{t.data.name}</strong>
+                <span class="text-sm">{t.data.role}</span>
+              </span>
+            </figcaption>
+          </figure>
+        ))
+      }
+    </div>
+  </div>
+</section>

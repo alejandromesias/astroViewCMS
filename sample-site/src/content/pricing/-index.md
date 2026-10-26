@@ -6,6 +6,7 @@ plans:
 - title: Basic Plan
   subtitle: Best For Small Individuals
   price: 49
+  price_yearly: 490
   type: month
   features:
     - Express Service
@@ -18,6 +19,7 @@ plans:
 - title: Professional Plan
   subtitle: Best For Professionals
   price: 69
+  price_yearly: 690
   type: month
   recommended: true
   features:
@@ -33,6 +35,7 @@ plans:
 - title: Business Plan
   subtitle: Best For Large Individuals
   price: 99
+  price_yearly: 990
   type: month
   features:
     - Express Service

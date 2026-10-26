@@ -1,0 +1,30 @@
+---
+// Renders a landing page's blocks, picking the component by `type`.
+import Banner from "./Banner.astro";
+import CallToAction from "./CallToAction.astro";
+import Faq from "./Faq.astro";
+import Features from "./Features.astro";
+import Highlight from "./Highlight.astro";
+import PricingBlock from "./PricingBlock.astro";
+import Services from "./Services.astro";
+import Testimonials from "./Testimonials.astro";
+import Workflow from "./Workflow.astro";
+
+const { blocks } = Astro.props;
+---
+
+{
+  blocks.map((block, index) => (
+    <>
+      {block.type === "banner" && <Banner block={block} />}
+      {block.type === "features" && <Features block={block} />}
+      {block.type === "services" && <Services block={block} index={index} />}
+      {block.type === "workflow" && <Workflow block={block} />}
+      {block.type === "cta" && <CallToAction block={block} />}
+      {block.type === "pricing" && <PricingBlock block={block} />}
+      {block.type === "faq" && <Faq block={block} />}
+      {block.type === "highlight" && <Highlight block={block} />}
+      {block.type === "testimonials" && <Testimonials block={block} />}
+    </>
+  ))
+}

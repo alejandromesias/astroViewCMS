@@ -1,0 +1,46 @@
+---
+// Tag pages: /tags/<tag> and /tags/<tag>/2, /tags/<tag>/3 ... A nested dynamic
+// route with Astro's paginate(); each page lists the posts carrying the tag.
+import Post from "@/components/Post.astro";
+import Base from "@/layouts/Base.astro";
+import { getSinglePage } from "@/lib/contentParser.astro";
+import { sortByDate } from "@/lib/utils/sortFunctions";
+import { slugify } from "@/lib/utils/textConverter";
+import type { GetStaticPaths } from "astro";
+
+export const getStaticPaths = (async ({ paginate }) => {
+  const posts = sortByDate(await getSinglePage("blog"));
+  const tags = [...new Set(posts.flatMap((p) => p.data.tags.map(slugify)))];
+  return tags.flatMap((tag) =>
+    paginate(
+      posts.filter((p) => p.data.tags.map(slugify).includes(tag)),
+      { params: { tag }, pageSize: 2 },
+    ),
+  );
+}) satisfies GetStaticPaths;
+
+const { tag } = Astro.params;
+const { page } = Astro.props;
+---
+
+<Base title={`Posts tagged ${tag}`}>
+  <section class="section">
+    <div class="container">
+      <h1 class="mb-10 text-center font-normal lg:text-[56px]">#{tag}</h1>
+      <div class="row">
+        {
+          page.data.map((post) => (
+            <div class="col-12 mb-8 sm:col-6">
+              <Post post={post} />
+            </div>
+          ))
+        }
+      </div>
+      <nav class="mb-4 flex items-center justify-center gap-4" aria-label="Pagination">
+        {page.url.prev ? <a class="btn btn-outline-primary" href={page.url.prev}>Previous</a> : <span />}
+        <span>Page {page.currentPage} of {page.lastPage}</span>
+        {page.url.next ? <a class="btn btn-outline-primary" href={page.url.next}>Next</a> : <span />}
+      </nav>
+    </div>
+  </section>
+</Base>

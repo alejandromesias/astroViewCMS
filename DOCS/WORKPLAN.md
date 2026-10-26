@@ -157,6 +157,7 @@ These are findings, not problems with the template. Each feeds a phase 1 task.
 | `getStaticPaths` with `props` (`[regular]`, `blog/[single]`) and without (`blog/page/[slug]`) | Both shapes go through the route manifest | 1.5 |
 | `base`, `trailingSlash` from `config.json` | The render route's URL matching must respect them | 1.5 |
 | Fonts through Astro's fonts API (Google provider) | Builds fetch fonts over the network; offline builds may fail | note |
+| Content ids can contain slashes (`blog/generated/post-001`; added in 0.3, which made the blog route `[...single]`) | The render route must match catch-all parameters (`[...x]`) against paths with slashes. Document keys (`collection/id`) can contain `/` in the id, so code must split on the first `/` only, and file names and URLs must handle nested ids | 1.3, 1.5 |
 
 ## 6. Phase 0: reset
 

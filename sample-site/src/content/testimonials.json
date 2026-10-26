@@ -1,0 +1,30 @@
+[
+  {
+    "id": "t-ana",
+    "name": "Priya Nair",
+    "role": "CTO, Northwind Labs",
+    "quote": "We shipped our new site in a week. Editing content never needs a developer now.",
+    "avatar": "../assets/authors/ana-torres.png"
+  },
+  {
+    "id": "t-marco",
+    "name": "Tom Becker",
+    "role": "Founder, Loop & Co",
+    "quote": "Fast pages, clean markup and a support team that actually answers.",
+    "avatar": "../assets/authors/marco-rossi.png"
+  },
+  {
+    "id": "t-lena",
+    "name": "Sofia Alvarez",
+    "role": "Head of Marketing, Bright",
+    "quote": "Landing pages go from idea to live in an afternoon. Our campaigns love it.",
+    "avatar": "../assets/authors/lena-fischer.png"
+  },
+  {
+    "id": "t-kofi",
+    "name": "James Okoro",
+    "role": "Product Manager, Tidal",
+    "quote": "The best handover we have had from an agency. Everything is documented.",
+    "avatar": "../assets/authors/kofi-mensah.png"
+  }
+]

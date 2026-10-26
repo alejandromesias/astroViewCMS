@@ -1,4 +1,5 @@
 ---
+import AuthorCard from "@/components/AuthorCard.astro";
 import Post from "@/components/Post.astro";
 import config from "@/config/config.json";
 import Base from "@/layouts/Base.astro";
@@ -16,6 +17,7 @@ const posts = await getSinglePage("blog");
 const sortedPosts = sortByDate(posts);
 const totalPages = Math.ceil(posts.length / config.settings.pagination);
 const currentPosts = sortedPosts.slice(0, config.settings.pagination);
+const featuredImage = currentPosts[0].data.cover ?? currentPosts[0].data.image;
 ---
 
 <Base title={postIndex?.data.title}>
@@ -29,10 +31,10 @@ const currentPosts = sortedPosts.slice(0, config.settings.pagination);
         <div class="row col-12 pb-24 pt-16">
           <div class="md:col-6">
             {
-              currentPosts[0].data.image && (
+              featuredImage && (
                 <Image
                   class="rounded-lg"
-                  src={currentPosts[0].data.image}
+                  src={featuredImage}
                   alt={currentPosts[0].data.title}
                   width={925}
                   height={475}
@@ -49,6 +51,7 @@ const currentPosts = sortedPosts.slice(0, config.settings.pagination);
                 {currentPosts[0].data.title}
               </a>
             </h2>
+            <AuthorCard author={currentPosts[0].data.author} compact />
             <p
               set:html={plainify(currentPosts[0].body.slice(0, summary_length))}
             />

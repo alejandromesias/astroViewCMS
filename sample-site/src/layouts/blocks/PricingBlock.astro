@@ -1,0 +1,12 @@
+---
+import PricingPlans from "@/components/PricingPlans";
+
+const { block } = Astro.props;
+---
+
+<section class="section pb-0">
+  <div class="container">
+    <h2 class="text-center font-normal">{block.title}</h2>
+    <PricingPlans client:visible plans={block.plans} />
+  </div>
+</section>

@@ -1,11 +1,15 @@
 ---
 import { markdownify } from "@/lib/utils/textConverter";
 import { Image } from "astro:assets";
+import AuthorCard from "@/components/AuthorCard.astro";
+import { slugify } from "@/lib/utils/textConverter";
 import { render } from "astro:content";
 
 const { post } = Astro.props;
 const { Content } = await render(post);
-const { title, image } = post.data;
+const { title, author, tags } = post.data;
+// cover (image() field) wins over the older string `image`
+const image = post.data.cover ?? post.data.image;
 ---
 
 <section class="section">
@@ -26,9 +30,22 @@ const { title, image } = post.data;
           }
           <h1 set:html={markdownify(title)} class="h2 text-left my-6" />
 
+          <ul class="mb-6 flex flex-wrap gap-2 text-left">
+            {
+              tags.map((tag) => (
+                <li>
+                  <a class="rounded bg-light px-3 py-1 text-sm hover:text-primary" href={`/tags/${slugify(tag)}`}>
+                    #{tag}
+                  </a>
+                </li>
+              ))
+            }
+          </ul>
+
           <div class="content mb-16 text-left">
             <Content />
           </div>
+          <AuthorCard author={author} />
         </article>
       </div>
     </div>
