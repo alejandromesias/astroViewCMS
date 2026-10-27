@@ -618,8 +618,22 @@ core.
 ## 10. Open questions and risks
 
 - **Draft-to-parsed conversion in the shim** (section 3). D3 sets the
-  approach. Still to prove in phase 1: custom `.transform()`s in site
-  schemas, and Markdown `render()` at runtime with the site's plugins (D2).
+  approach. Proven in task 1.4: defaults, coercion, `reference()` and
+  `image()` resolution, refinements that throw, and Markdown `render()` at
+  run time with the site's remark plugins (`remark-toc`, `remark-collapse`)
+  and Shiki (`one-dark-pro`). **Cost of the Markdown render, measured on `sample-site`**
+  (standalone script with forced GC, RSS): importing the site's
+  `astro.config` +88 MB and ~1 s (mostly Vite and the integrations it pulls
+  in; a built server idles at 79 MB and reaches ~149 MB once its first overlay
+  route loads); creating the Container +7 MB; the Markdown pipeline plus
+  Shiki's engine on the first render +26 MB and ~70 ms; the first `js` block
+  +9 MB; each further language +0 to +7 MB and 15 to 80 ms, with outliers
+  (`cpp` +28 MB and 260 ms, `ruby` +7 MB and 340 ms). All 23 languages
+  tried: 238 MB; after 400 more renders it levels off at 253 MB. Limiting
+  Shiki to the three languages the site uses (`javascript`, `html`, `css`;
+  other fences render as plain text) levelled off at 218 MB (D2 adopts this). The site's plugins reach the server
+  because the virtual module imports the site's `astro.config` (only for sites
+  with a content config).
 - **MDX bodies** (D11): live preview only for frontmatter in phase 1. The
   restricted renderer is the preferred later path.
 - **`experimental_AstroContainer`** and Astro's internal content modules can
@@ -709,8 +723,39 @@ carry it.
 - **`render(entry)` on a Markdown draft** renders the body at runtime with
   `@astrojs/markdown-remark`, using the site's `markdown` config: remark
   plugins and Shiki theme. It returns `Content` and `headings` like the
-  built version. Measure Shiki's memory in phase 1. If the cost is too high,
-  TBD (the user decides on the numbers): plain code blocks in drafts.
+  built version. Measured in task 1.4 (see section 10).
+- **Settled (2026-10-27): keep the site's plugins and Shiki. Plain code
+  blocks are only a fallback when the render fails.**
+  - **Why:** most of the cost is importing `astro.config` (~1 s, ~+88 MB),
+    and plain code blocks wouldn't remove it. Shiki adds ~40 MB with the
+    allow-list below, and up to ~90 MB without it. Dropping the plugins would
+    break the preview's accuracy (heading ids, directives, plugin-set
+    frontmatter) and make code blocks flicker between saved and draft styles.
+    Idle built servers stay at 79 MB, because only the overlay route loads
+    the config.
+  - **Language allow-list:** Shiki highlights only the languages allowed.
+    That's the languages of the code fences in the built content, plus an
+    optional `extraLanguages` list in the site config. The shim rewrites any
+    other fence to `text` before rendering and adds
+    `code-language:<lang>` to `limits`, so the editor can show "highlighted
+    after publish". The build writes the list to `code-languages.json` in the
+    manifest folder (fences are read from the `.md` and `.mdx` files; names
+    are canonical, so `js` and `javascript` count as one). The next rebuild adds new
+    languages automatically.
+    Measured: RSS plateaus at 218 MB instead of 253 MB, and the `cpp`
+    (+28 MB) and `ruby` spikes go away.
+  - **Warm-up:** when an editing session starts, not at boot. The editor
+    calls `POST /__preview-warmup` while it loads the document (answers 204).
+    That builds the Markdown renderer and loads the allowed languages (measured
+    on `sample-site`: 92 MB to 196 MB, 0.26 s; a repeat call takes 12 ms).
+    Nodes that only serve static pages stay at ~80 MB.
+  - **Fallback on failure:** if importing the config or running a plugin
+    throws, render plain code blocks without plugins and add
+    `markdown-plugins` to `limits`, the same pattern as D11.
+  - **Later (phase 3):** a per-site setting that names only the Markdown
+    plugins, so the preview doesn't import the whole config. It saves most
+    of the ~88 MB and takes the integrations' code out of the preview
+    bundle, which helps bundle portability. See WORKPLAN section 8.
 - **`render(entry)` on an MDX draft:** see D11.
 
 ### D3. Collection schemas: one stubbed CMS schema, two uses
@@ -796,7 +841,9 @@ carry it.
     gets the real `reference()`. In flavor 2, carry the query onto the
     config's local imports, recursively, so those helpers get stubbed
     copies while pages keep the real modules. Added after the 1.3 review;
-    fix it before task 1.4 relies on flavor 2.
+    **done in task 1.4**: flavor 1 rewrites every local module of the bundle,
+    flavor 2 carries the query onto local imports. Tested with a helper that
+    imports `reference` from `astro:content`.
 
 ### D4. `getEntry` and `getEntries` call shapes
 
@@ -937,6 +984,18 @@ preview node.
 - **TBD (the user decides after phase 1):** whether to build the restricted
   renderer in phase 3. Input: an inventory of what the sample's MDX uses
   (task 1.4), and optionally a spike on `elements.mdx`.
+- **Inventory (task 1.4, 2026-10-26).** `sample-site` has one MDX file,
+  `src/content/pages/elements.mdx` (253 lines), and the generated posts are
+  Markdown. It uses only the shortcodes that `astro.config.mjs` auto-imports,
+  with literal props: `Button` (2, `label`, `link`, `style`), `Notice` (4,
+  `type`), `Tabs` with `Tab` (1 + 3, `name`), `Accordion` (3, `title`),
+  `Youtube` (1, `id`, `title`) and `Video` (1, `src`, `width`). `Tabs`,
+  `Accordion` and `Youtube` carry `client:load`. It has **no** `import`,
+  `export` or `{expression}`. So the restricted renderer would cover this
+  file with an allow-list of those seven components and literal props, and
+  `client:load` would still need the hydration scripts of D6.
+  Rendering an MDX entry through the Container also needs the MDX
+  renderer registered (see task 1.5).
 
 ### D12. Image metadata travels in the request
 
@@ -994,10 +1053,11 @@ the metadata from somewhere else.
   - `/_image` keeps the site's own `image.domains` and `remotePatterns`, so
     it won't fetch hosts the site didn't allow.
 
-  **TBD (phase 1, task 1.4):** confirm the wrapper approach works with the
-  Container API render. If it doesn't, fall back to passing a string `src`
-  with width and height, as today. That fallback breaks components that read
-  `.src` or `.width` from the image, so record it as a limit.
+  **Settled in task 1.4 (2026-10-26): the wrapper works through the Container
+  API.** A page rendered with a media-map avatar contains the entry's URL
+  unchanged and no `/_image?href=` for it, in a real preview build of
+  `sample-site`. No fallback needed. The wrapper replaces what Astro resolves
+  for `virtual:image-service` in the server build (`src/overlay/image-service.ts`).
 - **Same envelope from phase 1 on,** so phase 2 only moves the upload.
 
 ### D13. Supported formats
@@ -1048,11 +1108,15 @@ file by extension (checked 2026-10-26):
   - **`file()` collections:** rewrite only the edited entry inside the file,
     found by its `entryKey` from `documents.json`, with the file's codec.
     Every other entry stays untouched.
-- **TBD (phase 1, task 1.4): YAML dates.** YAML turns an unquoted
+- **YAML dates (settled in task 1.4, 2026-10-26).** YAML turns an unquoted
   `2025-04-04` into a `Date`. JSON can't carry one, so in the overlay it
-  arrives as an ISO string. `z.coerce.date()` accepts that, but a plain
-  `z.date()` would reject it. The same applies to Markdown frontmatter.
-  Test a `z.date()` field fed from YAML. If it fails, flavor 2 revives ISO
-  date strings into `Date`s for fields the schema declares as dates.
+  arrives as an ISO string. `z.coerce.date()` accepts that, but **a plain
+  `z.date()` rejects it** (tested). The shim therefore revives: when the
+  parse reports "expected date" at a path that holds an ISO date string, it
+  turns that string into a `Date` and parses again. It works for any schema
+  shape (nested, arrays, unions) without walking the schema, and a string
+  that isn't a date still fails. The same applies to Markdown frontmatter.
+  Covered by unit tests; the `stats` collection of task 1.3a doesn't exist
+  yet, so it isn't tested against YAML itself.
 - **Sample coverage:** a YAML-only collection, a YAML `file()` collection,
   and one collection mixing JSON and YAML (WORKPLAN task 1.3a).

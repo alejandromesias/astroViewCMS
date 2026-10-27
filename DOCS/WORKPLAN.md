@@ -409,6 +409,39 @@ covered before the overlay is built. As in task 0.3, add rather than replace.
 
 ### 1.4 Content overlay
 
+**Status (2026-10-26): implemented in `src/overlay/`**, except where noted.
+Verified with unit tests (fakes for `astro:content`) and with a throwaway
+probe route in a real preview build of `sample-site` (draft entries, data
+modules, a media-map image, a Markdown draft). There is no automated test of
+the overlay inside a real build yet: task 1.5's route is the natural place.
+
+- Not done: the `stats` collection of 1.3a (not built); YAML dates are
+  covered by unit tests only. The editor's media map is task 1.7.
+- Settled here and recorded in the design: D3 (stubs reach local imports), D11
+  (MDX inventory), D12 (wrapper works with the Container), D13 (plain
+  `z.date()` needs reviving).
+- Found for **task 1.5**: rendering a page with the Container needs server
+  renderers registered, or hydrated components fail with `NoMatchingRenderer`
+  (React: `@astrojs/react/server.js`; MDX content needs the MDX one). Register
+  those from the site's integrations.
+- Bigspring has no top-level primitive in its four JSON data files, so the
+  Proxy limit costs nothing there.
+- Markdown draft cost: see SYSTEM-DESIGN.md section 10. **D2 is settled
+  (2026-10-27): keep the plugins and Shiki. Implemented:**
+  - **Language allow-list:** the build writes `code-languages.json` to the
+    manifest folder (`manifest/languages.ts`: fence languages of the `.md`
+    and `.mdx` files, plus `extraLanguages` from the site config).
+    `overlay/markdown.ts` rewrites other fences to `text` (`languages.ts`) and
+    adds `code-language:<lang>` to `limits`. Unit-tested; no real-build test of
+    a `cpp` draft until task 1.5 has a route to send one through.
+  - **Fallback:** if a plugin throws, the draft renders without the plugins and
+    Shiki and adds `markdown-plugins` to `limits` (unit-tested with a failing
+    processor). A failure while *importing* `astro.config` is not covered: that
+    import is static in the virtual module and would fail the whole shim.
+  - **Warm-up:** `POST /__preview-warmup` (`warmup-route.ts`, 204) builds the
+    renderer and loads the allowed languages. Added here because it is small;
+    task 1.5 still has to make the editor call it when a session starts.
+
 **First:** make the flavor 2 stubs reach the content config's local imports,
 per the note under D3's settled TBD. Add a fixture whose helper module
 imports `reference` from `astro:content`, and check both flavors on it.
@@ -511,8 +544,16 @@ section 3:
 6. Answer `{ html, head, documents, limits, renderMs }`, plus the
    `Server-Timing` header. Errors as in the design: 400, 404, 422, 500.
    `limits` collects, per render, what it couldn't show. Values so far:
-   `mdx-body` (D11) and `schema-refinement` (D3). Define them as a string
-   union in `protocol.ts` so new ones are added in one place.
+   `mdx-body` (D11), `schema-refinement` (D3), `markdown-plugins` and
+   `code-language:<lang>` (D2). Define them in `protocol.ts` so new ones are
+   added in one place (a template literal type for `code-language:`).
+
+**Warm-up (D2).** `POST /__preview/warm`, same guard, empty body, answers
+`204`. It loads the overlay route module (and with it `astro.config`) and
+renders a small Markdown string, so the ~1.25 s first-draft cost is paid
+before the first keystroke. The editor calls it when a session opens, while
+it loads the document. Never call it at boot: static-only nodes must stay at
+~79 MB. Record the RSS before and after in section 10.
 
 Then delete `POST /__preview/<region>` and its props contract, and with them
 `contentDir` on `RegionConfig` and in the virtual module (deviation noted in
@@ -582,7 +623,10 @@ Bridge (`src/client/bridge.ts`):
 - **Build-time fields (D1):** documents flagged `buildTime` show "some
   fields apply after rebuild", with the field list.
 - **Limits:** show each value in `limits` as a plain note, e.g. "MDX body:
-  preview after save".
+  preview after save", or "`cpp` highlighted after publish" for
+  `code-language:cpp`.
+- **Warm-up (D2):** call `POST /__preview/warm` when the editor opens, in
+  parallel with loading the documents.
 - **Data source:** a dev-only route `GET /__dev/documents?key=` on the
   preview node. It returns the raw file content from the build snapshot, and
   it's injected only when `PREVIEW_DEV=1`. It's a stopgap for the CMS app's
@@ -662,6 +706,14 @@ Work already decided for phase 2:
   changed, one `stats` entry rewritten while the others stay byte for byte,
   no format converted, and new entries created in the collection's default
   format.
+
+Work already decided for phase 3:
+
+- **Markdown plugins without the whole config (D2).** A per-site setting
+  that names the remark and rehype plugins and the Shiki theme, so the
+  preview no longer imports `astro.config`. Measure it against the ~88 MB
+  the import costs now. It also takes the integrations' code out of the
+  preview bundle, which helps bundle portability below.
 
 Known issues to carry into those phases:
 
