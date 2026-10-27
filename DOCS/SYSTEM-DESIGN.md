@@ -884,15 +884,20 @@ all its entries.
   (`customElements.get('astro-island') || customElements.define(…)`), and
   directive scripts only assign `Astro.<directive>`. Running them again is
   safe.
-- `astro-island` observes its `props` attribute and hydrates again when it
-  changes.
+- `astro-island` observes its `props` attribute and calls `hydrate()` again
+  when it changes. **Corrected in task 1.6 (2026-10-27):** that alone does
+  nothing for a hydrated island. Astro removes the `ssr` attribute after
+  hydrating, and the React renderer returns at once for an island without
+  it. Putting `ssr` back first makes React render the new props into its
+  existing root, which keeps the component's state.
 
 **Decision.** The bridge's patch rules:
 
 - **Existing `astro-island` elements are opaque.** The morph compares and
   updates their attributes only, never their children. The framework owns
-  those children. A changed `props` makes Astro re-hydrate with the new
-  props. An unchanged island keeps its state.
+  those children. A changed `props` is applied by setting `ssr` back and
+  then `props` (see the finding above); the island's state survives. An
+  unchanged island is left exactly as it is.
 - **Inline scripts in the new HTML that the live page doesn't have,** by
   content hash, run once: the bridge inserts fresh `<script>` elements so the
   browser executes them. Scripts the page already has are skipped. That
@@ -900,6 +905,15 @@ all its entries.
   pricing block on `landing/home-v2`.
 - **Component `<script>` modules still don't run again on patched HTML**,
   e.g. a Swiper carousel in a changed region. That stays a known limit.
+  **Checked in task 1.6 in a real browser:** the carousel on
+  `landing/home-v2` is initialized by its script (it adds
+  `swiper-initialized` and inline styles). The first render after load
+  (priming) already morphs it back to the server's markup, because the live
+  DOM differs from the render, and it stops working until the page is
+  reloaded. Any page with a script-initialized widget behaves like this.
+  A cheap fix would compare a render with the previous render instead of
+  the live DOM, but Swiper puts a random class in every render, so it needs
+  more than that. Left to the phase 3 fallback.
   **TBD (phase 3, with the real editor):** a fallback that re-renders and
   reloads the iframe with the overlay for regions marked script-dependent.
 - **Settled in task 1.5 (2026-10-27):** the Container API writes source

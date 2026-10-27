@@ -22,12 +22,12 @@ parent folder: `../../HANDOFF.md`, `../../*-SYSTEM-OVERVIEW.md`, and the `tinacm
 
 | | Status |
 |---|---|
-| Preview render server: build once, render in memory, bridge, test editor, draft images | done (island model) |
-| TypeScript without a build step, Vitest unit tests (115) and end-to-end suite (15) | done |
+| Preview render server: build once, render in memory, page render route, bridge v2 (1.6) | done; test editor is interim until 1.7 |
+| TypeScript without a build step, Vitest unit tests (331) and end-to-end suite (31) | done |
 | System design | done, agreed by the user on 2026-10-26 |
-| Per-island save (`save-island.ts`, `save-route.ts`, Save button) | **uncommitted, not compliant**; task 0.1 parks it |
+| Per-island save | parked and removed (0.1, 1.1) |
 | Richer sample site | `sample-site/` in the workspace with the 0.3 additions; preview-built unchanged (0.4) |
-| Page render with content overlay | spike only (`preview-render-server/.build/spike/`, gitignored) |
+| Page render with content overlay | done (1.4, 1.5); `.build/spike/` is still to delete (0.6) |
 | CMS app, saving, publishing, real editor, auth | not started (phases 2 to 4) |
 
 Folder layout of `astroViewCMS/` (git repo on `master`, no remote):
@@ -54,7 +54,7 @@ astroViewCMS/
   (`erasableSyntaxOnly`: no `enum`, no `namespace`; imports use `.ts`).
   Vite compiles what goes into the build. `tsc` only type-checks.
 - **One test file per source file** (`*.test.ts` next to it), Vitest. Glue
-  with top-level side effects (`build.ts`, `start.ts`, `bridge-entry.ts`) is
+  with top-level side effects (`build.ts`, `start.ts`) is
   covered end-to-end. Coverage is **reported, not gated**.
 - **Real Astro in tests:** render real `.astro` fixtures through the Container
   API (`getViteConfig`), no mocked renderer. Pass dependencies in (`win`,
@@ -624,6 +624,36 @@ writes. The test editor doesn't need it in phase 1. It's the check the CMS
 app calls before saving in phase 2, and its tests come now.
 
 ### 1.6 Protocol v2 and the bridge
+
+**Status (2026-10-27): implemented.** `src/protocol.ts` (v2 messages, plus an
+optional `errors` list on `preview:error` for 422s), `src/client/bridge.ts`
+(priming, newest-wins per page, origins, ClientRouter) and `src/client/patch.ts`
+(idiomorph; regions, head, body, islands, inline scripts). 330 unit tests.
+Checked by hand in a real browser (the test editor driving the bridge in an
+iframe on `sample-site`): priming, a draft that changes an island's props, a
+ClientRouter navigation, a 422, and a draft that adds the first hydrated block to
+a page. What that found:
+
+- **D6 was wrong about re-hydration.** A changed `props` does nothing on a
+  hydrated island, because the React renderer ignores an island without `ssr`.
+  The patch puts `ssr` back, then `props`; the component re-renders with its
+  state kept (Yearly stayed selected while the price changed). Corrected in D6.
+- **Swiper breaks on the first patch** of any page with a script-initialized
+  widget, even the priming one. Documented in D6; the fallback stays phase 3.
+- A block with `client:visible` hydrates only when scrolled into view, also
+  when a draft added it. (Its `astro-island` has no box, so scroll to a child.)
+- **Editor origins:** `SiteConfig.editorOrigins`, default same origin; the
+  integration injects an inline script instead of `bridge-entry.ts` (deleted).
+- **The test editor is now an interim version** (one JSON textbox for the whole
+  overlay) so the bridge can be exercised; task 1.7 replaces it.
+- **Navigation fix (review, 2026-10-27):** the bridge now drops the answer to a
+  draft sent before a ClientRouter navigation (it would have been morphed into
+  the new page). Still to check in 1.8: whether `astro:page-load` also fires on
+  the first load (a second `ready` and render), and that inline scripts which
+  change with the draft (`define:vars`, JSON-LD) pile up in `<body>`, as do
+  removed `<style>`/`<link>` elements that stay.
+- No automated browser test: the patch is covered with happy-dom, the rest by
+  the manual check above. An automated one is a candidate for 1.8.
 
 Protocol (`src/protocol.ts`, types plus runtime checks, as today):
 

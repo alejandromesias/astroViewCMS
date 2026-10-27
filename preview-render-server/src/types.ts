@@ -17,6 +17,9 @@ export interface SiteConfig {
   /** Code languages Markdown drafts may highlight beyond those the built
    *  content already uses (D2), for a site that expects authors to add one. */
   extraLanguages?: string[];
+  /** Origins besides the site's own that may drive the preview from an iframe
+   *  parent (the editor's). The bridge accepts messages from these only. */
+  editorOrigins?: string[];
   port: number;
 }
 

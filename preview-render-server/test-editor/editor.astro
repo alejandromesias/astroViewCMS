@@ -1,6 +1,7 @@
 ---
-// Test editor: a JSON textbox per region next to the site in an iframe. The
-// logic is in editor.ts. Served by the preview server for convenience (same
+// Test editor: one JSON textbox for the whole overlay (interim, task 1.7
+// brings a form per document) next to the site in an iframe. The logic is in
+// editor.ts. Served by the preview server for convenience (same
 // origin as the site); any other editor that speaks src/protocol.ts can
 // replace it. Open /__editor?page=/some/path to edit another page (default "/").
 ---
@@ -29,7 +30,7 @@
           <code id="upload-url"></code>
           <button id="upload-copy" type="button">Copy</button>
         </p>
-        <p class="hint">Paste the URL into an image field, e.g. <code>"retrato"</code>.</p>
+        <p class="hint">Paste the entry under <code>"media"</code> with the image reference as its key.</p>
       </section>
     </aside>
 

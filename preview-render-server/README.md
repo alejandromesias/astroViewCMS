@@ -43,8 +43,9 @@ editor ──postMessage draft──▶ bridge (in the iframe) ──POST /__pre
 - `src/warmup-route.ts`: `POST /__preview/warm` loads the Markdown renderer and
   the code languages ahead of the first draft render.
 - `src/client/bridge.ts`: `startBridge()`, which runs in the previewed page
-  and speaks `postMessage` with any editor. `bridge-entry.ts` is the
-  one-line script added to every page.
+  and speaks `postMessage` with any editor. `patch.ts` applies a render to the live page
+  (idiomorph). The integration adds the bridge to every page with an inline
+  script that passes the site's `editorOrigins`.
 - `src/protocol.ts`: the `postMessage` message types and runtime checks,
   shared by the bridge and the editor.
 - `src/types.ts` and `src/virtual.d.ts`: site config types and the generated

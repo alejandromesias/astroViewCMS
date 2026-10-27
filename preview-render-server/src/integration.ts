@@ -81,8 +81,8 @@ export default function previewRenderServer(site: ResolvedSiteConfig): AstroInte
         });
         // The bridge: a script added to every page; it does nothing unless the
         // page is inside an iframe.
-        const bridge = fileURLToPath(new URL('./client/bridge-entry.ts', import.meta.url));
-        injectScript('page', `import ${JSON.stringify(toPosix(bridge))};`);
+        const bridge = fileURLToPath(new URL('./client/bridge.ts', import.meta.url));
+        injectScript('page', bridgeScript(toPosix(bridge), site.editorOrigins));
 
         // The import scan (kept for documents.json) says which JSON files the
         // site's code imports; the overlay turns those into proxy modules.
@@ -141,6 +141,12 @@ export default function previewRenderServer(site: ResolvedSiteConfig): AstroInte
       },
     },
   };
+}
+
+/** The page script that starts the bridge (client/bridge.ts) with the editor
+ *  origins of the site config. */
+export function bridgeScript(bridgeFile: string, editorOrigins: string[] = []): string {
+  return `import { startBridge } from ${JSON.stringify(bridgeFile)}; startBridge(window, window.fetch.bind(window), { editorOrigins: ${JSON.stringify(editorOrigins)} });`;
 }
 
 function writeManifest({ manifestDir }: Pick<ResolvedSiteConfig, 'manifestDir'>, name: string, value: unknown): void {

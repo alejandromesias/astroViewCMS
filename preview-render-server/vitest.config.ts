@@ -19,7 +19,7 @@ export default getViteConfig(
       environmentOptions: {
         happyDOM: {
           // The editor sets iframe.src; never let the test DOM fetch it.
-          settings: { disableIframePageLoading: true },
+          settings: { disableIframePageLoading: true, handleDisabledFileLoadingAsSuccess: true },
         },
       },
       coverage: {
@@ -34,7 +34,6 @@ export default getViteConfig(
           // end-to-end suite, not unit tests.
           'src/build.ts',
           'src/start.ts',
-          'src/client/bridge-entry.ts',
           'test-editor/editor.astro',
         ],
       },

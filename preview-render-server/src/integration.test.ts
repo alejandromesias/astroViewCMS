@@ -6,6 +6,7 @@ import { afterAll, describe, expect, it, vi } from 'vitest';
 import previewRenderServer, {
   RESOLVED_ID,
   VIRTUAL_ID,
+  bridgeScript,
   findImages,
   regionWrappers,
   siteModule,
@@ -43,6 +44,14 @@ const site: ResolvedSiteConfig = {
 };
 
 const posix = (p: string) => p.replaceAll('\\', '/');
+
+describe('bridgeScript', () => {
+  it('starts the bridge with the editor origins of the site config', () => {
+    expect(bridgeScript('C:/x/bridge.ts', ['https://editor.example'])).toBe(
+      'import { startBridge } from "C:/x/bridge.ts"; startBridge(window, window.fetch.bind(window), { editorOrigins: ["https://editor.example"] });',
+    );
+  });
+});
 
 describe('normalizeId', () => {
   it('uses forward slashes, drops the query and lowercases', () => {
@@ -175,7 +184,8 @@ describe('previewRenderServer', () => {
       ['/__preview/warm', false],
       ['/__editor', undefined],
     ]);
-    expect(injectScript).toHaveBeenCalledExactlyOnceWith('page', expect.stringMatching(/^import ".*\/client\/bridge-entry\.ts";$/));
+    expect(injectScript).toHaveBeenCalledExactlyOnceWith('page', expect.stringMatching(/^import \{ startBridge \} from ".*\/client\/bridge\.ts"; startBridge\(window, window\.fetch\.bind\(window\), \{ editorOrigins: \[\] \}\);$/),
+    );
     const plugins = updateConfig.mock.calls[0][0].vite.plugins as Plugin[];
     expect(plugins.map((plugin) => plugin.name)).toEqual([
       'preview-render-server:regions',

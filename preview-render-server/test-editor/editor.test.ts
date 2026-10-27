@@ -26,8 +26,7 @@ function setup(search = '') {
   const origin = window.location.origin;
   const fromPage = (data: unknown, source: unknown = child) =>
     window.dispatchEvent(Object.assign(new Event('message'), { data, source, origin }));
-  const textarea = (region = 'blocks') =>
-    document.querySelector<HTMLTextAreaElement>(`textarea[aria-label="Props for region ${region}"]`);
+  const textarea = () => document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Overlay (documents and media)"]')!;
   const status = () => document.getElementById('status')!;
   const drafts = () => child.postMessage.mock.calls.map(([message, target]) => ({ message, target }));
   return { iframe, child, fetch, origin, fromPage, textarea, status, drafts };
@@ -54,103 +53,82 @@ describe('loading the page', () => {
 });
 
 describe('on preview:ready', () => {
-  it('adds an empty textbox per region and sends nothing yet', () => {
-    editor.fromPage({ type: 'preview:ready', regions: ['blocks'] });
-
-    expect(editor.textarea()?.value).toBe('');
-    expect(editor.fetch).not.toHaveBeenCalled();
-    expect(editor.drafts()).toHaveLength(0);
-    expect(editor.status().textContent).toBe('Page ready: blocks');
+  it('sends an empty overlay when the textbox is empty, which primes the page', () => {
+    editor.fromPage({ type: 'preview:ready', path: '/blog' });
+    expect(editor.status().textContent).toBe('Page ready: /blog');
+    expect(editor.drafts()).toEqual([{ message: { type: 'preview:draft', documents: {}, media: {} }, target: editor.origin }]);
   });
 
-  it('says so when the page has no regions', async () => {
-    editor.fromPage({ type: 'preview:ready', regions: [] });
-    await vi.waitFor(() => expect(editor.status().textContent).toBe('This page has no editable regions'));
-  });
-
-  it('after a reload of the page, resends the drafts in progress', async () => {
-    editor.fromPage({ type: 'preview:ready', regions: ['blocks'] });
-    editor.textarea()!.value = '{"blocks":[]}';
-
-    editor.fromPage({ type: 'preview:ready', regions: ['blocks'] });
-
-    await vi.waitFor(() =>
-      expect(editor.drafts().at(-1)).toEqual({
-        message: { type: 'preview:draft', region: 'blocks', props: { blocks: [] } },
-        target: editor.origin,
-      }),
-    );
-    expect(document.querySelectorAll('.region')).toHaveLength(1);
-  });
-
-  it('removes textboxes for regions the new page does not have', () => {
-    editor.fromPage({ type: 'preview:ready', regions: ['blocks'] });
-    expect(editor.textarea()).not.toBeNull();
-    editor.fromPage({ type: 'preview:ready', regions: [] });
-    expect(editor.textarea()).toBeNull();
+  it('after a reload of the page, resends the overlay in progress', () => {
+    editor.textarea().value = '{"documents":{"blog/a":null},"media":{"a.png":{"url":"/x","width":1,"height":1,"format":"png"}}}';
+    editor.fromPage({ type: 'preview:ready', path: '/blog' });
+    editor.fromPage({ type: 'preview:ready', path: '/faq' });
+    expect(editor.drafts().at(-1)!.message).toEqual({
+      type: 'preview:draft',
+      documents: { 'blog/a': null },
+      media: { 'a.png': { url: '/x', width: 1, height: 1, format: 'png' } },
+    });
+    expect(editor.drafts()).toHaveLength(2);
   });
 });
 
 describe('editing', () => {
-  beforeEach(() => {
-    editor.fromPage({ type: 'preview:ready', regions: ['blocks'] });
-  });
-
-  it(`sends the draft ${RENDER_DELAY_MS} ms after the last keystroke`, async () => {
+  it(`sends the draft ${RENDER_DELAY_MS} ms after the last keystroke`, () => {
     vi.useFakeTimers();
     try {
-      type(editor.textarea()!, '{"blocks":[{"type":"hero"}]}');
-      type(editor.textarea()!, '{"blocks":[{"type":"servicios"}]}');
+      type(editor.textarea(), '{"documents":{"a/b":1}}');
+      type(editor.textarea(), '{"documents":{"a/b":2}}');
       vi.advanceTimersByTime(RENDER_DELAY_MS - 1);
       expect(editor.drafts()).toHaveLength(0);
       vi.advanceTimersByTime(1);
     } finally {
       vi.useRealTimers();
     }
-    expect(editor.drafts()).toEqual([
-      { message: { type: 'preview:draft', region: 'blocks', props: { blocks: [{ type: 'servicios' }] } }, target: editor.origin },
-    ]);
+    expect(editor.drafts()).toEqual([{ message: { type: 'preview:draft', documents: { 'a/b': 2 }, media: {} }, target: editor.origin }]);
   });
 
   it('flags invalid JSON and sends nothing', async () => {
-    type(editor.textarea()!, '{"blocks": [');
-    await vi.waitFor(() => expect(editor.textarea()!.getAttribute('aria-invalid')).toBe('true'));
+    type(editor.textarea(), '{"documents": ');
+    await vi.waitFor(() => expect(editor.textarea().getAttribute('aria-invalid')).toBe('true'));
     expect(document.querySelector('.region .error')!.textContent).not.toBe('');
     expect(editor.drafts()).toHaveLength(0);
 
-    type(editor.textarea()!, '{"blocks": []}');
+    type(editor.textarea(), '{"documents": {}}');
     await vi.waitFor(() => expect(editor.drafts()).toHaveLength(1));
-    expect(editor.textarea()!.hasAttribute('aria-invalid')).toBe(false);
+    expect(editor.textarea().hasAttribute('aria-invalid')).toBe(false);
     expect(document.querySelector('.region .error')!.textContent).toBe('');
   });
 
   it('"Reset" empties the textbox and reloads the page', () => {
-    type(editor.textarea()!, '{"blocks": [');
+    type(editor.textarea(), '{"documents": ');
     document.querySelector<HTMLButtonElement>('[data-action="reset"]')!.click();
-    expect(editor.textarea()!.value).toBe('');
-    expect(editor.textarea()!.hasAttribute('aria-invalid')).toBe(false);
-    expect(document.querySelector('.region .error')!.textContent).toBe('');
+    expect(editor.textarea().value).toBe('');
+    expect(editor.textarea().hasAttribute('aria-invalid')).toBe(false);
     expect(editor.child.location.reload).toHaveBeenCalledOnce();
   });
 });
 
 describe('status messages from the page', () => {
-  it('shows render times', () => {
-    editor.fromPage({ type: 'preview:rendered', region: 'blocks', renderMs: 0.3 });
-    expect(editor.status().textContent).toBe('Rendered "blocks" in 0.3 ms');
+  it('shows what a render read and its limits', () => {
+    editor.fromPage({ type: 'preview:rendered', path: '/blog', documents: ['blog/a', 'authors/b'], limits: ['code-language:cpp'], renderMs: 0.3 });
+    expect(editor.status().textContent).toBe('Rendered /blog in 0.3 ms; documents: blog/a, authors/b; limits: code-language:cpp');
   });
 
-  it('shows errors', () => {
-    editor.fromPage({ type: 'preview:error', region: 'blocks', status: 500, message: 'boom' });
-    expect(editor.status().textContent).toBe('"blocks" failed (500): boom');
+  it('shows errors, with the failing fields', () => {
+    editor.fromPage({ type: 'preview:error', path: '/blog', status: 500, message: 'boom' });
+    expect(editor.status().textContent).toBe('/blog failed (500): boom');
     expect(editor.status().dataset.state).toBe('error');
+    editor.fromPage({ type: 'preview:error', path: '/blog', status: 422, message: 'bad', errors: [{ key: 'blog/a', path: ['title'], message: 'required' }] });
+    expect(editor.status().textContent).toBe('/blog failed (422): bad (blog/a title: required)');
   });
 
   it('ignores messages from other windows and unknown messages', () => {
     const before = editor.status().textContent;
-    editor.fromPage({ type: 'preview:rendered', region: 'blocks', renderMs: 1 }, {});
-    editor.fromPage({ type: 'pageNavigation', pathname: '/' });
+    editor.fromPage({ type: 'preview:rendered', path: '/', documents: [], limits: [], renderMs: 1 }, {});
+    editor.fromPage({ type: 'pageNavigation', path: '/' });
+    editor.fromPage({ type: 'preview:ready', regions: ['blocks'] }); // protocol v1
     expect(editor.status().textContent).toBe(before);
+    expect(editor.drafts()).toHaveLength(0);
   });
 });
 
@@ -161,13 +139,14 @@ describe('draft image upload', () => {
     input.dispatchEvent(new Event('change'));
   };
 
-  it('uploads the file and shows its URL', async () => {
-    editor.fetch.mockResolvedValueOnce(Response.json({ url: '/__preview-media/0123456789abcdef.png' }, { status: 201 }));
+  it('uploads the file and shows the media-map entry', async () => {
+    const entry = { url: '/__preview-media/0123456789abcdef.png', width: 10, height: 20, format: 'png' };
+    editor.fetch.mockResolvedValueOnce(Response.json(entry, { status: 201 }));
     const file = new File([new Uint8Array([1, 2, 3])], 'retrato.png', { type: 'image/png' });
     choose(file);
 
     await vi.waitFor(() => expect(document.getElementById('upload-result')!.hidden).toBe(false));
-    expect(document.getElementById('upload-url')!.textContent).toBe('/__preview-media/0123456789abcdef.png');
+    expect(JSON.parse(document.getElementById('upload-url')!.textContent!)).toEqual(entry);
     expect(editor.fetch).toHaveBeenCalledWith('/__preview-media/new', {
       method: 'POST',
       headers: { 'Content-Type': 'image/png' },
@@ -183,11 +162,11 @@ describe('draft image upload', () => {
     expect(document.getElementById('upload-result')!.hidden).toBe(true);
   });
 
-  it('copies the URL', async () => {
+  it('copies the entry', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(window.navigator, 'clipboard', { value: { writeText }, configurable: true });
-    document.getElementById('upload-url')!.textContent = '/__preview-media/0123456789abcdef.png';
+    document.getElementById('upload-url')!.textContent = '{"url":"/x"}';
     document.getElementById('upload-copy')!.click();
-    expect(writeText).toHaveBeenCalledWith('/__preview-media/0123456789abcdef.png');
+    expect(writeText).toHaveBeenCalledWith('{"url":"/x"}');
   });
 });

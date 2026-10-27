@@ -237,8 +237,8 @@ preview-render-server/
 │  ├─ types.ts          site config types                               (types only)
 │  ├─ virtual.d.ts      types of the generated virtual module           (types only)
 │  └─ client/
-│     ├─ bridge.ts        startBridge(win, fetch)                       browser, in the iframe
-│     └─ bridge-entry.ts  calls startBridge(), added to every page      browser, in the iframe
+│     ├─ bridge.ts        startBridge(win, fetch); the integration adds it to every page   browser, in the iframe
+│     └─ patch.ts         createPatcher(win): morphs a render into the live page          browser, in the iframe
 ├─ test-editor/         a separate piece, served here for convenience
 │  ├─ editor.astro      /__editor markup and styles                     prerendered page
 │  └─ editor.ts         startEditor(win, fetch)                         browser, parent window
@@ -255,7 +255,7 @@ preview-render-server/
 └─ .build/              gitignored: build output, wrappers, uploads, e2e-*
 ```
 
-`build.ts`, `start.ts` and `bridge-entry.ts` are thin glue with top-level side
+`build.ts` and `start.ts` are thin glue with top-level side
 effects, so they're tested end-to-end rather than unit-tested.
 
 ### TypeScript without a build step
@@ -480,7 +480,7 @@ How the unit tests are set up:
 - **Browser code runs in happy-dom,** chosen per file
   (`// @vitest-environment happy-dom`). The editor tests reuse the real markup
   from `editor.astro`, with the iframe replaced by a plain element.
-- **Left to end-to-end tests:** `build.ts`, `start.ts` and `bridge-entry.ts`
+- **Left to end-to-end tests:** `build.ts` and `start.ts`
   are glue with top-level side effects. They're excluded from unit coverage,
   and the end-to-end suite runs them for real.
 

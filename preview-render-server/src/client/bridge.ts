@@ -1,93 +1,115 @@
-// Preview bridge: runs in every page of a preview build (bridge-entry.ts),
-// inactive unless the page is inside an iframe. It's the browser half of the
-// /__preview route: the editor (any editor) talks to it with postMessage (see
-// ../protocol.ts), it fetches the render from its own origin and swaps the
-// HTML into the region's wrapper.
+// Preview bridge: runs in every page of a preview build (injected by
+// src/integration.ts), inactive unless the page is inside an iframe. It's the
+// browser half of POST /__preview/render: the editor (any editor) talks to it
+// with postMessage (see ../protocol.ts), it asks its own origin to render the
+// page it is on with the editor's overlay, and patches the answer into the
+// live page (patch.ts).
 //
 // Pattern from Tina's bridge (@tinacms/bridge region-refresh.ts, Apache-2.0).
-import { isDraftMessage, type PageMessage } from '../protocol.ts';
+import { isDraftMessage, type DraftMessage, type PageMessage, type RenderResponse, type ValidationResponse } from '../protocol.ts';
+import { createPatcher } from './patch.ts';
 
-const REGION_ATTR = 'data-preview-region';
+export interface BridgeOptions {
+  /** Origins besides the page's own that may drive it (the editor's). Never `'*'`. */
+  editorOrigins?: string[];
+}
 
 /**
- * Starts the bridge: listens for drafts from the parent (editor) window,
- * renders each through POST /__preview/<region> (removed in task 1.5; task 1.6
- * moves the bridge to /__preview/render) and swaps the HTML into the
- * region's wrapper. Announces the page's regions with `preview:ready` once
- * started, so the editor knows when to send drafts.
+ * Starts the bridge. It announces the page with `preview:ready` (the editor
+ * answers with a draft, even an empty one, which primes the page: it may be
+ * older than the saved content, and the answer tells the editor which
+ * documents the page reads), then renders and patches on every
+ * `preview:draft`. After a ClientRouter navigation it announces the new path.
  *
  * `win` and `fetchImpl` are parameters so tests can pass fakes. Returns a
  * function that stops it, or null when the page isn't in an iframe (the
  * bridge is then inactive, so previews opened directly behave like the site).
  */
-export function startBridge(win: Window = window, fetchImpl: typeof fetch = win.fetch.bind(win)): (() => void) | null {
+export function startBridge(
+  win: Window & typeof globalThis = window,
+  fetchImpl: typeof fetch = win.fetch.bind(win),
+  options: BridgeOptions = {},
+): (() => void) | null {
   if (win.parent === win) return null;
 
   const doc = win.document;
-  const origin = win.location.origin;
-  const latestRequest = new Map<string, number>(); // region -> id of its newest request
+  const allowed = new Set([win.location.origin, ...(options.editorOrigins ?? [])]);
+  const patcher = createPatcher(win);
+  // The origin of the editor that last spoke to us; answers go there.
+  let editorOrigin = win.location.origin;
   let requestCount = 0;
 
-  // Always an explicit target origin, never '*'.
-  const send = (message: PageMessage) => win.parent.postMessage(message, origin);
-  const findRegion = (name: string) =>
-    Array.from(doc.querySelectorAll<HTMLElement>(`[${REGION_ATTR}]`)).find(
-      (element) => element.getAttribute(REGION_ATTR) === name,
-    );
+  const currentPath = () => win.location.pathname + win.location.search;
+  const send = (message: PageMessage, targets: Iterable<string> = [editorOrigin]) => {
+    for (const target of targets) win.parent.postMessage(message, target);
+  };
 
-  // One draft from the editor: check the sender, find the region, render, swap.
-  const onMessage = async (event: MessageEvent) => {
-    // Only the parent window, from this origin, with a well-formed draft.
-    if (event.source !== win.parent || event.origin !== origin) return;
-    if (!isDraftMessage(event.data)) return;
-
-    const { region, props } = event.data;
-    const element = findRegion(region);
-    if (!element) {
-      send({ type: 'preview:error', region, status: 0, message: 'No such region on this page' });
-      return;
-    }
-
-    // Only the newest draft may land: a slow answer to an older one is dropped.
+  async function onDraft(message: DraftMessage) {
+    const path = currentPath();
+    // Newest draft wins, per page: a slow answer to an older one is dropped.
     const id = ++requestCount;
-    latestRequest.set(region, id);
     try {
-      const response = await fetchImpl(`/__preview/${encodeURIComponent(region)}`, {
+      const response = await fetchImpl(`/__preview/render?path=${encodeURIComponent(path)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(props ?? {}),
+        body: JSON.stringify({ documents: message.documents, media: message.media }),
         cache: 'no-store',
         credentials: 'same-origin',
       });
-      const body = await response.text();
-      // A newer draft was sent while this one was rendering: drop this answer.
-      if (latestRequest.get(region) !== id) return;
-      // Failures keep the last good HTML on the page and go to the editor.
-      if (!response.ok || !response.headers.get('content-type')?.includes('text/html')) {
-        send({ type: 'preview:error', region, status: response.status, message: body.slice(0, 500) });
+      const text = await response.text();
+      if (id !== requestCount) return;
+      if (!response.ok) {
+        // Failures keep the last good page and go to the editor.
+        send(failure(path, response.status, text));
         return;
       }
-      element.innerHTML = body;
-      // Swapped-in HTML would replay the site's entrance animations on every
-      // edit. Jump them to their end state; the first page load is unaffected.
-      for (const animation of element.getAnimations?.({ subtree: true }) ?? []) animation.finish();
-      send({ type: 'preview:rendered', region, renderMs: serverRenderMs(response) });
+      const rendered = JSON.parse(text) as RenderResponse;
+      patcher.patch(rendered.html);
+      send({ type: 'preview:rendered', path, documents: rendered.documents, limits: rendered.limits, renderMs: rendered.renderMs });
     } catch (error) {
-      if (latestRequest.get(region) !== id) return;
-      send({ type: 'preview:error', region, status: 0, message: String(error) });
+      if (id !== requestCount) return;
+      send({ type: 'preview:error', path, status: 0, message: String(error) });
     }
+  }
+
+  // One message from the editor: only from the parent window, from an
+  // allowed origin, and well-formed.
+  const onMessage = (event: MessageEvent) => {
+    if (event.source !== win.parent || !allowed.has(event.origin)) return;
+    if (!isDraftMessage(event.data)) return;
+    editorOrigin = event.origin;
+    void onDraft(event.data);
+  };
+
+  // A ClientRouter navigation replaced the document: tell the editor where we are.
+  const onNavigated = () => {
+    // An answer still in flight belongs to the old page: drop it.
+    requestCount++;
+    patcher.reset();
+    send({ type: 'preview:ready', path: currentPath() }, allowed);
   };
 
   // Start listening before announcing, so a draft sent in reply isn't missed.
   win.addEventListener('message', onMessage);
-  send({
-    type: 'preview:ready',
-    regions: Array.from(doc.querySelectorAll(`[${REGION_ATTR}]`), (element) => element.getAttribute(REGION_ATTR) ?? ''),
-  });
-  return () => win.removeEventListener('message', onMessage);
+  doc.addEventListener('astro:page-load', onNavigated);
+  // To every allowed origin: the editor's is not known until it speaks, and a
+  // message only arrives where the target origin matches the parent's.
+  send({ type: 'preview:ready', path: currentPath() }, allowed);
+  return () => {
+    win.removeEventListener('message', onMessage);
+    doc.removeEventListener('astro:page-load', onNavigated);
+  };
 }
 
-/** Render time the server reports in `Server-Timing: render;dur=<ms>` (NaN if absent). */
-function serverRenderMs(response: Response): number {
-  return Number(response.headers.get('server-timing')?.match(/dur=([\d.]+)/)?.[1] ?? Number.NaN);
+/** An error answer of the render route as the editor gets it. */
+function failure(path: string, status: number, body: string): PageMessage {
+  if (status === 422) {
+    try {
+      const { errors } = JSON.parse(body) as ValidationResponse;
+      return { type: 'preview:error', path, status, message: 'A draft does not fit its schema', errors };
+    } catch {
+      // Not the usual JSON: fall through to the plain message.
+    }
+  }
+  return { type: 'preview:error', path, status, message: body.slice(0, 500) };
 }

@@ -1,8 +1,7 @@
 // The postMessage protocol between an editor (parent window) and the bridge
-// (src/client/bridge.ts, inside the previewed page). Any editor that speaks
-// it can drive the preview.
-
-export type Props = Record<string, unknown>;
+// (src/client/bridge.ts, inside the previewed page), v2 (WORKPLAN task 1.6),
+// and the shapes of the render route's answers. Any editor that speaks it can
+// drive the preview.
 
 /** What a render could not show (SYSTEM-DESIGN.md D2, D3, D11). Add new
  *  values here so the render route and the editor agree on them. */
@@ -28,42 +27,59 @@ export interface RenderResponse {
   renderMs: number;
 }
 
-/** 422 answer of POST /__preview/render and /__preview/validate. */
-export interface ValidationResponse {
-  errors: Array<{ key: string; path: (string | number)[]; message: string }>;
+/** One failing field, in the 422 answers of POST /__preview/render and /__preview/validate. */
+export interface FieldError {
+  key: string;
+  path: (string | number)[];
+  message: string;
 }
 
-/** editor -> page */
+/** 422 answer of POST /__preview/render and /__preview/validate. */
+export interface ValidationResponse {
+  errors: FieldError[];
+}
+
+/** Metadata of an image that is not in the site's bundle (D12). */
+export interface MediaInfo {
+  url: string;
+  width: number;
+  height: number;
+  format: string;
+}
+
+/** editor -> page: the whole overlay, on every change. */
 export interface DraftMessage {
   type: 'preview:draft';
-  region: string;
-  props: Props;
+  /** Document key to its raw value; `null` means deleted in the draft. */
+  documents: Record<string, unknown>;
+  media: Record<string, MediaInfo>;
 }
 
 /** page -> editor */
 export type PageMessage =
-  | { type: 'preview:ready'; regions: string[] }
-  | { type: 'preview:rendered'; region: string; renderMs: number }
-  | { type: 'preview:error'; region: string; status: number; message: string };
+  | { type: 'preview:ready'; path: string }
+  | { type: 'preview:rendered'; path: string; documents: string[]; limits: Limit[]; renderMs: number }
+  | { type: 'preview:error'; path: string; status: number; message: string; errors?: FieldError[] };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null;
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
-/** Runtime check for what the bridge receives. Only the shape is checked; the
- *  render route validates the props themselves. */
+/** Runtime check for what the bridge receives. Only the envelope is checked;
+ *  the render route validates the documents and the media entries. */
 export function isDraftMessage(data: unknown): data is DraftMessage {
-  return isObject(data) && data.type === 'preview:draft' && typeof data.region === 'string';
+  return isObject(data) && data.type === 'preview:draft' && isObject(data.documents) && isObject(data.media);
 }
 
 /** Runtime check for what the editor receives from the bridge. */
 export function isPageMessage(data: unknown): data is PageMessage {
-  if (!isObject(data)) return false;
+  if (!isObject(data) || typeof data.path !== 'string') return false;
   switch (data.type) {
     case 'preview:ready':
-      return Array.isArray(data.regions);
+      return true;
     case 'preview:rendered':
+      return Array.isArray(data.documents) && Array.isArray(data.limits) && typeof data.renderMs === 'number';
     case 'preview:error':
-      return typeof data.region === 'string';
+      return typeof data.status === 'number' && typeof data.message === 'string' && (data.errors === undefined || Array.isArray(data.errors));
     default:
       return false;
   }

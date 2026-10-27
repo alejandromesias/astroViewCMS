@@ -1,18 +1,17 @@
 // Test editor logic (markup in editor.astro). It only speaks the bridge's
-// postMessage protocol (src/protocol.ts) plus one plain request, POST
-// /__preview-media/new for uploads. It has no source of saved content any more
-// (the region GET route is gone, WORKPLAN task 1.1): textboxes start empty and
-// the editor sends a draft only for a textbox that has content. Task 1.7
-// brings a dev-only document route back.
-import { isPageMessage, type DraftMessage, type Props } from '../src/protocol.ts';
+// postMessage protocol (src/protocol.ts, v2) plus one plain request, POST
+// /__preview-media/new for uploads. INTERIM (WORKPLAN task 1.6): one JSON
+// textbox holds the whole overlay, `{ "documents": {...}, "media": {...} }`.
+// Task 1.7 replaces it with a form per document of the page.
+import { isPageMessage, type DraftMessage } from '../src/protocol.ts';
 
 export const RENDER_DELAY_MS = 120;
 
 /**
  * Wires up the test editor page (markup in editor.astro): loads the site in
- * the iframe, builds a JSON textbox per region the page reports, sends
- * drafts to the bridge as you type, shows render results, and handles draft
- * image uploads. `win` and `fetchImpl` are parameters so tests can pass fakes.
+ * the iframe, sends the overlay in the textbox to the bridge as you type,
+ * shows render results, and handles draft image uploads. `win` and
+ * `fetchImpl` are parameters so tests can pass fakes.
  */
 export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.fetch.bind(win)): void {
   const doc = win.document;
@@ -21,9 +20,7 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
 
   const iframe = byId<HTMLIFrameElement>('preview');
   const status = byId<HTMLElement>('status');
-  const regionsRoot = byId<HTMLElement>('regions');
   const template = byId<HTMLTemplateElement>('region-template');
-  const textareas = new Map<string, HTMLTextAreaElement>();
 
   /** Status line under the title; `state` ('ok' | 'error') drives its color. */
   function setStatus(text: string, state = 'ok') {
@@ -31,51 +28,48 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
     status.dataset.state = state;
   }
 
-  /** Sends a region's textbox content to the page as a draft. An empty
-   *  textbox sends nothing. Invalid JSON is flagged on the textbox and not
-   *  sent, so the page keeps its last good state. */
-  function sendDraft(region: string) {
-    const textarea = textareas.get(region)!;
-    const error = textarea.closest('.region')!.querySelector('.error')!;
-    if (!textarea.value.trim()) return;
-    let props: Props;
-    try {
-      props = JSON.parse(textarea.value) as Props;
-    } catch (parseError) {
-      textarea.setAttribute('aria-invalid', 'true');
-      error.textContent = (parseError as Error).message;
-      return;
+  // The single textbox.
+  const section = template.content.firstElementChild!.cloneNode(true) as HTMLElement;
+  section.querySelector('h2')!.textContent = 'Overlay';
+  const textarea = section.querySelector('textarea')!;
+  textarea.setAttribute('aria-label', 'Overlay (documents and media)');
+  textarea.placeholder = '{ "documents": { "blog/blog-1": { "data": {}, "body": "" } }, "media": {} }';
+  const error = section.querySelector('.error')!;
+  byId('regions').append(section);
+
+  /** Sends the textbox content to the page as a draft. An empty textbox is an
+   *  empty overlay: it still makes the page render, which primes it. Invalid
+   *  JSON is flagged and not sent, so the page keeps its last good state. */
+  function sendDraft() {
+    let overlay: { documents?: DraftMessage['documents']; media?: DraftMessage['media'] } = {};
+    if (textarea.value.trim()) {
+      try {
+        overlay = JSON.parse(textarea.value);
+      } catch (parseError) {
+        textarea.setAttribute('aria-invalid', 'true');
+        error.textContent = (parseError as Error).message;
+        return;
+      }
     }
     textarea.removeAttribute('aria-invalid');
     error.textContent = '';
-    const message: DraftMessage = { type: 'preview:draft', region, props };
+    const message: DraftMessage = { type: 'preview:draft', documents: overlay.documents ?? {}, media: overlay.media ?? {} };
     iframe.contentWindow?.postMessage(message, origin);
   }
 
-  /** Adds a region's section (empty textbox + reset button). Typing sends a
-   *  draft after RENDER_DELAY_MS of quiet. */
-  function addRegion(region: string) {
-    const section = template.content.firstElementChild!.cloneNode(true) as HTMLElement;
-    section.querySelector('h2')!.textContent = `Region: ${region}`;
-    const error = section.querySelector('.error')!;
-    const textarea = section.querySelector('textarea')!;
-    textarea.setAttribute('aria-label', `Props for region ${region}`);
-    regionsRoot.append(section);
-    textareas.set(region, textarea);
-
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    textarea.addEventListener('input', () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => sendDraft(region), RENDER_DELAY_MS);
-    });
-    // Reset: empty the textbox and reload the page, which shows the built content.
-    section.querySelector('[data-action="reset"]')!.addEventListener('click', () => {
-      textarea.value = '';
-      textarea.removeAttribute('aria-invalid');
-      error.textContent = '';
-      iframe.contentWindow?.location.reload();
-    });
-  }
+  // Typing sends a draft after RENDER_DELAY_MS of quiet.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  textarea.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(sendDraft, RENDER_DELAY_MS);
+  });
+  // Reset: empty the textbox and reload the page, which shows the built content.
+  section.querySelector('[data-action="reset"]')!.addEventListener('click', () => {
+    textarea.value = '';
+    textarea.removeAttribute('aria-invalid');
+    error.textContent = '';
+    iframe.contentWindow?.location.reload();
+  });
 
   // Messages from the bridge: only from the iframe, same origin, well-formed.
   win.addEventListener('message', (event) => {
@@ -84,29 +78,20 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
     if (!isPageMessage(message)) return;
 
     if (message.type === 'preview:ready') {
-      // The page (re)loaded: rebuild the textboxes for the regions it has,
-      // keeping drafts in progress, and send them so the page shows them.
-      const regions = message.regions;
-      for (const region of [...textareas.keys()]) {
-        if (!regions.includes(region)) {
-          textareas.get(region)!.closest('.region')!.remove();
-          textareas.delete(region);
-        }
-      }
-      for (const region of regions) {
-        if (!textareas.has(region)) addRegion(region);
-        else sendDraft(region);
-      }
-      setStatus(regions.length ? `Page ready: ${regions.join(', ')}` : 'This page has no editable regions');
+      // The page (re)loaded: send the overlay so it shows the drafts.
+      setStatus(`Page ready: ${message.path}`);
+      sendDraft();
     } else if (message.type === 'preview:rendered') {
-      setStatus(`Rendered "${message.region}" in ${message.renderMs} ms`);
+      const limits = message.limits.length ? `; limits: ${message.limits.join(', ')}` : '';
+      setStatus(`Rendered ${message.path} in ${message.renderMs} ms; documents: ${message.documents.join(', ') || 'none'}${limits}`);
     } else {
-      setStatus(`"${message.region}" failed (${message.status}): ${message.message}`, 'error');
+      const fields = message.errors?.map((e) => `${e.key} ${e.path.join('.')}: ${e.message}`).join('; ');
+      setStatus(`${message.path} failed (${message.status}): ${message.message}${fields ? ` (${fields})` : ''}`, 'error');
     }
   });
 
-  // Draft image upload: POST the file to /__preview-media/new and show the URL
-  // to paste into an image field.
+  // Draft image upload: POST the file to /__preview-media/new and show the
+  // answer, a media-map entry to paste under "media" with the image's reference.
   const upload = byId<HTMLInputElement>('upload');
   const uploadResult = byId<HTMLElement>('upload-result');
   const uploadUrl = byId<HTMLElement>('upload-url');
@@ -123,8 +108,7 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
       setStatus(`Upload failed (${response.status}): ${await response.text()}`, 'error');
       return;
     }
-    const { url } = (await response.json()) as { url: string };
-    uploadUrl.textContent = url;
+    uploadUrl.textContent = JSON.stringify(await response.json());
     uploadResult.hidden = false;
     setStatus(`Uploaded ${file.name}`);
   });
