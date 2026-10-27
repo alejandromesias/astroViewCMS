@@ -28,7 +28,10 @@ and can hold its built files.
 | 4 | **The preview node is read-only and stateless.** It never writes to the site, holds no credentials and stores no drafts. Saving and publishing live in the CMS app. | The save route inside the preview server |
 | 5 | **The changeset is the unit of publishing.** "Save" writes all dirty documents in one step with conflict checks. "Publish" turns saved changes into one git commit and push. | Per-island Save button |
 
-The rest of the document explains why, then specifies each part.
+The rest of the document explains why, then specifies each part. Decisions
+taken later, after reviewing the sample site, are logged in section 11 (D1 to
+D12). Where they change a contract, the section itself is updated and points
+to the decision.
 
 ## 1. Vocabulary
 
@@ -197,11 +200,13 @@ it's in the wrong place.
         ▼                            · getEntry/getCollection shim reads the overlay
  ┌──────────────── iframe ───────────────┐
  │ site page + bridge                    │
- │  1. gets { documents } from editor ───┼──▶ POST /__preview/render?path=/
- │                                       │     body: overlay { "pages/home": {...},
- │                                       │                     "navbar/navegacion": {...} }
+ │  1. gets { documents, media }         │
+ │     from editor ──────────────────────┼──▶ POST /__preview/render?path=/
+ │                                       │     body: { documents: { "pages/home": {...},
+ │                                       │                          "navbar/navegacion": {...} },
+ │                                       │             media: { "<image ref>": {...} } }  (D12)
  │                                       │     renders the whole page with the overlay
- │  3. patches changed regions,  ◀───────┼─── 2. { html, documents: [...], ms }
+ │  3. patches changed regions,  ◀───────┼─── 2. { html, documents: [...], limits, ms }
  │     head, or morphs <body>            │        documents = entries the page read
  └───────────────────────────────────────┘
 ```
@@ -222,13 +227,18 @@ wraps the read functions:
  getEntries(...), render(entry): same idea
 ```
 
+Call shapes, value shapes and the rewrite scope are fixed by decisions D2, D4,
+D8 and D10 in section 11.
+
 - **The overlay is per request.** It lives in `AsyncLocalStorage`, set by the
   render route, so concurrent renders can't see each other's drafts. The spike
   used a global; production code must not.
 - **The read log is document discovery.** The render answers with the list of
   documents the page read, so the editor knows which forms belong to this
   page. No config needed.
-- **Don't rewrite `content.config.ts`**; only page and component modules.
+- **Rewrite every site module under `src/`** that Vite compiles (`.astro`,
+  `.ts`, `.js`, `.tsx`, `.jsx`, `.mdx`), except `content.config.*`. Helper
+  modules such as `lib/contentParser.astro` call `getCollection` too (D8).
 - **Proven by a spike on 2026-10-26.** The whole home page, rendered through
   the Container API with an overlay for `navbar/navegacion` and `pages/home`,
   showed both drafts. That includes `Navbar.astro`, which loads its own data
@@ -243,14 +253,19 @@ collection's Zod schema: defaults applied, `image()` turned into
 `ImageMetadata`, `reference()` turned into `{ collection, id }`. A draft is the
 file's raw JSON. The shim has to do the same conversions:
 
-- **images:** today's `resolveImages`. Paths that aren't in the build (a new
-  image saved since) map to a media URL instead of failing;
-- **references and defaults:** run the collection's schema if it can be
-  imported in the bundle. Otherwise, use the field types from the schema
-  manifest (section 4) to convert by hand.
+- **images:** resolved to `ImageMetadata` against the folder of the file
+  that holds the document (D3, D5). Images in the bundle use their
+  build-time metadata. Uploads, and images saved since the bundle was built,
+  use the metadata and URL in the request's media map (D12). Anything else
+  fails with "image not found";
+- **references and defaults:** parse the draft with the *CMS schema*, a copy
+  of the collection schema built with stubbed `image()` and `reference()`
+  (D3). That applies defaults, coercion and enums. Then convert the stubbed
+  fields: images to `ImageMetadata` or a media URL, references to
+  `{ collection, id }`.
 
-This is the main open risk of the design. Validate it on the richer sample
-site (section 8) before building on it.
+This is the main open risk of the design. D3 narrows it; phase 1 validates it
+on the sample site.
 
 ### Which page component renders a URL
 
@@ -271,15 +286,28 @@ Use the Container API path.
 ### Request contract (target)
 
 - **`POST /__preview/render?path=<url path>`**, `Content-Type:
-  application/json`. Body: the overlay, `{ "<collection>/<id>": data | null }`.
-  `null` means "deleted in the draft". The editor sends every document that
+  application/json`. Body: `{ documents, media }` (D12). `documents` is the
+  overlay, `{ "<key>": value | null }`. `media` holds the metadata of images
+  that aren't in the bundle. Keys
+  are `<collection>/<id>`, where the id may contain slashes, or
+  `data:<path>` for imported JSON files (D10). Values are the raw object for
+  JSON documents and `{ data, body }` for Markdown and MDX (D2). `null` means
+  "deleted in the draft". The editor sends every document that
   differs from the preview bundle: drafts, plus documents saved since the
   bundle was built.
-  - `200`: `{ html, head: { title, meta }, documents: string[], renderMs }`;
-  - `400`: the body isn't a JSON object;
+  - `200`: `{ html, head: { title, meta }, documents: string[], limits: string[], renderMs }`.
+    `limits` lists what this render couldn't show, e.g. `mdx-body` (D11);
+  - `400`: the body isn't the envelope: not a JSON object, `documents`
+    missing or not an object, or `media` present but not an object of
+    `{ url, width, height, format }` entries with a string `url`, positive
+    integer dimensions and a known format. The message names the part that
+    failed;
   - `404`: no route matches `path`;
   - `422`: the overlay doesn't fit a schema (message names the field);
   - `500`: render error, message for the editor.
+- **`POST /__preview/validate`**, same body: parses each document with the
+  CMS schema and answers `200` or `422` with field paths. Read-only. It's the
+  authoritative validation the CMS app calls before saving (D3).
 - **No GET of saved content and no write routes on the preview node.** Saved
   content comes from the CMS app (section 4).
 
@@ -294,6 +322,7 @@ Use the Container API path.
    head: set document.title, update changed <meta>
    outside regions: hash <body> with regions blanked out;
      changed → morph the whole <body>
+   hydrated components and inline scripts: rules in D6
    finish entrance animations (as today)
 ```
 
@@ -315,6 +344,12 @@ Unchanged from today: markup, CSS/Tailwind classes, new block types and
 schema changes are code, so they need a new preview bundle. Content never
 does. Content saved since the last bundle travels in the overlay. Rebuilding
 the bundle after each publish keeps the overlay small.
+
+**Exception: build-time data (D1).** Data files read by build code, such as
+`astro.config.mjs` or a Tailwind plugin, only take effect after a rebuild.
+In bigspring that's `theme.json` and the `site` fields of `config.json`. The
+preview still overlays them where components read them, the editor marks
+them "applies after rebuild", and saving one triggers a preview rebuild.
 
 ## 4. Drafts, saving and publishing
 
@@ -350,14 +385,17 @@ pulls, checks the build and pushes.
   already does). They keep key order and 2-space JSON with a final newline.
   Markdown and MDX keep their body and frontmatter order (AstroAdmin does
   this).
-- **Validation uses the schema manifest.** The preview build exports each
-  collection's Zod schema as JSON Schema (`schema.json`, next to the bundle).
-  The CMS app validates against that data, so it never runs site code. A
+- **Validation has two levels (D3).** The preview build exports each
+  collection's CMS schema as JSON Schema (`schema.json`, next to the bundle).
+  The editor uses it for forms and quick checks. Before saving, the CMS app
+  asks the preview node (`POST /__preview/validate`), which runs the real
+  refinements in its sandbox. The CMS app itself never runs site code. A
   document that fails validation isn't saved. The editor shows the errors.
 - **Media.** Uploads go to a staging area of the CMS app and get a staging URL
   that drafts use. On save they move into the site, e.g.
   `src/content/assets/images/`. The document's path becomes relative to the
-  document's folder, which is what `image()` expects.
+  folder of **the file that holds the document**, which is what `image()`
+  expects. For a `file()` collection that's the shared file's folder (D5).
 - **Publish** = commit the changeset's paths, `pull --rebase`, push, AstroAdmin
   style. One commit per publish, with a message listing the documents. A
   build check before push is optional for single-tenant setups and mandatory
@@ -368,13 +406,13 @@ pulls, checks the build and pushes.
 | Route | Does |
 |---|---|
 | `GET /api/schema` | collections, fields, JSON Schema (from the bundle's manifest) |
-| `GET /api/documents?collection=` | list: id, file, revision, title |
-| `GET /api/documents/:collection/:id` | `{ data, body?, revision, file }` |
-| `POST /api/media` | upload to staging, returns `{ url, id }` |
+| `GET /api/documents?collection=` | list: key, file, revision, title |
+| `GET /api/documents?key=<key>` | `{ key, data, body?, revision, file }`. Keys can contain slashes, so they travel as a query parameter (D10) |
+| `POST /api/media` | upload to staging, returns `{ id, url, width, height, format }` (D12) |
 | `PUT /api/changes` | `{ changes: [{ document, baseRevision, data, deleted? }], media: [ids] }` → `200` new revisions, `409` conflicts, `422` validation errors |
 | `GET /api/changes` | saved-but-unpublished documents (git status of content paths) |
 | `POST /api/publish` | commit, rebase, push; returns the commit or a plain error |
-| `GET /api/overlay` | documents that differ from the current preview bundle's revision, for the editor to send with every render |
+| `GET /api/overlay` | `{ documents, media }`: documents that differ from the current preview bundle's revision, and the metadata of images saved since it (D12), for the editor to send with every render |
 
 ## 5. Single-tenant shape
 
@@ -493,11 +531,11 @@ save work.
 |---|---|---|
 | **Uncommitted:** `save-island.ts`, `save-route.ts`, `PUT /__preview-save/<island>`, `save: true` in the site config, the Save button | Saves per island, merging only the island's prop keys. It writes from the preview node, which must stay read-only. No conflict check, no validation | **Don't commit it as is.** Keep the atomic write helper (temp file + rename) and its tests, re-keyed by document. Move saving to the CMS app's `PUT /api/changes`. For the proof of concept, a small `cms-server` package next to `preview-render-server` is enough. Drop the `save` flag and the save route from the integration |
 | `islands.<name>.content: { file, props }` and `contentDir` in the site config | Ties a region to one file and a slice of it | Documents and their files come from the content layer: each entry knows its `filePath`. The build writes a `documents.json` manifest. Regions keep only `component` |
-| `GET /__preview/<island>` (saved props) | A document read disguised as a region read | Replace with `GET /api/documents/:collection/:id` in the CMS app |
+| `GET /__preview/<island>` (saved props) | A document read disguised as a region read | Replace with `GET /api/documents?key=` in the CMS app (D10) |
 | `POST /__preview/<island>` renders one component with props | Only prop-driven components can preview; the navbar can't | `POST /__preview/render?path=` with the overlay (section 3). Keep the image resolution and the script stripping |
-| Protocol `preview:draft { island, props }` | Region-keyed | `preview:draft { documents }` (the overlay). `preview:ready { path }`. `preview:rendered { documents, renderMs }` |
+| Protocol `preview:draft { island, props }` | Region-keyed | `preview:draft { documents, media }` (D12). `preview:ready { path }`. `preview:rendered { documents, limits, renderMs }` |
 | Bridge: `innerHTML` per island, same-origin only | Swaps whole regions; editor must share the origin | Morph per region, head patch, body fallback, priming on load, configured editor origins |
-| `/__preview-media/*` on the preview node | The node writes uploads; uploads tied to the build folder | Media staging moves to the CMS app. The preview only loads images by URL |
+| `/__preview-media/*` on the preview node | The node writes uploads; uploads tied to the build folder | Media staging moves to the CMS app. The preview only loads images by URL, with metadata from the request (D12) |
 | `resolveImages` fails for images not in the build | A saved new image breaks the preview until a rebuild | Map unknown local paths to a media URL served by the CMS app |
 | Test editor at `/__editor`, same origin | Fine for testing, wrong shape for the product | Keep as a dev tool. The real editor is a CMS app page on its own origin |
 | `BlockList.astro` extracted from `index.astro` | No longer required | Keep it; it's a good region and harmless |
@@ -578,9 +616,11 @@ core.
 
 ## 10. Open questions and risks
 
-- **Draft-to-parsed conversion in the shim** (section 3): Zod transforms,
-  `reference()`, defaults, `render()` for Markdown and MDX bodies. This is
-  the riskiest part. Decide after phase 1 on the richer sample.
+- **Draft-to-parsed conversion in the shim** (section 3). D3 sets the
+  approach. Still to prove in phase 1: custom `.transform()`s in site
+  schemas, and Markdown `render()` at runtime with the site's plugins (D2).
+- **MDX bodies** (D11): live preview only for frontmatter in phase 1. The
+  restricted renderer is the preferred later path.
 - **`experimental_AstroContainer`** and Astro's internal content modules can
   change in any release. Pin Astro per preview bundle and keep the shim small.
   Tina has the same exposure.
@@ -597,3 +637,344 @@ core.
 - **Several editors on one site:** revisions catch conflicts on save, but
   there's no live co-editing. Document locks or presence can come later and
   would be keyed by document.
+
+## 11. Decision log
+
+Decisions taken after the design was agreed, from the review of the sample
+site (WORKPLAN.md task 0.5, 2026-10-26). Each one says what to do, or marks a
+**TBD** with who settles it and when. Sessions must follow these. To change
+one, ask the user and add a new entry instead of editing the old one.
+
+Status: **decided** unless the entry says TBD.
+
+### D1. Data files that are read at build time
+
+**Finding.** `theme.json` feeds the fonts in `astro.config.mjs` and the
+Tailwind plugin `tw-theme.mjs`. The `site` block of `config.json` feeds
+`site`, `base` and `trailingSlash`. The overlay can't change build output, so
+"content never needs a rebuild" is false for them.
+
+**Decision.**
+
+- **Detect at build time.** `documents.json` flags a data document
+  `buildTime: true` when build code imports it. Build code is anything that
+  runs to produce the build rather than inside a page render. Detection is a
+  static import scan, done by the integration before the build, from two
+  kinds of roots:
+  - `astro.config.*` and the local modules it imports, recursively. In
+    bigspring that finds `config.json` and `theme.json`.
+  - CSS `@plugin` and `@config` directives in the site's stylesheets, and the
+    local modules they point at, recursively. In bigspring, `main.css` loads
+    `tailwind-plugin/tw-theme.mjs`, which imports `theme.json`.
+
+  Every `.json` under `src/` found this way is flagged. Use `es-module-lexer`
+  (Vite already depends on it) for JavaScript and a plain directive match for
+  CSS.
+- **Limit:** files read with `fs` or dynamic `import()` by build code aren't
+  detected. The site config's `buildTimeFields` (below) covers them by hand,
+  and an entry there also flags a file the scan missed.
+- **Fields, not only files.** `config.json` mixes build-time fields with
+  fields that components read (`nav_button`, `params`). Automatic per-field
+  detection isn't attempted. The site config lists the build-time fields:
+
+  ```ts
+  buildTimeFields: {
+    'data:src/config/config.json': ['site.base_url', 'site.base_path', 'site.trailing_slash'],
+    'data:src/config/theme.json': ['*'],
+  }
+  ```
+
+  A flagged file without a list counts as all build-time.
+- **The preview still overlays the whole document.** Components that read
+  these fields show the draft. What the build produced, such as fonts, CSS or
+  routes, stays as built.
+- **The editor marks those fields "applies after rebuild".**
+- **Saving a build-time field triggers a preview rebuild** (CMS app,
+  phase 2). The old bundle serves until the new one is ready.
+
+### D2. Overlay values for Markdown and MDX documents
+
+**Finding.** `Post.astro` and `blog/index.astro` build summaries from
+`entry.body`, and `render(entry)` needs the body. A data-only overlay can't
+carry it.
+
+**Decision.**
+
+- **Value shapes:** JSON documents (glob, `file()` entries, imported data
+  files) are the raw object. `.md` and `.mdx` documents are
+  `{ data, body }`: `data` is the raw frontmatter and `body` the raw text
+  after it.
+- **The shim exposes `entry.body`** as the draft body.
+- **`render(entry)` on a Markdown draft** renders the body at runtime with
+  `@astrojs/markdown-remark`, using the site's `markdown` config: remark
+  plugins and Shiki theme. It returns `Content` and `headings` like the
+  built version. Measure Shiki's memory in phase 1. If the cost is too high,
+  TBD (the user decides on the numbers): plain code blocks in drafts.
+- **`render(entry)` on an MDX draft:** see D11.
+
+### D3. Collection schemas: one stubbed CMS schema, two uses
+
+**Findings.**
+
+- Schemas are often functions, `({ image }) => z.object(...)`.
+- They contain `reference()` (blog author, testimonial items inside a
+  `discriminatedUnion` in the landing blocks).
+- `z.toJSONSchema` (Zod 4 in `astro/zod`, checked 2026-10-26) throws on
+  transforms such as `image()` unless `io: 'input'` is set. With it, it
+  exports discriminated unions as `oneOf` and keeps `.meta()` markers.
+
+**Decision.**
+
+- **Build a CMS schema from `content.config.ts`** in a separate bundling
+  pass, as AstroAdmin does with esbuild. The pass replaces three things with
+  stubs; everything else, Zod included, is the site's own code:
+  - `astro:content`: `defineCollection` records the loader and schema.
+    `reference(c)` is a stub (below).
+  - The `image` argument passed to schema functions is a stub (below).
+  - `astro/loaders`: `glob()` and `file()` record their options and load
+    nothing.
+- **The pass runs twice, with two flavors of the `image` and `reference`
+  stubs.** One bundle per flavor, because each use needs different behavior:
+
+  | Stub | Flavor 1: `schema.json` | Flavor 2: draft parsing |
+  |---|---|---|
+  | `image()` | `z.string().meta({ cms: 'image' })` | a preprocess that turns the path into `ImageMetadata` (D5), then `z.custom<ImageMetadata>()`, with the same marker |
+  | `reference(c)` | `z.string().meta({ cms: 'reference', collection: c })` | accepts a string or `{ id }`, **checks the id exists** in the bundle or the overlay, returns `{ collection, id }` |
+
+- **Use 1: `schema.json`,** from
+  `z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' })`, for
+  forms and quick checks in the editor.
+- **Use 2: draft parsing in the shim.** Parse the draft with the flavor 2
+  schema: defaults, coercion, enums, and the site's own transforms and
+  refinements. A parse error answers `422` with the field path.
+- **Refinements on images run on real metadata.** Astro's docs show schemas
+  like `image().refine((img) => img.width >= 1080)`. With a string stub that
+  refinement would see a string and fail or throw. Flavor 2 resolves the path
+  first, so the refinement sees `width`, `height` and `format`, as on the
+  real build:
+  - images compiled into the bundle use their build-time metadata;
+  - uploaded draft images and images saved since the bundle use the
+    metadata in the request's media map (D12);
+  - a path that resolves to neither fails the field with "image not found",
+    as Astro's build does.
+
+  If a refinement **throws** instead of returning false, for example because
+  it reads a property our metadata lacks, the render answers `422` with the
+  error and adds `schema-refinement` to `limits`. The real build stays the
+  final check for those.
+- **References are checked for existence in flavor 2.** A draft pointing at
+  a deleted or misspelled author fails with `422` naming the field, as
+  Astro's build would reject it. `null` in the overlay counts as deleted.
+  Flavor 1, the JSON Schema, can only check that the value is a string.
+- **The real Astro schema never runs on drafts.** Astro's `image()` resolves
+  files during content sync, which doesn't exist at render time.
+- **Authoritative validation runs on the preview node,**
+  `POST /__preview/validate` (section 3). The CMS app calls it before saving.
+  The preview node already runs site code in a sandbox; the CMS app never
+  does. JSON Schema can't express refinements, so it can't be the last word.
+- **TBD (phase 1, task 1.3):** whether the esbuild pass resolves the site's
+  imports (`@/…` aliases from `tsconfig.json`, shared Zod helpers). If not,
+  run the pass through Vite with the site's config instead. Settle it in 1.3
+  and record the answer here.
+
+### D4. `getEntry` and `getEntries` call shapes
+
+**Finding.** The site calls `getEntry(author)` and `getEntries(block.items)`
+with reference objects, not only `getEntry(collection, id)`.
+
+**Decision.** The shim supports every public call shape:
+
+- `getEntry(collection, id)` and `getEntry({ collection, id })`;
+- `getEntries(refs)` over a mix of overlaid and built entries, keeping their
+  order;
+- a missing entry returns `undefined`, like Astro, and `null` in the overlay
+  counts as missing.
+
+Every read goes into the read log. A unit test covers each shape.
+
+### D5. `image()` paths are relative to the file that holds the document
+
+**Finding.** For authors, that's the document's own folder. For
+`testimonials.json`, a `file()` collection, it's `src/content/`, shared by
+all its entries.
+
+**Decision.**
+
+- `documents.json` records each document's file.
+- The shim resolves draft image paths against that file's folder.
+- Saving writes new image paths relative to it.
+- The per-island `contentDir` setting is gone.
+
+### D6. Hydrated components and inline scripts after a patch
+
+**Findings.**
+
+- Astro writes inline bootstrap scripts once per page, before the first
+  hydrated component: the `astro-island` element definition and one script
+  per `client:` directive.
+- Checked 2026-10-26: the definition guards itself
+  (`customElements.get('astro-island') || customElements.define(…)`), and
+  directive scripts only assign `Astro.<directive>`. Running them again is
+  safe.
+- `astro-island` observes its `props` attribute and hydrates again when it
+  changes.
+
+**Decision.** The bridge's patch rules:
+
+- **Existing `astro-island` elements are opaque.** The morph compares and
+  updates their attributes only, never their children. The framework owns
+  those children. A changed `props` makes Astro re-hydrate with the new
+  props. An unchanged island keeps its state.
+- **Inline scripts in the new HTML that the live page doesn't have,** by
+  content hash, run once: the bridge inserts fresh `<script>` elements so the
+  browser executes them. Scripts the page already has are skipped. That
+  covers a draft that adds the first hydrated block to a page, e.g. a
+  pricing block on `landing/home-v2`.
+- **Component `<script>` modules still don't run again on patched HTML**,
+  e.g. a Swiper carousel in a changed region. That stays a known limit.
+  **TBD (phase 3, with the real editor):** a fallback that re-renders and
+  reloads the iframe with the overlay for regions marked script-dependent.
+- **TBD (phase 1, task 1.5):** check that the Container API writes
+  `component-url` and `renderer-url` pointing at the built client chunks
+  (`/_astro/PricingPlans.<hash>.js`), as the prerendered page does. If it
+  writes source paths, map them through the build manifest.
+- **Tests:** add a hydrated block to a page without one, change the toggle's
+  props, and move a block next to a hydrated one.
+
+### D7. Listing routes run `getStaticPaths` over whole collections
+
+**Finding.** `blog/page/[slug]` and `tags/[tag]/[...page]` compute their paths
+from every post, on every render.
+
+**Decision.**
+
+- **Measure first** in task 1.8, with the generated posts (200).
+- **Cache only if needed:** if `getStaticPaths` adds more than 2 ms to the
+  median render, memoize its result per route. The key is the overlay entries
+  of the collections it read (from the read log). An empty overlay means one
+  computation per bundle.
+
+### D8. Which modules get the `astro:content` rewrite
+
+**Finding.** Helper modules such as `lib/contentParser.astro` call
+`getCollection`, not only pages and components.
+
+**Decision.**
+
+- **Rewrite every module under the site's `src/`** that Vite compiles:
+  `.astro`, `.ts`, `.js`, `.tsx`, `.jsx`, `.mdx`. Skip `content.config.*`.
+- **Limit:** modules outside `src/`, such as npm packages or components from
+  integrations, aren't rewritten, so their reads aren't overlaid. Document
+  the limit, and log a build warning when such a module imports
+  `astro:content`.
+- **Test:** a draft with `draft: true` disappears from listings, because
+  `getSinglePage` filters it.
+
+### D9. Old routes in builds without regions
+
+**Finding.** A preview build with no islands still injects `/__editor` and
+`/__preview/<island>`.
+
+**Decision.** No change; task 1.1 removes them.
+
+### D10. Ids that contain slashes
+
+**Finding** (from task 0.3). Generated posts have ids like
+`generated/post-001`. The template's `blog/[single].astro` became
+`[...single].astro` so the parameter can hold the slash. Real sites nest
+content folders too.
+
+**Decision.**
+
+- **Document keys split at the first `/`:** collection before it, id after,
+  slashes included (`blog/generated/post-001`). Data files use
+  `data:<path>`.
+- **APIs pass keys as a query parameter** (`?key=`), never as a path
+  segment.
+- **The render route matches rest parameters** (`[...x]`) against ids with
+  slashes.
+- **Keep the template change.** URLs didn't change, and it's the case to
+  test.
+
+### D11. MDX bodies
+
+**Finding.** Live preview of an MDX body means compiling and running it at
+render time: code written by an editor, plus the MDX compiler in every
+preview node.
+
+**Decision.**
+
+- **Phase 1:** MDX frontmatter previews live. A draft body renders the saved
+  body, and the render answers `limits: ["mdx-body"]`. The editor shows
+  "body preview after save".
+- **Preferred later path:** a restricted renderer. Parse the body with
+  `remark-mdx` without running it, render the Markdown, and render component
+  tags from an allowed list (bigspring's shortcodes: Button, Accordion,
+  Notice, Video, Youtube, Tabs, Tab) with literal props only. Expressions,
+  imports and exports show a placeholder. That's Tina's `TinaMarkdown` model.
+- **Not planned:** compiling and running arbitrary MDX at render time.
+- **TBD (the user decides after phase 1):** whether to build the restricted
+  renderer in phase 3. Input: an inventory of what the sample's MDX uses
+  (task 1.4), and optionally a spike on `elements.mdx`.
+
+### D12. Image metadata travels in the request
+
+**Finding.** D3 resolves draft image paths to real metadata (width, height,
+format) so image refinements work. In phase 1 the preview node's stopgap
+upload route can read that metadata itself. From phase 2 on, uploads go to
+the CMS app (section 7), and images saved since the last bundle aren't in the
+bundle either. The preview node has no access to those files, so it needs
+the metadata from somewhere else.
+
+**Decision.**
+
+- **The render and validate requests carry a media map** next to the
+  documents. The body is an envelope:
+
+  ```json
+  {
+    "documents": { "<key>": "value or null" },
+    "media": {
+      "<image ref>": { "url": "…", "width": 1200, "height": 800, "format": "webp" }
+    }
+  }
+  ```
+
+  An image ref is a staging URL, as written in the draft, or a project path
+  such as `src/assets/authors/new.png` for images saved since the bundle.
+  The shim resolves a document's relative path against the holding file's
+  folder (D5) before looking it up.
+- **Resolution order in flavor 2:** an image in the bundle uses build-time
+  metadata, then the media map, else "image not found".
+- **Whoever stores the image measures it, once.**
+  - Phase 1: the stopgap upload route answers
+    `{ url, width, height, format }`, read with `sharp`. The test editor
+    keeps a media map and sends it with every draft.
+  - Phase 2: `POST /api/media` answers the same shape. `GET /api/overlay`
+    returns `{ documents, media }`, with media entries for images saved since
+    the bundle. The CMS app measures those on save and caches by content
+    hash. The editor merges both into the map it sends.
+- **The preview node stores no metadata** and never fetches images to
+  measure them. It stays stateless and needs no storage access (decision 4).
+- **The CMS app's own map is authoritative.** Metadata from the editor only
+  affects previews. When the CMS app calls `POST /__preview/validate` before
+  saving, it sends the media map it measured itself, not the editor's.
+- **Map URLs are rendered as-is, never optimized.** The image source in the
+  HTML is the entry's `url`, unchanged. It never reaches Astro's `/_image`
+  optimizer, the same as draft uploads today ("not resized"). Otherwise a
+  `url` chosen by whoever sends the request could make the preview node
+  fetch an arbitrary address. How:
+  - flavor 2 tags the metadata it builds from a map entry as media-map
+    metadata;
+  - preview builds wrap the site's image service (bigspring sets
+    `sharpImageService()`) in a pass-through service. For tagged metadata,
+    `getURL` returns the `url` unchanged and no `/_image` URL is generated.
+    Everything else goes to the site's service as before;
+  - `/_image` keeps the site's own `image.domains` and `remotePatterns`, so
+    it won't fetch hosts the site didn't allow.
+
+  **TBD (phase 1, task 1.4):** confirm the wrapper approach works with the
+  Container API render. If it doesn't, fall back to passing a string `src`
+  with width and height, as today. That fallback breaks components that read
+  `.src` or `.width` from the image, so record it as a limit.
+- **Same envelope from phase 1 on,** so phase 2 only moves the upload.

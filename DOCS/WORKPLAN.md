@@ -26,7 +26,7 @@ parent folder: `../../HANDOFF.md`, `../../*-SYSTEM-OVERVIEW.md`, and the `tinacm
 | TypeScript without a build step, Vitest unit tests (115) and end-to-end suite (15) | done |
 | System design | done, agreed by the user on 2026-10-26 |
 | Per-island save (`save-island.ts`, `save-route.ts`, Save button) | **uncommitted, not compliant**; task 0.1 parks it |
-| Richer sample site | template chosen and cloned (section 5), not yet in the workspace |
+| Richer sample site | `sample-site/` in the workspace with the 0.3 additions; preview-built unchanged (0.4) |
 | Page render with content overlay | spike only (`preview-render-server/.build/spike/`, gitignored) |
 | CMS app, saving, publishing, real editor, auth | not started (phases 2 to 4) |
 
@@ -34,11 +34,11 @@ Folder layout of `astroViewCMS/` (git repo on `master`, no remote):
 
 ```text
 astroViewCMS/
-├─ package.json             npm workspace: sampleAstroProject, preview-render-server
+├─ package.json             npm workspace: sampleAstroProject, preview-render-server, sample-site
 ├─ DOCS/                    SYSTEM-DESIGN.md, WORKPLAN.md, PREVIEW-RENDER-SERVER.md
 ├─ preview-render-server/   the renderer (see PREVIEW-RENDER-SERVER.md)
-├─ sampleAstroProject/      current sample: one page, one island; removed in task 1.10
-├─ bigspring-light-astro/   cloned template (its own .git), the new sample; task 0.2
+├─ sampleAstroProject/      old sample: one page, one island; removed in task 1.10
+├─ sample-site/             the new sample (bigspring template plus additions)
 └─ dante-astro-theme/       cloned template, evaluated and rejected; task 0.6 deletes it
 ```
 
@@ -250,6 +250,33 @@ was already corrected on 2026-10-26 for documents that share a file and for
 imported JSON data files. Write down anything else found, and ask the user
 before changing the design.
 
+**Result (2026-10-26).** Checked against `sample-site` after task 0.3. The
+design holds. The items below are additions, not reversals.
+
+**Decided with the user on 2026-10-26:** SYSTEM-DESIGN.md section 11, D1 to
+D9 for the rows below, plus D10 (ids with slashes), D11 (MDX bodies) and
+D12 (image metadata in the request).
+The phase 1 tasks below were rewritten on 2026-10-26 to follow them; each
+task names the decisions it implements. If a task and a decision still
+disagree, the decision wins: fix the task. The table stays as the record of
+what was found.
+
+| # | Finding | Design impact | Task |
+|---|---|---|---|
+| 1 | **Some JSON documents are build-time.** `theme.json` feeds the fonts in `astro.config.mjs` and the Tailwind plugin (`tw-theme.mjs`); `config.json` feeds `site`, `base` and `trailingSlash`. The overlay can't change them, so "content never needs a rebuild" is false for these | Section 3 "What still needs a rebuild" gets a line for them. `documents.json` flags a data document `buildTime: true` when a config file or plugin imports it, and the editor says "applies after rebuild" | 1.3, 3 (editor) |
+| 2 | **Overlay values for Markdown documents are not just data.** `Post.astro` and `blog/index.astro` build summaries from `entry.body`, and `render()` needs the body. A bare `{...data}` overlay can't carry that | Overlay value shape: JSON documents are the raw object; `.md` and `.mdx` documents are `{ data, body }`. Update the request contract in section 3 and the editor in 1.7 | 1.4, 1.7 |
+| 3 | **Collection schemas are functions.** `({ image }) => z.object(...)` for authors, testimonials and blog. The manifest and the "run the schema in the bundle" step must call it with an `image()` helper. The landing blocks are a `discriminatedUnion` and contain `reference()` inside arrays | `schema.json` generation calls schema functions with a stub `image()` that marks the field; check that `z.toJSONSchema` handles the union and the references | 1.3, 1.4 |
+| 4 | **`getEntry` and `getEntries` take reference objects** (`getEntry(author)`, `getEntries(block.items)`), not only `(collection, id)` | The shim supports both call shapes, and `getEntries` over a mix of overlaid and built entries | 1.4 |
+| 5 | **`image()` paths are relative to the file's folder.** For authors that is the document's folder; for `testimonials.json` (a `file()` collection) it is `src/content/`, shared by all four entries | In the media rule of section 4, "relative to the document's folder" becomes "relative to the folder of the file that holds the document" | 1.4, 2 |
+| 6 | **Island bootstrap scripts are inline and emitted once.** The `astro-island` element definition and the `client:visible` directive script appear in the page before its first island. A patch must neither drop nor duplicate them. A draft that adds a pricing block to a page that had no island (for example `landing/home-v2`) would leave the new island unhydrated unless the bridge loads the scripts | The "Scripts" limit in 1.6 gets this case. Add a test: add a hydrated block to a page without one | 1.6 |
+| 7 | **Listing routes compute from the whole collection.** `blog/page/[slug]` and `tags/[tag]/[...page]` call `getStaticPaths` over every post, and the render route runs it on each render | Measure with the 100 generated posts. If it is slow, cache the paths per overlay hash | 1.5, 1.8 |
+| 8 | **Helper modules in `.astro` files** (`lib/contentParser.astro`: `getSinglePage` drops drafts and `-index` entries) call `getCollection` | The import rewrite also has to cover `.astro` modules, not only pages and components. A draft with `draft: true` disappears from lists, which is correct and worth a test | 1.4 |
+| 9 | **Preview build with no islands still injects the old routes.** `/__editor` answers 200 and `/__preview/blocks` 404. Harmless; phase 1 replaces them | none | 1.1 |
+
+Not found in the template, so not tested: the FAQ accordion script of the
+design's section 8 (the FAQ page is static). Swiper and the React toggle cover
+the "scripts and hydration" case.
+
 ### 0.6 Clean up
 
 Delete `dante-astro-theme/` (it can be cloned again) and the
@@ -280,7 +307,8 @@ From SYSTEM-DESIGN.md section 7:
 - **`POST /__preview/<island>`** and its props contract stay until 1.5
   lands, then go.
 - **`/__preview-media/*`** stays for now, marked in code and docs as a
-  stopgap until the CMS app's media staging (phase 2).
+  stopgap until the CMS app's media staging (phase 2). Task 1.4 makes it
+  answer each upload's dimensions and format (D12).
 
 ### 1.2 Rename island to region
 
@@ -288,7 +316,7 @@ A mechanical rename, in its own commit:
 
 | Old | New |
 |---|---|
-| `islands` in the site config, `IslandConfig` | `regions`, `RegionConfig { component }` |
+| `islands` in the site config, `IslandConfig` | `regions`, `RegionConfig { component }`. Task 1.3 adds `buildTimeFields` |
 | `data-preview-island` | `data-preview-region` |
 | `virtual:preview-islands`, `virtual-preview-islands.ts` | `virtual:preview-site`, `virtual-preview-site.ts` (it will carry more than regions) |
 | `.build/<site>-islands/`, `writeIslandWrappers`, `islandWrappers` | `.build/<site>-regions/`, `writeRegionWrappers`, `regionWrappers` |
@@ -304,25 +332,62 @@ The integration writes these next to the bundle in
 
 | File | Contents | How |
 |---|---|---|
-| `documents.json` | one entry per document: key (`collection/id`, or `data:src/config/menu.json` for JSON data modules), file path, format (`json`, `md`, `mdx`, `yaml`), and for `file()` loaders the entry's key inside the file | content entries carry `filePath`. First find out where the built data store is reachable from an integration hook (`astro:build:done`, or the `.astro/` data store). JSON data modules: record every `.json` under `src/` that a page or component imports |
-| `routes.json` | pattern, page component file, dynamic or not, has `getStaticPaths` | the `astro:routes:resolved` hook |
-| `schema.json` | JSON Schema per collection, with `image()` and `reference()` fields marked | Zod to JSON Schema (`z.toJSONSchema`), as AstroAdmin does. Mark images and references by inspecting the schema before conversion |
+| `documents.json` | one entry per document: key (D10: `collection/id` with slashes allowed in the id, or `data:src/config/menu.json` for JSON data modules), the file that holds it (D5), format (`json`, `md`, `mdx`, `yaml`), for `file()` loaders the entry's key inside the file, and `buildTime` plus the build-time field list (D1) | content entries carry `filePath`. First find out where the built data store is reachable from an integration hook (`astro:build:done`, or the `.astro/` data store). JSON data modules: record every `.json` under `src/` that a page or component imports |
+| `routes.json` | pattern, page component file, dynamic or not, rest parameters (D10), has `getStaticPaths` | the `astro:routes:resolved` hook |
+| `schema.json` | JSON Schema per collection, with `image()` and `reference()` fields marked | the CMS schema pass, flavor 1 (below) |
 
-Unit-test the pure parts: manifest shaping from hook data.
+**The CMS schema pass (D3).** Bundle `content.config.ts` twice with esbuild,
+once per stub flavor, replacing `astro:content`, `astro/loaders` and the
+`image` argument with the stubs in D3's table:
+
+- **Flavor 1** feeds `schema.json`, via
+  `z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' })`.
+- **Flavor 2** goes into the preview bundle for the shim (task 1.4). Expose
+  it through the virtual module.
+- **Settle D3's TBD first:** does esbuild resolve the site's `@/` aliases
+  (from `tsconfig.json`) and shared helpers? If not, run the pass through
+  Vite with the site's config. Record the answer in D3.
+- **Check on bigspring:** the landing `discriminatedUnion`, `reference()`
+  inside arrays, and the schema functions of authors, testimonials and blog.
+
+**Build-time data (D1).**
+
+- Add `buildTimeFields?: Record<string, string[]>` to `SiteConfig`
+  (`types.ts`): document key to field paths, with `['*']` for the whole file.
+  Fill it in `sites/sample-site.config.ts` for `config.json`'s `site` fields
+  and `theme.json`.
+- Implement the static import scan from D1: `astro.config.*` and CSS
+  `@plugin`/`@config` targets, recursively, with `es-module-lexer`. On
+  bigspring it must find `config.json` and `theme.json`.
+- Merge both sources into each document's `buildTime` and field list.
+
+Unit-test the pure parts: manifest shaping from hook data, the import scan on
+fixture files, and the merge of scan results with `buildTimeFields`.
 
 ### 1.4 Content overlay
 
 Start from the spike (`.build/spike/content-shim.ts` and `build-overlay.ts`),
 written properly in `src/overlay/`:
 
-- **The import rewrite:** a `transform` hook, `enforce: 'post'`, for modules
-  under the site's `src/`, except `content.config.ts`.
+- **The import rewrite (D8):** a `transform` hook, `enforce: 'post'`, for
+  **every** module under the site's `src/` that Vite compiles: `.astro`,
+  `.ts`, `.js`, `.tsx`, `.jsx`, `.mdx`. That includes helper modules such as
+  `lib/contentParser.astro`, not only pages and components. Skip
+  `content.config.*`. Log a build warning when a module outside `src/`
+  imports `astro:content`, because its reads won't be overlaid.
 - **Request scope:** the overlay and the read log live in `AsyncLocalStorage`,
   not a global. Renders must not see each other's drafts. Add a test with two
   concurrent renders.
-- **`getEntry`, `getEntries`, `getCollection`:** overlay entries replace or add
-  built ones; `null` removes. Filters run after the overlay. Each read goes
-  into the log. A `file()` loader entry is overlaid per entry, not per file.
+- **Overlay values (D2):** JSON documents are the raw object. `.md` and
+  `.mdx` documents are `{ data, body }`, and the shim exposes `entry.body`
+  from the draft.
+- **`getEntry`, `getEntries`, `getCollection` (D4):** every call shape:
+  `getEntry(collection, id)`, `getEntry({ collection, id })`, and
+  `getEntries(refs)` over a mix of overlaid and built entries, in order.
+  Overlay entries replace or add built ones; `null` removes, and a missing
+  entry returns `undefined`, like Astro. Filters run after the overlay. Each
+  read goes into the log. A `file()` loader entry is overlaid per entry, not
+  per file. Ids may contain slashes (D10).
 - **JSON data modules** (`src/config/*.json`): a second `transform` turns
   each imported JSON file into a module whose default export, and each
   object-valued named export, is a `Proxy`. On property access, the proxy
@@ -330,24 +395,41 @@ written properly in `src/overlay/`:
   value, and logs the read. **Limit:** top-level primitive named exports
   can't be proxied. Find out whether bigspring has any (`nav_button` is an
   object, so it's fine) and document the limit.
-- **Raw to parsed:** drafts are file-shaped. Convert them as Astro would:
-  - Run the collection's schema if it can be imported in the bundle. Try
-    this first, because it gives defaults, `z.coerce.date()` and enums for
-    free.
-  - `image()`: today's `resolveImages`. Paths not in the build map to a media
-    URL, the stopgap `/__preview-media/` for now.
-  - `reference()`: a string id becomes `{ collection, id }`.
-  - Strings pointing at `public/` stay strings.
+- **Raw to parsed (D3):** parse each draft with the flavor 2 CMS schema from
+  task 1.3. That gives defaults, `z.coerce.date()`, enums and the site's own
+  transforms and refinements. The stubs do the Astro-specific parts:
+  - `image()`: resolve the path **against the folder of the file that holds
+    the document** (D5), to the build-time `ImageMetadata`, or else to the
+    entry in the request's media map (D12). Neither: the field fails with
+    "image not found". Image refinements then run on
+    real metadata.
+  - `reference()`: a string or `{ id }` becomes `{ collection, id }`, and the
+    id must exist in the bundle or the overlay.
+  - A failed parse answers `422` with the field path. A refinement that
+    throws answers `422` and adds `schema-refinement` to `limits`.
+  - Strings pointing at `public/` stay strings; the schema doesn't touch
+    them.
+- **Media-map images bypass the optimizer (D12):** tag the metadata built
+  from a map entry, and wrap the site's image service in preview builds so
+  `getURL` returns the entry's `url` unchanged for tagged images. Settle
+  D12's TBD here: check it works through the Container API, or record the
+  string-`src` fallback as a limit.
+- **Upload metadata (D12):** the stopgap upload route reads each image's
+  width, height and format with `sharp` and answers
+  `{ url, width, height, format }`. It stores the file only, no metadata.
+  The request carries the metadata back in its media map.
 - **Bodies, `render(entry)`:**
-  - Markdown: render the draft body at runtime with
+  - Markdown (D2): render the draft body at runtime with
     `@astrojs/markdown-remark`, using the site's `markdown` config (remark
-    plugins, Shiki theme). **Measure memory**, since Shiki is heavy, and
-    record it.
-  - MDX: **don't compile at runtime in phase 1.** It's code execution and
-    needs the compiler. A draft MDX body renders the saved body, and the
-    render answer says so (`limits: ["mdx-body"]`), so the editor can show
-    "body preview after save". Frontmatter drafts work as usual. Ask the
-    user before choosing otherwise.
+    plugins, Shiki theme). Return `Content` and `headings` like the built
+    version. **Measure memory**, since Shiki is heavy, and record it in
+    section 10. If the cost looks too high, ask the user (D2's TBD).
+  - MDX (D11): **don't compile at runtime.** A draft MDX body renders the
+    saved body, and the render adds `mdx-body` to `limits`, so the editor can
+    show "body preview after save". Frontmatter drafts work as usual.
+  - **MDX inventory (D11):** list what the sample's MDX uses (shortcodes,
+    expressions, imports, exports) and record it in D11. It's the input for
+    the user's decision on the restricted renderer.
 
 ### 1.5 The render route
 
@@ -356,21 +438,45 @@ section 3:
 
 1. Guard as today: JSON only, refuse cross-site.
 2. Match `path` against `routes.json`, respecting `base` and `trailingSlash`.
-   404 if nothing matches.
+   Rest parameters (`[...single]`) match ids with slashes (D10). 404 if
+   nothing matches.
 3. For dynamic routes, run the page's `getStaticPaths()` **inside the overlay
    scope**, pick the entry whose params match, and use its `props`. Paths
-   without `props` (`blog/page/[slug]`) just get `params`.
+   without `props` (`blog/page/[slug]`) just get `params`. Time this step
+   separately (D7); task 1.8 decides whether it needs the cache.
 4. Render with the Container API:
    `renderToString(page, { params, props, request, partial: false })`. The
    `request` URL must be the real page URL, because `Header.astro` reads
    `Astro.url.pathname`. Load the site's renderers (React) into the
    container. Check `Image`, `Font` and `ClientRouter` output against the
    prerendered page.
+   **Settle D6's TBD here:** the rendered `astro-island` elements must have
+   `component-url` and `renderer-url` pointing at the built client chunks
+   (`/_astro/PricingPlans.<hash>.js`), as the prerendered page does. If they
+   point at source paths, map them through the build manifest. Record the
+   answer in D6.
 5. Strip the dev-only script tags, as today.
 6. Answer `{ html, head, documents, limits, renderMs }`, plus the
    `Server-Timing` header. Errors as in the design: 400, 404, 422, 500.
+   `limits` collects, per render, what it couldn't show. Values so far:
+   `mdx-body` (D11) and `schema-refinement` (D3). Define them as a string
+   union in `protocol.ts` so new ones are added in one place.
 
 Then delete `POST /__preview/<region>` and its props contract.
+
+**The request body (D12).** Both routes take `{ documents, media }`, not a
+bare overlay. Validate the envelope before anything else and answer `400`
+naming the part that failed (section 3 of the design). Tests: a non-object
+body, a missing `documents`, a `documents` that isn't an object, and a
+`media` entry with a non-string `url`, a zero or fractional width, or an
+unknown format.
+
+**The validate route (D3).** `POST /__preview/validate`, same guard and body
+as the render route. It parses every document in the overlay with the flavor
+2 schema and renders nothing. It answers `200` with `{ valid: true }`, or
+`422` with `{ errors: [{ key, path, message }] }`. Read-only: it never
+writes. The test editor doesn't need it in phase 1. It's the check the CMS
+app calls before saving in phase 2, and its tests come now.
 
 ### 1.6 Protocol v2 and the bridge
 
@@ -379,7 +485,7 @@ Protocol (`src/protocol.ts`, types plus runtime checks, as today):
 | Direction | Message |
 |---|---|
 | page to editor | `{ type: 'preview:ready', path }` |
-| editor to page | `{ type: 'preview:draft', documents: Record<string, unknown \| null> }` |
+| editor to page | `{ type: 'preview:draft', documents: Record<string, unknown \| null>, media: Record<string, MediaInfo> }` (D12) |
 | page to editor | `{ type: 'preview:rendered', path, documents, limits, renderMs }` |
 | page to editor | `{ type: 'preview:error', path, status, message }` |
 
@@ -397,21 +503,33 @@ Bridge (`src/client/bridge.ts`):
   new path.
 - **Origins:** an allowed list of editor origins (from the site config, same
   origin by default). Never `'*'`.
-- **Scripts:** still not re-run after a patch. Check the Swiper carousel and
-  the React toggle, and document what happens. Don't fix it in phase 1
-  unless it's small.
+- **Hydrated components and inline scripts (D6):**
+  - treat existing `astro-island` elements as opaque: morph their attributes
+    only, never their children. A changed `props` re-hydrates by itself;
+  - run inline scripts from the new HTML that the live page doesn't have, by
+    content hash, once, as fresh `<script>` elements. Skip the ones it has.
+- **Component scripts:** still not re-run after a patch (D6). Check the
+  Swiper carousel and document what happens. The reload fallback is a
+  phase 3 TBD; don't build it now.
 
 ### 1.7 Test editor v2
 
 - **Documents, not regions:** after `preview:rendered`, list the page's
-  documents. Each gets a JSON textbox, or a Markdown/frontmatter textarea for
-  `.md`.
+  documents. A JSON document gets a JSON textbox. A `.md` or `.mdx` document
+  gets a frontmatter textbox and a body textarea, sent as `{ data, body }`
+  (D2).
+- **Build-time fields (D1):** documents flagged `buildTime` show "some
+  fields apply after rebuild", with the field list.
+- **Limits:** show each value in `limits` as a plain note, e.g. "MDX body:
+  preview after save".
 - **Data source:** a dev-only route `GET /__dev/documents?key=` on the
   preview node. It returns the raw file content from the build snapshot, and
   it's injected only when `PREVIEW_DEV=1`. It's a stopgap for the CMS app's
   `GET /api/documents` (phase 2); mark it so in code and docs.
 - **Overlay:** every edited document goes out on each change, after the
   120 ms pause, as today.
+- **Media map (D12):** keep the `{ url, width, height, format }` of each
+  upload and send the map with every draft.
 - **No Save button.** Saving arrives with the CMS app in phase 2.
 - Keep "Reset" per document.
 
@@ -423,8 +541,32 @@ Bridge (`src/client/bridge.ts`):
 - The end-to-end suite moves to the new sample site. One test per row of
   SYSTEM-DESIGN.md section 8: render through HTTP with an overlay, then
   assert on the HTML and the `documents` list.
+- One test per decision, at least:
+  - D1: `config.json` and `theme.json` come out `buildTime`, `menu.json` doesn't;
+  - D2: a Markdown draft body changes the rendered post and the blog summary;
+  - D3: a missing image, a deleted author and a wrong enum each answer
+    `422` with the field path;
+  - D12, optimizer bypass: a media entry with `url`
+    `http://169.254.169.254/x.png` renders that exact string as the image
+    source, no `/_image?href=` in the HTML points at it, and the server makes
+    no outbound request while rendering. `GET /_image?href=<that url>`
+    is refused, because the site doesn't allow that host;
+  - D12: an uploaded image resolves through the media map, and an image
+    refinement sees its width; the same upload without a map entry answers
+    "image not found"; `/__preview/validate` agrees with the render;
+  - D4: `getEntry(ref)` and `getEntries(refs)` over overlaid testimonials;
+  - D5: a testimonial avatar resolves against `src/content/`;
+  - D6: add a hydrated pricing block to `landing/home-v2` and check it
+    hydrates; change the toggle's props;
+  - D8: a post set to `draft: true` disappears from `/blog` and its tag pages;
+  - D10: render `/blog/generated/post-001` with an overlay;
+  - D11: an MDX body draft answers `limits: ["mdx-body"]`.
 - Performance in the end-to-end suite: 100 edits on `landing/long`, median
   render under 5 ms, and private memory recorded.
+- **D7 measurement:** generate 200 posts
+  (`node scripts/generate-posts.mjs 200` in `sample-site/`) and time
+  `getStaticPaths` on `/blog/page/2` and a tag page. Over 2 ms added to the
+  median render: build the cache from D7. Record the numbers in section 10.
 
 ### 1.9 Docs
 
@@ -481,10 +623,10 @@ New sample, to fill in during tasks 0.4 and 1.8:
 
 | | Value |
 |---|---|
-| `astro build` (plain), pages | ~25 s, 15 pages (template as cloned) |
-| Preview build | |
-| Bundle size (external / bundled) | |
-| Idle and after-run private memory | |
+| `astro build` (plain), pages | ~25 s cold, 15 pages (template as cloned). With task 0.3: 24 pages, ~6 s warm; with 100 generated posts: 249 pages, ~14 s, `dist` 8.6 MB |
+| Preview build (`npm run build:sample`, task 0.4) | ~10 s warm (fonts and images cached), 24 pages |
+| Bundle size (external / bundled) | external: server 0.6 MB (565 KB of JS), client 4.5 MB (97 files). Bundled variant: not measured (`--bundle` is a phase 4 option) |
+| Idle and after-run private memory | 89 MB idle; 90 MB after fetching 8 pages (working set 96 MB). No islands, so no renders yet |
 | Render median: home, blog post, `landing/long` | |
 | Markdown body draft render, memory with Shiki | |
 | Overlay size with 200 generated posts | |
