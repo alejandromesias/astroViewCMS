@@ -60,8 +60,30 @@ describe('shapeDocuments: content entries', () => {
     expect(byKey('authors/ana')).not.toHaveProperty('entryKey');
   });
 
+  it('formats follow the extension; only TOML and unknown ones are not editable (D13)', () => {
+    const shaped = shapeDocuments({
+      store: new Map([
+        [
+          'misc',
+          new Map([
+            ['a', { id: 'a', filePath: 'src/content/misc/a.yaml' }],
+            ['b', { id: 'b', filePath: 'src/content/misc/b.yml' }],
+            ['c', { id: 'c', filePath: 'src/content/misc/c.toml' }],
+          ]),
+        ],
+      ]),
+      loaderKinds: {},
+      scan: { buildTimeFiles: [], dataModules: [] },
+    });
+    expect(shaped.map((d) => [d.format, d.editable])).toEqual([
+      ['yaml', undefined],
+      ['yaml', undefined],
+      ['toml', false],
+    ]);
+  });
+
   it('keeps entries from loaders that read no file, without a file', () => {
-    expect(byKey('custom/x')).toEqual({ key: 'custom/x', format: 'other', buildTime: false });
+    expect(byKey('custom/x')).toEqual({ key: 'custom/x', format: 'other', editable: false, buildTime: false });
   });
 });
 
@@ -115,16 +137,15 @@ describe('readDataStore', () => {
   });
 
   it("reads Astro's devalue file and leaves out its bookkeeping collection", () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'data-store-'));
-    fs.mkdirSync(path.join(root, '.astro'));
+    const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'data-store-'));
     const written = new Map<string, unknown>([
       ['authors', new Map([['ana', { id: 'ana', filePath: 'src/content/authors/ana.json' }]])],
       ['meta::meta', new Map([['astro-config-digest', 'abc']])],
     ]);
-    fs.writeFileSync(path.join(root, '.astro', 'data-store.json'), stringify(written));
-    const read = readDataStore(root);
+    fs.writeFileSync(path.join(cacheDir, 'data-store.json'), stringify(written));
+    const read = readDataStore(cacheDir);
     expect([...read.keys()]).toEqual(['authors']);
     expect(read.get('authors')!.get('ana')!.filePath).toBe('src/content/authors/ana.json');
-    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(cacheDir, { recursive: true, force: true });
   });
 });

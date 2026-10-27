@@ -1,0 +1,26 @@
+---
+// Shows the `stats` collection (entries of one YAML file).
+import { getCollection } from "astro:content";
+
+const { block } = Astro.props;
+const stats = await getCollection("stats");
+---
+
+<section class="section bg-light">
+  <div class="container">
+    <h2 class="text-center">{block.title}</h2>
+    <dl class="mt-8 grid gap-6 text-center md:grid-cols-3">
+      {
+        stats.map((s) => (
+          <div class="rounded-xl bg-white p-8">
+            <dt>{s.data.label}</dt>
+            <dd class="h2">{s.data.value}</dd>
+            <dd class="text-sm">
+              Updated {s.data.updated.toISOString().slice(0, 10)}
+            </dd>
+          </div>
+        ))
+      }
+    </dl>
+  </div>
+</section>

@@ -125,6 +125,14 @@
       ]
     },
     {
+      "type": "partners",
+      "title": "Our partners"
+    },
+    {
+      "type": "stats",
+      "title": "The numbers"
+    },
+    {
       "type": "cta",
       "title": "Ready to get started?",
       "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur.",

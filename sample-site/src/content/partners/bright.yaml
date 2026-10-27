@@ -1,0 +1,6 @@
+# Partner documents are YAML, one file each.
+name: Bright
+logo: ../../assets/partners/bright.png
+url: https://example.com/bright
+order: 4
+since: 2023-06-30

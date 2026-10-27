@@ -145,7 +145,7 @@ const faqCollection = defineCollection({
 
 // Authors collection schema (one JSON file per author, avatar through image())
 const authorsCollection = defineCollection({
-  loader: glob({ pattern: "**/*.json", base: "src/content/authors" }),
+  loader: glob({ pattern: "**/*.{json,yaml}", base: "src/content/authors" }),
   schema: ({ image }) =>
     z.object({
       name: z.string(),
@@ -166,6 +166,30 @@ const testimonialsCollection = defineCollection({
       quote: z.string(),
       avatar: image().optional(),
     }),
+});
+
+// Partners: a YAML-only collection (one file each, dates unquoted in the YAML).
+const partnersCollection = defineCollection({
+  loader: glob({ pattern: "**/*.yaml", base: "src/content/partners" }),
+  schema: ({ image }) =>
+    z.object({
+      name: z.string(),
+      logo: image(),
+      url: z.string().url(),
+      order: z.number(),
+      since: z.coerce.date(),
+    }),
+});
+
+// Stats: many entries in ONE YAML file. "updated" is a plain z.date() on
+// purpose (D13: does the overlay's ISO string need reviving?).
+const statsCollection = defineCollection({
+  loader: file("src/content/stats.yaml"),
+  schema: z.object({
+    label: z.string(),
+    value: z.string(),
+    updated: z.date(),
+  }),
 });
 
 // Landing pages: a page builder. `blocks` is a discriminated union on `type`;
@@ -249,6 +273,14 @@ const landingBlock = z.discriminatedUnion("type", [
     body: z.string(),
   }),
   z.object({
+    type: z.literal("partners"),
+    title: z.string(),
+  }),
+  z.object({
+    type: z.literal("stats"),
+    title: z.string(),
+  }),
+  z.object({
     type: z.literal("testimonials"),
     title: z.string(),
     items: z.array(reference("testimonials")),
@@ -300,6 +332,8 @@ export const collections = {
   homepage: homepageCollection,
   authors: authorsCollection,
   testimonials: testimonialsCollection,
+  partners: partnersCollection,
+  stats: statsCollection,
   landing: landingCollection,
   blog: blogCollection,
   pages: pagesCollection,

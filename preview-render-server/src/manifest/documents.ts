@@ -16,10 +16,11 @@ export type DataStore = Map<string, Map<string, StoreEntry>>;
 /** Loader kinds by collection, from the CMS schema pass. */
 export type LoaderKinds = Record<string, 'glob' | 'file' | undefined>;
 
-/** Reads Astro's data store, which a build writes to `<root>/.astro/`. A site
- *  without content collections has none: that is an empty store. */
-export function readDataStore(root: string): DataStore {
-  const file = path.join(root, '.astro', 'data-store.json');
+/** Reads Astro's data store, which a build writes to its `cacheDir` (by
+ *  default `<root>/node_modules/.astro/`; only dev uses `<root>/.astro/`). A
+ *  site without content collections has none: that is an empty store. */
+export function readDataStore(cacheDir: string): DataStore {
+  const file = path.join(cacheDir, 'data-store.json');
   if (!fs.existsSync(file)) return new Map();
   const store = parse(fs.readFileSync(file, 'utf8')) as Map<string, Map<string, StoreEntry> | unknown>;
   // `meta::meta` holds Astro's own bookkeeping, not documents.
@@ -68,7 +69,8 @@ export function shapeDocuments({
     const file = key.slice('data:'.length);
     documents.push({ key, file, format: formatOf(file), ...buildTime(key, scanned.has(key)) });
   }
-  return documents;
+  // D13: only these formats can be edited.
+  return documents.map((doc) => (doc.format === 'toml' || doc.format === 'other' ? { ...doc, editable: false } : doc));
 }
 
 function formatOf(file: string | undefined): DocumentRecord['format'] {

@@ -10,6 +10,9 @@ export interface DocumentRecord {
    *  for entries from loaders that don't read files. */
   file?: string;
   format: 'json' | 'md' | 'mdx' | 'yaml' | 'toml' | 'other';
+  /** Present, as `false`, for formats the CMS does not write (D13): TOML and
+   *  anything else. The preview shows such documents as built. */
+  editable?: false;
   /** For `file()` loaders, where the document sits inside the file. */
   entryKey?: string;
   /** Build code reads this document (D1): saving it needs a rebuild. */

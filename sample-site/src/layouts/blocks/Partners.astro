@@ -1,0 +1,30 @@
+---
+// Lists the `partners` collection (YAML documents), lowest `order` first.
+import { Image } from "astro:assets";
+import { getCollection } from "astro:content";
+
+const { block } = Astro.props;
+const partners = (await getCollection("partners")).sort(
+  (a, b) => a.data.order - b.data.order,
+);
+---
+
+<section class="section">
+  <div class="container">
+    <h2 class="text-center">{block.title}</h2>
+    <ul class="mt-8 flex flex-wrap items-center justify-center gap-10">
+      {
+        partners.map((p) => (
+          <li class="text-center">
+            <a href={p.data.url}>
+              <Image src={p.data.logo} alt={p.data.name} width={120} />
+            </a>
+            <span class="block text-sm">
+              {p.data.name}, since {p.data.since.getUTCFullYear()}
+            </span>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</section>

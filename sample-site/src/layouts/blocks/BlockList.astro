@@ -5,8 +5,10 @@ import CallToAction from "./CallToAction.astro";
 import Faq from "./Faq.astro";
 import Features from "./Features.astro";
 import Highlight from "./Highlight.astro";
+import Partners from "./Partners.astro";
 import PricingBlock from "./PricingBlock.astro";
 import Services from "./Services.astro";
+import Stats from "./Stats.astro";
 import Testimonials from "./Testimonials.astro";
 import Workflow from "./Workflow.astro";
 
@@ -24,6 +26,8 @@ const { blocks } = Astro.props;
       {block.type === "pricing" && <PricingBlock block={block} />}
       {block.type === "faq" && <Faq block={block} />}
       {block.type === "highlight" && <Highlight block={block} />}
+      {block.type === "partners" && <Partners block={block} />}
+      {block.type === "stats" && <Stats block={block} />}
       {block.type === "testimonials" && <Testimonials block={block} />}
     </>
   ))

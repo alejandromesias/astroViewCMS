@@ -389,6 +389,16 @@ fixture files, and the merge of scan results with `buildTimeFields`.
 
 ### 1.3a Formats in the sample site (D13)
 
+**Status (2026-10-27): implemented.** `astro build` passes (24 pages) and
+`documents.json` lists 4 partners, 3 stats (with `entryKey`) and
+`authors/noor-haddad` as `yaml`; the authors collection has both formats.
+`editable: false` for TOML and unknown formats is now in `documents.json`
+(unit-tested). Two things to know: the blog post that uses the YAML author is
+`blog-5` (it was Kofi Mensah's); and this task exposed a bug in 1.3: Astro 7
+builds write the data store to `node_modules/.astro/`, not `.astro/`, so
+`documents.json` had been read from a stale file. It now reads the build's
+`cacheDir`.
+
 Add YAML to `sample-site`, so every supported format and the mixes are
 covered before the overlay is built. As in task 0.3, add rather than replace.
 
@@ -415,8 +425,8 @@ probe route in a real preview build of `sample-site` (draft entries, data
 modules, a media-map image, a Markdown draft). There is no automated test of
 the overlay inside a real build yet: task 1.5's route is the natural place.
 
-- Not done: the `stats` collection of 1.3a (not built); YAML dates are
-  covered by unit tests only. The editor's media map is task 1.7.
+- The `stats` collection of 1.3a exists now; YAML dates through the overlay are
+  still covered by unit tests only. The editor's media map is task 1.7.
 - Settled here and recorded in the design: D3 (stubs reach local imports), D11
   (MDX inventory), D12 (wrapper works with the Container), D13 (plain
   `z.date()` needs reviving).

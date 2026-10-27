@@ -35,6 +35,8 @@ export default function previewRenderServer(site: ResolvedSiteConfig): AstroInte
   // Filled in by astro:config:setup, used when the build is done.
   let scan: ProjectScan = { buildTimeFiles: [], dataModules: [] };
   let loaderKinds: Record<string, 'glob' | 'file' | undefined> = {};
+  // Where the build keeps its content data store.
+  let cacheDir = path.join(site.root, 'node_modules', '.astro');
 
   return {
     name: 'preview-render-server',
@@ -105,13 +107,16 @@ export default function previewRenderServer(site: ResolvedSiteConfig): AstroInte
           writeManifest(site, 'schema.json', shapeSchemas(collections));
         }
       },
+      'astro:config:done': ({ config }) => {
+        cacheDir = fileURLToPath(config.cacheDir);
+      },
       'astro:routes:resolved': ({ routes }) => {
         writeManifest(site, 'routes.json', shapeRoutes(routes, site.root));
       },
       // The content data store is complete once the build is done.
       'astro:build:done': ({ logger }) => {
         try {
-          const store = readDataStore(site.root);
+          const store = readDataStore(cacheDir);
           const documents = shapeDocuments({ store, loaderKinds, scan, buildTimeFields: site.buildTimeFields });
           writeManifest(site, 'documents.json', documents);
           writeManifest(site, LANGUAGES_FILE, { languages: collectLanguages(site.root, store, site.extraLanguages) });

@@ -15,7 +15,8 @@ Files: `src/content/authors/*.json`, `src/assets/authors/*.png`,
   author's name above the summary.
 - `/blog/blog-1`: below the article text, a grey card with a larger avatar,
   name, role and bio (Ana Torres). `blog-2` is Marco Rossi, `blog-4` Lena
-  Fischer, `blog-5` Kofi Mensah.
+  Fischer, `blog-5` Noor Haddad (from step 10; it was Kofi Mensah, who now has
+  no post).
 - Reference test: edit `src/content/authors/ana-torres.json` (change `role`)
   and reload `/blog/blog-1` and `/blog/blog-3`. Both posts change.
 
@@ -156,3 +157,27 @@ ids, so keeping this is useful.)
   14 s, `dist` 8.6 MB. Without: 24 pages, about 6 s.
 
 Smoke test: with posts 249 pages built, without posts 24 pages built.
+
+## 10. YAML documents (task 1.3a, D13)
+
+Files: `src/content/partners/*.yaml` (4 files), `src/content/stats.yaml` (3
+entries in one file), `src/content/authors/noor-haddad.yaml`,
+`src/assets/partners/*.png`, `src/assets/authors/noor-haddad.png`, blocks
+`src/layouts/blocks/Partners.astro` and `Stats.astro`, and the `partners` and
+`stats` block types in `content.config.ts`. Every file has YAML comments, one
+inside the `stats.yaml` list.
+
+- `/landing/home-v2`, above the final call to action: "Our partners" shows four
+  small shape logos, lowest `order` first (Loop & Co, Northwind Labs, Atlas
+  Studio, Bright), each with "since <year>" (the YAML date). "The numbers"
+  shows three tiles: Sites launched 240+, Active editors 1,800, Uptime 99.98%,
+  each with an "Updated" date. The tile order follows the file's store order,
+  not a sort.
+- `/blog/blog-5`: the author card now shows Noor Haddad (YAML author), no
+  longer Kofi Mensah. The other posts keep their authors.
+- Date check: change `since` of `loop.yaml` to `2024-01-05` and reload; the
+  year changes to 2024.
+
+Smoke test: 24 pages built (same count: the blocks are on an existing page).
+`documents.json` lists the partners, stats (with `entryKey`) and
+`authors/noor-haddad` with format `yaml`.
