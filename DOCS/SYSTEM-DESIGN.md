@@ -30,7 +30,7 @@ and can hold its built files.
 
 The rest of the document explains why, then specifies each part. Decisions
 taken later, after reviewing the sample site, are logged in section 11 (D1 to
-D12). Where they change a contract, the section itself is updated and points
+D13). Where they change a contract, the section itself is updated and points
 to the decision.
 
 ## 1. Vocabulary
@@ -382,9 +382,10 @@ pulls, checks the build and pushes.
   since, the save answers `409` with the conflicting documents and writes
   nothing.
 - **Writes are atomic per file** (temp file and rename, as `save-island.ts`
-  already does). They keep key order and 2-space JSON with a final newline.
-  Markdown and MDX keep their body and frontmatter order (AstroAdmin does
-  this).
+  already does). Each format has a codec that keeps what the original file
+  had: key order and indentation for JSON, comments and order for YAML, the
+  frontmatter and body of Markdown and MDX. A save never converts a
+  document's format (D13).
 - **Validation has two levels (D3).** The preview build exports each
   collection's CMS schema as JSON Schema (`schema.json`, next to the bundle).
   The editor uses it for forms and quick checks. Before saving, the CMS app
@@ -772,10 +773,30 @@ carry it.
   `POST /__preview/validate` (section 3). The CMS app calls it before saving.
   The preview node already runs site code in a sandbox; the CMS app never
   does. JSON Schema can't express refinements, so it can't be the last word.
-- **TBD (phase 1, task 1.3):** whether the esbuild pass resolves the site's
-  imports (`@/…` aliases from `tsconfig.json`, shared Zod helpers). If not,
-  run the pass through Vite with the site's config instead. Settle it in 1.3
-  and record the answer here.
+- **Settled in task 1.3 (2026-10-26): the bundler pass resolves the site's
+  imports.** The pass uses rolldown, Vite 8's own bundler (esbuild isn't in
+  the tree), with the site's `tsconfig.json`. `@/…` aliases and shared Zod
+  helpers resolve, and the site's Zod is bundled in. Tested on a fixture and
+  on bigspring. Flavor 2 needs no separate bundling: the preview build's Vite
+  compiles the content config like any other module, so the aliases come from
+  Astro. Two implementation facts:
+  - The stubs are applied by **rewriting the two import specifiers in the
+    content config's source**, not by resolving them. Astro's own resolver for
+    `astro:content` runs first in a real build, and Astro also loads
+    `content.config.ts` itself through the same Vite plugins, so the rewrite
+    only applies to the copy that the virtual module imports with the query
+    `?preview-cms-schema`.
+  - Flavor 1 runs in `astro:config:setup`, so `schema.json` exists before the
+    build. A Zod schema that can't be exported records `error` for that
+    collection instead of failing the build.
+  - **The stubs must reach the whole import graph of the content config,**
+    not only the config file. Sites often split schemas into helper modules
+    that import `reference` or `defineCollection` from `astro:content`
+    themselves. Without the stubs there, flavor 1 can't bundle and flavor 2
+    gets the real `reference()`. In flavor 2, carry the query onto the
+    config's local imports, recursively, so those helpers get stubbed
+    copies while pages keep the real modules. Added after the 1.3 review;
+    fix it before task 1.4 relies on flavor 2.
 
 ### D4. `getEntry` and `getEntries` call shapes
 
@@ -978,3 +999,60 @@ the metadata from somewhere else.
   with width and height, as today. That fallback breaks components that read
   `.src` or `.width` from the image, so record it as a limit.
 - **Same envelope from phase 1 on,** so phase 2 only moves the upload.
+
+### D13. Supported formats
+
+**Finding.** The design handled formats only implicitly, and YAML hardly
+appeared. A format matters only where files are read and written, in the CMS
+app. The preview node gets parsed values (D2) and never parses file text,
+except when it renders a Markdown body. In Astro 7, the parser is chosen per
+file by extension (checked 2026-10-26):
+
+- `glob()` reads Markdown and MDX as content, and JSON, YAML and TOML as
+  data;
+- `file()` parses JSON, YAML or TOML;
+- one collection can mix formats; bigspring's blog mixes `.md` and `.mdx`.
+
+**Decision.** An opinionated set, sized for the user's own sites.
+
+| Format | Supported as |
+|---|---|
+| **JSON** | `glob()` and `file()` collections; settings files that components import |
+| **YAML** (`.yaml`, `.yml`) | `glob()` and `file()` collections |
+| **Markdown** (`.md`) with YAML frontmatter | content entries, including files that are only frontmatter (bigspring's home page) |
+| **MDX** (`.mdx`) with YAML frontmatter | content entries; the body follows D11 |
+
+- **Not supported:** TOML, Markdoc, TOML or JSON frontmatter, and YAML or
+  TOML files imported by components. Vite can't import YAML without a
+  plugin, so imported settings files stay JSON. `documents.json` still lists
+  such documents, with their format and `editable: false`. The preview shows
+  them as built, and the build logs a warning.
+- **The preview node is format-agnostic.** A YAML document's value is a plain
+  object, like a JSON document's. Markdown and MDX values are
+  `{ data, body }` (D2). Nothing else in the preview depends on the format.
+- **Formats can mix,** within a collection and entry by entry. Editing keeps
+  each document's own format, and **a save never converts formats.**
+- **New entries** use the collection's `newEntryFormat` from the site config
+  if set. Otherwise they use the first extension in the loader's pattern, so
+  `**/*.{json,yaml}` creates JSON.
+- **One codec per format in the CMS app (phase 2).** A codec parses text
+  into a value, and serializes a value back into the original text,
+  keeping what it can:
+  - **JSON:** key order, the original indentation (2 spaces if new), and a
+    final newline;
+  - **YAML:** comments, key order and quoting style, through the `yaml`
+    package's Document API, which edits the parsed document in place;
+  - **Markdown and MDX:** split the frontmatter at its `---` fences, write
+    it with the YAML codec, and write the body exactly as edited. A file
+    without frontmatter gets one only if the data isn't empty;
+  - **`file()` collections:** rewrite only the edited entry inside the file,
+    found by its `entryKey` from `documents.json`, with the file's codec.
+    Every other entry stays untouched.
+- **TBD (phase 1, task 1.4): YAML dates.** YAML turns an unquoted
+  `2025-04-04` into a `Date`. JSON can't carry one, so in the overlay it
+  arrives as an ISO string. `z.coerce.date()` accepts that, but a plain
+  `z.date()` would reject it. The same applies to Markdown frontmatter.
+  Test a `z.date()` field fed from YAML. If it fails, flavor 2 revives ISO
+  date strings into `Date`s for fields the schema declares as dates.
+- **Sample coverage:** a YAML-only collection, a YAML `file()` collection,
+  and one collection mixing JSON and YAML (WORKPLAN task 1.3a).

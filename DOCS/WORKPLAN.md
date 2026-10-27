@@ -254,8 +254,8 @@ before changing the design.
 design holds. The items below are additions, not reversals.
 
 **Decided with the user on 2026-10-26:** SYSTEM-DESIGN.md section 11, D1 to
-D9 for the rows below, plus D10 (ids with slashes), D11 (MDX bodies) and
-D12 (image metadata in the request).
+D9 for the rows below, plus D10 (ids with slashes), D11 (MDX bodies),
+D12 (image metadata in the request) and D13 (supported formats).
 The phase 1 tasks below were rewritten on 2026-10-26 to follow them; each
 task names the decisions it implements. If a task and a decision still
 disagree, the decision wins: fix the task. The table stays as the record of
@@ -306,6 +306,9 @@ From SYSTEM-DESIGN.md section 7:
   source, which 1.7 replaces with a dev-only document route.
 - **`POST /__preview/<island>`** and its props contract stay until 1.5
   lands, then go.
+- **Deviation, accepted 2026-10-26:** `contentDir` stays on `RegionConfig`
+  and in the virtual module, marked temporary, because the POST route still
+  resolves image paths with it. Task 1.5 removes it together with that route.
 - **`/__preview-media/*`** stays for now, marked in code and docs as a
   stopgap until the CMS app's media staging (phase 2). Task 1.4 makes it
   answer each upload's dimensions and format (D12).
@@ -329,6 +332,26 @@ including ones that load their own data.
 
 The integration writes these next to the bundle in
 `.build/<site>-manifest/`. The virtual module also exposes them to the routes.
+
+**Status (2026-10-26): implemented.** Deviations from the text below:
+
+- The virtual module exposes `manifestDir`, not the manifests themselves:
+  `routes.json` and `documents.json` are written during and after the build,
+  so the routes read them from disk when they start.
+- The schema pass uses rolldown, not esbuild (esbuild isn't in the tree; Vite
+  8 ships rolldown). The answer to D3's TBD is recorded there.
+- Where the data store is: Astro keeps it at `<root>/.astro/data-store.json`
+  (devalue format, entries carry `filePath`). It is complete in
+  `astro:build:done`, where `documents.json` is written.
+- `hasStaticPaths` comes from a pattern match on the page source; the hook
+  does not provide it.
+- The alias `resolveSpecifier` in the scan reads `paths` from the site's own
+  `tsconfig.json` and does not follow `extends`.
+- On sample-site the scan finds `config.json` and `theme.json` as build-time,
+  and `menu.json` and `social.json` as data modules. `documents.json` has 28
+  documents (without the generated posts): 4 testimonials share one file and
+  carry their `entryKey`. With `buildTimeFields` from the site config,
+  `config.json` lists its three `site` fields and `theme.json` is `['*']`.
 
 | File | Contents | How |
 |---|---|---|
@@ -364,7 +387,36 @@ once per stub flavor, replacing `astro:content`, `astro/loaders` and the
 Unit-test the pure parts: manifest shaping from hook data, the import scan on
 fixture files, and the merge of scan results with `buildTimeFields`.
 
+### 1.3a Formats in the sample site (D13)
+
+Add YAML to `sample-site`, so every supported format and the mixes are
+covered before the overlay is built. As in task 0.3, add rather than replace.
+
+| Addition | Tests |
+|---|---|
+| **`partners` collection:** `glob({ pattern: "**/*.yaml", base: "src/content/partners" })`, 3 or 4 entries with `name`, `logo: image()`, `url`, `order` and `since: z.coerce.date()` (unquoted dates in the YAML). A `partners` landing block lists them with `getCollection`, sorted by `order` | a YAML-only collection, YAML dates, `image()` in YAML |
+| **`stats` collection:** `file("src/content/stats.yaml")`, 3 or 4 entries with `label`, `value` and `updated: z.date()` (not coerced). A `stats` landing block shows them | YAML `file()` entries, and D13's TBD on plain `z.date()` |
+| **One author in YAML:** `src/content/authors/<name>.yaml`, after widening the authors pattern to `**/*.{json,yaml}`. One blog post references it | a collection mixing JSON and YAML, and a reference to a YAML document |
+| **YAML comments** in each new file, including one inside a list | round-trip writing in phase 2 |
+| Both new blocks on `landing/home-v2` | the blocks render on a page |
+
+- Add the visual checks to `DOCS/VISUAL-CHECKS-ON-SAMPLE-SITE.md`.
+- **Done when:** `astro build` passes, and `documents.json` lists the new
+  documents with format `yaml`, the `stats` entries with their `entryKey`, and
+  the authors collection with both formats.
+- Check that `documents.json` gives each document's format from its file
+  extension, and marks unsupported formats `editable: false` (D13).
+
 ### 1.4 Content overlay
+
+**First:** make the flavor 2 stubs reach the content config's local imports,
+per the note under D3's settled TBD. Add a fixture whose helper module
+imports `reference` from `astro:content`, and check both flavors on it.
+
+**Also settle D13's TBD on YAML dates** here: does a plain `z.date()` field
+accept the ISO string the overlay carries? Use the `stats` collection from
+1.3a. If not, revive ISO date strings for date fields in flavor 2, and record
+the answer in D13.
 
 Start from the spike (`.build/spike/content-shim.ts` and `build-overlay.ts`),
 written properly in `src/overlay/`:
@@ -462,7 +514,14 @@ section 3:
    `mdx-body` (D11) and `schema-refinement` (D3). Define them as a string
    union in `protocol.ts` so new ones are added in one place.
 
-Then delete `POST /__preview/<region>` and its props contract.
+Then delete `POST /__preview/<region>` and its props contract, and with them
+`contentDir` on `RegionConfig` and in the virtual module (deviation noted in
+1.1). Images resolve per D5 from then on.
+
+**Deciding whether a page has `getStaticPaths`:** use the page module's
+export at render time (`typeof page.getStaticPaths === 'function'`). The
+manifest's `hasStaticPaths` comes from a source pattern match, which misses
+forms like `export { getStaticPaths }`, so it is informational only.
 
 **The request body (D12).** Both routes take `{ documents, media }`, not a
 bare overlay. Validate the envelope before anything else and answer `400`
@@ -515,9 +574,11 @@ Bridge (`src/client/bridge.ts`):
 ### 1.7 Test editor v2
 
 - **Documents, not regions:** after `preview:rendered`, list the page's
-  documents. A JSON document gets a JSON textbox. A `.md` or `.mdx` document
-  gets a frontmatter textbox and a body textarea, sent as `{ data, body }`
-  (D2).
+  documents. A JSON or YAML document gets a JSON textbox. A `.md` or `.mdx`
+  document gets a frontmatter textbox, also as JSON, and a body textarea,
+  sent as `{ data, body }` (D2). The test editor shows every value as JSON,
+  whatever the file format (D13); dates appear as ISO strings. Writing YAML
+  back is phase 2.
 - **Build-time fields (D1):** documents flagged `buildTime` show "some
   fields apply after rebuild", with the field list.
 - **Limits:** show each value in `limits` as a plain note, e.g. "MDX body:
@@ -560,7 +621,10 @@ Bridge (`src/client/bridge.ts`):
     hydrates; change the toggle's props;
   - D8: a post set to `draft: true` disappears from `/blog` and its tag pages;
   - D10: render `/blog/generated/post-001` with an overlay;
-  - D11: an MDX body draft answers `limits: ["mdx-body"]`.
+  - D11: an MDX body draft answers `limits: ["mdx-body"]`;
+  - D13: a draft of the YAML author changes the post that references it; a
+    draft of one `stats` entry changes only that entry; a partners draft
+    reorders the block; the authors listing mixes JSON and YAML entries.
 - Performance in the end-to-end suite: 100 edits on `landing/long`, median
   render under 5 ms, and private memory recorded.
 - **D7 measurement:** generate 200 posts
@@ -588,6 +652,29 @@ Once the end-to-end suite runs on `sample-site`:
 Phases 2 to 5 are in SYSTEM-DESIGN.md section 9: CMS app with saving and
 publishing, real editor, self-host package, multi-tenant. Flesh them out here
 when phase 1 is done, using what it taught.
+
+Work already decided for phase 2:
+
+- **Format codecs (D13):** JSON, YAML, and Markdown and MDX frontmatter plus
+  body, each parsing to a value and writing back into the original text.
+  Round-trip tests on the sample's files: comments kept (including the one
+  inside a list), key order kept, the body untouched when only frontmatter
+  changed, one `stats` entry rewritten while the others stay byte for byte,
+  no format converted, and new entries created in the collection's default
+  format.
+
+Known issues to carry into those phases:
+
+- **Bundle portability (before `--bundle` in phase 4, and before bundles go
+  to object storage in phase 5).** `manifestDir` and `mediaDir` are absolute
+  build-machine paths baked into the virtual module, and the manifests live
+  in `.build/<site>-manifest/`, outside `outDir`. A bundle copied elsewhere
+  loses them. Move the manifests into `outDir` and resolve both folders
+  relative to the server entry or from an environment variable.
+- **`tsconfig.json` `extends`.** The import scan reads `paths` from the
+  site's own `tsconfig.json` only. Astro's base configs define no `paths`,
+  so this is fine for typical sites. Follow `extends` if a real site needs
+  it.
 
 ## 9. Running things
 
