@@ -4,6 +4,35 @@
 
 export type Props = Record<string, unknown>;
 
+/** What a render could not show (SYSTEM-DESIGN.md D2, D3, D11). Add new
+ *  values here so the render route and the editor agree on them. */
+export type Limit =
+  | 'mdx-body' // an MDX draft shows its saved body (D11)
+  | 'schema-refinement' // a schema refinement threw instead of returning false (D3)
+  | 'markdown-plugins' // a Markdown plugin failed; the draft rendered without plugins (D2)
+  | `code-language:${string}`; // a fence in a language not highlighted until publish (D2)
+
+/** The head data of a rendered page that the bridge patches. */
+export interface RenderedHead {
+  title?: string;
+  meta: Array<Record<string, string>>;
+}
+
+/** 200 answer of POST /__preview/render. */
+export interface RenderResponse {
+  html: string;
+  head: RenderedHead;
+  /** Keys of the documents the page read. */
+  documents: string[];
+  limits: Limit[];
+  renderMs: number;
+}
+
+/** 422 answer of POST /__preview/render and /__preview/validate. */
+export interface ValidationResponse {
+  errors: Array<{ key: string; path: (string | number)[]; message: string }>;
+}
+
 /** editor -> page */
 export interface DraftMessage {
   type: 'preview:draft';

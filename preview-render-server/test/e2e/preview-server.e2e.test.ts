@@ -1,152 +1,235 @@
-// End-to-end: the real preview build of sampleAstroProject, served by the
-// real Node server (see global-setup.ts), checked over HTTP.
+// End-to-end: the real preview build of sample-site, served by the real Node
+// server (see global-setup.ts), checked over HTTP.
 import fs from 'node:fs';
 import path from 'node:path';
-import { beforeAll, describe, expect, inject, it } from 'vitest';
+import { describe, expect, inject, it } from 'vitest';
 
 const BASE = inject('baseUrl');
-const SITE = path.resolve(import.meta.dirname, '../../../sampleAstroProject');
-const saved = JSON.parse(fs.readFileSync(path.join(SITE, 'src/content/pages/home.json'), 'utf8')) as {
-  blocks: Array<Record<string, unknown>>;
-};
+const SITE = path.resolve(import.meta.dirname, '../../../sample-site');
+const CLIENT = path.join(inject('buildDir'), 'sample-site', 'client');
+const readJson = (file: string) => JSON.parse(fs.readFileSync(path.join(SITE, file), 'utf8'));
 
-async function render(blocks: unknown, init: RequestInit = {}) {
-  const response = await fetch(`${BASE}/__preview/blocks`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ blocks }),
-    ...init,
-  });
-  const renderMs = Number(response.headers.get('server-timing')?.match(/dur=([\d.]+)/)?.[1]);
-  return { status: response.status, html: await response.text(), renderMs };
+interface Rendered {
+  html: string;
+  head: { title?: string; meta: Array<Record<string, string>> };
+  documents: string[];
+  limits: string[];
+  renderMs: number;
 }
 
-// Two expected differences from the static page: it optimizes images at build
-// time (/_astro/x.webp) while the live render points at the on-demand endpoint
-// (/_image?...), and it inlines component scripts, which the fragment leaves
-// out (the page already ran them).
+async function post(route: string, body: unknown, search = '', init: RequestInit = {}) {
+  const response = await fetch(`${BASE}/__preview/${route}${search}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+    ...init,
+  });
+  const text = await response.text();
+  let json: any;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    // Plain-text answers (400, 404, 500).
+  }
+  return { status: response.status, text, json, timing: response.headers.get('server-timing') };
+}
+const render = (path_: string, documents: Record<string, unknown> = {}, media?: unknown) =>
+  post('render', { documents, ...(media === undefined ? {} : { media }) }, `?path=${encodeURIComponent(path_)}`);
+
+// Three expected differences from the prerendered page; everything else must
+// be identical. The container leaves out the build's links, styles and bundled
+// scripts, which the page being patched already has. Images are optimized at
+// build time (/_astro/x.webp) while the live render points at the on-demand
+// endpoint (/_image?...), so <img> tags are compared apart. Swiper picks a
+// random class per render.
 const normalize = (html: string) =>
-  html.replace(/(<img[^>]*?) src="[^"]*"/g, '$1 src=""').replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, '');
-const sections = (html: string) => [...html.matchAll(/<section[^>]*data-block-index="(\d+)"/g)].map((m) => m[1]);
-const imgSrc = (html: string) => html.match(/<img[^>]*? src="([^"]*)"/)![1].replaceAll('&amp;', '&');
-const copy = () => structuredClone(saved.blocks);
+  html
+    .replace(/<img\b[^>]*>/g, '<img>')
+    .replace(/astro-swiper-\w+/g, 'astro-swiper-ID')
+    .replace(/<script\b[\s\S]*?<\/script>/g, '')
+    .replace(/<style\b[\s\S]*?<\/style>/g, '')
+    .replace(/<link\b[^>]*>/g, '')
+    .replace(/<!--.*?-->/g, '')
+    .replace(/\s+/g, ' ');
+const builtPage = (urlPath: string) => fs.readFileSync(path.join(CLIENT, urlPath === '/' ? '' : urlPath, 'index.html'), 'utf8');
 
-let page: string;
-beforeAll(async () => {
-  page = await (await fetch(`${BASE}/`)).text();
-});
-
-describe('the built page', () => {
-  it('wraps the region and loads the bridge', () => {
-    expect(page).toMatch(/<div style="display: contents" data-preview-region="blocks">/);
-    expect(page).toMatch(/<script type="module" src="\/_astro\/[^"]+\.js"><\/script>/);
+describe('the built site', () => {
+  it('serves prerendered pages and the test editor', async () => {
+    expect((await fetch(`${BASE}/`)).status).toBe(200);
+    const editor = await fetch(`${BASE}/__editor`);
+    expect(editor.status).toBe(200);
+    expect(await editor.text()).toMatch(/<iframe id="preview"/);
   });
 
-  it('renders the same region HTML as the live route', async () => {
-    const main = page.match(/<main[^>]*>([\s\S]*)<\/main>/)![1];
-    const region = main.match(/^\s*<div[^>]*data-preview-region="blocks"[^>]*>([\s\S]*)<\/div>\s*$/)![1];
-    const { status, html } = await render(saved.blocks);
+  it('writes the manifests next to the bundle', () => {
+    const manifest = path.join(inject('buildDir'), 'sample-site-manifest');
+    for (const name of ['routes.json', 'documents.json', 'schema.json', 'code-languages.json']) {
+      expect(fs.existsSync(path.join(manifest, name)), name).toBe(true);
+    }
+  });
+});
+
+describe('POST /__preview/render with no overlay', () => {
+  // Static, dynamic, rest-parameter, paginated, MDX and hydrated pages.
+  it.each(['/', '/blog', '/blog/blog-1', '/landing/home-v2', '/contact', '/faq', '/pricing', '/privacy-policy', '/tags/design', '/tags/design/2', '/blog/page/2', '/elements'])(
+    'renders %s as the prerendered page does',
+    async (urlPath) => {
+      const { status, json } = await render(urlPath);
+      expect(status).toBe(200);
+      expect(normalize((json as Rendered).html)).toBe(normalize(builtPage(urlPath)));
+    },
+  );
+
+  it('points hydrated components at the built chunks (D6)', async () => {
+    const { json } = await render('/pricing');
+    const island = (json as Rendered).html.match(/<astro-island[^>]*>/)![0];
+    expect(island).toMatch(/component-url="\/_astro\/PricingPlans\.[\w-]+\.js"/);
+    expect(island).toMatch(/renderer-url="\/_astro\/client\.[\w-]+\.js"/);
+    expect(island).not.toContain('before-hydration-url');
+    expect(builtPage('/pricing')).toContain(island.match(/component-url="[^"]*"/)![0]);
+  });
+
+  it('answers head data, the documents the page read, and timings', async () => {
+    const { status, json, timing } = await render('/blog/blog-1');
+    const rendered = json as Rendered;
     expect(status).toBe(200);
-    expect(normalize(html)).toBe(normalize(region));
+    expect(rendered.head.title).toBeTruthy();
+    expect(rendered.head.meta.length).toBeGreaterThan(3);
+    expect(rendered.documents).toContain('blog/blog-1');
+    expect(rendered.documents).toContain('authors/ana-torres');
+    expect(rendered.documents).toContain('data:src/config/menu.json');
+    expect(rendered.limits).toEqual([]);
+    expect(typeof rendered.renderMs).toBe('number');
+    expect(timing).toMatch(/^paths;dur=[\d.]+, render;dur=[\d.]+$/);
   });
 
-  it('serves the editor', async () => {
-    const response = await fetch(`${BASE}/__editor`);
-    expect(response.status).toBe(200);
-    expect(await response.text()).toMatch(/<iframe id="preview"/);
-  });
-});
-
-describe('render route', () => {
-  it('no longer serves saved props', async () => {
-    const response = await fetch(`${BASE}/__preview/blocks`);
-    expect(response.status).toBe(405);
-    expect(response.headers.get('allow')).toBe('POST');
-  });
-
-  it('leaves no script tags or local paths in the fragment', async () => {
-    const { html } = await render(saved.blocks);
-    expect(html).not.toMatch(/<script/);
-    expect(html).not.toMatch(/[A-Z]:\/|\.astro\?/);
-  });
-
-  it('follows a text edit', async () => {
-    const blocks = copy();
-    blocks[0].titularNegrita = 'cuando alguien te escucha de verdad.';
-    expect((await render(blocks)).html).toContain('cuando alguien te escucha de verdad.');
-  });
-
-  it('follows reordering', async () => {
-    const { html } = await render(copy().reverse());
-    expect(html.indexOf('servicios-shell')).toBeLessThan(html.indexOf('hero-shell'));
-    expect(sections(html)).toEqual(['0', '1', '2']);
-  });
-
-  it('follows added and removed blocks', async () => {
-    const blocks = copy();
-    blocks.push({ type: 'servicios', encabezado: 'Nuevo bloque', texto: 'Añadido en el borrador.' });
-    blocks.splice(1, 1);
-    const { html } = await render(blocks);
-    expect(sections(html)).toEqual(['0', '1', '2']);
-    expect(html).toContain('Nuevo bloque');
-    expect(html).not.toContain('testblock');
-  });
-
-  it('escapes text', async () => {
-    const blocks = copy();
-    blocks[1].texto = '<script>alert(1)</script>';
-    expect((await render(blocks)).html).toContain('&lt;script&gt;');
-  });
-
-  it('serves the build-time image it points to', async () => {
-    const image = await fetch(BASE + imgSrc((await render(saved.blocks)).html));
+  it('images go through the on-demand image endpoint, which serves them', async () => {
+    const { json } = await render('/blog/blog-1');
+    const src = (json as Rendered).html.match(/<img[^>]*? src="(\/_image\?[^"]*)"/)![1].replaceAll('&amp;', '&');
+    const image = await fetch(BASE + src);
     expect(image.status).toBe(200);
-    expect(image.headers.get('content-type')).toMatch(/^image\//);
+    expect(image.headers.get('content-type')).toBe('image/webp');
   });
 
-  it('answers 500 with a message for a relative image path not in the build', async () => {
-    const blocks = copy();
-    blocks[0].retrato = '../assets/images/not-in-build.png';
-    const { status, html } = await render(blocks);
-    expect(status).toBe(500);
-    expect(html).toContain('must be an imported image or a URL');
-  });
-
-  it('refuses unknown regions, non-JSON and cross-site requests', async () => {
-    const unknown = await fetch(`${BASE}/__preview/nope`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
-    expect(unknown.status).toBe(404);
-    expect((await render(saved.blocks, { headers: { 'content-type': 'text/plain' } })).status).toBe(404);
-    expect((await render(saved.blocks, { headers: { 'content-type': 'application/json', 'sec-fetch-site': 'cross-site' } })).status).toBe(403);
+  it('the dev-only script references of the container are stripped', async () => {
+    const { json } = await render('/');
+    expect((json as Rendered).html).not.toMatch(/\?astro&(amp;)?type=script/);
   });
 });
 
-describe('draft images', () => {
-  it('upload, serve and render, stored in the build folder', async () => {
-    const png = fs.readFileSync(path.join(SITE, 'src/content/assets/images/Andre2.png'));
+describe('POST /__preview/render with drafts', () => {
+  it('shows a draft of a JSON document', async () => {
+    const home = readJson('src/content/landing/home-v2.json');
+    home.blocks[0].title = 'Draft banner title';
+    const { json } = await render('/landing/home-v2', { 'landing/home-v2': home });
+    expect((json as Rendered).html).toContain('Draft banner title');
+    expect(builtPage('/landing/home-v2')).not.toContain('Draft banner title');
+  });
+
+  it('shows a draft of an imported data file in the header (D8)', async () => {
+    const menu = readJson('src/config/menu.json');
+    menu.main[0].name = 'Draft nav item';
+    const { json } = await render('/', { 'data:src/config/menu.json': menu });
+    expect((json as Rendered).html).toContain('Draft nav item');
+  });
+
+  it('previews a brand-new post: its own page, and the list that now includes it', async () => {
+    const post = {
+      data: { title: 'A brand new draft post', date: '2026-10-27', author: 'ana-torres', tags: ['design'] },
+      body: '## Heading\n\nSome text.\n\n```css\na { color: red }\n```\n\n```cpp\nint x = 1;\n```\n',
+    };
+    const own = await render('/blog/brand-new', { 'blog/brand-new': post });
+    expect(own.status).toBe(200);
+    expect((own.json as Rendered).html).toContain('A brand new draft post');
+    expect((own.json as Rendered).html).toContain('<h2 id="heading">Heading</h2>');
+    expect((own.json as Rendered).documents).toContain('blog/brand-new');
+    // The css fence is highlighted; cpp is not in the built content, so it stays plain (D2).
+    expect((own.json as Rendered).limits).toEqual(['code-language:cpp']);
+
+    const list = await render('/blog', { 'blog/brand-new': post });
+    expect((list.json as Rendered).html).toContain('A brand new draft post');
+    expect((await render('/blog/brand-new')).status).toBe(404);
+  });
+
+  it('a removed document leaves the page list', async () => {
+    expect((await render('/blog/blog-1')).status).toBe(200);
+    expect((await render('/blog/blog-1', { 'blog/blog-1': null })).status).toBe(404);
+  });
+
+  it('shows an uploaded draft image through the media map (D12)', async () => {
+    const png = fs.readFileSync(path.join(SITE, 'src/assets/authors/ana-torres.png'));
     const upload = await fetch(`${BASE}/__preview-media/new`, { method: 'POST', headers: { 'content-type': 'image/png' }, body: png });
     expect(upload.status).toBe(201);
-    const { url } = (await upload.json()) as { url: string };
-    expect(url).toMatch(/^\/__preview-media\/[0-9a-f]{16}\.png$/);
-    expect(fs.existsSync(path.join(inject('buildDir'), 'sampleAstroProject-media', path.basename(url)))).toBe(true);
-
-    const served = await fetch(BASE + url);
+    const entry = (await upload.json()) as { url: string; width: number; height: number; format: string };
+    expect(entry.url).toMatch(/^\/__preview-media\/[0-9a-f]{16}\.png$/);
+    const served = await fetch(BASE + entry.url);
     expect(served.status).toBe(200);
-    expect(served.headers.get('content-type')).toBe('image/png');
     expect(Buffer.from(await served.arrayBuffer()).length).toBe(png.length);
 
-    const blocks = copy();
-    blocks[0].retrato = url;
-    const { status, html } = await render(blocks);
+    const author = readJson('src/content/authors/ana-torres.json');
+    author.avatar = 'uploads/new-avatar.png';
+    const { status, json } = await render('/blog/blog-1', { 'authors/ana-torres': author }, { 'uploads/new-avatar.png': entry });
     expect(status).toBe(200);
-    expect(imgSrc(html)).toBe(url);
+    expect((json as Rendered).html).toContain(`src="${entry.url}"`);
+  });
+});
+
+describe('errors', () => {
+  it('422 names the failing fields of a draft that does not fit its schema', async () => {
+    const { status, json } = await render('/blog/blog-1', { 'blog/blog-1': { data: { title: 5 }, body: '' }, 'authors/ana-torres': { name: 1 } });
+    expect(status).toBe(422);
+    const found = json.errors.map((e: { key: string; path: string[] }) => `${e.key}:${e.path.join('.')}`);
+    expect(found).toContain('blog/blog-1:title');
+    expect(found).toContain('authors/ana-torres:name');
   });
 
-  it('refuses bad uploads', async () => {
-    const post = (type: string, body: string) =>
+  it('404 when no page matches', async () => {
+    const { status, text } = await render('/nothing/at/all');
+    expect(status).toBe(404);
+    expect(text).toContain('/nothing/at/all');
+  });
+
+  it('400 for a bad envelope or path, naming the part', async () => {
+    expect((await post('render', '{not json', '?path=/')).status).toBe(400);
+    expect((await post('render', {}, '?path=/')).text).toMatch(/"documents" must be an object/);
+    expect((await post('render', { documents: [] }, '?path=/')).status).toBe(400);
+    const badMedia = await post('render', { documents: {}, media: { 'a.png': { url: 'u', width: 0, height: 1, format: 'png' } } }, '?path=/');
+    expect(badMedia.status).toBe(400);
+    expect(badMedia.text).toMatch(/"width"/);
+    expect((await post('render', { documents: {} }, '')).status).toBe(400);
+    expect((await post('render', { documents: {} }, '?path=//evil.example')).status).toBe(400);
+  });
+
+  it('refuses other content types, cross-site calls and other methods', async () => {
+    const body = JSON.stringify({ documents: {} });
+    expect((await fetch(`${BASE}/__preview/render?path=/`, { method: 'POST', headers: { 'content-type': 'text/plain' }, body })).status).toBe(404);
+    expect(
+      (await fetch(`${BASE}/__preview/render?path=/`, { method: 'POST', headers: { 'content-type': 'application/json', 'sec-fetch-site': 'cross-site' }, body })).status,
+    ).toBe(403);
+    expect((await fetch(`${BASE}/__preview/render?path=/`)).status).toBe(405);
+    expect((await fetch(`${BASE}/__preview/validate`)).status).toBe(405);
+  });
+
+  it('refuses bad uploads and paths outside the media folder', async () => {
+    const upload = (type: string, body: string) =>
       fetch(`${BASE}/__preview-media/new`, { method: 'POST', headers: { 'content-type': type }, body });
-    expect((await post('image/svg+xml', '<svg/>')).status).toBe(415);
-    expect((await post('text/plain', 'x')).status).toBe(404);
+    expect((await upload('image/svg+xml', '<svg/>')).status).toBe(415);
+    expect((await upload('image/png', 'not an image')).status).toBe(415);
+    expect((await upload('text/plain', 'x')).status).toBe(404);
     expect((await fetch(`${BASE}/__preview-media/..%2Fsecret.png`)).status).toBe(404);
+  });
+});
+
+describe('POST /__preview/validate', () => {
+  it('200 for drafts that fit, 422 with field paths for those that do not', async () => {
+    const author = readJson('src/content/authors/ana-torres.json');
+    expect(await post('validate', { documents: { 'authors/ana-torres': author, 'blog/old': null } })).toMatchObject({ status: 200, json: { valid: true } });
+
+    const bad = await post('validate', { documents: { 'authors/ana-torres': { ...author, name: 7 }, 'nowhere/x': {} } });
+    expect(bad.status).toBe(422);
+    const found = bad.json.errors.map((e: { key: string; path: string[] }) => `${e.key}:${e.path.join('.')}`);
+    expect(found).toContain('authors/ana-torres:name');
+    expect(found).toContain('nowhere/x:');
   });
 });
 
@@ -160,30 +243,30 @@ describe('warm-up', () => {
 });
 
 describe('performance', () => {
-  it('renders 100 consecutive edits quickly', async () => {
+  it('renders 100 consecutive edits of a page quickly', async () => {
+    const home = readJson('src/content/landing/home-v2.json');
     const server: number[] = [];
     const wall: number[] = [];
     for (let i = 0; i < 100; i++) {
-      const blocks = copy();
-      blocks[0].titulo = `Edición ${i}`;
+      home.blocks[0].title = `Edit ${i}`;
       const start = performance.now();
-      const { status, renderMs } = await render(blocks);
+      const { status, json } = await render('/landing/home-v2', { 'landing/home-v2': home });
       wall.push(performance.now() - start);
       expect(status).toBe(200);
-      server.push(renderMs);
+      server.push((json as Rendered).renderMs);
     }
     const stat = (values: number[]) => {
       const sorted = [...values].sort((a, b) => a - b);
       const at = (q: number) => sorted[Math.floor(q * (sorted.length - 1))];
       return { median: at(0.5), p95: at(0.95), max: at(1) };
     };
-    const render_ = stat(server);
+    const renderStat = stat(server);
     const roundTrip = stat(wall);
     const fmt = ({ median, p95, max }: ReturnType<typeof stat>) =>
       `median ${median.toFixed(1)} ms, p95 ${p95.toFixed(1)} ms, max ${max.toFixed(1)} ms`;
-    console.log(`100 renders\n  render (server): ${fmt(render_)}\n  round trip:      ${fmt(roundTrip)}`);
+    console.log(`100 renders of /landing/home-v2\n  render (server): ${fmt(renderStat)}\n  round trip:      ${fmt(roundTrip)}`);
 
     // Generous bound: only catches a big regression, not machine noise.
-    expect(render_.median).toBeLessThan(20);
+    expect(renderStat.median).toBeLessThan(100);
   });
 });

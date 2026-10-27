@@ -1,0 +1,7 @@
+---
+// Nobody requests this page. It exists so the preview build has one on-demand
+// page: only then does Astro keep the site's renderers (React, MDX, ...) in the
+// server bundle, and the Container needs them to render hydrated components
+// (virtual:astro:renderers, see runtime.ts).
+export const prerender = false;
+---

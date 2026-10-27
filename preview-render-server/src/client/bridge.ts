@@ -11,7 +11,8 @@ const REGION_ATTR = 'data-preview-region';
 
 /**
  * Starts the bridge: listens for drafts from the parent (editor) window,
- * renders each through POST /__preview/<region> and swaps the HTML into the
+ * renders each through POST /__preview/<region> (removed in task 1.5; task 1.6
+ * moves the bridge to /__preview/render) and swaps the HTML into the
  * region's wrapper. Announces the page's regions with `preview:ready` once
  * started, so the editor knows when to send drafts.
  *

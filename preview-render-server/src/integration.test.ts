@@ -37,10 +37,7 @@ const site: ResolvedSiteConfig = {
   mediaDir: path.join(tmp, '.build/site-media'),
   manifestDir: path.join(tmp, '.build/site-manifest'),
   regions: {
-    blocks: {
-      component: 'src/components/BlockList.astro',
-      contentDir: 'src/content/pages',
-    },
+    blocks: { component: 'src/components/BlockList.astro' },
     nav: { component: 'src/components/Nav.astro' },
   },
 };
@@ -101,10 +98,9 @@ describe('siteModule (virtual:preview-site)', () => {
     expect(hook(plugin, 'load').call({}, '/some/file.ts')).toBeUndefined();
   });
 
-  it('imports each region component and lists its image folder', () => {
-    expect(source).toContain(`import region0 from "${posix(path.join(root, 'src/components/BlockList.astro'))}";`);
-    expect(source).toContain(`"blocks": { component: region0, ...{"contentDir":"src/content/pages"} }`);
-    expect(source).toContain(`"nav": { component: region1, ...{"contentDir":""} }`);
+  it('lists the site pages and the URL rules for the render route', () => {
+    expect(source).toContain("export const pages = import.meta.glob('/src/pages/**/*.{astro,md,mdx,html}');");
+    expect(source).toContain('export const urlRules = {"base":"/","trailingSlash":"ignore"};');
   });
 
   it('imports every image, keyed by its project path', () => {
@@ -172,7 +168,9 @@ describe('previewRenderServer', () => {
 
     expect(integration.name).toBe('preview-render-server');
     expect(injectRoute.mock.calls.map(([route]) => [route.pattern, route.prerender])).toEqual([
-      ['/__preview/[region]', false],
+      ['/__preview/anchor', false],
+      ['/__preview/render', false],
+      ['/__preview/validate', false],
       ['/__preview-media/[file]', false],
       ['/__preview/warm', false],
       ['/__editor', undefined],

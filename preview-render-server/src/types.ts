@@ -4,10 +4,6 @@
 export interface RegionConfig {
   /** The component that renders the region, relative to the site root. */
   component: string;
-  /** Folder that the props' relative image paths ("../assets/images/x.png")
-   *  resolve against. Temporary: only POST /__preview/<region> uses it, and
-   *  it goes away with that route (WORKPLAN task 1.5). */
-  contentDir?: string;
 }
 
 export interface SiteConfig {

@@ -5,14 +5,9 @@ export default {
   // Site folder, relative to this file.
   root: '../../sampleAstroProject',
 
-  // Region name -> the component that renders it. POST /__preview/<name> with
-  // a JSON body: the body is passed as the component's props. contentDir is
-  // where the props' relative image paths resolve (temporary, see types.ts).
+  // Region name -> the component the bridge marks on the page.
   regions: {
-    blocks: {
-      component: 'src/components/BlockList.astro',
-      contentDir: 'src/content/pages',
-    },
+    blocks: { component: 'src/components/BlockList.astro' },
   },
 
   port: 4400,

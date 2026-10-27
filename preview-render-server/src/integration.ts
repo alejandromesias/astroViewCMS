@@ -19,17 +19,19 @@ export const RESOLVED_ID = '\0' + VIRTUAL_ID;
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.avif', '.gif']);
 
 // Added only to the preview build. It:
-// - injects the render route /__preview/[region], the draft image route
-//   /__preview-media/[file] (a stopgap until the CMS app stages media, phase 2)
-//   and the test editor page /__editor;
+// - injects the render routes /__preview/render, /__preview/validate and
+//   /__preview/warm, the draft image route /__preview-media/[file] (a stopgap
+//   until the CMS app stages media, phase 2) and the test editor page
+//   /__editor, plus an on-demand page that keeps the site's renderers in the
+//   server bundle;
 // - wraps each region component in <div data-preview-region> on the site's
 //   pages, by redirecting the pages' imports to a generated wrapper (the site's
 //   source stays untouched);
 // - adds the bridge script to every page;
 // - writes the build manifests (schema.json, routes.json, documents.json) to
 //   site.manifestDir;
-// - generates a virtual module that hands the routes the region components,
-//   every image under src/, where to keep uploads and the site's CMS schemas.
+// - generates a virtual module that hands the routes the site's pages, every
+//   image under src/, where to keep uploads and the site's CMS schemas.
 export default function previewRenderServer(site: ResolvedSiteConfig): AstroIntegration {
   const contentConfig = findContentConfig(site.root);
   // Filled in by astro:config:setup, used when the build is done.
@@ -37,6 +39,7 @@ export default function previewRenderServer(site: ResolvedSiteConfig): AstroInte
   let loaderKinds: Record<string, 'glob' | 'file' | undefined> = {};
   // Where the build keeps its content data store.
   let cacheDir = path.join(site.root, 'node_modules', '.astro');
+  let urlRules = { base: '/', trailingSlash: 'ignore' };
 
   return {
     name: 'preview-render-server',
@@ -45,9 +48,20 @@ export default function previewRenderServer(site: ResolvedSiteConfig): AstroInte
       // preview needs is added here, nothing is written into the site.
       'astro:config:setup': async ({ injectRoute, injectScript, updateConfig }) => {
         // Server-rendered routes (the built server answers them on demand).
+        // Keeps the site's renderers in the server bundle (see the page).
         injectRoute({
-          pattern: '/__preview/[region]',
-          entrypoint: new URL('./preview-route.ts', import.meta.url),
+          pattern: '/__preview/anchor',
+          entrypoint: new URL('./render/renderers-anchor.astro', import.meta.url),
+          prerender: false,
+        });
+        injectRoute({
+          pattern: '/__preview/render',
+          entrypoint: new URL('./render-route.ts', import.meta.url),
+          prerender: false,
+        });
+        injectRoute({
+          pattern: '/__preview/validate',
+          entrypoint: new URL('./validate-route.ts', import.meta.url),
           prerender: false,
         });
         injectRoute({
@@ -81,7 +95,7 @@ export default function previewRenderServer(site: ResolvedSiteConfig): AstroInte
         updateConfig({
           vite: {
             plugins: [
-              siteModule(site, contentConfig, findAstroConfig(site.root)),
+              siteModule(site, contentConfig, findAstroConfig(site.root), () => urlRules),
               regionWrappers(wrappers),
               ...(contentConfig ? [schemaStubs(contentConfig, STUBS[2], STUB_QUERY) as Plugin] : []),
               contentImportRewrite({ srcDir, shimFile: fileURLToPath(new URL('./overlay/content-shim.ts', import.meta.url)) }),
@@ -109,6 +123,7 @@ export default function previewRenderServer(site: ResolvedSiteConfig): AstroInte
       },
       'astro:config:done': ({ config }) => {
         cacheDir = fileURLToPath(config.cacheDir);
+        urlRules = { base: config.base, trailingSlash: config.trailingSlash };
       },
       'astro:routes:resolved': ({ routes }) => {
         writeManifest(site, 'routes.json', shapeRoutes(routes, site.root));
@@ -193,9 +208,11 @@ export function regionWrappers(wrappers: Map<string, string>): Plugin {
  *  and the folder for uploads. The routes import it; it exists only during a
  *  build. */
 export function siteModule(
-  { root, regions, mediaDir, manifestDir }: Pick<ResolvedSiteConfig, 'root' | 'regions' | 'mediaDir' | 'manifestDir'>,
+  { root, mediaDir, manifestDir }: Pick<ResolvedSiteConfig, 'root' | 'mediaDir' | 'manifestDir'>,
   contentConfig?: string,
   astroConfigFile?: string,
+  /** The site's `base` and `trailingSlash`, known once Astro has resolved its config. */
+  urlRules: () => { base: string; trailingSlash: string } = () => ({ base: '/', trailingSlash: 'ignore' }),
 ): Plugin {
   return {
     name: 'preview-render-server:regions',
@@ -207,12 +224,6 @@ export function siteModule(
 
       // `lines` collects the import statements; the exports below use them.
       const lines: string[] = [];
-      // One entry per region: the component (imported) plus plain settings.
-      const regionEntries = Object.entries(regions).map(([name, region], i) => {
-        lines.push(`import region${i} from ${importPath(root, region.component)};`);
-        const fields = { contentDir: region.contentDir ?? '' };
-        return `${JSON.stringify(name)}: { component: region${i}, ...${JSON.stringify(fields)} }`;
-      });
       // Importing an image makes Vite emit it and gives back its ImageMetadata.
       const imageEntries = findImages(path.join(root, 'src')).map((file, i) => {
         lines.push(`import image${i} from ${importPath(root, file)};`);
@@ -221,10 +232,12 @@ export function siteModule(
 
       return [
         ...lines,
-        `export const regions = { ${regionEntries.join(', ')} };`,
         `export const images = { ${imageEntries.join(', ')} };`,
         `export const mediaDir = ${JSON.stringify(toPosix(mediaDir))};`,
         `export const manifestDir = ${JSON.stringify(toPosix(manifestDir))};`,
+        // The site's pages, loaded on demand by the render route.
+        "export const pages = import.meta.glob('/src/pages/**/*.{astro,md,mdx,html}');",
+        `export const urlRules = ${JSON.stringify(urlRules())};`,
         // The site's markdown config (remark/rehype plugins, Shiki), for Markdown drafts.
         contentConfig && astroConfigFile
           ? `import siteConfig from ${importPath(root, astroConfigFile)}; export const markdownConfig = siteConfig?.markdown;`

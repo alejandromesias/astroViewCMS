@@ -1,4 +1,4 @@
-// Builds the sample site with `npm run build`'s script into a temporary
+// Builds sample-site with `npm run build`'s script into a temporary
 // folder (.build/e2e-*, via PREVIEW_BUILD_DIR), starts `npm start`'s script on
 // a free port and hands its URL to the tests. The usual .build/<site> output
 // and a server already running on the usual port are left alone.
@@ -16,7 +16,7 @@ declare module 'vitest' {
 }
 
 const SERVER_DIR = path.resolve(import.meta.dirname, '../..');
-const SITE_CONFIG = 'sites/sampleAstroProject.config.ts';
+const SITE_CONFIG = 'sites/sample-site.config.ts';
 // Astro 7 sends `astro` commands to the background when it detects an AI
 // agent (see HANDOFF environment notes); clear those markers for children.
 const AGENT_VARS = ['AI_AGENT', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_CHILD_SESSION', 'CLAUDE_AGENT_SDK_VERSION'];

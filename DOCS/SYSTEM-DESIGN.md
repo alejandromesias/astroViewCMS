@@ -902,10 +902,22 @@ all its entries.
   e.g. a Swiper carousel in a changed region. That stays a known limit.
   **TBD (phase 3, with the real editor):** a fallback that re-renders and
   reloads the iframe with the overlay for regions marked script-dependent.
-- **TBD (phase 1, task 1.5):** check that the Container API writes
-  `component-url` and `renderer-url` pointing at the built client chunks
-  (`/_astro/PricingPlans.<hash>.js`), as the prerendered page does. If it
-  writes source paths, map them through the build manifest.
+- **Settled in task 1.5 (2026-10-27):** the Container API writes source
+  specifiers (`component-url="@/components/PricingPlans"`,
+  `renderer-url="@astrojs/react/client.js"`) and a
+  `before-hydration-url="astro:scripts/before-hydration.js"`, none of which a
+  page can load. The render route passes the Container a `resolve` function
+  that maps them through the server manifest's `entryModules`
+  (`virtual:astro:manifest`), which holds exactly those keys. The islands then
+  match the prerendered page: `/_astro/PricingPlans.<hash>.js` and
+  `/_astro/client.<hash>.js`, and an empty entry (before-hydration) leaves the
+  attribute out. Tested on `/pricing` and `/elements` (`src/render/islands.ts`).
+- **The Container needs the site's renderers** (React, MDX), or hydrated
+  components fail with `NoMatchingRenderer`. Astro drops its renderer list
+  from the server bundle unless the build has an on-demand *page*, and the
+  preview routes are endpoints. The integration therefore injects one unused
+  on-demand page (`/__preview/anchor`); the route then reads
+  `virtual:astro:renderers`.
 - **Tests:** add a hydrated block to a page without one, change the toggle's
   props, and move a block next to a hydrated one.
 
@@ -916,7 +928,12 @@ from every post, on every render.
 
 **Decision.**
 
-- **Measure first** in task 1.8, with the generated posts (200).
+- **Measured in task 1.5 (2026-10-27), with 100 generated posts (105 in
+  all):** `getStaticPaths` takes 0.1 to 2 ms on a warm server (first call
+  20 ms), against a 2 to 5 ms render: `blog/[...single]` 0.2 ms,
+  `tags/[tag]/[...page]` 0.8 to 2 ms, `blog/page/[slug]` 0.1 to 0.3 ms. The
+  threshold below isn't crossed, so **no cache for now**. Task 1.8 still repeats
+  the measure with 200 posts.
 - **Cache only if needed:** if `getStaticPaths` adds more than 2 ms to the
   median render, memoize its result per route. The key is the overlay entries
   of the collections it read (from the read log). An empty overlay means one

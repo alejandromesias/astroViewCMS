@@ -23,3 +23,4 @@ export const getCollection = api.getCollection;
 export const getEntry = api.getEntry;
 export const getEntries = api.getEntries;
 export const render = api.render;
+export const validate = api.validate;

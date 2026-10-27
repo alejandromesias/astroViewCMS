@@ -326,3 +326,39 @@ describe('request scope', () => {
 
 // Keep the import used: `image` stubs are exercised through the schema above.
 void image;
+
+describe('validate', () => {
+  const validate = (documents: Record<string, unknown>, media = {}) => {
+    const context = createOverlayContext({ documents, media });
+    return runWithOverlay(context, () => api.validate(context));
+  };
+
+  it('is empty when every draft fits its schema; removed documents and data files are skipped', async () => {
+    const errors = await validate({
+      'authors/ana': { name: 'A', avatar: '../../assets/authors/ana.png' },
+      'blog/new': { data: { title: 'T' }, body: '' },
+      'blog/old': null,
+      'data:src/config/menu.json': { anything: 1 },
+    });
+    expect(errors).toEqual([]);
+  });
+
+  it('lists every failing field of every document with its key', async () => {
+    const errors = await validate({
+      'authors/bad': { name: 5, avatar: '../../assets/authors/missing.png' },
+      'blog/bad': { data: {}, body: '' },
+    });
+    expect(errors.map((e) => `${e.key}:${e.path.join('.')}`).sort()).toEqual(['authors/bad:avatar', 'authors/bad:name', 'blog/bad:title']);
+  });
+
+  it('rejects keys that name no document or no collection', async () => {
+    const errors = await validate({ nothing: {}, 'nowhere/x': {} });
+    expect(errors.map((e) => e.key).sort()).toEqual(['nothing', 'nowhere/x']);
+    expect(errors.find((e) => e.key === 'nowhere/x')!.message).toMatch(/Unknown collection "nowhere"/);
+  });
+
+  it('a refinement that throws is reported as an error of that document', async () => {
+    const errors = await validate({ 'blog/x': { data: { title: 'T', max: 3 }, body: '' } });
+    expect(errors).toEqual([{ key: 'blog/x', path: [], message: 'refinement blew up' }]);
+  });
+});

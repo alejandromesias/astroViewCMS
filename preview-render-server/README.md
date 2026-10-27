@@ -34,8 +34,10 @@ editor ──postMessage draft──▶ bridge (in the iframe) ──POST /__pre
 - `src/schema/`: the CMS schema pass. The site's `content.config.ts` is
   compiled with stubs for `astro:content`, `astro/loaders`, `image()` and
   `reference()`: flavor 1 makes `schema.json`, flavor 2 goes into the bundle.
-- `src/preview-route.ts`: `POST` renders the props of a region (same-site
-  JSON only).
+- `src/render-route.ts` and `src/validate-route.ts`: `POST /__preview/render?path=`
+  renders a page with a content overlay, `POST /__preview/validate` checks the
+  overlay against the schemas. The logic is in `src/render/` (route matching,
+  getStaticPaths and `paginate`, document discovery, handlers).
 - `src/media-route.ts`: draft image upload (`POST /__preview-media/new`) and
   serving.
 - `src/warmup-route.ts`: `POST /__preview/warm` loads the Markdown renderer and

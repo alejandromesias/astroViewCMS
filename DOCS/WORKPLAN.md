@@ -528,6 +528,40 @@ written properly in `src/overlay/`:
 
 ### 1.5 The render route
 
+**Status (2026-10-27): implemented.** Code in `src/render/` (route matching,
+`paginate`, page render, document discovery, envelope checks, handlers, island
+URLs), thin routes in `src/render-route.ts` and `src/validate-route.ts`. Checked
+against a real preview build of `sample-site`: 12 pages (static, dynamic, rest
+parameter, paginated, MDX, hydrated) render the same as the prerendered pages,
+apart from the three expected differences listed in the e2e test (head links and
+scripts, `<img>` URLs through `/_image`, Swiper's random class). The e2e suite
+now runs on `sample-site` (31 tests); 301 unit tests. Things worth knowing:
+
+- **`routes.json` lists rest parameters as `...name`** in `params`; the render
+  compares them as `name`. (Page 1 of a paginated tag page was wrong until then.)
+- **D6 settled** (islands map to built chunks through the server manifest) and
+  **D7 measured** (no cache needed at ~105 posts): see SYSTEM-DESIGN.md.
+- **The Container needs the renderers**, and Astro only keeps them for builds
+  with an on-demand page: the integration injects `/__preview/anchor`.
+- **Deleted, as planned:** `POST /__preview/<region>`, `resolveImages`,
+  `contentDir` and the `regions` export of the virtual module. **The old test
+  editor and the bridge still call that route, so the editor shows nothing until
+  1.6 and 1.7 move them to `/__preview/render`.** Region wrappers stay, because
+  the bridge still looks for `data-preview-region`.
+- **Warm-up** is built (task 1.4); 1.7 makes the editor call it. First render
+  after boot: ~1.1 s (config import), then 2 to 5 ms per page.
+- Validation errors: the render answers 422 with every failing field of the
+  overlay (it re-validates all documents), not only the first it hit.
+- **Deviations from the task text:**
+  - `trailingSlash` is not enforced on incoming paths: `/about/` renders on a
+    site set to `never`. Only pagination URLs follow it. Kept on purpose, since
+    the editor sends paths of real pages and a lenient preview is harmless.
+  - The page list covers `.astro`, `.md`, `.mdx` and `.html` files in
+    `src/pages/`. Checked once with a temporary Markdown page (it rendered);
+    the sample site has no such page, so only the glob string is under test.
+- Not done: the `limits` for `mdx-body` etc. are typed in `protocol.ts`, but the
+  bridge messages there are still the v1 ones (1.6).
+
 `POST /__preview/render?path=<url path>`, contract in SYSTEM-DESIGN.md
 section 3:
 
@@ -778,5 +812,6 @@ New sample, to fill in during tasks 0.4 and 1.8:
 | Bundle size (external / bundled) | external: server 0.6 MB (565 KB of JS), client 4.5 MB (97 files). Bundled variant: not measured (`--bundle` is a phase 4 option) |
 | Idle and after-run private memory | 89 MB idle; 90 MB after fetching 8 pages (working set 96 MB). No islands, so no renders yet |
 | Render median: home, blog post, `landing/long` | |
-| Markdown body draft render, memory with Shiki | |
+| Markdown body draft render, memory with Shiki | See SYSTEM-DESIGN.md D2 and the warm-up row below |
+| Warm-up (`POST /__preview/warm`), task 1.5, working set on `sample-site` | 95 MB idle, 200 MB after warm-up (730 ms), 206 MB after rendering a page. Working set, so higher than the private-memory figures above |
 | Overlay size with 200 generated posts | |

@@ -10,11 +10,16 @@ import { reviveDates } from './dates.ts';
 import type { OverlayContext } from './context.ts';
 import { DraftError } from './errors.ts';
 import type { FieldIssue } from './errors.ts';
-import { entryKey, splitKey } from './keys.ts';
+import { DATA_PREFIX, entryKey, splitKey } from './keys.ts';
 import { mediaMetadata } from './media.ts';
 
 /** Marks entries built from a draft; `render()` needs to tell them apart. */
 export const DRAFT = Symbol.for('preview-render-server.draft');
+
+/** One field of one document that the schema rejects (the validate route's answer). */
+export interface ValidationError extends FieldIssue {
+  key: string;
+}
 
 export interface DraftInfo {
   /** The file extension of the document that holds the draft (`md`, `json`, ...). */
@@ -206,5 +211,29 @@ export function createContentApi(deps: ContentApiDeps) {
     return { Content: deps.emptyContent(), headings: [], remarkPluginFrontmatter: {} };
   }
 
-  return { getCollection, getEntry, getEntries, render };
+  /** Parses every content document of the overlay with the site's schema and
+   *  returns what fails, one item per field. Renders nothing (D3). */
+  async function validate(context: OverlayContext): Promise<ValidationError[]> {
+    const errors: ValidationError[] = [];
+    for (const [key, raw] of Object.entries(context.documents)) {
+      // Removed documents and data files have nothing to parse.
+      if (raw === null || key.startsWith(DATA_PREFIX)) continue;
+      const split = splitKey(key);
+      if (!split) {
+        errors.push({ key, path: [], message: 'Not a document key (expected "collection/id" or "data:<path>")' });
+      } else if (collections && !collections[split.collection]) {
+        errors.push({ key, path: [], message: `Unknown collection "${split.collection}"` });
+      } else {
+        try {
+          await buildEntry(context, split.collection, split.id, raw, await real.getEntry(split.collection, split.id));
+        } catch (error) {
+          if (error instanceof DraftError) errors.push(...error.issues.map((issue) => ({ key, ...issue })));
+          else throw error;
+        }
+      }
+    }
+    return errors;
+  }
+
+  return { getCollection, getEntry, getEntries, render, validate };
 }
