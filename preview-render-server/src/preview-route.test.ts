@@ -1,6 +1,6 @@
 import type { ImageMetadata } from 'astro';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { islands } from 'virtual:preview-islands';
+import { regions } from 'virtual:preview-site';
 import Broken from '../test/fixtures/Broken.astro';
 import Greeting from '../test/fixtures/Greeting.astro';
 import { BASE, callRoute, jsonRequest } from '../test/helpers.ts';
@@ -9,8 +9,8 @@ import { ALL, POST, resolveImages, stripSourceScripts } from './preview-route.ts
 const photo: ImageMetadata = { src: '/_astro/photo.abc.png', width: 800, height: 600, format: 'png' };
 
 beforeAll(() => {
-  islands.greeting = { component: Greeting, contentDir: 'src/content/pages' };
-  islands.broken = { component: Broken, contentDir: '' };
+  regions.greeting = { component: Greeting, contentDir: 'src/content/pages' };
+  regions.broken = { component: Broken, contentDir: '' };
 });
 
 describe('resolveImages', () => {
@@ -56,9 +56,9 @@ describe('stripSourceScripts', () => {
   });
 });
 
-describe('POST /__preview/<island>', () => {
-  it('renders the island with the posted props', async () => {
-    const response = await callRoute(POST, { island: 'greeting' }, jsonRequest('/__preview/greeting', { name: 'Ana', items: ['uno', 'dos'] }));
+describe('POST /__preview/<region>', () => {
+  it('renders the region with the posted props', async () => {
+    const response = await callRoute(POST, { region: 'greeting' }, jsonRequest('/__preview/greeting', { name: 'Ana', items: ['uno', 'dos'] }));
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('text/html; charset=utf-8');
@@ -70,43 +70,43 @@ describe('POST /__preview/<island>', () => {
   });
 
   it('strips the component script reference from the fragment', async () => {
-    const html = await (await callRoute(POST, { island: 'greeting' }, jsonRequest('/__preview/greeting', { name: 'Ana' }))).text();
+    const html = await (await callRoute(POST, { region: 'greeting' }, jsonRequest('/__preview/greeting', { name: 'Ana' }))).text();
     expect(html).not.toContain('<script');
   });
 
   it('escapes text', async () => {
     const html = await (
-      await callRoute(POST, { island: 'greeting' }, jsonRequest('/__preview/greeting', { name: '<img src=x onerror=alert(1)>' }))
+      await callRoute(POST, { region: 'greeting' }, jsonRequest('/__preview/greeting', { name: '<img src=x onerror=alert(1)>' }))
     ).text();
     expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
   });
 
   it('renders an uploaded draft image as a plain URL', async () => {
     const url = '/__preview-media/0123456789abcdef.png';
-    const html = await (await callRoute(POST, { island: 'greeting' }, jsonRequest('/__preview/greeting', { name: 'Ana', photo: url }))).text();
+    const html = await (await callRoute(POST, { region: 'greeting' }, jsonRequest('/__preview/greeting', { name: 'Ana', photo: url }))).text();
     expect(html).toContain(`src="${url}"`);
   });
 
-  it('answers 404 for an unknown island', async () => {
-    const response = await callRoute(POST, { island: 'nope' }, jsonRequest('/__preview/nope', {}));
+  it('answers 404 for an unknown region', async () => {
+    const response = await callRoute(POST, { region: 'nope' }, jsonRequest('/__preview/nope', {}));
     expect(response.status).toBe(404);
   });
 
   it('answers 400 when the body is not JSON', async () => {
-    const response = await callRoute(POST, { island: 'greeting' }, jsonRequest('/__preview/greeting', '{not json'));
+    const response = await callRoute(POST, { region: 'greeting' }, jsonRequest('/__preview/greeting', '{not json'));
     expect(response.status).toBe(400);
   });
 
   it('refuses non-JSON and cross-site requests', async () => {
     const text = new Request(`${BASE}/__preview/greeting`, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: '{}' });
-    expect((await callRoute(POST, { island: 'greeting' }, text)).status).toBe(404);
+    expect((await callRoute(POST, { region: 'greeting' }, text)).status).toBe(404);
     const crossSite = jsonRequest('/__preview/greeting', {}, { 'sec-fetch-site': 'cross-site' });
-    expect((await callRoute(POST, { island: 'greeting' }, crossSite)).status).toBe(403);
+    expect((await callRoute(POST, { region: 'greeting' }, crossSite)).status).toBe(403);
   });
 
   it('answers 500 with the error message when the render throws', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const response = await callRoute(POST, { island: 'broken' }, jsonRequest('/__preview/broken', {}));
+    const response = await callRoute(POST, { region: 'broken' }, jsonRequest('/__preview/broken', {}));
     expect(response.status).toBe(500);
     expect(await response.text()).toContain('broken on purpose');
     expect(consoleError).toHaveBeenCalledOnce();

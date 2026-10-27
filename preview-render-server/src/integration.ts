@@ -5,19 +5,19 @@ import type { AstroIntegration } from 'astro';
 import type { Plugin } from 'vite';
 import type { ResolvedSiteConfig } from './types.ts';
 
-export const VIRTUAL_ID = 'virtual:preview-islands';
+export const VIRTUAL_ID = 'virtual:preview-site';
 export const RESOLVED_ID = '\0' + VIRTUAL_ID;
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.avif', '.gif']);
 
 // Added only to the preview build. It:
-// - injects the render route /__preview/[island], the draft image route
+// - injects the render route /__preview/[region], the draft image route
 //   /__preview-media/[file] (a stopgap until the CMS app stages media, phase 2)
 //   and the test editor page /__editor;
-// - wraps each island component in <div data-preview-island> on the site's
+// - wraps each region component in <div data-preview-region> on the site's
 //   pages, by redirecting the pages' imports to a generated wrapper (the site's
 //   source stays untouched);
 // - adds the bridge script to every page;
-// - generates a virtual module that hands the routes the island components,
+// - generates a virtual module that hands the routes the region components,
 //   every image under src/, and where to keep uploads.
 export default function previewRenderServer(site: ResolvedSiteConfig): AstroIntegration {
   return {
@@ -28,7 +28,7 @@ export default function previewRenderServer(site: ResolvedSiteConfig): AstroInte
       'astro:config:setup': ({ injectRoute, injectScript, updateConfig }) => {
         // Server-rendered routes (the built server answers them on demand).
         injectRoute({
-          pattern: '/__preview/[island]',
+          pattern: '/__preview/[region]',
           entrypoint: new URL('./preview-route.ts', import.meta.url),
           prerender: false,
         });
@@ -48,55 +48,55 @@ export default function previewRenderServer(site: ResolvedSiteConfig): AstroInte
         injectScript('page', `import ${JSON.stringify(toPosix(bridge))};`);
 
         // Wrapper files first, then the Vite plugins that use them.
-        const wrappers = writeIslandWrappers(site);
+        const wrappers = writeRegionWrappers(site);
         updateConfig({
-          vite: { plugins: [islandsModule(site), islandWrappers(wrappers)] },
+          vite: { plugins: [siteModule(site), regionWrappers(wrappers)] },
         });
       },
     },
   };
 }
 
-/** Writes one wrapper .astro file per island into `islandsDir` (outside the
+/** Writes one wrapper .astro file per region into `regionsDir` (outside the
  *  site) and returns normalized component id -> wrapper path, which
- *  `islandWrappers` uses to redirect imports. `display: contents` keeps the
+ *  `regionWrappers` uses to redirect imports. `display: contents` keeps the
  *  wrapper out of the layout, so the page renders exactly as before. */
-export function writeIslandWrappers({
+export function writeRegionWrappers({
   root,
-  islands,
-  islandsDir,
-}: Pick<ResolvedSiteConfig, 'root' | 'islands' | 'islandsDir'>): Map<string, string> {
-  fs.mkdirSync(islandsDir, { recursive: true });
+  regions,
+  regionsDir,
+}: Pick<ResolvedSiteConfig, 'root' | 'regions' | 'regionsDir'>): Map<string, string> {
+  fs.mkdirSync(regionsDir, { recursive: true });
   const wrappers = new Map<string, string>();
-  for (const [name, island] of Object.entries(islands)) {
-    const component = path.resolve(root, island.component);
-    const wrapper = path.join(islandsDir, `${name}.astro`);
+  for (const [name, region] of Object.entries(regions)) {
+    const component = path.resolve(root, region.component);
+    const wrapper = path.join(regionsDir, `${name}.astro`);
     fs.writeFileSync(wrapper, wrapperSource(name, component));
     wrappers.set(normalizeId(component), toPosix(wrapper));
   }
   return wrappers;
 }
 
-/** Source of one wrapper: the island component inside the marker div the
+/** Source of one wrapper: the region component inside the marker div the
  *  bridge looks for. Props pass straight through. */
 export function wrapperSource(name: string, component: string): string {
   return [
     '---',
-    `import Island from ${JSON.stringify(toPosix(component))};`,
+    `import Region from ${JSON.stringify(toPosix(component))};`,
     '---',
-    `<div style="display: contents" data-preview-island=${JSON.stringify(name)}><Island {...Astro.props} /></div>`,
+    `<div style="display: contents" data-preview-region=${JSON.stringify(name)}><Region {...Astro.props} /></div>`,
     '',
   ].join('\n');
 }
 
-/** Vite plugin that points every import of an island component at its wrapper,
+/** Vite plugin that points every import of a region component at its wrapper,
  *  except the wrapper's own import and the render route's (through the
  *  virtual module), which need the bare component. That's how pages get the
  *  marker while the route renders the plain fragment. */
-export function islandWrappers(wrappers: Map<string, string>): Plugin {
+export function regionWrappers(wrappers: Map<string, string>): Plugin {
   const wrapperFiles = new Set([...wrappers.values()].map(normalizeId));
   return {
-    name: 'preview-render-server:island-wrappers',
+    name: 'preview-render-server:region-wrappers',
     enforce: 'pre',
     async resolveId(source, importer, options) {
       // Skip entry points, the virtual module and the wrappers themselves.
@@ -111,18 +111,18 @@ export function islandWrappers(wrappers: Map<string, string>): Plugin {
   };
 }
 
-/** Vite plugin that generates the `virtual:preview-islands` module (typed in
- *  virtual.d.ts): the island components with their image folder, every
+/** Vite plugin that generates the `virtual:preview-site` module (typed in
+ *  virtual.d.ts): the region components with their image folder, every
  *  image under the site's `src/` (so draft paths can become ImageMetadata),
  *  and the folder for uploads. The routes import it; it exists only during a
  *  build. */
-export function islandsModule({
+export function siteModule({
   root,
-  islands,
+  regions,
   mediaDir,
-}: Pick<ResolvedSiteConfig, 'root' | 'islands' | 'mediaDir'>): Plugin {
+}: Pick<ResolvedSiteConfig, 'root' | 'regions' | 'mediaDir'>): Plugin {
   return {
-    name: 'preview-render-server:islands',
+    name: 'preview-render-server:regions',
     resolveId(id) {
       if (id === VIRTUAL_ID) return RESOLVED_ID;
     },
@@ -131,11 +131,11 @@ export function islandsModule({
 
       // `lines` collects the import statements; the exports below use them.
       const lines: string[] = [];
-      // One entry per island: the component (imported) plus plain settings.
-      const islandEntries = Object.entries(islands).map(([name, island], i) => {
-        lines.push(`import island${i} from ${importPath(root, island.component)};`);
-        const fields = { contentDir: island.contentDir ?? '' };
-        return `${JSON.stringify(name)}: { component: island${i}, ...${JSON.stringify(fields)} }`;
+      // One entry per region: the component (imported) plus plain settings.
+      const regionEntries = Object.entries(regions).map(([name, region], i) => {
+        lines.push(`import region${i} from ${importPath(root, region.component)};`);
+        const fields = { contentDir: region.contentDir ?? '' };
+        return `${JSON.stringify(name)}: { component: region${i}, ...${JSON.stringify(fields)} }`;
       });
       // Importing an image makes Vite emit it and gives back its ImageMetadata.
       const imageEntries = findImages(path.join(root, 'src')).map((file, i) => {
@@ -145,7 +145,7 @@ export function islandsModule({
 
       return [
         ...lines,
-        `export const islands = { ${islandEntries.join(', ')} };`,
+        `export const regions = { ${regionEntries.join(', ')} };`,
         `export const images = { ${imageEntries.join(', ')} };`,
         `export const mediaDir = ${JSON.stringify(toPosix(mediaDir))};`,
       ].join('\n');

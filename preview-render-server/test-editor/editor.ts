@@ -1,7 +1,7 @@
 // Test editor logic (markup in editor.astro). It only speaks the bridge's
 // postMessage protocol (src/protocol.ts) plus one plain request, POST
 // /__preview-media/new for uploads. It has no source of saved content any more
-// (the island GET route is gone, WORKPLAN task 1.1): textboxes start empty and
+// (the region GET route is gone, WORKPLAN task 1.1): textboxes start empty and
 // the editor sends a draft only for a textbox that has content. Task 1.7
 // brings a dev-only document route back.
 import { isPageMessage, type DraftMessage, type Props } from '../src/protocol.ts';
@@ -10,7 +10,7 @@ export const RENDER_DELAY_MS = 120;
 
 /**
  * Wires up the test editor page (markup in editor.astro): loads the site in
- * the iframe, builds a JSON textbox per island the page reports, sends
+ * the iframe, builds a JSON textbox per region the page reports, sends
  * drafts to the bridge as you type, shows render results, and handles draft
  * image uploads. `win` and `fetchImpl` are parameters so tests can pass fakes.
  */
@@ -21,8 +21,8 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
 
   const iframe = byId<HTMLIFrameElement>('preview');
   const status = byId<HTMLElement>('status');
-  const islandsRoot = byId<HTMLElement>('islands');
-  const template = byId<HTMLTemplateElement>('island-template');
+  const regionsRoot = byId<HTMLElement>('regions');
+  const template = byId<HTMLTemplateElement>('region-template');
   const textareas = new Map<string, HTMLTextAreaElement>();
 
   /** Status line under the title; `state` ('ok' | 'error') drives its color. */
@@ -31,12 +31,12 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
     status.dataset.state = state;
   }
 
-  /** Sends an island's textbox content to the page as a draft. An empty
+  /** Sends a region's textbox content to the page as a draft. An empty
    *  textbox sends nothing. Invalid JSON is flagged on the textbox and not
    *  sent, so the page keeps its last good state. */
-  function sendDraft(island: string) {
-    const textarea = textareas.get(island)!;
-    const error = textarea.closest('.island')!.querySelector('.error')!;
+  function sendDraft(region: string) {
+    const textarea = textareas.get(region)!;
+    const error = textarea.closest('.region')!.querySelector('.error')!;
     if (!textarea.value.trim()) return;
     let props: Props;
     try {
@@ -48,25 +48,25 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
     }
     textarea.removeAttribute('aria-invalid');
     error.textContent = '';
-    const message: DraftMessage = { type: 'preview:draft', island, props };
+    const message: DraftMessage = { type: 'preview:draft', region, props };
     iframe.contentWindow?.postMessage(message, origin);
   }
 
-  /** Adds an island's section (empty textbox + reset button). Typing sends a
+  /** Adds a region's section (empty textbox + reset button). Typing sends a
    *  draft after RENDER_DELAY_MS of quiet. */
-  function addIsland(island: string) {
+  function addRegion(region: string) {
     const section = template.content.firstElementChild!.cloneNode(true) as HTMLElement;
-    section.querySelector('h2')!.textContent = `Island: ${island}`;
+    section.querySelector('h2')!.textContent = `Region: ${region}`;
     const error = section.querySelector('.error')!;
     const textarea = section.querySelector('textarea')!;
-    textarea.setAttribute('aria-label', `Props for island ${island}`);
-    islandsRoot.append(section);
-    textareas.set(island, textarea);
+    textarea.setAttribute('aria-label', `Props for region ${region}`);
+    regionsRoot.append(section);
+    textareas.set(region, textarea);
 
     let timer: ReturnType<typeof setTimeout> | undefined;
     textarea.addEventListener('input', () => {
       clearTimeout(timer);
-      timer = setTimeout(() => sendDraft(island), RENDER_DELAY_MS);
+      timer = setTimeout(() => sendDraft(region), RENDER_DELAY_MS);
     });
     // Reset: empty the textbox and reload the page, which shows the built content.
     section.querySelector('[data-action="reset"]')!.addEventListener('click', () => {
@@ -84,24 +84,24 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
     if (!isPageMessage(message)) return;
 
     if (message.type === 'preview:ready') {
-      // The page (re)loaded: rebuild the textboxes for the islands it has,
+      // The page (re)loaded: rebuild the textboxes for the regions it has,
       // keeping drafts in progress, and send them so the page shows them.
-      const islands = message.islands;
-      for (const island of [...textareas.keys()]) {
-        if (!islands.includes(island)) {
-          textareas.get(island)!.closest('.island')!.remove();
-          textareas.delete(island);
+      const regions = message.regions;
+      for (const region of [...textareas.keys()]) {
+        if (!regions.includes(region)) {
+          textareas.get(region)!.closest('.region')!.remove();
+          textareas.delete(region);
         }
       }
-      for (const island of islands) {
-        if (!textareas.has(island)) addIsland(island);
-        else sendDraft(island);
+      for (const region of regions) {
+        if (!textareas.has(region)) addRegion(region);
+        else sendDraft(region);
       }
-      setStatus(islands.length ? `Page ready: ${islands.join(', ')}` : 'This page has no editable islands');
+      setStatus(regions.length ? `Page ready: ${regions.join(', ')}` : 'This page has no editable regions');
     } else if (message.type === 'preview:rendered') {
-      setStatus(`Rendered "${message.island}" in ${message.renderMs} ms`);
+      setStatus(`Rendered "${message.region}" in ${message.renderMs} ms`);
     } else {
-      setStatus(`"${message.island}" failed (${message.status}): ${message.message}`, 'error');
+      setStatus(`"${message.region}" failed (${message.status}): ${message.message}`, 'error');
     }
   });
 

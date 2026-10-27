@@ -37,17 +37,17 @@ beforeAll(async () => {
 });
 
 describe('the built page', () => {
-  it('wraps the island and loads the bridge', () => {
-    expect(page).toMatch(/<div style="display: contents" data-preview-island="blocks">/);
+  it('wraps the region and loads the bridge', () => {
+    expect(page).toMatch(/<div style="display: contents" data-preview-region="blocks">/);
     expect(page).toMatch(/<script type="module" src="\/_astro\/[^"]+\.js"><\/script>/);
   });
 
-  it('renders the same island HTML as the live route', async () => {
+  it('renders the same region HTML as the live route', async () => {
     const main = page.match(/<main[^>]*>([\s\S]*)<\/main>/)![1];
-    const island = main.match(/^\s*<div[^>]*data-preview-island="blocks"[^>]*>([\s\S]*)<\/div>\s*$/)![1];
+    const region = main.match(/^\s*<div[^>]*data-preview-region="blocks"[^>]*>([\s\S]*)<\/div>\s*$/)![1];
     const { status, html } = await render(saved.blocks);
     expect(status).toBe(200);
-    expect(normalize(html)).toBe(normalize(island));
+    expect(normalize(html)).toBe(normalize(region));
   });
 
   it('serves the editor', async () => {
@@ -112,7 +112,7 @@ describe('render route', () => {
     expect(html).toContain('must be an imported image or a URL');
   });
 
-  it('refuses unknown islands, non-JSON and cross-site requests', async () => {
+  it('refuses unknown regions, non-JSON and cross-site requests', async () => {
     const unknown = await fetch(`${BASE}/__preview/nope`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
     expect(unknown.status).toBe(404);
     expect((await render(saved.blocks, { headers: { 'content-type': 'text/plain' } })).status).toBe(404);

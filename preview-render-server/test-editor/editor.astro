@@ -1,5 +1,5 @@
 ---
-// Test editor: a JSON textbox per island next to the site in an iframe. The
+// Test editor: a JSON textbox per region next to the site in an iframe. The
 // logic is in editor.ts. Served by the preview server for convenience (same
 // origin as the site); any other editor that speaks src/protocol.ts can
 // replace it. Open /__editor?page=/some/path to edit another page (default "/").
@@ -20,7 +20,7 @@
         <p id="status" role="status">Waiting for the page…</p>
       </header>
 
-      <div id="islands"></div>
+      <div id="regions"></div>
 
       <section class="upload">
         <h2>Draft image</h2>
@@ -35,8 +35,8 @@
 
     <iframe id="preview" title="Site preview"></iframe>
 
-    <template id="island-template">
-      <section class="island">
+    <template id="region-template">
+      <section class="region">
         <h2></h2>
         <textarea spellcheck="false" autocomplete="off"></textarea>
         <div class="actions">

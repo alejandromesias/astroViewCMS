@@ -6,7 +6,7 @@ import { startBridge } from './bridge.ts';
 const ORIGIN = 'http://localhost:4400';
 
 /** A page inside an iframe: real DOM (happy-dom), fake parent and fetch. */
-function setup(html = '<main><div data-preview-island="blocks"><p>saved</p></div></main>') {
+function setup(html = '<main><div data-preview-region="blocks"><p>saved</p></div></main>') {
   document.body.innerHTML = html;
   const parent = { postMessage: vi.fn() };
   const fetch = vi.fn<typeof globalThis.fetch>();
@@ -27,8 +27,8 @@ function setup(html = '<main><div data-preview-island="blocks"><p>saved</p></div
 
 const html = (body: string, status = 200, headers: Record<string, string> = {}) =>
   new Response(body, { status, headers: { 'content-type': 'text/html; charset=utf-8', ...headers } });
-const draft = (props: unknown = { blocks: [] }, island = 'blocks') => ({ type: 'preview:draft', island, props });
-const island = () => document.querySelector('[data-preview-island="blocks"]')!;
+const draft = (props: unknown = { blocks: [] }, region = 'blocks') => ({ type: 'preview:draft', region, props });
+const region = () => document.querySelector('[data-preview-region="blocks"]')!;
 
 let bridge: ReturnType<typeof setup>;
 afterEach(() => bridge?.stop?.());
@@ -40,9 +40,9 @@ describe('startBridge', () => {
     expect(startBridge(win as unknown as Window, vi.fn())).toBeNull();
   });
 
-  it('announces the islands on the page to the editor, with an explicit target origin', () => {
-    bridge = setup('<div data-preview-island="nav"></div><div data-preview-island="blocks"></div>');
-    expect(bridge.parent.postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'preview:ready', islands: ['nav', 'blocks'] }, ORIGIN);
+  it('announces the regions on the page to the editor, with an explicit target origin', () => {
+    bridge = setup('<div data-preview-region="nav"></div><div data-preview-region="blocks"></div>');
+    expect(bridge.parent.postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'preview:ready', regions: ['nav', 'blocks'] }, ORIGIN);
   });
 });
 
@@ -55,7 +55,7 @@ describe('on a draft', () => {
     bridge.fetch.mockResolvedValue(html('<p>draft</p>', 200, { 'server-timing': 'render;dur=0.4' }));
     bridge.post(draft({ blocks: [{ type: 'hero' }] }));
 
-    await vi.waitFor(() => expect(island().innerHTML).toBe('<p>draft</p>'));
+    await vi.waitFor(() => expect(region().innerHTML).toBe('<p>draft</p>'));
     expect(bridge.fetch).toHaveBeenCalledExactlyOnceWith('/__preview/blocks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -63,15 +63,15 @@ describe('on a draft', () => {
       cache: 'no-store',
       credentials: 'same-origin',
     });
-    expect(bridge.sent().at(-1)).toEqual({ type: 'preview:rendered', island: 'blocks', renderMs: 0.4 });
+    expect(bridge.sent().at(-1)).toEqual({ type: 'preview:rendered', region: 'blocks', renderMs: 0.4 });
   });
 
   it('keeps the wrapper element itself', async () => {
-    const wrapper = island();
+    const wrapper = region();
     bridge.fetch.mockResolvedValue(html('<p>draft</p>'));
     bridge.post(draft());
-    await vi.waitFor(() => expect(island().innerHTML).toBe('<p>draft</p>'));
-    expect(island()).toBe(wrapper);
+    await vi.waitFor(() => expect(region().innerHTML).toBe('<p>draft</p>'));
+    expect(region()).toBe(wrapper);
   });
 
   it('lets only the newest draft land when answers arrive out of order', async () => {
@@ -82,42 +82,42 @@ describe('on a draft', () => {
 
     bridge.post(draft({ n: 1 }));
     bridge.post(draft({ n: 2 }));
-    await vi.waitFor(() => expect(island().innerHTML).toBe('<p>second</p>'));
+    await vi.waitFor(() => expect(region().innerHTML).toBe('<p>second</p>'));
     answerFirst(html('<p>first</p>'));
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(island().innerHTML).toBe('<p>second</p>');
+    expect(region().innerHTML).toBe('<p>second</p>');
     expect(bridge.sent().filter((message) => message.type === 'preview:rendered')).toHaveLength(1);
   });
 
   it('reports a failed render and keeps the last good HTML', async () => {
-    bridge.fetch.mockResolvedValue(new Response('Island render failed: boom', { status: 500 }));
+    bridge.fetch.mockResolvedValue(new Response('Region render failed: boom', { status: 500 }));
     bridge.post(draft());
 
     await vi.waitFor(() =>
-      expect(bridge.sent().at(-1)).toEqual({ type: 'preview:error', island: 'blocks', status: 500, message: 'Island render failed: boom' }),
+      expect(bridge.sent().at(-1)).toEqual({ type: 'preview:error', region: 'blocks', status: 500, message: 'Region render failed: boom' }),
     );
-    expect(island().innerHTML).toBe('<p>saved</p>');
+    expect(region().innerHTML).toBe('<p>saved</p>');
   });
 
   it('refuses a 200 that is not HTML', async () => {
     bridge.fetch.mockResolvedValue(Response.json({ not: 'html' }));
     bridge.post(draft());
     await vi.waitFor(() => expect(bridge.sent().at(-1)).toMatchObject({ type: 'preview:error', status: 200 }));
-    expect(island().innerHTML).toBe('<p>saved</p>');
+    expect(region().innerHTML).toBe('<p>saved</p>');
   });
 
   it('reports a network error', async () => {
     bridge.fetch.mockRejectedValue(new TypeError('Failed to fetch'));
     bridge.post(draft());
     await vi.waitFor(() =>
-      expect(bridge.sent().at(-1)).toEqual({ type: 'preview:error', island: 'blocks', status: 0, message: 'TypeError: Failed to fetch' }),
+      expect(bridge.sent().at(-1)).toEqual({ type: 'preview:error', region: 'blocks', status: 0, message: 'TypeError: Failed to fetch' }),
     );
   });
 
-  it('reports an island that is not on the page', async () => {
+  it('reports a region that is not on the page', async () => {
     bridge.post(draft({}, 'footer'));
-    expect(bridge.sent().at(-1)).toEqual({ type: 'preview:error', island: 'footer', status: 0, message: 'No such island on this page' });
+    expect(bridge.sent().at(-1)).toEqual({ type: 'preview:error', region: 'footer', status: 0, message: 'No such region on this page' });
     expect(bridge.fetch).not.toHaveBeenCalled();
   });
 });
@@ -136,7 +136,7 @@ describe('ignores messages', () => {
   });
 
   it('that are not drafts', () => {
-    bridge.post({ type: 'preview:ready', islands: [] });
+    bridge.post({ type: 'preview:ready', regions: [] });
     bridge.post('hello');
     expect(bridge.fetch).not.toHaveBeenCalled();
   });

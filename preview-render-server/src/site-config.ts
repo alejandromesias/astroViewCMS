@@ -6,7 +6,7 @@ const BUILD_DIR = path.resolve(import.meta.dirname, '../.build');
 
 // Loads a site config file and resolves its paths. The build output goes to
 // .build/<site folder name>, so the site's own dist/ is never touched. Files
-// that must survive a rebuild (island wrappers, uploaded draft images) live
+// that must survive a rebuild (region wrappers, uploaded draft images) live
 // next to it, outside outDir. PREVIEW_BUILD_DIR moves all of it elsewhere
 // (the end-to-end tests build into a temporary folder).
 export async function loadSiteConfig(
@@ -31,7 +31,7 @@ export function resolveSiteConfig(config: SiteConfig, configDir: string, buildDi
     ...config,
     root,
     outDir: path.join(buildDir, name),
-    islandsDir: path.join(buildDir, `${name}-islands`),
+    regionsDir: path.join(buildDir, `${name}-regions`),
     mediaDir: path.join(buildDir, `${name}-media`),
   };
 }

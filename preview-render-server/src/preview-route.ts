@@ -1,5 +1,5 @@
-// POST /__preview/<island> with the island's props as JSON; answers with the
-// island's HTML, rendered in memory from the components compiled at build
+// POST /__preview/<region> with the region's props as JSON; answers with the
+// region's HTML, rendered in memory from the components compiled at build
 // time. Same pattern as Tina's island route (@tinacms/astro, Apache-2.0),
 // without the fetch-and-overlay step: the editor always sends complete data.
 //
@@ -9,7 +9,7 @@
 import path from 'node:path/posix';
 import type { APIRoute, ImageMetadata } from 'astro';
 import { experimental_AstroContainer as AstroContainer } from 'astro/container';
-import { images, islands } from 'virtual:preview-islands';
+import { images, regions } from 'virtual:preview-site';
 import { methodNotAllowed, rejectUnlessContentType } from './request-guard.ts';
 
 export const prerender = false;
@@ -25,11 +25,11 @@ const SOURCE_SCRIPT_TAG = /<script\b[^>]*\bsrc="[^"]*\?astro&(?:amp;)?type=scrip
 let containerPromise: Promise<AstroContainer> | undefined;
 
 /**
- * POST /__preview/<island>: renders the island with the JSON body as its
+ * POST /__preview/<region>: renders the region with the JSON body as its
  * props and answers with the HTML fragment (no page shell, no wrapper: the
  * bridge swaps it into the page's wrapper).
  *
- * Flow: guard the request, look up the island, parse the body, resolve image
+ * Flow: guard the request, look up the region, parse the body, resolve image
  * paths, render with the Container API, strip dev-only script tags. Render
  * failures answer 500 with the error message, so the editor can show it.
  */
@@ -37,9 +37,9 @@ export const POST: APIRoute = async ({ params, request }) => {
   const rejection = rejectUnlessContentType(request, /application\/json/);
   if (rejection) return rejection;
 
-  const island = islands[params.island ?? ''];
-  if (!island) {
-    return new Response(`Unknown island "${params.island}"`, { status: 404 });
+  const region = regions[params.region ?? ''];
+  if (!region) {
+    return new Response(`Unknown region "${params.region}"`, { status: 404 });
   }
 
   let props: unknown;
@@ -54,8 +54,8 @@ export const POST: APIRoute = async ({ params, request }) => {
     // Created on the first render and reused after that.
     containerPromise ??= AstroContainer.create();
     const container = await containerPromise;
-    const html = await container.renderToString(island.component, {
-      props: resolveImages(props, island.contentDir, images) as Record<string, unknown>,
+    const html = await container.renderToString(region.component, {
+      props: resolveImages(props, region.contentDir, images) as Record<string, unknown>,
     });
     // Reported to the editor through the Server-Timing header.
     const ms = (performance.now() - start).toFixed(1);
@@ -67,9 +67,9 @@ export const POST: APIRoute = async ({ params, request }) => {
       },
     });
   } catch (error) {
-    console.error(`[preview] render of "${params.island}" failed:`, error);
+    console.error(`[preview] render of "${params.region}" failed:`, error);
     const message = error instanceof Error ? error.message : String(error);
-    return new Response(`Island render failed: ${message}`, { status: 500 });
+    return new Response(`Region render failed: ${message}`, { status: 500 });
   }
 };
 

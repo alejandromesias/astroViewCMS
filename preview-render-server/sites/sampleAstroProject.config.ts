@@ -5,10 +5,10 @@ export default {
   // Site folder, relative to this file.
   root: '../../sampleAstroProject',
 
-  // Island name -> the component that renders it. POST /__preview/<name> with
+  // Region name -> the component that renders it. POST /__preview/<name> with
   // a JSON body: the body is passed as the component's props. contentDir is
   // where the props' relative image paths resolve (temporary, see types.ts).
-  islands: {
+  regions: {
     blocks: {
       component: 'src/components/BlockList.astro',
       contentDir: 'src/content/pages',

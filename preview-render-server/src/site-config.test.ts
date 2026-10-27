@@ -5,7 +5,7 @@ import type { SiteConfig } from './types.ts';
 
 const config: SiteConfig = {
   root: '../../my-site',
-  islands: { blocks: { component: 'src/components/BlockList.astro' } },
+  regions: { blocks: { component: 'src/components/BlockList.astro' } },
   port: 4400,
 };
 
@@ -18,12 +18,12 @@ describe('resolveSiteConfig', () => {
 
   it('puts output, wrappers and uploads in .build, named after the site folder', () => {
     expect(resolved.outDir).toBe(path.resolve('/work/server/.build/my-site'));
-    expect(resolved.islandsDir).toBe(path.resolve('/work/server/.build/my-site-islands'));
+    expect(resolved.regionsDir).toBe(path.resolve('/work/server/.build/my-site-regions'));
     expect(resolved.mediaDir).toBe(path.resolve('/work/server/.build/my-site-media'));
   });
 
   it('keeps the rest of the config', () => {
-    expect(resolved.islands).toEqual(config.islands);
+    expect(resolved.regions).toEqual(config.regions);
     expect(resolved.port).toBe(4400);
   });
 });
@@ -33,7 +33,7 @@ describe('loadSiteConfig', () => {
     const site = await loadSiteConfig(path.resolve(import.meta.dirname, '../sites/sampleAstroProject.config.ts'));
     expect(site.root).toBe(path.resolve(import.meta.dirname, '../../sampleAstroProject'));
     expect(site.outDir).toBe(path.resolve(import.meta.dirname, '../.build/sampleAstroProject'));
-    expect(Object.keys(site.islands)).toEqual(['blocks']);
+    expect(Object.keys(site.regions)).toEqual(['blocks']);
   });
 
   it('builds into another folder when given one (PREVIEW_BUILD_DIR)', async () => {

@@ -7,18 +7,18 @@ import previewRenderServer, {
   RESOLVED_ID,
   VIRTUAL_ID,
   findImages,
-  islandWrappers,
-  islandsModule,
+  regionWrappers,
+  siteModule,
   normalizeId,
   wrapperSource,
-  writeIslandWrappers,
+  writeRegionWrappers,
 } from './integration.ts';
 import type { ResolvedSiteConfig } from './types.ts';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'preview-integration-'));
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
-// A tiny site on disk: two islands and some images.
+// A tiny site on disk: two regions and some images.
 const root = path.join(tmp, 'site');
 for (const file of ['src/components/BlockList.astro', 'src/components/Nav.astro']) {
   fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
@@ -33,9 +33,9 @@ const site: ResolvedSiteConfig = {
   root,
   port: 4400,
   outDir: path.join(tmp, '.build/site'),
-  islandsDir: path.join(tmp, '.build/site-islands'),
+  regionsDir: path.join(tmp, '.build/site-regions'),
   mediaDir: path.join(tmp, '.build/site-media'),
-  islands: {
+  regions: {
     blocks: {
       component: 'src/components/BlockList.astro',
       contentDir: 'src/content/pages',
@@ -56,25 +56,25 @@ describe('wrapperSource', () => {
   it('imports the component and wraps it in a display:contents marker', () => {
     expect(wrapperSource('blocks', 'C:\\site\\src\\components\\BlockList.astro')).toMatchInlineSnapshot(`
       "---
-      import Island from "C:/site/src/components/BlockList.astro";
+      import Region from "C:/site/src/components/BlockList.astro";
       ---
-      <div style="display: contents" data-preview-island="blocks"><Island {...Astro.props} /></div>
+      <div style="display: contents" data-preview-region="blocks"><Region {...Astro.props} /></div>
       "
     `);
   });
 });
 
-describe('writeIslandWrappers', () => {
-  const wrappers = writeIslandWrappers(site);
+describe('writeRegionWrappers', () => {
+  const wrappers = writeRegionWrappers(site);
 
-  it('writes one wrapper per island', () => {
-    expect(fs.readdirSync(site.islandsDir).sort()).toEqual(['blocks.astro', 'nav.astro']);
-    expect(fs.readFileSync(path.join(site.islandsDir, 'nav.astro'), 'utf8')).toContain('data-preview-island="nav"');
+  it('writes one wrapper per region', () => {
+    expect(fs.readdirSync(site.regionsDir).sort()).toEqual(['blocks.astro', 'nav.astro']);
+    expect(fs.readFileSync(path.join(site.regionsDir, 'nav.astro'), 'utf8')).toContain('data-preview-region="nav"');
   });
 
   it('maps each normalized component id to its wrapper', () => {
     expect(wrappers.get(normalizeId(path.join(root, 'src/components/BlockList.astro')))).toBe(
-      posix(path.join(site.islandsDir, 'blocks.astro')),
+      posix(path.join(site.regionsDir, 'blocks.astro')),
     );
   });
 });
@@ -90,8 +90,8 @@ describe('findImages', () => {
 type Hook = (this: unknown, ...args: unknown[]) => unknown;
 const hook = (plugin: Plugin, name: 'resolveId' | 'load') => plugin[name] as unknown as Hook;
 
-describe('islandsModule (virtual:preview-islands)', () => {
-  const plugin = islandsModule(site);
+describe('siteModule (virtual:preview-site)', () => {
+  const plugin = siteModule(site);
   const source = hook(plugin, 'load').call({}, RESOLVED_ID) as string;
 
   it('resolves only the virtual id', () => {
@@ -100,10 +100,10 @@ describe('islandsModule (virtual:preview-islands)', () => {
     expect(hook(plugin, 'load').call({}, '/some/file.ts')).toBeUndefined();
   });
 
-  it('imports each island component and lists its image folder', () => {
-    expect(source).toContain(`import island0 from "${posix(path.join(root, 'src/components/BlockList.astro'))}";`);
-    expect(source).toContain(`"blocks": { component: island0, ...{"contentDir":"src/content/pages"} }`);
-    expect(source).toContain(`"nav": { component: island1, ...{"contentDir":""} }`);
+  it('imports each region component and lists its image folder', () => {
+    expect(source).toContain(`import region0 from "${posix(path.join(root, 'src/components/BlockList.astro'))}";`);
+    expect(source).toContain(`"blocks": { component: region0, ...{"contentDir":"src/content/pages"} }`);
+    expect(source).toContain(`"nav": { component: region1, ...{"contentDir":""} }`);
   });
 
   it('imports every image, keyed by its project path', () => {
@@ -117,10 +117,10 @@ describe('islandsModule (virtual:preview-islands)', () => {
   });
 });
 
-describe('islandWrappers', () => {
+describe('regionWrappers', () => {
   const component = posix(path.join(root, 'src/components/BlockList.astro'));
-  const wrapper = posix(path.join(site.islandsDir, 'blocks.astro'));
-  const plugin = islandWrappers(new Map([[normalizeId(component), wrapper]]));
+  const wrapper = posix(path.join(site.regionsDir, 'blocks.astro'));
+  const plugin = regionWrappers(new Map([[normalizeId(component), wrapper]]));
   const context = { resolve: vi.fn(async (source: string) => ({ id: source.startsWith('/') ? source : component })) };
   const resolveId = (source: string, importer: string | undefined) =>
     hook(plugin, 'resolveId').call(context, source, importer, {});
@@ -129,7 +129,7 @@ describe('islandWrappers', () => {
     expect(plugin.enforce).toBe('pre');
   });
 
-  it("redirects a page's import of an island component to its wrapper", async () => {
+  it("redirects a page's import of a region component to its wrapper", async () => {
     expect(await resolveId('../components/BlockList.astro', posix(path.join(root, 'src/pages/index.astro')))).toBe(wrapper);
   });
 
@@ -157,15 +157,15 @@ describe('previewRenderServer', () => {
 
     expect(integration.name).toBe('preview-render-server');
     expect(injectRoute.mock.calls.map(([route]) => [route.pattern, route.prerender])).toEqual([
-      ['/__preview/[island]', false],
+      ['/__preview/[region]', false],
       ['/__preview-media/[file]', false],
       ['/__editor', undefined],
     ]);
     expect(injectScript).toHaveBeenCalledExactlyOnceWith('page', expect.stringMatching(/^import ".*\/client\/bridge-entry\.ts";$/));
     const plugins = updateConfig.mock.calls[0][0].vite.plugins as Plugin[];
     expect(plugins.map((plugin) => plugin.name)).toEqual([
-      'preview-render-server:islands',
-      'preview-render-server:island-wrappers',
+      'preview-render-server:regions',
+      'preview-render-server:region-wrappers',
     ]);
   });
 });

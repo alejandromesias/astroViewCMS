@@ -26,8 +26,8 @@ function setup(search = '') {
   const origin = window.location.origin;
   const fromPage = (data: unknown, source: unknown = child) =>
     window.dispatchEvent(Object.assign(new Event('message'), { data, source, origin }));
-  const textarea = (island = 'blocks') =>
-    document.querySelector<HTMLTextAreaElement>(`textarea[aria-label="Props for island ${island}"]`);
+  const textarea = (region = 'blocks') =>
+    document.querySelector<HTMLTextAreaElement>(`textarea[aria-label="Props for region ${region}"]`);
   const status = () => document.getElementById('status')!;
   const drafts = () => child.postMessage.mock.calls.map(([message, target]) => ({ message, target }));
   return { iframe, child, fetch, origin, fromPage, textarea, status, drafts };
@@ -54,8 +54,8 @@ describe('loading the page', () => {
 });
 
 describe('on preview:ready', () => {
-  it('adds an empty textbox per island and sends nothing yet', () => {
-    editor.fromPage({ type: 'preview:ready', islands: ['blocks'] });
+  it('adds an empty textbox per region and sends nothing yet', () => {
+    editor.fromPage({ type: 'preview:ready', regions: ['blocks'] });
 
     expect(editor.textarea()?.value).toBe('');
     expect(editor.fetch).not.toHaveBeenCalled();
@@ -63,37 +63,37 @@ describe('on preview:ready', () => {
     expect(editor.status().textContent).toBe('Page ready: blocks');
   });
 
-  it('says so when the page has no islands', async () => {
-    editor.fromPage({ type: 'preview:ready', islands: [] });
-    await vi.waitFor(() => expect(editor.status().textContent).toBe('This page has no editable islands'));
+  it('says so when the page has no regions', async () => {
+    editor.fromPage({ type: 'preview:ready', regions: [] });
+    await vi.waitFor(() => expect(editor.status().textContent).toBe('This page has no editable regions'));
   });
 
   it('after a reload of the page, resends the drafts in progress', async () => {
-    editor.fromPage({ type: 'preview:ready', islands: ['blocks'] });
+    editor.fromPage({ type: 'preview:ready', regions: ['blocks'] });
     editor.textarea()!.value = '{"blocks":[]}';
 
-    editor.fromPage({ type: 'preview:ready', islands: ['blocks'] });
+    editor.fromPage({ type: 'preview:ready', regions: ['blocks'] });
 
     await vi.waitFor(() =>
       expect(editor.drafts().at(-1)).toEqual({
-        message: { type: 'preview:draft', island: 'blocks', props: { blocks: [] } },
+        message: { type: 'preview:draft', region: 'blocks', props: { blocks: [] } },
         target: editor.origin,
       }),
     );
-    expect(document.querySelectorAll('.island')).toHaveLength(1);
+    expect(document.querySelectorAll('.region')).toHaveLength(1);
   });
 
-  it('removes textboxes for islands the new page does not have', () => {
-    editor.fromPage({ type: 'preview:ready', islands: ['blocks'] });
+  it('removes textboxes for regions the new page does not have', () => {
+    editor.fromPage({ type: 'preview:ready', regions: ['blocks'] });
     expect(editor.textarea()).not.toBeNull();
-    editor.fromPage({ type: 'preview:ready', islands: [] });
+    editor.fromPage({ type: 'preview:ready', regions: [] });
     expect(editor.textarea()).toBeNull();
   });
 });
 
 describe('editing', () => {
   beforeEach(() => {
-    editor.fromPage({ type: 'preview:ready', islands: ['blocks'] });
+    editor.fromPage({ type: 'preview:ready', regions: ['blocks'] });
   });
 
   it(`sends the draft ${RENDER_DELAY_MS} ms after the last keystroke`, async () => {
@@ -108,20 +108,20 @@ describe('editing', () => {
       vi.useRealTimers();
     }
     expect(editor.drafts()).toEqual([
-      { message: { type: 'preview:draft', island: 'blocks', props: { blocks: [{ type: 'servicios' }] } }, target: editor.origin },
+      { message: { type: 'preview:draft', region: 'blocks', props: { blocks: [{ type: 'servicios' }] } }, target: editor.origin },
     ]);
   });
 
   it('flags invalid JSON and sends nothing', async () => {
     type(editor.textarea()!, '{"blocks": [');
     await vi.waitFor(() => expect(editor.textarea()!.getAttribute('aria-invalid')).toBe('true'));
-    expect(document.querySelector('.island .error')!.textContent).not.toBe('');
+    expect(document.querySelector('.region .error')!.textContent).not.toBe('');
     expect(editor.drafts()).toHaveLength(0);
 
     type(editor.textarea()!, '{"blocks": []}');
     await vi.waitFor(() => expect(editor.drafts()).toHaveLength(1));
     expect(editor.textarea()!.hasAttribute('aria-invalid')).toBe(false);
-    expect(document.querySelector('.island .error')!.textContent).toBe('');
+    expect(document.querySelector('.region .error')!.textContent).toBe('');
   });
 
   it('"Reset" empties the textbox and reloads the page', () => {
@@ -129,26 +129,26 @@ describe('editing', () => {
     document.querySelector<HTMLButtonElement>('[data-action="reset"]')!.click();
     expect(editor.textarea()!.value).toBe('');
     expect(editor.textarea()!.hasAttribute('aria-invalid')).toBe(false);
-    expect(document.querySelector('.island .error')!.textContent).toBe('');
+    expect(document.querySelector('.region .error')!.textContent).toBe('');
     expect(editor.child.location.reload).toHaveBeenCalledOnce();
   });
 });
 
 describe('status messages from the page', () => {
   it('shows render times', () => {
-    editor.fromPage({ type: 'preview:rendered', island: 'blocks', renderMs: 0.3 });
+    editor.fromPage({ type: 'preview:rendered', region: 'blocks', renderMs: 0.3 });
     expect(editor.status().textContent).toBe('Rendered "blocks" in 0.3 ms');
   });
 
   it('shows errors', () => {
-    editor.fromPage({ type: 'preview:error', island: 'blocks', status: 500, message: 'boom' });
+    editor.fromPage({ type: 'preview:error', region: 'blocks', status: 500, message: 'boom' });
     expect(editor.status().textContent).toBe('"blocks" failed (500): boom');
     expect(editor.status().dataset.state).toBe('error');
   });
 
   it('ignores messages from other windows and unknown messages', () => {
     const before = editor.status().textContent;
-    editor.fromPage({ type: 'preview:rendered', island: 'blocks', renderMs: 1 }, {});
+    editor.fromPage({ type: 'preview:rendered', region: 'blocks', renderMs: 1 }, {});
     editor.fromPage({ type: 'pageNavigation', pathname: '/' });
     expect(editor.status().textContent).toBe(before);
   });

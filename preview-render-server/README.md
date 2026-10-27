@@ -14,17 +14,17 @@ editor ──postMessage draft──▶ bridge (in the iframe) ──POST /__pre
 
 ## How it works
 
-- `sites/<site>.config.ts`: where the site lives. For each island: its
+- `sites/<site>.config.ts`: where the site lives. For each region: its
   component and the content file it reads.
 - `src/build.ts`: runs Astro's `build()` on the site, adding the Node adapter
   and `src/integration.ts`. Output goes to `.build/<site>/`, so the site's
   files and its normal static build are untouched.
 - `src/integration.ts`, which adds:
   - the routes;
-  - the `<div data-preview-island>` wrappers, by redirecting imports (no site
+  - the `<div data-preview-region>` wrappers, by redirecting imports (no site
     change);
   - the bridge script;
-  - a virtual module with the island components and every image under `src/`.
+  - a virtual module with the region components and every image under `src/`.
 - `src/preview-route.ts`: `GET` returns the saved props, `POST` renders
   them (same-site JSON only).
 - `src/media-route.ts`: draft image upload (`POST /__preview-media/new`) and
@@ -36,7 +36,7 @@ editor ──postMessage draft──▶ bridge (in the iframe) ──POST /__pre
   shared by the bridge and the editor.
 - `src/types.ts` and `src/virtual.d.ts`: site config types and the generated
   virtual module's types.
-- `test-editor/`: a test editor at `/__editor`, with a JSON textbox per island
+- `test-editor/`: a test editor at `/__editor`, with a JSON textbox per region
   next to the site in an iframe (`editor.astro` markup, `editor.ts` logic).
 - `src/start.ts`: runs `.build/<site>/server/entry.mjs`.
 - `test/`: test fixtures and helpers for the unit tests, and the end-to-end

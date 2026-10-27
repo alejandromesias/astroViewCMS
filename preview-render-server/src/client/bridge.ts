@@ -2,17 +2,17 @@
 // inactive unless the page is inside an iframe. It's the browser half of the
 // /__preview route: the editor (any editor) talks to it with postMessage (see
 // ../protocol.ts), it fetches the render from its own origin and swaps the
-// HTML into the island's wrapper.
+// HTML into the region's wrapper.
 //
-// Pattern from Tina's bridge (@tinacms/bridge island-refresh.ts, Apache-2.0).
+// Pattern from Tina's bridge (@tinacms/bridge region-refresh.ts, Apache-2.0).
 import { isDraftMessage, type PageMessage } from '../protocol.ts';
 
-const ISLAND_ATTR = 'data-preview-island';
+const REGION_ATTR = 'data-preview-region';
 
 /**
  * Starts the bridge: listens for drafts from the parent (editor) window,
- * renders each through POST /__preview/<island> and swaps the HTML into the
- * island's wrapper. Announces the page's islands with `preview:ready` once
+ * renders each through POST /__preview/<region> and swaps the HTML into the
+ * region's wrapper. Announces the page's regions with `preview:ready` once
  * started, so the editor knows when to send drafts.
  *
  * `win` and `fetchImpl` are parameters so tests can pass fakes. Returns a
@@ -24,34 +24,34 @@ export function startBridge(win: Window = window, fetchImpl: typeof fetch = win.
 
   const doc = win.document;
   const origin = win.location.origin;
-  const latestRequest = new Map<string, number>(); // island -> id of its newest request
+  const latestRequest = new Map<string, number>(); // region -> id of its newest request
   let requestCount = 0;
 
   // Always an explicit target origin, never '*'.
   const send = (message: PageMessage) => win.parent.postMessage(message, origin);
-  const findIsland = (name: string) =>
-    Array.from(doc.querySelectorAll<HTMLElement>(`[${ISLAND_ATTR}]`)).find(
-      (element) => element.getAttribute(ISLAND_ATTR) === name,
+  const findRegion = (name: string) =>
+    Array.from(doc.querySelectorAll<HTMLElement>(`[${REGION_ATTR}]`)).find(
+      (element) => element.getAttribute(REGION_ATTR) === name,
     );
 
-  // One draft from the editor: check the sender, find the island, render, swap.
+  // One draft from the editor: check the sender, find the region, render, swap.
   const onMessage = async (event: MessageEvent) => {
     // Only the parent window, from this origin, with a well-formed draft.
     if (event.source !== win.parent || event.origin !== origin) return;
     if (!isDraftMessage(event.data)) return;
 
-    const { island, props } = event.data;
-    const element = findIsland(island);
+    const { region, props } = event.data;
+    const element = findRegion(region);
     if (!element) {
-      send({ type: 'preview:error', island, status: 0, message: 'No such island on this page' });
+      send({ type: 'preview:error', region, status: 0, message: 'No such region on this page' });
       return;
     }
 
     // Only the newest draft may land: a slow answer to an older one is dropped.
     const id = ++requestCount;
-    latestRequest.set(island, id);
+    latestRequest.set(region, id);
     try {
-      const response = await fetchImpl(`/__preview/${encodeURIComponent(island)}`, {
+      const response = await fetchImpl(`/__preview/${encodeURIComponent(region)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(props ?? {}),
@@ -60,20 +60,20 @@ export function startBridge(win: Window = window, fetchImpl: typeof fetch = win.
       });
       const body = await response.text();
       // A newer draft was sent while this one was rendering: drop this answer.
-      if (latestRequest.get(island) !== id) return;
+      if (latestRequest.get(region) !== id) return;
       // Failures keep the last good HTML on the page and go to the editor.
       if (!response.ok || !response.headers.get('content-type')?.includes('text/html')) {
-        send({ type: 'preview:error', island, status: response.status, message: body.slice(0, 500) });
+        send({ type: 'preview:error', region, status: response.status, message: body.slice(0, 500) });
         return;
       }
       element.innerHTML = body;
       // Swapped-in HTML would replay the site's entrance animations on every
       // edit. Jump them to their end state; the first page load is unaffected.
       for (const animation of element.getAnimations?.({ subtree: true }) ?? []) animation.finish();
-      send({ type: 'preview:rendered', island, renderMs: serverRenderMs(response) });
+      send({ type: 'preview:rendered', region, renderMs: serverRenderMs(response) });
     } catch (error) {
-      if (latestRequest.get(island) !== id) return;
-      send({ type: 'preview:error', island, status: 0, message: String(error) });
+      if (latestRequest.get(region) !== id) return;
+      send({ type: 'preview:error', region, status: 0, message: String(error) });
     }
   };
 
@@ -81,7 +81,7 @@ export function startBridge(win: Window = window, fetchImpl: typeof fetch = win.
   win.addEventListener('message', onMessage);
   send({
     type: 'preview:ready',
-    islands: Array.from(doc.querySelectorAll(`[${ISLAND_ATTR}]`), (element) => element.getAttribute(ISLAND_ATTR) ?? ''),
+    regions: Array.from(doc.querySelectorAll(`[${REGION_ATTR}]`), (element) => element.getAttribute(REGION_ATTR) ?? ''),
   });
   return () => win.removeEventListener('message', onMessage);
 }

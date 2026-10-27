@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { mediaDir } from 'virtual:preview-islands';
+import { mediaDir } from 'virtual:preview-site';
 import { BASE, callRoute } from '../test/helpers.ts';
 import { ALL, GET, MAX_BYTES, POST, mediaFileName } from './media-route.ts';
 

@@ -8,7 +8,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { APIRoute } from 'astro';
-import { mediaDir } from 'virtual:preview-islands';
+import { mediaDir } from 'virtual:preview-site';
 import { methodNotAllowed, rejectCrossSite, rejectUnlessContentType } from './request-guard.ts';
 
 export const prerender = false;
