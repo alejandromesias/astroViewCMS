@@ -47,7 +47,8 @@ editor ──postMessage draft──▶ bridge (in the iframe) ──POST /__pre
   (idiomorph). The integration adds the bridge to every page with an inline
   script that passes the site's `editorOrigins`.
 - `src/protocol.ts`: the `postMessage` message types and runtime checks,
-  shared by the bridge and the editor.
+  shared by the bridge and the editor. Task 1.6a moves it to the
+  `preview-protocol/` workspace package and adds a protocol version (D14).
 - `src/types.ts` and `src/virtual.d.ts`: site config types and the generated
   virtual module's types.
 - `test-editor/`: a test editor at `/__editor`, with a JSON textbox per region

@@ -30,7 +30,7 @@ and can hold its built files.
 
 The rest of the document explains why, then specifies each part. Decisions
 taken later, after reviewing the sample site, are logged in section 11 (D1 to
-D13). Where they change a contract, the section itself is updated and points
+D14). Where they change a contract, the section itself is updated and points
 to the decision.
 
 ## 1. Vocabulary
@@ -336,7 +336,8 @@ Use the Container API path.
 - **Origins.** The editor and the preview must be on **different origins**
   in the real product (section 5). The bridge then accepts messages only from
   configured editor origins, like Tina's `PUBLIC_TINA_ADMIN_ORIGIN`, instead
-  of "same origin".
+  of "same origin". In the product the origins are node runtime config, not
+  part of the site build (D14).
 
 ### What still needs a rebuild
 
@@ -436,8 +437,9 @@ pulls, checks the build and pushes.
   site's own scripts. On the CMS app's origin, those scripts could call
   `/api/*` with the editor's cookies.
 - **Preview access** goes through a short-lived signed token that the CMS app
-  puts in the iframe URL. The preview origin turns it into its own cookie. No
-  login form on the preview.
+  puts in the iframe URL. The preview origin turns it into its own cookie and
+  redirects to the URL without the token. No login form on the preview. Cookie
+  names and the token rules are in D14.
 - **Builds:** the CMS app runs the preview build when the site's code changes
   (push webhook or a poll of the remote) and after each publish. About 25 s
   and several hundred MB while it runs. The old preview node keeps serving
@@ -610,7 +612,7 @@ core.
 |---|---|---|
 | **0. Reset the save work** | Park the uncommitted per-island save (section 7). Write the richer sample site (section 8) | Sample site builds and runs with plain `astro dev` and `astro build` |
 | **1. Page render with overlay** | Content shim (`AsyncLocalStorage`, read log, image and reference conversion), route manifest and `getStaticPaths` handling, `POST /__preview/render`, protocol v2, bridge morph/head/priming, `documents.json` and `schema.json` from the build | Every case in section 8's table renders correctly or has a documented limit. Median render under 5 ms on the 40-block page. Unit and end-to-end tests as today |
-| **2. CMS app, single tenant** | New `cms-server` package: document API, `PUT /api/changes` with revisions and validation, media staging, publish (commit, rebase, push), preview node supervision, separate origins and the preview token. Test editor talks to it | Edit two documents, save, reload: the preview shows saved content without a rebuild. A conflicting save answers 409. Publish creates one commit |
+| **2. CMS app, single tenant** | New `cms-server` package: document API, `PUT /api/changes` with revisions and validation, media staging, publish (commit, rebase, push), preview node supervision, separate origins and the preview token, editor origins as node config with `frame-ancestors`, rebuild on protocol mismatch (D14). Test editor talks to it | Edit two documents, save, reload: the preview shows saved content without a rebuild. A conflicting save answers 409. Publish creates one commit |
 | **3. Real editor** | Forms from `schema.json` (AstroAdmin's model), drafts in `localStorage`, document picker from the render's document list, click-to-focus from field paths | A non-developer can edit every case in the sample without touching JSON |
 | **4. Self-host package** | One container image (cms-server + preview node + git), env config, auth (one admin, argon2, sessions), rebuild on push webhook, bundled preview build (`--bundle`), Biome + CI | `docker run` on a small VPS edits and publishes the sample site |
 | **5. Multi-tenant** | Tenants, sites, users, roles in Postgres; preview router with on-demand start and idle stop; build queue with sandboxed workers; bundles and media in object storage; GitHub App for commits; server-side drafts | Two tenants edit two sites at once, isolated. Idle sites use no memory. Measured: memory per active site, cold start, build cost |
@@ -1151,3 +1153,62 @@ file by extension (checked 2026-10-26):
   yet, so it isn't tested against YAML itself.
 - **Sample coverage:** a YAML-only collection, a YAML `file()` collection,
   and one collection mixing JSON and YAML (WORKPLAN task 1.3a).
+
+### D14. The bridge ships in the bundle; the protocol is its own package
+
+**Finding.** Review of task 1.6 (2026-10-27) asked whether the bridge belongs
+to the preview node, the editor, or neither.
+
+- It runs in the site's page on the preview origin and calls only that
+  origin's `POST /__preview/render`. The editor cannot patch a cross-origin
+  iframe, so it is the preview node's browser half.
+- It is built into every preview bundle by the site's Vite, together with the
+  render, validate and warm-up routes and the `astro:content` shim. Its patch
+  rules (D6) depend on the bundle's Astro and renderer versions: `astro-island`
+  attributes, restoring `ssr` for React, the bootstrap scripts.
+- A node-wide `bridge.js`, built once per preview-server version, would save
+  few rebuilds (the routes are in the bundle anyway) and would need to support
+  every Astro version still in storage. Tina loads its bridge at run time, but
+  from the admin build, which is not tied to a site's Astro version.
+- Its contract, `protocol.ts`, sits in `preview-render-server`, which pulls in
+  Astro, sharp and rolldown. The CMS app and the real editor (phases 2 and 3)
+  would depend on all of that to read a message type.
+- `editorOrigins` is platform config (where the CMS app lives) but is baked in
+  at build time through `SiteConfig`.
+
+**Decision.**
+
+- **The bridge stays in the preview bundle.** A node-served `bridge.js` stays
+  an option for phase 3 or later, only if bundles pile up across protocol
+  versions.
+- **The protocol is its own package, `preview-protocol/`,** no dependencies,
+  shared by the bridge, the render handlers and every editor (WORKPLAN task
+  1.6a). It has `PROTOCOL_VERSION`. `preview:ready` and `preview:draft` carry
+  it. The guards check shape only; a separate `protocolMismatch()` treats a
+  missing field like a different value, so a bundle that predates the version
+  shows a mismatch instead of silently failing. The render response carries no
+  version, because the route and the bridge ship together.
+- **On a mismatch the CMS app triggers a preview build** instead of failing,
+  since a site nobody edits keeps an old bundle for months. At most once per
+  bundle (site, code revision, bundle id), so a worker on an old version
+  cannot loop. If the new bundle still mismatches, the editor shows the error.
+  While it builds (about 25 s) the editor shows the saved page with a note.
+- **Editor origins are node runtime config (phase 2).** `PREVIEW_EDITOR_ORIGINS`
+  is set by the cms-server or the preview router. The node sends
+  `frame-ancestors 'self' <origins>` on every page (needs a server in front of
+  the static pages) and serves the list at `GET /__preview/config` (an injected
+  route, no wrapper). The bridge keeps its own origin check as a second line of
+  defence and keeps the "never `'*'`" rule until an e2e test proves the header
+  on static pages. Changing the CMS domain needs a restart, not a rebuild.
+- **The preview token never reaches a `postMessage`.** The node exchanges the
+  token in the iframe URL for its cookie and redirects to the URL without it;
+  the bridge also drops a token parameter from the `path` it sends in `ready`.
+- **Cookies (phase 2).** The preview runs on a subdomain
+  (`preview-<site>.cms.example.com`), so the site's scripts can set cookies on
+  the parent domain, which the CMS app and other previews would receive. Name
+  the CMS session cookie and the preview cookie with the `__Host-` prefix (no
+  `Domain`, `Path=/`, `Secure`), so no subdomain can set or shadow them. Check
+  the two-port local setup. Stronger, to weigh in phase 5: serve previews from
+  a separate registrable domain, as GitHub does with `githubusercontent.com`.
+- **Terminology.** "Decision 4" is the read-only preview node in the summary
+  table at the top; "D4" is the `getEntry` call shapes.

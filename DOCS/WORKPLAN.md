@@ -28,6 +28,7 @@ parent folder: `../../HANDOFF.md`, `../../*-SYSTEM-OVERVIEW.md`, and the `tinacm
 | Per-island save | parked and removed (0.1, 1.1) |
 | Richer sample site | `sample-site/` in the workspace with the 0.3 additions; preview-built unchanged (0.4) |
 | Page render with content overlay | done (1.4, 1.5); `.build/spike/` is still to delete (0.6) |
+| Protocol package and version (`preview-protocol/`) | planned, task 1.6a (D14) |
 | CMS app, saving, publishing, real editor, auth | not started (phases 2 to 4) |
 
 Folder layout of `astroViewCMS/` (git repo on `master`, no remote):
@@ -35,8 +36,10 @@ Folder layout of `astroViewCMS/` (git repo on `master`, no remote):
 ```text
 astroViewCMS/
 ├─ package.json             npm workspace: sampleAstroProject, preview-render-server, sample-site
+│                           (+ preview-protocol, from task 1.6a)
 ├─ DOCS/                    SYSTEM-DESIGN.md, WORKPLAN.md, PREVIEW-RENDER-SERVER.md
 ├─ preview-render-server/   the renderer (see PREVIEW-RENDER-SERVER.md)
+├─ preview-protocol/        postMessage contract + version, no dependencies (task 1.6a)
 ├─ sampleAstroProject/      old sample: one page, one island; removed in task 1.10
 ├─ sample-site/             the new sample (bigspring template plus additions)
 └─ dante-astro-theme/       cloned template, evaluated and rejected; task 0.6 deletes it
@@ -644,6 +647,8 @@ a page. What that found:
   when a draft added it. (Its `astro-island` has no box, so scroll to a child.)
 - **Editor origins:** `SiteConfig.editorOrigins`, default same origin; the
   integration injects an inline script instead of `bridge-entry.ts` (deleted).
+  Temporary: D14 moves the origins to node runtime config in phase 2
+  (section 8), and the bridge stays inside the bundle.
 - **The test editor is now an interim version** (one JSON textbox for the whole
   overlay) so the bridge can be exercised; task 1.7 replaces it.
 - **Navigation fix (review, 2026-10-27):** the bridge now drops the answer to a
@@ -686,6 +691,45 @@ Bridge (`src/client/bridge.ts`):
 - **Component scripts:** still not re-run after a patch (D6). Check the
   Swiper carousel and document what happens. The reload fallback is a
   phase 3 TBD; don't build it now.
+
+### 1.6a Protocol package and version (D14)
+
+**Status: planned.** Review of 1.6 (2026-10-27) found the bridge in the right
+place (it ships inside the bundle, see D14) but its contract in the wrong
+package, and no way to tell a bridge and an editor of different versions apart.
+
+- **New workspace package `preview-protocol/`**, no dependencies. Add it to the
+  root `package.json` workspaces. Move `src/protocol.ts` and `protocol.test.ts`
+  there unchanged (`src/index.ts` and its test). Update the imports in
+  `src/client/bridge.ts`, `src/render/handlers.ts` and `test-editor/editor.ts`
+  (and their tests). Check that the import resolves in Node type stripping,
+  in Vite (the site's build bundles the bridge) and in `tsc`; the fallback is
+  an `"exports": { ".": "./src/index.ts" }` entry.
+- **Version, for the editor and the bridge only.** `export const
+  PROTOCOL_VERSION = 2`. `preview:ready` and `preview:draft` carry `protocol`.
+  The render response does not: the route and the bridge ship in the same
+  bundle, so they cannot disagree.
+- **The guards check shape, never the version.** `isPageMessage` and
+  `isDraftMessage` accept a message with or without `protocol`; otherwise an
+  old bundle would look like a preview that never loads, with no error. A
+  separate `protocolMismatch(message)` treats a missing field like a different
+  value:
+  - the bridge runs it on each draft and answers
+    `preview:error { status: 0, message: 'protocol mismatch: ...' }` without
+    rendering;
+  - the test editor runs it on each `ready` and shows it in the status line.
+    Bundles built before this task send no field, so they show up this way
+    until rebuilt.
+- **The test editor sends `protocol`** with every draft.
+- `SiteConfig.editorOrigins` stays until phase 2 (see section 8).
+- **Tests:** `ready` carries the version; a draft with a different `protocol`
+  gets `preview:error` and no fetch; a draft **without** `protocol` gets the
+  same error and is not dropped; the guards accept both shapes; the editor
+  flags a mismatch and a `ready` without the field.
+- **Check:** `npx tsc`; `npx vitest run src/client src/render/handlers
+  test-editor` plus the new package's tests; `npm run test:e2e` (the bundle
+  still builds with the bridge importing the package); a manual run of
+  `/__editor` (priming, a draft, a ClientRouter navigation).
 
 ### 1.7 Test editor v2
 
@@ -773,6 +817,36 @@ publishing, real editor, self-host package, multi-tenant. Flesh them out here
 when phase 1 is done, using what it taught.
 
 Work already decided for phase 2:
+
+- **Editor origins as node runtime config (D14).** Replaces
+  `SiteConfig.editorOrigins` (`src/types.ts`) and the argument of
+  `bridgeScript()` (`src/integration.ts`). Done with the cms-server, because
+  the header needs a server in front of the static pages:
+  - the node reads `PREVIEW_EDITOR_ORIGINS`, set by the cms-server (by the
+    preview router with many tenants);
+  - every page response carries `Content-Security-Policy: frame-ancestors
+    'self' <origins>`. Astro middleware never sees prerendered pages, so run
+    the node adapter in middleware mode behind a small Node wrapper (the
+    cms-server's supervision needs one anyway), or use the adapter's
+    static-headers option if it covers this. Check that first;
+  - `GET /__preview/config` is an injected route like the others and answers
+    `{ editorOrigins }` from the variable at run time. It needs no wrapper.
+    The bridge fetches it before announcing `ready`, so `ready` goes to the
+    right origins (one extra request per page load, only inside the iframe);
+  - the bridge keeps accepting messages only from `event.source ===
+    window.parent` with an origin in the list, and keeps its "never `'*'`"
+    rule and test. Only an e2e test that proves the header on static pages
+    may relax that, and D14 must say so;
+  - the token in the iframe URL is exchanged for the preview cookie, then the
+    node redirects to the same URL without it; the bridge also drops a token
+    parameter from the `path` it sends;
+  - both the CMS session cookie and the preview cookie use the `__Host-`
+    prefix (check the two-port local setup);
+  - changing the CMS domain then needs a node restart, not a rebuild.
+- **Protocol mismatch triggers one rebuild (D14).** When the CMS app sees a
+  `protocol` mismatch, it starts a preview build, at most once per bundle
+  (site, code revision, bundle id), and shows the saved page with a note while
+  it runs (about 25 s). If the new bundle still mismatches, show the error.
 
 - **Format codecs (D13):** JSON, YAML, and Markdown and MDX frontmatter plus
   body, each parsing to a value and writing back into the original text.
