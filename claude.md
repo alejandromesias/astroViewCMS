@@ -16,6 +16,8 @@ Verify efficiently: Run targeted tests and checks first. Avoid repeating success
 Target Specific Tests: Never run or request the full Vitest suite. Run unit tests and e2e tests exclusively targeting the feature currently being modified.
 Failure Truncation: If a test fails, do not paste or read the entire stack trace or passing test lists. Extract and analyze only the specific assertion error.
 
+Line endings: every file in this repo is LF, never CRLF. Write and edit with LF and do not convert a file's endings. `.gitattributes` and `.editorconfig` enforce this; if a diff shows a whole file changed, check for CRLF first (`git diff --ignore-cr-at-eol --stat`).
+
 <!-- 4. Implementation Workflow
 
 • Step 1: State the planned implementation or fix in one concise sentence.
