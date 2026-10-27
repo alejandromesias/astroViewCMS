@@ -438,7 +438,7 @@ the overlay inside a real build yet: task 1.5's route is the natural place.
     Shiki and adds `markdown-plugins` to `limits` (unit-tested with a failing
     processor). A failure while *importing* `astro.config` is not covered: that
     import is static in the virtual module and would fail the whole shim.
-  - **Warm-up:** `POST /__preview-warmup` (`warmup-route.ts`, 204) builds the
+  - **Warm-up:** `POST /__preview/warm` (`warmup-route.ts`, 204) builds the
     renderer and loads the allowed languages. Added here because it is small;
     task 1.5 still has to make the editor call it when a session starts.
 
@@ -549,7 +549,8 @@ section 3:
    added in one place (a template literal type for `code-language:`).
 
 **Warm-up (D2).** `POST /__preview/warm`, same guard, empty body, answers
-`204`. It loads the overlay route module (and with it `astro.config`) and
+`204`. **Route and renderer warm-up are already in (task 1.4, `warmup-route.ts`);
+what is left here is the editor calling it.** It loads the overlay route module (and with it `astro.config`) and
 renders a small Markdown string, so the ~1.25 s first-draft cost is paid
 before the first keystroke. The editor calls it when a session opens, while
 it loads the document. Never call it at boot: static-only nodes must stay at

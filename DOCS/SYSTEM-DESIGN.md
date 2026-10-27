@@ -745,7 +745,7 @@ carry it.
     Measured: RSS plateaus at 218 MB instead of 253 MB, and the `cpp`
     (+28 MB) and `ruby` spikes go away.
   - **Warm-up:** when an editing session starts, not at boot. The editor
-    calls `POST /__preview-warmup` while it loads the document (answers 204).
+    calls `POST /__preview/warm` while it loads the document (answers 204).
     That builds the Markdown renderer and loads the allowed languages (measured
     on `sample-site`: 92 MB to 196 MB, 0.26 s; a repeat call takes 12 ms).
     Nodes that only serve static pages stay at ~80 MB.

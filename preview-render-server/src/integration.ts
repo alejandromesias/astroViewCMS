@@ -5,8 +5,11 @@ import type { AstroIntegration } from 'astro';
 import type { Plugin } from 'vite';
 import { shapeDocuments, readDataStore } from './manifest/documents.ts';
 import { scanProject } from './manifest/import-scan.ts';
+import { collectLanguages, LANGUAGES_FILE } from './manifest/languages.ts';
 import type { ProjectScan } from './manifest/import-scan.ts';
 import { shapeRoutes } from './manifest/routes.ts';
+import { previewImageService } from './overlay/image-service.ts';
+import { contentImportRewrite, dataModules } from './overlay/plugins.ts';
 import { findContentConfig, loadCmsCollections, schemaStubs, STUB_QUERY, STUBS } from './schema/config-bundle.ts';
 import { shapeSchemas } from './schema/json-schema.ts';
 import type { ResolvedSiteConfig } from './types.ts';
@@ -50,6 +53,11 @@ export default function previewRenderServer(site: ResolvedSiteConfig): AstroInte
           entrypoint: new URL('./media-route.ts', import.meta.url),
           prerender: false,
         });
+        injectRoute({
+          pattern: '/__preview/warm',
+          entrypoint: new URL('./warmup-route.ts', import.meta.url),
+          prerender: false,
+        });
         // The test editor is a plain prerendered page.
         injectRoute({
           pattern: '/__editor',
@@ -60,22 +68,33 @@ export default function previewRenderServer(site: ResolvedSiteConfig): AstroInte
         const bridge = fileURLToPath(new URL('./client/bridge-entry.ts', import.meta.url));
         injectScript('page', `import ${JSON.stringify(toPosix(bridge))};`);
 
+        // The import scan (kept for documents.json) says which JSON files the
+        // site's code imports; the overlay turns those into proxy modules.
+        fs.mkdirSync(site.manifestDir, { recursive: true });
+        scan = await scanProject(site.root);
+
         // Wrapper files first, then the Vite plugins that use them.
         const wrappers = writeRegionWrappers(site);
+        const srcDir = path.join(site.root, 'src');
         updateConfig({
           vite: {
             plugins: [
-              siteModule(site, contentConfig),
+              siteModule(site, contentConfig, findAstroConfig(site.root)),
               regionWrappers(wrappers),
               ...(contentConfig ? [schemaStubs(contentConfig, STUBS[2], STUB_QUERY) as Plugin] : []),
+              contentImportRewrite({ srcDir, shimFile: fileURLToPath(new URL('./overlay/content-shim.ts', import.meta.url)) }),
+              previewImageService({ wrapperFile: fileURLToPath(new URL('./overlay/image-service.ts', import.meta.url)) }),
+              dataModules({
+                root: site.root,
+                srcDir,
+                files: scan.dataModules.map((file) => path.join(site.root, file)),
+                proxyFile: fileURLToPath(new URL('./overlay/data-proxy.ts', import.meta.url)),
+              }),
             ],
           },
         });
 
-        // Manifests that exist before the build: the import scan (kept for
-        // documents.json) and schema.json from the flavor 1 pass.
-        fs.mkdirSync(site.manifestDir, { recursive: true });
-        scan = await scanProject(site.root);
+        // schema.json from the flavor 1 pass.
         if (contentConfig) {
           const collections = await loadCmsCollections(
             site.root,
@@ -95,6 +114,7 @@ export default function previewRenderServer(site: ResolvedSiteConfig): AstroInte
           const store = readDataStore(site.root);
           const documents = shapeDocuments({ store, loaderKinds, scan, buildTimeFields: site.buildTimeFields });
           writeManifest(site, 'documents.json', documents);
+          writeManifest(site, LANGUAGES_FILE, { languages: collectLanguages(site.root, store, site.extraLanguages) });
         } catch (error) {
           logger.warn(`documents.json not written: ${(error as Error).message}`);
         }
@@ -170,6 +190,7 @@ export function regionWrappers(wrappers: Map<string, string>): Plugin {
 export function siteModule(
   { root, regions, mediaDir, manifestDir }: Pick<ResolvedSiteConfig, 'root' | 'regions' | 'mediaDir' | 'manifestDir'>,
   contentConfig?: string,
+  astroConfigFile?: string,
 ): Plugin {
   return {
     name: 'preview-render-server:regions',
@@ -199,6 +220,10 @@ export function siteModule(
         `export const images = { ${imageEntries.join(', ')} };`,
         `export const mediaDir = ${JSON.stringify(toPosix(mediaDir))};`,
         `export const manifestDir = ${JSON.stringify(toPosix(manifestDir))};`,
+        // The site's markdown config (remark/rehype plugins, Shiki), for Markdown drafts.
+        contentConfig && astroConfigFile
+          ? `import siteConfig from ${importPath(root, astroConfigFile)}; export const markdownConfig = siteConfig?.markdown;`
+          : 'export const markdownConfig = undefined;',
         // The content config compiled with the flavor 2 stubs (schemaStubs).
         contentConfig
           ? `export { collections as cmsCollections } from ${JSON.stringify(`${toPosix(path.resolve(root, contentConfig))}?${STUB_QUERY}`)};`
@@ -206,6 +231,11 @@ export function siteModule(
       ].join('\n');
     },
   };
+}
+
+/** The site's astro.config file, if it has one. */
+export function findAstroConfig(root: string): string | undefined {
+  return ['mjs', 'js', 'ts', 'mts'].map((ext) => path.join(root, `astro.config.${ext}`)).find((file) => fs.existsSync(file));
 }
 
 export function findImages(dir: string): string[] {

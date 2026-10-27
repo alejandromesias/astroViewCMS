@@ -1,6 +1,7 @@
 // Draft images: images an editor uploads before they exist in the site.
 //   POST /__preview-media/new   body = the image bytes, content-type image/*
-//                               -> { "url": "/__preview-media/<hash>.<ext>" }
+//                               -> { "url": "/__preview-media/<hash>.<ext>",
+//                                    "width", "height", "format" }  (D12)
 //   GET  /__preview-media/<file> serves it
 // Files are named by content hash and kept in .build/<site>-media/. Nothing
 // is written into the site; saving them there is a later step.
@@ -8,6 +9,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { APIRoute } from 'astro';
+import sharp from 'sharp';
 import { mediaDir } from 'virtual:preview-site';
 import { methodNotAllowed, rejectCrossSite, rejectUnlessContentType } from './request-guard.ts';
 
@@ -47,10 +49,15 @@ export const POST: APIRoute = async ({ params, request }) => {
     return new Response('Image must be between 1 byte and 10 MB', { status: 413 });
   }
 
+  // Whoever stores an image measures it, once (D12): the request carries the
+  // result back in its media map. Nothing but the file is kept here.
+  const measures = await measureImage(bytes);
+  if (!measures) return new Response('Not a readable image', { status: 415 });
+
   const name = mediaFileName(bytes, ext);
   await fs.mkdir(mediaDir, { recursive: true });
   await fs.writeFile(path.join(mediaDir, name), bytes);
-  return Response.json({ url: `/__preview-media/${name}` }, { status: 201 });
+  return Response.json({ url: `/__preview-media/${name}`, ...measures }, { status: 201 });
 };
 
 /**
@@ -81,6 +88,21 @@ export const GET: APIRoute = async ({ params, request }) => {
 
 /** Any other method. */
 export const ALL: APIRoute = () => methodNotAllowed('GET, POST');
+
+/** Width, height and format of an image, as Astro's ImageMetadata names them
+ *  (`jpg`, not `jpeg`), read from the bytes themselves; undefined if sharp
+ *  can't read them. */
+export async function measureImage(
+  bytes: Uint8Array,
+): Promise<{ width: number; height: number; format: string } | undefined> {
+  try {
+    const { width, height, format } = await sharp(bytes).metadata();
+    if (!width || !height || !format) return undefined;
+    return { width, height, format: format === 'jpeg' ? 'jpg' : format };
+  } catch {
+    return undefined;
+  }
+}
 
 /** Content-addressed name: the same image always gets the same file. */
 export function mediaFileName(bytes: Uint8Array, ext: string): string {

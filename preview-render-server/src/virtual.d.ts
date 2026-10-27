@@ -20,5 +20,17 @@ declare module 'virtual:preview-site' {
   export const manifestDir: string;
   /** The site's collections compiled with the flavor 2 stubs (D3), for the
    *  shim to parse drafts with. Undefined when the site has no content config. */
+  /** The `markdown` option of the site's astro.config, plugins included. */
+  export const markdownConfig: import('@astrojs/markdown-remark').AstroMarkdownOptions | undefined;
   export const cmsCollections: Record<string, import('./schema/stubs-flavor2.ts').CollectionInfo> | undefined;
+}
+
+// Astro generates the types of `astro:content` per site (.astro/types.d.ts).
+// The preview server only re-exports it and wraps its read functions, so this
+// declares the loose shape that the shim needs.
+declare module 'astro:content' {
+  export function getCollection(collection: string, filter?: (entry: any) => unknown): Promise<any[]>;
+  export function getEntry(...args: any[]): Promise<any>;
+  export function getEntries(refs: any[]): Promise<any[]>;
+  export function render(entry: any): Promise<any>;
 }

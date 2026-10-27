@@ -38,6 +38,8 @@ editor ──postMessage draft──▶ bridge (in the iframe) ──POST /__pre
   JSON only).
 - `src/media-route.ts`: draft image upload (`POST /__preview-media/new`) and
   serving.
+- `src/warmup-route.ts`: `POST /__preview/warm` loads the Markdown renderer and
+  the code languages ahead of the first draft render.
 - `src/client/bridge.ts`: `startBridge()`, which runs in the previewed page
   and speaks `postMessage` with any editor. `bridge-entry.ts` is the
   one-line script added to every page.

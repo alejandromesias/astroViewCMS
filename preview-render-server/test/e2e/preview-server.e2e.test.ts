@@ -150,6 +150,15 @@ describe('draft images', () => {
   });
 });
 
+describe('warm-up', () => {
+  it('POST answers 204 (also when repeated); other methods and cross-site calls are refused', async () => {
+    expect((await fetch(`${BASE}/__preview/warm`, { method: 'POST' })).status).toBe(204);
+    expect((await fetch(`${BASE}/__preview/warm`, { method: 'POST' })).status).toBe(204);
+    expect((await fetch(`${BASE}/__preview/warm`)).status).toBe(405);
+    expect((await fetch(`${BASE}/__preview/warm`, { method: 'POST', headers: { 'sec-fetch-site': 'cross-site' } })).status).toBe(403);
+  });
+});
+
 describe('performance', () => {
   it('renders 100 consecutive edits quickly', async () => {
     const server: number[] = [];

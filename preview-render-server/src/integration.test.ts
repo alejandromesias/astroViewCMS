@@ -161,19 +161,20 @@ describe('regionWrappers', () => {
 });
 
 describe('previewRenderServer', () => {
-  it('adds the routes, the bridge script and both Vite plugins', () => {
+  it('adds the routes, the bridge script and the Vite plugins', async () => {
     const injectRoute = vi.fn();
     const injectScript = vi.fn();
     const updateConfig = vi.fn();
     const integration = previewRenderServer(site);
-    const setup = integration.hooks['astro:config:setup'] as unknown as (options: object) => void;
+    const setup = integration.hooks['astro:config:setup'] as unknown as (options: object) => Promise<void>;
 
-    setup({ injectRoute, injectScript, updateConfig });
+    await setup({ injectRoute, injectScript, updateConfig });
 
     expect(integration.name).toBe('preview-render-server');
     expect(injectRoute.mock.calls.map(([route]) => [route.pattern, route.prerender])).toEqual([
       ['/__preview/[region]', false],
       ['/__preview-media/[file]', false],
+      ['/__preview/warm', false],
       ['/__editor', undefined],
     ]);
     expect(injectScript).toHaveBeenCalledExactlyOnceWith('page', expect.stringMatching(/^import ".*\/client\/bridge-entry\.ts";$/));
@@ -181,6 +182,9 @@ describe('previewRenderServer', () => {
     expect(plugins.map((plugin) => plugin.name)).toEqual([
       'preview-render-server:regions',
       'preview-render-server:region-wrappers',
+      'preview-render-server:content-import-rewrite',
+      'preview-render-server:image-service',
+      'preview-render-server:data-modules',
     ]);
   });
 });

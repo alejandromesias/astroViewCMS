@@ -12,3 +12,4 @@ export const images: Record<string, ImageMetadata> = {};
 export const mediaDir = path.join(os.tmpdir(), `preview-media-test-${process.pid}`);
 export const manifestDir = path.join(os.tmpdir(), `preview-manifest-test-${process.pid}`);
 export const cmsCollections: Record<string, CollectionInfo> | undefined = undefined;
+export const markdownConfig = undefined;

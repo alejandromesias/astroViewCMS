@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import sharp from 'sharp';
 import { afterAll, describe, expect, it } from 'vitest';
 import { mediaDir } from 'virtual:preview-site';
 import { BASE, callRoute } from '../test/helpers.ts';
-import { ALL, GET, MAX_BYTES, POST, mediaFileName } from './media-route.ts';
+import { ALL, GET, MAX_BYTES, POST, measureImage, mediaFileName } from './media-route.ts';
 
 // A 1×1 PNG.
 const PNG = Buffer.from(
@@ -30,6 +31,41 @@ describe('mediaFileName', () => {
   it('is the same for the same bytes and different for different bytes', () => {
     expect(mediaFileName(PNG, 'png')).toBe(mediaFileName(Buffer.from(PNG), 'png'));
     expect(mediaFileName(PNG, 'png')).not.toBe(mediaFileName(Buffer.from('other'), 'png'));
+  });
+});
+
+describe('measureImage and the upload answer (D12)', () => {
+  const make = (format: 'png' | 'jpeg' | 'webp') =>
+    sharp({ create: { width: 40, height: 30, channels: 3, background: '#09f' } })[format]().toBuffer();
+
+  it('reads width, height and format from the bytes', async () => {
+    expect(await measureImage(await make('png'))).toEqual({ width: 40, height: 30, format: 'png' });
+    expect(await measureImage(await make('webp'))).toEqual({ width: 40, height: 30, format: 'webp' });
+  });
+
+  it('names JPEG `jpg`, as ImageMetadata does', async () => {
+    expect((await measureImage(await make('jpeg')))?.format).toBe('jpg');
+  });
+
+  it('is undefined for bytes that are not an image', async () => {
+    expect(await measureImage(Buffer.from('not an image'))).toBeUndefined();
+  });
+
+  it('the upload answers { url, width, height, format } and stores only the file', async () => {
+    const jpeg = await make('jpeg');
+    const response = await upload(jpeg, 'image/jpeg');
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({
+      url: `/__preview-media/${mediaFileName(jpeg, 'jpg')}`,
+      width: 40,
+      height: 30,
+      format: 'jpg',
+    });
+    expect(fs.readdirSync(mediaDir).every((name) => /^[0-9a-f]{16}\.\w+$/.test(name))).toBe(true);
+  });
+
+  it('answers 415 to bytes that are not a readable image', async () => {
+    expect((await upload('not an image', 'image/png')).status).toBe(415);
   });
 });
 
