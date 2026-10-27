@@ -5,10 +5,8 @@ declare module 'virtual:preview-islands' {
 
   export interface PreviewIsland {
     component: AstroComponentFactory;
+    /** See IslandConfig.contentDir: goes away with the island route. */
     contentDir: string;
-    /** Absolute path of the saved content JSON, or null if none. */
-    contentFile: string | null;
-    contentProps: string[];
   }
 
   export const islands: Record<string, PreviewIsland>;

@@ -4,11 +4,9 @@
 export interface IslandConfig {
   /** The component that renders the island, relative to the site root. */
   component: string;
-  /** Saved content: the JSON file (relative to the site root) and the keys
-   *  that become the component's props. */
-  content?: { file: string; props: string[] };
-  /** Folder of the JSON file the props come from. `image()` fields store
-   *  paths relative to it, e.g. "../assets/images/x.png". */
+  /** Folder that the props' relative image paths ("../assets/images/x.png")
+   *  resolve against. Temporary: only POST /__preview/<island> uses it, and
+   *  it goes away with that route (WORKPLAN task 1.5). */
   contentDir?: string;
 }
 

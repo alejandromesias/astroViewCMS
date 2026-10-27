@@ -1,24 +1,17 @@
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import type { ImageMetadata } from 'astro';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { islands } from 'virtual:preview-islands';
 import Broken from '../test/fixtures/Broken.astro';
 import Greeting from '../test/fixtures/Greeting.astro';
 import { BASE, callRoute, jsonRequest } from '../test/helpers.ts';
-import { ALL, GET, POST, resolveImages, stripSourceScripts } from './preview-route.ts';
+import { ALL, POST, resolveImages, stripSourceScripts } from './preview-route.ts';
 
 const photo: ImageMetadata = { src: '/_astro/photo.abc.png', width: 800, height: 600, format: 'png' };
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'preview-route-'));
-const contentFile = path.join(tmp, 'home.json');
 
 beforeAll(() => {
-  fs.writeFileSync(contentFile, JSON.stringify({ title: 'Inicio', name: 'Elena', items: ['a'] }));
-  islands.greeting = { component: Greeting, contentDir: 'src/content/pages', contentFile, contentProps: ['name', 'items'] };
-  islands.broken = { component: Broken, contentDir: '', contentFile: null, contentProps: [] };
+  islands.greeting = { component: Greeting, contentDir: 'src/content/pages' };
+  islands.broken = { component: Broken, contentDir: '' };
 });
-afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 describe('resolveImages', () => {
   const known = { 'src/content/assets/images/photo.png': photo };
@@ -120,35 +113,15 @@ describe('POST /__preview/<island>', () => {
   });
 });
 
-describe('GET /__preview/<island>', () => {
-  it('returns the configured props from the saved content file', async () => {
-    const response = await callRoute(GET, { island: 'greeting' }, new Request(`${BASE}/__preview/greeting`));
-    expect(response.status).toBe(200);
-    expect(response.headers.get('cache-control')).toBe('no-store');
-    expect(await response.json()).toEqual({ name: 'Elena', items: ['a'] });
-  });
-
-  it('reads the file on every request', async () => {
-    fs.writeFileSync(contentFile, JSON.stringify({ name: 'Rosa', items: [] }));
-    const response = await callRoute(GET, { island: 'greeting' }, new Request(`${BASE}/__preview/greeting`));
-    expect(await response.json()).toEqual({ name: 'Rosa', items: [] });
-  });
-
-  it('answers 404 for an island without saved content', async () => {
-    const response = await callRoute(GET, { island: 'broken' }, new Request(`${BASE}/__preview/broken`));
-    expect(response.status).toBe(404);
-  });
-
-  it('refuses cross-site requests', async () => {
-    const request = new Request(`${BASE}/__preview/greeting`, { headers: { 'sec-fetch-site': 'cross-site' } });
-    expect((await callRoute(GET, { island: 'greeting' }, request)).status).toBe(403);
-  });
-});
-
 describe('other methods', () => {
   it('answer 405 with an Allow header', async () => {
     const response = await callRoute(ALL, {}, new Request(`${BASE}/__preview/greeting`, { method: 'PUT' }));
     expect(response.status).toBe(405);
-    expect(response.headers.get('allow')).toBe('GET, POST');
+    expect(response.headers.get('allow')).toBe('POST');
+  });
+
+  it('refuse GET: saved props are no longer served here', async () => {
+    const response = await callRoute(ALL, {}, new Request(`${BASE}/__preview/greeting`));
+    expect(response.status).toBe(405);
   });
 });

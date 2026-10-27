@@ -3,14 +3,14 @@
 // time. Same pattern as Tina's island route (@tinacms/astro, Apache-2.0),
 // without the fetch-and-overlay step: the editor always sends complete data.
 //
-// GET /__preview/<island> returns the island's saved props, read from the
-// site's content file on each request, so the editor starts from what's saved.
-import fs from 'node:fs/promises';
+// Temporary: SYSTEM-DESIGN.md replaces this route with POST /__preview/render
+// (page render with a content overlay, WORKPLAN task 1.5). There is no GET for
+// saved props any more; saved content comes from the CMS app.
 import path from 'node:path/posix';
 import type { APIRoute, ImageMetadata } from 'astro';
 import { experimental_AstroContainer as AstroContainer } from 'astro/container';
 import { images, islands } from 'virtual:preview-islands';
-import { methodNotAllowed, rejectCrossSite, rejectUnlessContentType } from './request-guard.ts';
+import { methodNotAllowed, rejectUnlessContentType } from './request-guard.ts';
 
 export const prerender = false;
 
@@ -23,27 +23,6 @@ const SOURCE_SCRIPT_TAG = /<script\b[^>]*\bsrc="[^"]*\?astro&(?:amp;)?type=scrip
 
 // One container for the whole process; renders don't share state.
 let containerPromise: Promise<AstroContainer> | undefined;
-
-/**
- * GET /__preview/<island>: the island's saved props, for the editor to start
- * from. Reads the content file on every request (no caching), so content
- * saved on disk shows up without a rebuild, and returns only the keys the
- * site config lists as props.
- */
-export const GET: APIRoute = async ({ params, request }) => {
-  const rejection = rejectCrossSite(request);
-  if (rejection) return rejection;
-
-  // 404 both for unknown islands and for islands without a content file.
-  const island = islands[params.island ?? ''];
-  if (!island?.contentFile) {
-    return new Response(`No saved content for island "${params.island}"`, { status: 404 });
-  }
-
-  const content = JSON.parse(await fs.readFile(island.contentFile, 'utf8')) as Record<string, unknown>;
-  const props = Object.fromEntries(island.contentProps.map((key) => [key, content[key]]));
-  return Response.json(props, { headers: { 'Cache-Control': 'no-store' } });
-};
 
 /**
  * POST /__preview/<island>: renders the island with the JSON body as its
@@ -95,7 +74,7 @@ export const POST: APIRoute = async ({ params, request }) => {
 };
 
 /** Any other method. */
-export const ALL: APIRoute = () => methodNotAllowed('GET, POST');
+export const ALL: APIRoute = () => methodNotAllowed('POST');
 
 /** Removes the dev-only `<script src="...astro?astro&type=script...">` tags the
  *  container writes for component scripts (see SOURCE_SCRIPT_TAG). */

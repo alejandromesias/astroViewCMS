@@ -14,15 +14,13 @@ const BODY = fs
   // The editor only uses its src and contentWindow.
   .replace(/<iframe\b([^>]*)><\/iframe>/, '<div$1></div>');
 
-const saved = { blocks: [{ type: 'servicios', encabezado: 'Servicios' }] };
-
 function setup(search = '') {
   window.history.replaceState(null, '', `/__editor${search}`);
   document.body.innerHTML = BODY;
   const iframe = document.getElementById('preview') as unknown as HTMLIFrameElement;
-  const child = { postMessage: vi.fn() };
+  const child = { postMessage: vi.fn(), location: { reload: vi.fn() } };
   Object.defineProperty(iframe, 'contentWindow', { value: child, configurable: true });
-  const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async () => Response.json(saved));
+  const fetch = vi.fn<typeof globalThis.fetch>();
   startEditor(window, fetch);
 
   const origin = window.location.origin;
@@ -56,11 +54,12 @@ describe('loading the page', () => {
 });
 
 describe('on preview:ready', () => {
-  it('adds a textbox per island, filled with the saved props', async () => {
+  it('adds an empty textbox per island and sends nothing yet', () => {
     editor.fromPage({ type: 'preview:ready', islands: ['blocks'] });
 
-    await vi.waitFor(() => expect(editor.textarea()?.value).toBe(JSON.stringify(saved, null, 2)));
-    expect(editor.fetch).toHaveBeenCalledWith('/__preview/blocks', { cache: 'no-store' });
+    expect(editor.textarea()?.value).toBe('');
+    expect(editor.fetch).not.toHaveBeenCalled();
+    expect(editor.drafts()).toHaveLength(0);
     expect(editor.status().textContent).toBe('Page ready: blocks');
   });
 
@@ -69,16 +68,8 @@ describe('on preview:ready', () => {
     await vi.waitFor(() => expect(editor.status().textContent).toBe('This page has no editable islands'));
   });
 
-  it('shows an error when the saved props cannot be loaded', async () => {
-    editor.fetch.mockResolvedValueOnce(new Response('nope', { status: 404 }));
-    editor.fromPage({ type: 'preview:ready', islands: ['blocks'] });
-    await vi.waitFor(() => expect(editor.status().dataset.state).toBe('error'));
-    expect(editor.status().textContent).toContain('404');
-  });
-
   it('after a reload of the page, resends the drafts in progress', async () => {
     editor.fromPage({ type: 'preview:ready', islands: ['blocks'] });
-    await vi.waitFor(() => expect(editor.textarea()).not.toBeNull());
     editor.textarea()!.value = '{"blocks":[]}';
 
     editor.fromPage({ type: 'preview:ready', islands: ['blocks'] });
@@ -92,18 +83,17 @@ describe('on preview:ready', () => {
     expect(document.querySelectorAll('.island')).toHaveLength(1);
   });
 
-  it('removes textboxes for islands the new page does not have', async () => {
+  it('removes textboxes for islands the new page does not have', () => {
     editor.fromPage({ type: 'preview:ready', islands: ['blocks'] });
-    await vi.waitFor(() => expect(editor.textarea()).not.toBeNull());
+    expect(editor.textarea()).not.toBeNull();
     editor.fromPage({ type: 'preview:ready', islands: [] });
-    await vi.waitFor(() => expect(editor.textarea()).toBeNull());
+    expect(editor.textarea()).toBeNull();
   });
 });
 
 describe('editing', () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     editor.fromPage({ type: 'preview:ready', islands: ['blocks'] });
-    await vi.waitFor(() => expect(editor.textarea()?.value).not.toBe(''));
   });
 
   it(`sends the draft ${RENDER_DELAY_MS} ms after the last keystroke`, async () => {
@@ -134,12 +124,13 @@ describe('editing', () => {
     expect(document.querySelector('.island .error')!.textContent).toBe('');
   });
 
-  it('"Reset to saved" reloads the saved props and sends them', async () => {
-    editor.textarea()!.value = '{}';
+  it('"Reset" empties the textbox and reloads the page', () => {
+    type(editor.textarea()!, '{"blocks": [');
     document.querySelector<HTMLButtonElement>('[data-action="reset"]')!.click();
-    await vi.waitFor(() => expect(editor.drafts()).toHaveLength(1));
-    expect(editor.textarea()!.value).toBe(JSON.stringify(saved, null, 2));
-    expect(editor.drafts()[0].message).toEqual({ type: 'preview:draft', island: 'blocks', props: saved });
+    expect(editor.textarea()!.value).toBe('');
+    expect(editor.textarea()!.hasAttribute('aria-invalid')).toBe(false);
+    expect(document.querySelector('.island .error')!.textContent).toBe('');
+    expect(editor.child.location.reload).toHaveBeenCalledOnce();
   });
 });
 

@@ -58,10 +58,10 @@ describe('the built page', () => {
 });
 
 describe('render route', () => {
-  it('returns the saved props', async () => {
+  it('no longer serves saved props', async () => {
     const response = await fetch(`${BASE}/__preview/blocks`);
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ blocks: saved.blocks });
+    expect(response.status).toBe(405);
+    expect(response.headers.get('allow')).toBe('POST');
   });
 
   it('leaves no script tags or local paths in the fragment', async () => {

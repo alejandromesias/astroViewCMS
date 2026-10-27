@@ -38,7 +38,6 @@ const site: ResolvedSiteConfig = {
   islands: {
     blocks: {
       component: 'src/components/BlockList.astro',
-      content: { file: 'src/content/pages/home.json', props: ['blocks'] },
       contentDir: 'src/content/pages',
     },
     nav: { component: 'src/components/Nav.astro' },
@@ -101,12 +100,10 @@ describe('islandsModule (virtual:preview-islands)', () => {
     expect(hook(plugin, 'load').call({}, '/some/file.ts')).toBeUndefined();
   });
 
-  it('imports each island component and lists its content settings', () => {
+  it('imports each island component and lists its image folder', () => {
     expect(source).toContain(`import island0 from "${posix(path.join(root, 'src/components/BlockList.astro'))}";`);
-    expect(source).toContain(
-      `"blocks": { component: island0, ...{"contentDir":"src/content/pages","contentFile":"${posix(path.join(root, 'src/content/pages/home.json'))}","contentProps":["blocks"]} }`,
-    );
-    expect(source).toContain(`"nav": { component: island1, ...{"contentDir":"","contentFile":null,"contentProps":[]} }`);
+    expect(source).toContain(`"blocks": { component: island0, ...{"contentDir":"src/content/pages"} }`);
+    expect(source).toContain(`"nav": { component: island1, ...{"contentDir":""} }`);
   });
 
   it('imports every image, keyed by its project path', () => {

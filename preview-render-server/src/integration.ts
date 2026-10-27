@@ -11,7 +11,8 @@ const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.avif', '.g
 
 // Added only to the preview build. It:
 // - injects the render route /__preview/[island], the draft image route
-//   /__preview-media/[file] and the test editor page /__editor;
+//   /__preview-media/[file] (a stopgap until the CMS app stages media, phase 2)
+//   and the test editor page /__editor;
 // - wraps each island component in <div data-preview-island> on the site's
 //   pages, by redirecting the pages' imports to a generated wrapper (the site's
 //   source stays untouched);
@@ -111,7 +112,7 @@ export function islandWrappers(wrappers: Map<string, string>): Plugin {
 }
 
 /** Vite plugin that generates the `virtual:preview-islands` module (typed in
- *  virtual.d.ts): the island components with their content settings, every
+ *  virtual.d.ts): the island components with their image folder, every
  *  image under the site's `src/` (so draft paths can become ImageMetadata),
  *  and the folder for uploads. The routes import it; it exists only during a
  *  build. */
@@ -133,11 +134,7 @@ export function islandsModule({
       // One entry per island: the component (imported) plus plain settings.
       const islandEntries = Object.entries(islands).map(([name, island], i) => {
         lines.push(`import island${i} from ${importPath(root, island.component)};`);
-        const fields = {
-          contentDir: island.contentDir ?? '',
-          contentFile: island.content ? toPosix(path.resolve(root, island.content.file)) : null,
-          contentProps: island.content?.props ?? [],
-        };
+        const fields = { contentDir: island.contentDir ?? '' };
         return `${JSON.stringify(name)}: { component: island${i}, ...${JSON.stringify(fields)} }`;
       });
       // Importing an image makes Vite emit it and gives back its ImageMetadata.

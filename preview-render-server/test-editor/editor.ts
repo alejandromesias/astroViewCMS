@@ -1,7 +1,9 @@
 // Test editor logic (markup in editor.astro). It only speaks the bridge's
-// postMessage protocol (src/protocol.ts) plus two plain requests:
-// GET /__preview/<island> for the saved props and POST /__preview-media/new
-// for uploads.
+// postMessage protocol (src/protocol.ts) plus one plain request, POST
+// /__preview-media/new for uploads. It has no source of saved content any more
+// (the island GET route is gone, WORKPLAN task 1.1): textboxes start empty and
+// the editor sends a draft only for a textbox that has content. Task 1.7
+// brings a dev-only document route back.
 import { isPageMessage, type DraftMessage, type Props } from '../src/protocol.ts';
 
 export const RENDER_DELAY_MS = 120;
@@ -29,11 +31,13 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
     status.dataset.state = state;
   }
 
-  /** Sends an island's textbox content to the page as a draft. Invalid JSON is
-   *  flagged on the textbox and not sent, so the page keeps its last good state. */
+  /** Sends an island's textbox content to the page as a draft. An empty
+   *  textbox sends nothing. Invalid JSON is flagged on the textbox and not
+   *  sent, so the page keeps its last good state. */
   function sendDraft(island: string) {
     const textarea = textareas.get(island)!;
     const error = textarea.closest('.island')!.querySelector('.error')!;
+    if (!textarea.value.trim()) return;
     let props: Props;
     try {
       props = JSON.parse(textarea.value) as Props;
@@ -48,18 +52,12 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
     iframe.contentWindow?.postMessage(message, origin);
   }
 
-  /** The island's saved props (GET /__preview/<island>), as pretty-printed JSON. */
-  async function loadSaved(island: string) {
-    const response = await fetchImpl(`/__preview/${encodeURIComponent(island)}`, { cache: 'no-store' });
-    if (!response.ok) throw new Error(`GET /__preview/${island}: ${response.status}`);
-    return JSON.stringify(await response.json(), null, 2);
-  }
-
-  /** Adds an island's section (textbox + reset button), filled with its saved
-   *  props. Typing sends a draft after RENDER_DELAY_MS of quiet. */
-  async function addIsland(island: string) {
+  /** Adds an island's section (empty textbox + reset button). Typing sends a
+   *  draft after RENDER_DELAY_MS of quiet. */
+  function addIsland(island: string) {
     const section = template.content.firstElementChild!.cloneNode(true) as HTMLElement;
     section.querySelector('h2')!.textContent = `Island: ${island}`;
+    const error = section.querySelector('.error')!;
     const textarea = section.querySelector('textarea')!;
     textarea.setAttribute('aria-label', `Props for island ${island}`);
     islandsRoot.append(section);
@@ -70,16 +68,17 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
       clearTimeout(timer);
       timer = setTimeout(() => sendDraft(island), RENDER_DELAY_MS);
     });
-    section.querySelector('[data-action="reset"]')!.addEventListener('click', async () => {
-      textarea.value = await loadSaved(island);
-      sendDraft(island);
+    // Reset: empty the textbox and reload the page, which shows the built content.
+    section.querySelector('[data-action="reset"]')!.addEventListener('click', () => {
+      textarea.value = '';
+      textarea.removeAttribute('aria-invalid');
+      error.textContent = '';
+      iframe.contentWindow?.location.reload();
     });
-
-    textarea.value = await loadSaved(island);
   }
 
   // Messages from the bridge: only from the iframe, same origin, well-formed.
-  win.addEventListener('message', async (event) => {
+  win.addEventListener('message', (event) => {
     if (event.source !== iframe.contentWindow || event.origin !== origin) return;
     const message = event.data;
     if (!isPageMessage(message)) return;
@@ -94,15 +93,11 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
           textareas.delete(island);
         }
       }
-      try {
-        for (const island of islands) {
-          if (!textareas.has(island)) await addIsland(island);
-          else sendDraft(island);
-        }
-        setStatus(islands.length ? `Page ready: ${islands.join(', ')}` : 'This page has no editable islands');
-      } catch (error) {
-        setStatus(String(error), 'error');
+      for (const island of islands) {
+        if (!textareas.has(island)) addIsland(island);
+        else sendDraft(island);
       }
+      setStatus(islands.length ? `Page ready: ${islands.join(', ')}` : 'This page has no editable islands');
     } else if (message.type === 'preview:rendered') {
       setStatus(`Rendered "${message.island}" in ${message.renderMs} ms`);
     } else {
