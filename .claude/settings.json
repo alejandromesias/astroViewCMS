@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "defaultMode": "default",
+    "additionalDirectories": [],
+    "deny": [
+    ],
+    "ask": [
+      "Read(**/node_modules/**)",
+      "Read(**/package-lock.json)",
+
+      "Read(/preview-render-server/.build/*/client/**)",
+      "Read(/preview-render-server/.build/*/server/**)",
+      "Read(/preview-render-server/.build/sampleAstroProject*/**)",
+
+      "Read(/sample-site/dist/_astro/**)",
+      "Read(/sample-site/dist/images/**)",
+      "Read(/sample-site/dist/blog/generated/**)",
+
+      "Read(**/.astro/**)",
+      "Read(**/coverage/**)",
+
+      "Read(/sample-site/src/content/blog/generated/**)",
+
+      "Read(/sampleAstroProject/**)",
+
+      "Read(/HANDOFF.md)",
+
+      "Read(/sample-site/LICENSE)",
+      "Read(/sample-site/.vscode/**)",
+      "Read(/sample-site/.editorconfig)",
+      "Read(/sample-site/.markdownlint.json)",
+
+      "Read(**/.vscode/**)",
+      "Read(**/.git/**)",
+      "Read(**/*.log)",
+      "Read(**/*.tsbuildinfo)",
+      "Read(**/*.map)",
+      "Read(**/.DS_Store)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+
+      "Read(**/*.png)",
+      "Read(**/*.jpg)",
+      "Read(**/*.jpeg)",
+      "Read(**/*.webp)",
+      "Read(**/*.avif)",
+      "Read(**/*.gif)",
+      "Read(**/*.ico)",
+      "Read(**/*.woff)",
+      "Read(**/*.woff2)",
+      "Read(**/*.ttf)",
+      "Read(**/*.otf)",
+      "Read(**/*.mp4)",
+      "Read(**/*.webm)",
+      "Read(**/*.pdf)"
+    ],
+    "allow": [
+
+    ]
+  }
+}
