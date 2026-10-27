@@ -33,5 +33,6 @@ export function resolveSiteConfig(config: SiteConfig, configDir: string, buildDi
     outDir: path.join(buildDir, name),
     regionsDir: path.join(buildDir, `${name}-regions`),
     mediaDir: path.join(buildDir, `${name}-media`),
+    manifestDir: path.join(buildDir, `${name}-manifest`),
   };
 }

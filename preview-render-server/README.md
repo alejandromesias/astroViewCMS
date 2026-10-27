@@ -14,8 +14,8 @@ editor ──postMessage draft──▶ bridge (in the iframe) ──POST /__pre
 
 ## How it works
 
-- `sites/<site>.config.ts`: where the site lives. For each region: its
-  component and the content file it reads.
+- `sites/<site>.config.ts`: where the site lives, its regions (component),
+  and `buildTimeFields` (fields that build code reads).
 - `src/build.ts`: runs Astro's `build()` on the site, adding the Node adapter
   and `src/integration.ts`. Output goes to `.build/<site>/`, so the site's
   files and its normal static build are untouched.
@@ -24,9 +24,18 @@ editor ──postMessage draft──▶ bridge (in the iframe) ──POST /__pre
   - the `<div data-preview-region>` wrappers, by redirecting imports (no site
     change);
   - the bridge script;
-  - a virtual module with the region components and every image under `src/`.
-- `src/preview-route.ts`: `GET` returns the saved props, `POST` renders
-  them (same-site JSON only).
+  - a virtual module with the region components, every image under `src/`,
+    the manifest folder and the site's CMS schemas;
+  - the build manifests in `.build/<site>-manifest/`: `schema.json`,
+    `routes.json`, `documents.json`.
+- `src/manifest/`: the pure parts of the manifests: the static import scan
+  (which JSON files build code reads), `documents.json` and `routes.json`
+  shaping.
+- `src/schema/`: the CMS schema pass. The site's `content.config.ts` is
+  compiled with stubs for `astro:content`, `astro/loaders`, `image()` and
+  `reference()`: flavor 1 makes `schema.json`, flavor 2 goes into the bundle.
+- `src/preview-route.ts`: `POST` renders the props of a region (same-site
+  JSON only).
 - `src/media-route.ts`: draft image upload (`POST /__preview-media/new`) and
   serving.
 - `src/client/bridge.ts`: `startBridge()`, which runs in the previewed page

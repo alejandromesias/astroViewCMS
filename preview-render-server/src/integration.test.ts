@@ -35,6 +35,7 @@ const site: ResolvedSiteConfig = {
   outDir: path.join(tmp, '.build/site'),
   regionsDir: path.join(tmp, '.build/site-regions'),
   mediaDir: path.join(tmp, '.build/site-media'),
+  manifestDir: path.join(tmp, '.build/site-manifest'),
   regions: {
     blocks: {
       component: 'src/components/BlockList.astro',
@@ -114,6 +115,20 @@ describe('siteModule (virtual:preview-site)', () => {
 
   it('exports the media folder', () => {
     expect(source).toContain(`export const mediaDir = "${posix(site.mediaDir)}";`);
+  });
+
+  it('exports the manifest folder, for routes to read the manifests from', () => {
+    expect(source).toContain(`export const manifestDir = "${posix(site.manifestDir)}";`);
+  });
+
+  it('has no CMS collections when the site has no content config', () => {
+    expect(source).toContain('export const cmsCollections = undefined;');
+  });
+
+  it('re-exports the content config as CMS collections (flavor 2 stubs apply to it)', () => {
+    const config = path.join(root, 'src/content.config.ts');
+    const withConfig = hook(siteModule(site, config), 'load').call({}, RESOLVED_ID) as string;
+    expect(withConfig).toContain(`export { collections as cmsCollections } from "${posix(config)}?preview-cms-schema";`);
   });
 });
 

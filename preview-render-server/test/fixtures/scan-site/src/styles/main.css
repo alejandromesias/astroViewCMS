@@ -1,0 +1,4 @@
+@import "tailwindcss";
+@plugin "../plugin/tw-theme.mjs";
+@plugin "@tailwindcss/forms";
+/* @plugin "../plugin/commented.mjs"; */

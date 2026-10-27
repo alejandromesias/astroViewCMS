@@ -14,6 +14,10 @@ export interface SiteConfig {
   /** Site folder, relative to the config file. */
   root: string;
   regions: Record<string, RegionConfig>;
+  /** Fields that build code reads (SYSTEM-DESIGN.md D1): document key to field
+   *  paths, `['*']` for the whole file. Adds to what the import scan finds and
+   *  covers files read with `fs` or dynamic imports, which it can't see. */
+  buildTimeFields?: Record<string, string[]>;
   port: number;
 }
 
@@ -22,4 +26,6 @@ export interface ResolvedSiteConfig extends SiteConfig {
   outDir: string;
   regionsDir: string;
   mediaDir: string;
+  /** Where the build manifests go (documents.json, routes.json, schema.json). */
+  manifestDir: string;
 }

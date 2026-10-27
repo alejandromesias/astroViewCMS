@@ -1,0 +1,6 @@
+---
+import menu from '@/config/menu.json';
+import config from '../config/config.json';
+import type { Props } from './types.ts';
+---
+<nav>{menu.map((item) => item.name)}{config.nav_button.label}</nav>

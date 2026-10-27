@@ -3,6 +3,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AstroIntegration } from 'astro';
 import type { Plugin } from 'vite';
+import { shapeDocuments, readDataStore } from './manifest/documents.ts';
+import { scanProject } from './manifest/import-scan.ts';
+import type { ProjectScan } from './manifest/import-scan.ts';
+import { shapeRoutes } from './manifest/routes.ts';
+import { findContentConfig, loadCmsCollections, schemaStubs, STUB_QUERY, STUBS } from './schema/config-bundle.ts';
+import { shapeSchemas } from './schema/json-schema.ts';
 import type { ResolvedSiteConfig } from './types.ts';
 
 export const VIRTUAL_ID = 'virtual:preview-site';
@@ -17,15 +23,22 @@ const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.avif', '.g
 //   pages, by redirecting the pages' imports to a generated wrapper (the site's
 //   source stays untouched);
 // - adds the bridge script to every page;
+// - writes the build manifests (schema.json, routes.json, documents.json) to
+//   site.manifestDir;
 // - generates a virtual module that hands the routes the region components,
-//   every image under src/, and where to keep uploads.
+//   every image under src/, where to keep uploads and the site's CMS schemas.
 export default function previewRenderServer(site: ResolvedSiteConfig): AstroIntegration {
+  const contentConfig = findContentConfig(site.root);
+  // Filled in by astro:config:setup, used when the build is done.
+  let scan: ProjectScan = { buildTimeFiles: [], dataModules: [] };
+  let loaderKinds: Record<string, 'glob' | 'file' | undefined> = {};
+
   return {
     name: 'preview-render-server',
     hooks: {
       // Runs once per build, before Astro resolves its config: everything the
       // preview needs is added here, nothing is written into the site.
-      'astro:config:setup': ({ injectRoute, injectScript, updateConfig }) => {
+      'astro:config:setup': async ({ injectRoute, injectScript, updateConfig }) => {
         // Server-rendered routes (the built server answers them on demand).
         injectRoute({
           pattern: '/__preview/[region]',
@@ -50,11 +63,49 @@ export default function previewRenderServer(site: ResolvedSiteConfig): AstroInte
         // Wrapper files first, then the Vite plugins that use them.
         const wrappers = writeRegionWrappers(site);
         updateConfig({
-          vite: { plugins: [siteModule(site), regionWrappers(wrappers)] },
+          vite: {
+            plugins: [
+              siteModule(site, contentConfig),
+              regionWrappers(wrappers),
+              ...(contentConfig ? [schemaStubs(contentConfig, STUBS[2], STUB_QUERY) as Plugin] : []),
+            ],
+          },
         });
+
+        // Manifests that exist before the build: the import scan (kept for
+        // documents.json) and schema.json from the flavor 1 pass.
+        fs.mkdirSync(site.manifestDir, { recursive: true });
+        scan = await scanProject(site.root);
+        if (contentConfig) {
+          const collections = await loadCmsCollections(
+            site.root,
+            contentConfig,
+            path.join(site.manifestDir, 'content-config.flavor1.mjs'),
+          );
+          loaderKinds = Object.fromEntries(Object.entries(collections).map(([name, c]) => [name, c.loader?.kind]));
+          writeManifest(site, 'schema.json', shapeSchemas(collections));
+        }
+      },
+      'astro:routes:resolved': ({ routes }) => {
+        writeManifest(site, 'routes.json', shapeRoutes(routes, site.root));
+      },
+      // The content data store is complete once the build is done.
+      'astro:build:done': ({ logger }) => {
+        try {
+          const store = readDataStore(site.root);
+          const documents = shapeDocuments({ store, loaderKinds, scan, buildTimeFields: site.buildTimeFields });
+          writeManifest(site, 'documents.json', documents);
+        } catch (error) {
+          logger.warn(`documents.json not written: ${(error as Error).message}`);
+        }
       },
     },
   };
+}
+
+function writeManifest({ manifestDir }: Pick<ResolvedSiteConfig, 'manifestDir'>, name: string, value: unknown): void {
+  fs.mkdirSync(manifestDir, { recursive: true });
+  fs.writeFileSync(path.join(manifestDir, name), JSON.stringify(value, null, 2) + '\n');
 }
 
 /** Writes one wrapper .astro file per region into `regionsDir` (outside the
@@ -116,11 +167,10 @@ export function regionWrappers(wrappers: Map<string, string>): Plugin {
  *  image under the site's `src/` (so draft paths can become ImageMetadata),
  *  and the folder for uploads. The routes import it; it exists only during a
  *  build. */
-export function siteModule({
-  root,
-  regions,
-  mediaDir,
-}: Pick<ResolvedSiteConfig, 'root' | 'regions' | 'mediaDir'>): Plugin {
+export function siteModule(
+  { root, regions, mediaDir, manifestDir }: Pick<ResolvedSiteConfig, 'root' | 'regions' | 'mediaDir' | 'manifestDir'>,
+  contentConfig?: string,
+): Plugin {
   return {
     name: 'preview-render-server:regions',
     resolveId(id) {
@@ -148,6 +198,11 @@ export function siteModule({
         `export const regions = { ${regionEntries.join(', ')} };`,
         `export const images = { ${imageEntries.join(', ')} };`,
         `export const mediaDir = ${JSON.stringify(toPosix(mediaDir))};`,
+        `export const manifestDir = ${JSON.stringify(toPosix(manifestDir))};`,
+        // The content config compiled with the flavor 2 stubs (schemaStubs).
+        contentConfig
+          ? `export { collections as cmsCollections } from ${JSON.stringify(`${toPosix(path.resolve(root, contentConfig))}?${STUB_QUERY}`)};`
+          : 'export const cmsCollections = undefined;',
       ].join('\n');
     },
   };

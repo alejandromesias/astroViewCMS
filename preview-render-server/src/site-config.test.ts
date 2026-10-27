@@ -16,10 +16,11 @@ describe('resolveSiteConfig', () => {
     expect(resolved.root).toBe(path.resolve('/work/my-site'));
   });
 
-  it('puts output, wrappers and uploads in .build, named after the site folder', () => {
+  it('puts output, wrappers, uploads and manifests in .build, named after the site folder', () => {
     expect(resolved.outDir).toBe(path.resolve('/work/server/.build/my-site'));
     expect(resolved.regionsDir).toBe(path.resolve('/work/server/.build/my-site-regions'));
     expect(resolved.mediaDir).toBe(path.resolve('/work/server/.build/my-site-media'));
+    expect(resolved.manifestDir).toBe(path.resolve('/work/server/.build/my-site-manifest'));
   });
 
   it('keeps the rest of the config', () => {
