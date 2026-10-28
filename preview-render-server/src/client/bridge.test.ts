@@ -541,7 +541,7 @@ describe('error answers', () => {
 
   it('cuts a long message at 500 characters', async () => {
     bridge.fetch.mockResolvedValue(
-      new Response('x'.repeat(501) + 'tail', { status: 500 }),
+      new Response(`${'x'.repeat(501)}tail`, { status: 500 }),
     );
     bridge.post(draft());
     await vi.waitFor(() =>

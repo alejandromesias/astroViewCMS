@@ -82,7 +82,7 @@ export function createMarkdownRenderer(
    *  loads every allowed language, so the first real render is fast. */
   const warmUp = async () => {
     const fences = [...(languages() ?? [])]
-      .map((language) => '```' + language + '\n```')
+      .map((language) => `\`\`\`${language}\n\`\`\``)
       .join('\n\n');
     await renderWithFallback(fences, {});
   };

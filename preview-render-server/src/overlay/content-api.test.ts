@@ -600,12 +600,10 @@ describe('request scope', () => {
     const [a, b, none] = await Promise.all([
       renderAs('Draft A', 5),
       renderAs('Draft B', 1),
-      run(
-        {},
-        async () => (
-          await slow(3, null), (await api.getEntry('authors', 'ana')).data.name
-        ),
-      ),
+      run({}, async () => {
+        await slow(3, null);
+        return (await api.getEntry('authors', 'ana')).data.name;
+      }),
     ]);
     expect(a.value).toEqual(['Draft A', 'Draft A']);
     expect(b.value).toEqual(['Draft B', 'Draft B']);
@@ -934,7 +932,10 @@ describe('getCollection details', () => {
     const { value } = await run(
       { 'authors/ana': { name: 'A', avatar: '../../assets/authors/ana.png' } },
       () =>
-        api.getCollection('blog', (entry) => (filtered++, !entry.data.draft)),
+        api.getCollection('blog', (entry) => {
+          filtered++;
+          return !entry.data.draft;
+        }),
     );
     expect(value.map((e) => e.id)).toEqual(['hello', 'generated/post-001']);
     expect(filtered).toBe(3);

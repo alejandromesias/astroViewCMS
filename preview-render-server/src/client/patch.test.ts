@@ -213,9 +213,10 @@ describe('hydrated components (D6)', () => {
     const element = document.querySelector('astro-island')!;
     const order: string[] = [];
     const set = element.setAttribute.bind(element);
-    element.setAttribute = (name: string, value: string) => (
-      order.push(name), set(name, value)
-    );
+    element.setAttribute = (name: string, value: string) => {
+      order.push(name);
+      set(name, value);
+    };
     patcher.patch(
       page('', region('a', island('{&quot;n&quot;:[0,2]}', '<i>server</i>'))),
     );
@@ -259,7 +260,7 @@ describe('inline scripts (D6)', () => {
     patcher.patch(
       page(
         '',
-        region('a', '<p>x</p>') + '<script type="module">export {}</script>',
+        `${region('a', '<p>x</p>')}<script type="module">export {}</script>`,
       ),
     );
     const fresh = document.querySelector('script')!;
@@ -270,7 +271,7 @@ describe('inline scripts (D6)', () => {
   it('never morphs a script in: scripts inside a changed region are not duplicated', () => {
     load('', region('a', '<p>x</p>'));
     patcher.patch(
-      page('', region('a', '<p>y</p>' + script('window.inRegion = 1'))),
+      page('', region('a', `<p>y</p>${script('window.inRegion = 1')}`)),
     );
     expect(scripts()).toEqual(['window.inRegion = 1']);
     expect(document.querySelectorAll('script')).toHaveLength(1);
@@ -442,9 +443,10 @@ describe('island attributes', () => {
     load('', region('a', island('component-url="/a.js"')));
     const written: string[] = [];
     const set = el().setAttribute.bind(el());
-    el().setAttribute = (name: string, value: string) => (
-      written.push(name), set(name, value)
-    );
+    el().setAttribute = (name: string, value: string) => {
+      written.push(name);
+      set(name, value);
+    };
     patchIsland('component-url="/a.js" fresh="1"');
     expect(written).toEqual(['fresh']);
   });

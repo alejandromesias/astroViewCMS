@@ -101,6 +101,6 @@ export function restrictLanguages(
     const canonical = canonicalLanguage(language);
     if (PLAIN.has(canonical) || allowed.has(canonical)) return line;
     onLimited(canonical);
-    return line.slice(0, start) + 'text' + line.slice(start + language.length);
+    return `${line.slice(0, start)}text${line.slice(start + language.length)}`;
   });
 }

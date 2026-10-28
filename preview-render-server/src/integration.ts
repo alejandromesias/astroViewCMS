@@ -21,7 +21,7 @@ import { shapeSchemas } from './schema/json-schema.ts';
 import type { ResolvedSiteConfig } from './types.ts';
 
 export const VIRTUAL_ID = 'virtual:preview-site';
-export const RESOLVED_ID = '\0' + VIRTUAL_ID;
+export const RESOLVED_ID = `\0${VIRTUAL_ID}`;
 const IMAGE_EXTENSIONS = new Set([
   '.png',
   '.jpg',
@@ -237,7 +237,7 @@ function writeManifest(
   fs.mkdirSync(manifestDir, { recursive: true });
   fs.writeFileSync(
     path.join(manifestDir, name),
-    JSON.stringify(value, null, 2) + '\n',
+    `${JSON.stringify(value, null, 2)}\n`,
   );
 }
 

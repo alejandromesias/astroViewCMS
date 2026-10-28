@@ -51,7 +51,7 @@ export const deps: HandlerDeps = {
         routes,
         rules: urlRules,
         loadPage: (route) =>
-          pages['/' + route.component]?.() as Promise<PageModule> | undefined,
+          pages[`/${route.component}`]?.() as Promise<PageModule> | undefined,
         renderToString: (component, options) =>
           containerInstance.renderToString(component as never, options),
       },

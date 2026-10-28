@@ -49,7 +49,6 @@ export function schemaStubs(
   stubFile: string,
   query?: string,
 ): Plugin & { enforce: 'pre' } {
-  const config = normalize(configFile);
   const stub = normalize(stubFile);
   const stubImport = JSON.stringify(stubFile.replaceAll('\\', '/'));
   const marked = (id: string) =>
@@ -123,7 +122,7 @@ export async function loadCmsCollections(
   await bundle.write({ file: outFile, format: 'esm' });
   await bundle.close();
   const mod = (await import(
-    pathToFileURL(outFile).href + `?t=${Date.now()}`
+    `${pathToFileURL(outFile).href}?t=${Date.now()}`
   )) as {
     collections: Record<string, CollectionInfo>;
   };

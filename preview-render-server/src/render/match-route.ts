@@ -146,6 +146,6 @@ export function routeUrl(
     )
     .filter(Boolean);
   const base = rules.base.split('/').filter(Boolean);
-  const path = '/' + [...base, ...segments].join('/');
-  return rules.trailingSlash === 'always' && path !== '/' ? path + '/' : path;
+  const path = `/${[...base, ...segments].join('/')}`;
+  return rules.trailingSlash === 'always' && path !== '/' ? `${path}/` : path;
 }

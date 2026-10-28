@@ -302,7 +302,7 @@ describe('previewRenderServer hooks', () => {
     const integration = hooksOf(hookSite);
     integration['astro:config:done']!({
       config: {
-        cacheDir: new URL('file:///' + posix(path.join(tmp, 'no-cache')) + '/'),
+        cacheDir: new URL(`file:///${posix(path.join(tmp, 'no-cache'))}/`),
         base: '/',
         trailingSlash: 'ignore',
       },
@@ -507,7 +507,7 @@ describe('regionWrappers details', () => {
         make(),
         resolve,
         './Nav.astro',
-        wrapper.toUpperCase().replaceAll('/', '\\') + '?x',
+        `${wrapper.toUpperCase().replaceAll('/', '\\')}?x`,
         {},
       ),
     ).toBeUndefined();
@@ -551,7 +551,7 @@ describe('regionWrappers details', () => {
   });
 
   it('matches the resolved file whatever its case or query', async () => {
-    const resolved = component.toUpperCase() + '?astro';
+    const resolved = `${component.toUpperCase()}?astro`;
     expect(
       await call(
         make(),
@@ -650,9 +650,9 @@ describe('siteModule details', () => {
     const plugin = siteModule(mini);
     expect(plugin.name).toBe('preview-render-server:regions');
     expect(
-      hook(plugin, 'resolveId').call({}, VIRTUAL_ID + 'x'),
+      hook(plugin, 'resolveId').call({}, `${VIRTUAL_ID}x`),
     ).toBeUndefined();
-    expect(hook(plugin, 'load').call({}, RESOLVED_ID + 'x')).toBeUndefined();
+    expect(hook(plugin, 'load').call({}, `${RESOLVED_ID}x`)).toBeUndefined();
   });
 
   it('numbers the images and keys each by its project path', () => {
@@ -828,7 +828,7 @@ describe('previewRenderServer build hooks', () => {
     fs.mkdirSync(cache, { recursive: true });
     hooks['astro:config:done']!({
       config: {
-        cacheDir: new URL('file:///' + posix(cache) + '/'),
+        cacheDir: new URL(`file:///${posix(cache)}/`),
         base: '/docs',
         trailingSlash: 'always',
       },
@@ -876,7 +876,7 @@ describe('previewRenderServer build hooks', () => {
     const warn = vi.fn();
     hooks['astro:config:done']!({
       config: {
-        cacheDir: new URL('file:///' + posix(path.join(tmp, 'no-cache')) + '/'),
+        cacheDir: new URL(`file:///${posix(path.join(tmp, 'no-cache'))}/`),
         base: '/',
         trailingSlash: 'ignore',
       },

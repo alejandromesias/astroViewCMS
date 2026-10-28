@@ -150,7 +150,7 @@ describe('content config through Vite with the flavor 2 stubs', () => {
 
   it('parses a draft: shared helpers run, references are checked, images resolve', () => {
     viteHooks.resolveImage = () => png;
-    viteHooks.referenceExists = (collection, id) => id !== 'ghost';
+    viteHooks.referenceExists = (_collection, id) => id !== 'ghost';
     const post = (author: string, slug = 'my-post') => ({
       slug,
       author,
