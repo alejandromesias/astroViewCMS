@@ -7,6 +7,7 @@ import previewRenderServer, {
   RESOLVED_ID,
   VIRTUAL_ID,
   bridgeScript,
+  devRoutes,
   findImages,
   regionWrappers,
   siteModule,
@@ -44,6 +45,15 @@ const site: ResolvedSiteConfig = {
 };
 
 const posix = (p: string) => p.replaceAll('\\', '/');
+
+describe('devRoutes', () => {
+  it('adds /__dev/documents only to a build made with PREVIEW_DEV=1', () => {
+    expect(devRoutes({ PREVIEW_DEV: '1' }).map((route) => route.pattern)).toEqual(['/__dev/documents']);
+    expect(devRoutes({})).toEqual([]);
+    expect(devRoutes({ PREVIEW_DEV: '0' })).toEqual([]);
+    expect(devRoutes({ PREVIEW_DEV: 'true' })).toEqual([]);
+  });
+});
 
 describe('bridgeScript', () => {
   it('starts the bridge with the editor origins of the site config', () => {

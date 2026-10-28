@@ -11,7 +11,7 @@
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
-    "build:sample": "node src/build.ts sites/sample-site.config.ts",
+    "build:sample": "node src/build.ts sites/sample-site.config.ts --dev",
     "start:sample": "node src/start.ts sites/sample-site.config.ts"
   },
   "dependencies": {
@@ -22,7 +22,8 @@
     "idiomorph": "^0.8.0",
     "preview-protocol": "*",
     "rolldown": "^1.2.15",
-    "sharp": "0.35.5"
+    "sharp": "0.35.5",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

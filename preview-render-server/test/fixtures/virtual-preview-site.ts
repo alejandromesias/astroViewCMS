@@ -7,6 +7,7 @@ import type { ImageMetadata } from 'astro';
 import type { CollectionInfo } from '../../src/schema/stubs-flavor2.ts';
 
 export const images: Record<string, ImageMetadata> = {};
+export const siteRoot = path.join(os.tmpdir(), `preview-site-test-${process.pid}`);
 export const mediaDir = path.join(os.tmpdir(), `preview-media-test-${process.pid}`);
 export const manifestDir = path.join(os.tmpdir(), `preview-manifest-test-${process.pid}`);
 export const cmsCollections: Record<string, CollectionInfo> | undefined = undefined;

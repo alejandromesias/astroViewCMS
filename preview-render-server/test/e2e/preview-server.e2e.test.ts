@@ -242,6 +242,56 @@ describe('warm-up', () => {
   });
 });
 
+describe('GET /__dev/documents (built with PREVIEW_DEV=1)', () => {
+  const get = async (key: string) => {
+    const response = await fetch(`${BASE}/__dev/documents?key=${encodeURIComponent(key)}`);
+    const text = await response.text();
+    return { status: response.status, text, json: response.ok ? JSON.parse(text) : undefined };
+  };
+
+  it('answers a JSON document with its raw value', async () => {
+    const { status, json } = await get('landing/home-v2');
+    expect(status).toBe(200);
+    expect(json).toMatchObject({ key: 'landing/home-v2', format: 'json', buildTime: false });
+    expect(json.value).toEqual(readJson('src/content/landing/home-v2.json'));
+  });
+
+  it('answers a YAML document', async () => {
+    const { json } = await get('authors/noor-haddad');
+    expect(json).toMatchObject({ format: 'yaml', value: { name: expect.any(String) } });
+  });
+
+  it('answers a Markdown document as { data, body }', async () => {
+    const { json } = await get('blog/blog-1');
+    expect(json.format).toBe('md');
+    expect(json.value.data).toMatchObject({ title: 'What you need to know about Photography', tags: ['photography', 'design'] });
+    expect(json.value.body).toContain('## Creative Design');
+  });
+
+  it('answers an MDX document', async () => {
+    const { json } = await get('pages/elements');
+    expect(json.format).toBe('mdx');
+    expect(typeof json.value.body).toBe('string');
+  });
+
+  it('answers one entry of a file() entry', async () => {
+    const { json } = await get('testimonials/t-ana');
+    expect(json.value).toEqual(readJson('src/content/testimonials.json').find((t: { id: string }) => t.id === 't-ana'));
+  });
+
+  it('answers a data module with its build-time flags', async () => {
+    const { json } = await get('data:src/config/config.json');
+    expect(json).toMatchObject({ buildTime: true, buildTimeFields: ['site.base_url', 'site.base_path', 'site.trailing_slash'] });
+    expect(json.value).toEqual(readJson('src/config/config.json'));
+    expect((await get('data:src/config/menu.json')).json.buildTime).toBe(false);
+  });
+
+  it('answers 404 for an unknown key and 400 without one', async () => {
+    expect((await get('blog/not-there')).status).toBe(404);
+    expect((await fetch(`${BASE}/__dev/documents`)).status).toBe(400);
+  });
+});
+
 describe('performance', () => {
   it('renders 100 consecutive edits of a page quickly', async () => {
     const home = readJson('src/content/landing/home-v2.json');

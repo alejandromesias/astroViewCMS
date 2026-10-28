@@ -1,9 +1,10 @@
 ---
-// Test editor: one JSON textbox for the whole overlay (interim, task 1.7
-// brings a form per document) next to the site in an iframe. The logic is in
-// editor.ts. Served by the preview server for convenience (same
-// origin as the site); any other editor that speaks src/protocol.ts can
-// replace it. Open /__editor?page=/some/path to edit another page (default "/").
+// Test editor: a form per document the page reads, next to the site in an
+// iframe. The logic is in editor.ts. Served by the preview server for
+// convenience (same origin as the site); any other editor that speaks
+// preview-protocol can replace it. Open /__editor?page=/some/path to edit
+// another page (default "/"). Needs a build with PREVIEW_DEV=1 for the
+// document values (npm run build:sample).
 ---
 
 <!doctype html>
@@ -21,7 +22,9 @@
         <p id="status" role="status">Waiting for the page…</p>
       </header>
 
-      <div id="regions"></div>
+      <ul id="limits" hidden></ul>
+
+      <div id="documents"></div>
 
       <section class="upload">
         <h2>Draft image</h2>
@@ -30,20 +33,36 @@
           <code id="upload-url"></code>
           <button id="upload-copy" type="button">Copy</button>
         </p>
-        <p class="hint">Paste the entry under <code>"media"</code> with the image reference as its key.</p>
+        <p class="hint">Put this URL in a document's image field; the editor sends the image's size with every draft.</p>
       </section>
+
+      <details>
+        <summary>Overlay sent</summary>
+        <pre id="envelope"></pre>
+      </details>
     </aside>
 
     <iframe id="preview" title="Site preview"></iframe>
 
-    <template id="region-template">
-      <section class="region">
-        <h2></h2>
-        <textarea spellcheck="false" autocomplete="off"></textarea>
-        <div class="actions">
-          <button type="button" data-action="reset">Reset</button>
-          <span class="error" role="alert"></span>
+    <template id="document-template">
+      <section class="document">
+        <h2><span data-slot="key"></span> <small data-slot="file"></small></h2>
+        <p class="note" data-slot="note" hidden></p>
+        <div data-slot="fields">
+          <label class="field">
+            <span data-slot="value-label">Value (JSON)</span>
+            <textarea data-field="value" spellcheck="false" autocomplete="off"></textarea>
+          </label>
+          <label class="field" data-slot="body-field" hidden>
+            <span>Body</span>
+            <textarea data-field="body" spellcheck="false" autocomplete="off"></textarea>
+          </label>
+          <div class="actions">
+            <button type="button" data-action="reset">Reset</button>
+            <button type="button" data-action="delete">Delete in draft</button>
+          </div>
         </div>
+        <span class="error" data-slot="error" role="alert"></span>
       </section>
     </template>
   </body>
@@ -91,9 +110,42 @@
   #status[data-state="error"] {
     color: #b42318;
   }
+  .document {
+    margin-bottom: 16px;
+  }
+  .document h2 small {
+    font-weight: normal;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .field {
+    display: block;
+    margin-top: 6px;
+    font-size: 12px;
+    color: #4b5563;
+  }
+  .note {
+    margin: 0 0 6px;
+    color: #92400e;
+    font-size: 12px;
+  }
+  .note[data-state="error"] {
+    color: #b42318;
+  }
+  #limits {
+    margin: 0;
+    padding-left: 18px;
+    color: #92400e;
+    font-size: 12px;
+  }
+  pre {
+    overflow: auto;
+    max-height: 30vh;
+    font-size: 12px;
+  }
   textarea {
     width: 100%;
-    min-height: 50vh;
+    min-height: 16vh;
     padding: 10px;
     font: 12px/1.5 ui-monospace, Consolas, monospace;
     border: 1px solid #c3c9d3;

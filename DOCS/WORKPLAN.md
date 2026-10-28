@@ -22,8 +22,8 @@ parent folder: `../../HANDOFF.md`, `../../*-SYSTEM-OVERVIEW.md`, and the `tinacm
 
 | | Status |
 |---|---|
-| Preview render server: build once, render in memory, page render route, bridge v2 (1.6) | done; test editor is interim until 1.7 |
-| TypeScript without a build step, Vitest unit tests (331) and end-to-end suite (31) | done |
+| Preview render server: build once, render in memory, page render route, bridge v2 (1.6) | done; test editor v2 is task 1.7 |
+| TypeScript without a build step, Vitest unit tests (counts in each task's status) and end-to-end suite (38) | done |
 | System design | done, agreed by the user on 2026-10-26 |
 | Per-island save | parked and removed (0.1, 1.1) |
 | Richer sample site | `sample-site/` in the workspace with the 0.3 additions; preview-built unchanged (0.4) |
@@ -649,8 +649,8 @@ a page. What that found:
   integration injects an inline script instead of `bridge-entry.ts` (deleted).
   Temporary: D14 moves the origins to node runtime config in phase 2
   (section 8), and the bridge stays inside the bundle.
-- **The test editor is now an interim version** (one JSON textbox for the whole
-  overlay) so the bridge can be exercised; task 1.7 replaces it.
+- **The test editor was an interim version** (one JSON textbox for the whole
+  overlay) so the bridge could be exercised; task 1.7 replaced it.
 - **Navigation fix (review, 2026-10-27):** the bridge now drops the answer to a
   draft sent before a ClientRouter navigation (it would have been morphed into
   the new page). Still to check in 1.8: whether `astro:page-load` also fires on
@@ -751,6 +751,55 @@ query parameter or an option of `startBridge`) so it adds no noise to the
 console.
 
 ### 1.7 Test editor v2
+
+**Status (2026-10-27): implemented.** `tsc` clean; 15 tests for the route's
+parsing and handler (`src/dev/`), 36 for the editor, 1 for `devRoutes`, 38 e2e
+(7 new for `/__dev/documents` on `sample-site`). Checked by hand in a browser
+(`/__editor` on `sample-site`, built with `--dev`): priming with an empty
+overlay and the forms of `/blog` (14 documents); a Markdown body draft
+(`blog/blog-1`) that changed the summary on `/blog/page/2`; a ClientRouter
+navigation from inside the iframe (forms followed, the edit kept going out);
+`pricing/-index` with Yearly selected, where the yearly price changed 490 to 777
+and Yearly stayed selected; a 422 (`plans.0.price` as a string) shown next to
+its form and cleared on the fix; an image upload whose `url` in an author's
+`avatar` rendered the uploaded file.
+- Built as designed. The route lives in `src/dev/documents.ts` (pure parsing
+  and handler) and `documents-route.ts` (reads the file under `siteRoot`, a new
+  export of the virtual module). YAML uses the `yaml` package, now declared in
+  the server's dependencies (it was already installed through Astro). Dates
+  stay as the text the file holds.
+- **Switch:** `build.ts` takes `--dev` (or `PREVIEW_DEV=1` in the environment);
+  `npm run build:sample` passes it, and the e2e build sets the variable. `npm
+  start` doesn't matter, the route is decided at build time.
+- **Deviation:** the "absent without `PREVIEW_DEV`" check is a unit test of
+  `devRoutes()`, not an e2e test, which would need a second build.
+- `file()` entries of the array form answer the item as it is in the file,
+  `id` included. Documents without a `file` (loaders that don't read files)
+  answer 404; read-only formats answer their flags without a `value`.
+- Editor choices: a document form is hidden, not dropped, when the latest
+  render doesn't read it, and its edits keep going out. A document that fails
+  to load shows the reason and is not retried. "Delete in draft" is on every
+  form; typing in a deleted document brings it back. An upload is sent
+  immediately with the next draft and its `url` is copied, not the entry.
+  The limits no longer appear in the status line, only as notes.
+- **Review fixes (2026-10-27), before the commit:**
+  - **YAML is parsed as Astro parses it** (`merge: true`, so `<<: *anchor` keys
+    are expanded). Without it the editor showed a literal `<<` key and sending
+    the document back would have changed it. Dates still stay as text. Tested
+    for YAML files and for Markdown frontmatter.
+  - **After a protocol mismatch the editor sends nothing,** also when you type
+    or press "Delete in draft" (it only skipped the priming draft before). A
+    later matching `ready` sends the overlay again.
+  - **A form that finishes loading after a navigation** is hidden at once if
+    the latest render doesn't read it (it used to show until the next render).
+  - **The route's path check** also refuses a path on another drive
+    (`path.relative` answers an absolute path on Windows). The path comes from
+    `documents.json`, so this was not exploitable, only incomplete.
+  - The status table in section 1 now says 38 e2e tests and no longer repeats
+    a unit test total that went stale.
+  - Noted, not changed: `siteRoot` is baked into every bundle, not only dev
+    builds. `mediaDir` and `manifestDir` already do the same, and the
+    bundle portability item (section 8) moves all three.
 
 Reviewed against 1.5, 1.6, 1.6a and the design (2026-10-27). The design stands;
 the data source below was wrong in the first text, and the rest adds what 1.6

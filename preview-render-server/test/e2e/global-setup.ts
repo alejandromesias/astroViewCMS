@@ -29,7 +29,7 @@ export async function setup(project: TestProject) {
   // packages from node_modules, during prerendering and at runtime.
   fs.mkdirSync(path.join(SERVER_DIR, '.build'), { recursive: true });
   buildDir = fs.mkdtempSync(path.join(SERVER_DIR, '.build', 'e2e-'));
-  const env: NodeJS.ProcessEnv = { ...process.env, PREVIEW_BUILD_DIR: buildDir };
+  const env: NodeJS.ProcessEnv = { ...process.env, PREVIEW_BUILD_DIR: buildDir, PREVIEW_DEV: '1' };
   for (const name of AGENT_VARS) delete env[name];
 
   const build = spawnSync(process.execPath, ['src/build.ts', SITE_CONFIG], {

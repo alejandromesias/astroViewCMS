@@ -4,6 +4,8 @@ declare module 'virtual:preview-site' {
 
   /** Every image under the site's src/, keyed by its project-relative path. */
   export const images: Record<string, ImageMetadata>;
+  /** Absolute folder of the site (used by the dev-only document route). */
+  export const siteRoot: string;
   /** Absolute folder for uploaded draft images. */
   export const mediaDir: string;
   /** Absolute folder of the build manifests (documents.json, routes.json,

@@ -22,7 +22,8 @@ const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.avif', '.g
 // - injects the render routes /__preview/render, /__preview/validate and
 //   /__preview/warm, the draft image route /__preview-media/[file] (a stopgap
 //   until the CMS app stages media, phase 2) and the test editor page
-//   /__editor, plus an on-demand page that keeps the site's renderers in the
+//   /__editor (and, with PREVIEW_DEV=1, /__dev/documents, the editor's
+//   stopgap data source), plus an on-demand page that keeps the site's renderers in the
 //   server bundle;
 // - wraps each region component in <div data-preview-region> on the site's
 //   pages, by redirecting the pages' imports to a generated wrapper (the site's
@@ -74,6 +75,7 @@ export default function previewRenderServer(site: ResolvedSiteConfig): AstroInte
           entrypoint: new URL('./warmup-route.ts', import.meta.url),
           prerender: false,
         });
+        for (const route of devRoutes()) injectRoute({ ...route, prerender: false });
         // The test editor is a plain prerendered page.
         injectRoute({
           pattern: '/__editor',
@@ -141,6 +143,13 @@ export default function previewRenderServer(site: ResolvedSiteConfig): AstroInte
       },
     },
   };
+}
+
+/** Routes added only to a build made with PREVIEW_DEV=1: the editor's stopgap
+ *  for the CMS app's GET /api/documents (phase 2). A normal build has none. */
+export function devRoutes(env: NodeJS.ProcessEnv = process.env): Array<{ pattern: string; entrypoint: URL }> {
+  if (env.PREVIEW_DEV !== '1') return [];
+  return [{ pattern: '/__dev/documents', entrypoint: new URL('./dev/documents-route.ts', import.meta.url) }];
 }
 
 /** The page script that starts the bridge (client/bridge.ts) with the editor
@@ -240,6 +249,7 @@ export function siteModule(
         ...lines,
         `export const images = { ${imageEntries.join(', ')} };`,
         `export const mediaDir = ${JSON.stringify(toPosix(mediaDir))};`,
+        `export const siteRoot = ${JSON.stringify(toPosix(root))};`,
         `export const manifestDir = ${JSON.stringify(toPosix(manifestDir))};`,
         // The site's pages, loaded on demand by the render route.
         "export const pages = import.meta.glob('/src/pages/**/*.{astro,md,mdx,html}');",

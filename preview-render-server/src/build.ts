@@ -6,6 +6,9 @@ import { build } from 'astro';
 import previewRenderServer from './integration.ts';
 import { loadSiteConfig } from './site-config.ts';
 
+// --dev (or PREVIEW_DEV=1) adds the editor's stopgap route /__dev/documents.
+if (process.argv.includes('--dev')) process.env.PREVIEW_DEV = '1';
+
 const site = await loadSiteConfig(process.argv[2]);
 
 await build({
