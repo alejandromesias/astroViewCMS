@@ -23,7 +23,7 @@ export const reference = (collection: string) => z.string().meta({ cms: 'referen
 export const glob = (options: { pattern: string | string[]; base?: string }): LoaderInfo => ({
   kind: 'glob',
   pattern: [options.pattern].flat().join(','),
-  base: options.base,
+  ...(options.base === undefined ? {} : { base: options.base }),
 });
 export const file = (fileName: string): LoaderInfo => ({ kind: 'file', pattern: fileName });
 

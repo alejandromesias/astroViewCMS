@@ -74,7 +74,7 @@ function buildRoots(root: string, srcDir: string): string[] {
 /** Targets of `@plugin "x"` and `@config "x"` in a stylesheet. */
 export function cssDirectiveTargets(css: string): string[] {
   const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
-  return [...withoutComments.matchAll(/@(?:plugin|config)\s+["']([^"']+)["']/g)].map((match) => match[1]);
+  return [...withoutComments.matchAll(/@(?:plugin|config)\s+["']([^"']+)["']/g)].map((match) => match[1]!);
 }
 
 /** Specifiers that a source file imports, as written. JavaScript goes through
@@ -90,7 +90,7 @@ export function importSpecifiers(file: string, source: string): string[] {
     }
   }
   const pattern = /(?:\bfrom\s*|\bimport\s*\(?\s*)["']([^"']+)["']/g;
-  return [...source.matchAll(pattern)].map((match) => match[1]);
+  return [...source.matchAll(pattern)].map((match) => match[1]!);
 }
 
 function importTargets(file: string, aliases: Alias[], root: string): string[] {

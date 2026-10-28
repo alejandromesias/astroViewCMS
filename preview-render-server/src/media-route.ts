@@ -40,7 +40,7 @@ export const POST: APIRoute = async ({ params, request }) => {
   if (rejection) return rejection;
 
   // The extension comes from the declared content type, never from user input.
-  const ext = EXTENSIONS[(request.headers.get('content-type') ?? '').split(';')[0].trim()];
+  const ext = EXTENSIONS[(request.headers.get('content-type') ?? '').split(';')[0]!.trim()];
   if (!ext) {
     return new Response(`Supported types: ${Object.keys(EXTENSIONS).join(', ')}`, { status: 415 });
   }
@@ -76,7 +76,7 @@ export const GET: APIRoute = async ({ params, request }) => {
     const bytes = await fs.readFile(path.join(mediaDir, file));
     return new Response(bytes, {
       headers: {
-        'Content-Type': CONTENT_TYPES[path.extname(file).slice(1)],
+        'Content-Type': CONTENT_TYPES[path.extname(file).slice(1)]!,
         'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff',
       },

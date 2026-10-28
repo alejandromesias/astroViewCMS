@@ -35,7 +35,7 @@ const PLAIN = new Set(['', 'text', 'txt', 'plain', 'plaintext']);
 /** Lowercase language with aliases resolved (`JS` -> `javascript`). */
 export function canonicalLanguage(language: string): string {
   const lower = language.toLowerCase();
-  return Object.hasOwn(ALIASES, lower) ? ALIASES[lower] : lower;
+  return Object.hasOwn(ALIASES, lower) ? ALIASES[lower]! : lower;
 }
 
 interface Fence {
@@ -53,16 +53,16 @@ function walkFences(markdown: string, visit: (line: string, fence: Fence) => str
   const lines = markdown.split('\n');
   let open: { char: string; length: number } | undefined;
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    const line = lines[i]!;
     if (open) {
       const closing = CLOSING.exec(line);
-      if (closing && closing[1][0] === open.char && closing[1].length >= open.length) open = undefined;
+      if (closing && closing[1]![0] === open.char && closing[1]!.length >= open.length) open = undefined;
       continue;
     }
     const match = OPENING.exec(line);
     if (!match) continue;
-    open = { char: match[2][0], length: match[2].length };
-    lines[i] = visit(line, { start: match[1].length + match[2].length + match[3].length, language: match[4] });
+    open = { char: match[2]![0]!, length: match[2]!.length };
+    lines[i] = visit(line, { start: match[1]!.length + match[2]!.length + match[3]!.length, language: match[4]! });
   }
   return lines.join('\n');
 }

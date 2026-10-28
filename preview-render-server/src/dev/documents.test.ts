@@ -167,7 +167,7 @@ describe('parseDocument: details', () => {
 
   it('returns the whole file for a format without an entry key', () => {
     expect(parseDocument('[1, 2]', { format: 'json' })).toEqual([1, 2]);
-    expect(parseDocument('[1, 2]', { format: 'json', entryKey: undefined })).toEqual([1, 2]);
+    expect(parseDocument('[1, 2]', { format: 'json' })).toEqual([1, 2]);
   });
 
   it('finds an array entry by id, also a number id, and skips items that are not objects or have no id', () => {

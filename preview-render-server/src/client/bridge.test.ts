@@ -136,7 +136,7 @@ describe('on a draft', () => {
     bridge.fetch.mockResolvedValue(rendered(blocks('<p>x</p>')));
     bridge.post(draft());
     await vi.waitFor(() => expect(bridge.fetch).toHaveBeenCalled());
-    expect(bridge.fetch.mock.calls[0][0]).toBe('/__preview/render?path=%2Fblog%3Fpage%3D2');
+    expect(bridge.fetch.mock.calls[0]![0]).toBe('/__preview/render?path=%2Fblog%3Fpage%3D2');
   });
 
   it('an empty overlay renders too: it primes a page that is older than the saved content', async () => {

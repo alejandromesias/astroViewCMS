@@ -18,7 +18,7 @@ function setup(pages: Record<string, PageModule>, routes: RouteRecord[]) {
   const deps: RenderPageDeps = {
     routes,
     rules: { base: '/', trailingSlash: 'ignore' },
-    loadPage: (r) => (pages[r.pattern] ? Promise.resolve(pages[r.pattern]) : undefined),
+    loadPage: (r) => (pages[r.pattern] ? Promise.resolve(pages[r.pattern]!) : undefined),
     renderToString: renderToString as never,
   };
   return { deps, renderToString };
@@ -30,7 +30,7 @@ describe('renderPage', () => {
     const result = await renderPage(deps, new URL('http://x/blog'));
     expect(result.html).toBe('<html>blog</html>');
     expect(result.route).toBe('/blog');
-    const options = renderToString.mock.calls[0][1] as { request: Request; props: object; partial: boolean };
+    const options = renderToString.mock.calls[0]![1] as { request: Request; props: object; partial: boolean };
     expect(options.request.url).toBe('http://x/blog');
     expect(options.props).toEqual({});
     expect(options.partial).toBe(false);
@@ -43,7 +43,7 @@ describe('renderPage', () => {
     ]);
     const { deps, renderToString } = setup({ '/p/[slug]': { default: 'p', getStaticPaths } }, [route('/p/[slug]', ['slug'])]);
     const result = await renderPage(deps, new URL('http://x/p/b'));
-    expect(renderToString.mock.calls[0][1]).toMatchObject({ params: { slug: 'b' }, props: { n: 2 } });
+    expect(renderToString.mock.calls[0]![1]).toMatchObject({ params: { slug: 'b' }, props: { n: 2 } });
     expect(result.pathsMs).toBeGreaterThanOrEqual(0);
     expect(getStaticPaths).toHaveBeenCalledWith({ paginate: expect.any(Function) });
   });
@@ -67,7 +67,7 @@ describe('renderPage', () => {
     };
     const { deps, renderToString } = setup({ '/blog/[...single]': page }, [route('/blog/[...single]', ['...single'])]);
     await renderPage(deps, new URL('http://x/blog/generated/b'));
-    expect(renderToString.mock.calls[0][1]).toMatchObject({ props: { id: 'b' } });
+    expect(renderToString.mock.calls[0]![1]).toMatchObject({ props: { id: 'b' } });
   });
 
   it('page 1 of [...page] matches an entry whose page param is undefined', async () => {
@@ -78,7 +78,7 @@ describe('renderPage', () => {
     const { deps, renderToString } = setup({ '/t/[tag]/[...page]': page }, [route('/t/[tag]/[...page]', ['tag', '...page'])]);
     await renderPage(deps, new URL('http://x/t/t'));
     await renderPage(deps, new URL('http://x/t/t/2'));
-    const pageProp = (call: number) => (renderToString.mock.calls[call][1] as { props: { page: { currentPage: number } } }).props.page;
+    const pageProp = (call: number) => (renderToString.mock.calls[call]![1] as { props: { page: { currentPage: number } } }).props.page;
     expect(pageProp(0).currentPage).toBe(1);
     expect(pageProp(1).currentPage).toBe(2);
   });

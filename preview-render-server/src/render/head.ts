@@ -17,7 +17,7 @@ export function extractHead(html: string): PageHead {
   const head = HEAD.exec(html)?.[1] ?? '';
   const title = TITLE.exec(head)?.[1];
   const meta = [...head.matchAll(META)].map(([, attributes]) =>
-    Object.fromEntries([...attributes.matchAll(ATTRIBUTE)].map(([, name, a, b, c]) => [name, decodeEntities(a ?? b ?? c ?? '')])),
+    Object.fromEntries([...attributes!.matchAll(ATTRIBUTE)].map(([, name, a, b, c]) => [name, decodeEntities(a ?? b ?? c ?? '')])),
   );
   return { ...(title === undefined ? {} : { title: decodeEntities(title.trim()) }), meta };
 }

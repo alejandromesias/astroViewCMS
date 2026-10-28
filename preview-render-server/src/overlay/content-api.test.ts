@@ -373,7 +373,7 @@ describe('the file that holds a new draft', () => {
     plain: defineCollection({ loader: glob({ pattern: 'data/*', base: 'content/plain' }) }),
     mark: defineCollection({ loader: glob({ pattern: '**/*.markdown', base: 'content/mark' }) }),
     noBase: defineCollection({ loader: glob({ pattern: '**/*.json' }) }),
-    noLoader: defineCollection({ loader: undefined, schema: undefined }),
+    noLoader: defineCollection({}),
     one: defineCollection({ loader: file('content/one.json') }),
   };
   const extraApi = createContentApi({ real, collections: extra, images, hooks, emptyContent: () => 'empty-content' });
@@ -473,7 +473,7 @@ describe('schema issues', () => {
   it('fails a reference to a collection the site does not have', async () => {
     const error = await failure(z.object({ r: reference('nowhere') }), { r: 'a' });
     expect(error).toBeInstanceOf(DraftError);
-    expect(error.issues[0].path).toEqual(['r']);
+    expect(error.issues[0]!.path).toEqual(['r']);
   });
 
   it('loads the ids of the built entries once, however many drafts are parsed', async () => {

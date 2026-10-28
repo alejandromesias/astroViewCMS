@@ -44,7 +44,7 @@ export function contentImportRewrite({ srcDir, shimFile }: { srcDir: string; shi
     enforce: 'post',
     transform(code, id) {
       if (!code.includes('astro:content') || id.startsWith('\0')) return;
-      const file = id.split('?')[0];
+      const file = id.split('?')[0]!;
       if (normalize(file) === shim) return;
       if (isInside(path.normalize(file), path.normalize(srcDir))) {
         if (!isRewritten(path.normalize(file), path.normalize(srcDir))) return; // the content config
@@ -84,12 +84,12 @@ export function dataModules({
     enforce: 'pre',
     async resolveId(source, importer, options) {
       if (!importer || !source.endsWith('.json') || importer.startsWith('\0')) return;
-      const from = path.normalize(importer.split('?')[0]);
+      const from = path.normalize(importer.split('?')[0]!);
       if (path.relative(srcDir, from).startsWith('..')) return;
       const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
       if (!resolved || !wanted.has(normalize(resolved.id))) return;
       // A suffix that is not .json, so Vite's own JSON plugin leaves it alone.
-      return `${PREFIX}${path.normalize(resolved.id.split('?')[0])}.js`;
+      return `${PREFIX}${path.normalize(resolved.id.split('?')[0]!)}.js`;
     },
     load(id) {
       if (!id.startsWith(PREFIX)) return;
@@ -122,7 +122,7 @@ export function dataModuleSource(built: unknown, key: string, proxyFile: string)
 const RESERVED = new Set(['default', 'class', 'function', 'var', 'let', 'const', 'import', 'export', 'new', 'delete', 'if', 'else', 'return', 'switch', 'case', 'for', 'while', 'do', 'break', 'continue', 'typeof', 'void', 'null', 'true', 'false', 'this', 'super', 'in', 'of', 'try', 'catch', 'throw', 'with', 'yield', 'await', 'enum', 'implements', 'interface', 'package', 'private', 'protected', 'public', 'static', 'eval', 'arguments', 'debugger', 'instanceof', 'extends']);
 
 function normalize(p: string): string {
-  return p.replaceAll('\\', '/').split('?')[0].toLowerCase();
+  return p.replaceAll('\\', '/').split('?')[0]!.toLowerCase();
 }
 
 function toPosix(p: string): string {

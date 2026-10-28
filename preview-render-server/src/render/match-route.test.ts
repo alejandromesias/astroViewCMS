@@ -8,7 +8,7 @@ const route = (pattern: string, type: RouteRecord['type'] = 'page'): RouteRecord
   component: `src/pages${pattern === '/' ? '/index' : pattern}.astro`,
   type,
   dynamic: pattern.includes('['),
-  params: [...pattern.matchAll(/\[(\.\.\.\w+|\w+)\]/g)].map((m) => m[1]),
+  params: [...pattern.matchAll(/\[(\.\.\.\w+|\w+)\]/g)].map((m) => m[1]!),
   restParams: [],
   hasStaticPaths: false,
 });
@@ -41,19 +41,19 @@ describe('matchRoutes', () => {
 
   it('a rest parameter takes ids with slashes (D10)', () => {
     const [found] = matchRoutes(routes, '/blog/generated/post-001', rules);
-    expect(found.route.pattern).toBe('/blog/[...single]');
-    expect(found.params).toEqual({ single: 'generated/post-001' });
+    expect(found!.route.pattern).toBe('/blog/[...single]');
+    expect(found!.params).toEqual({ single: 'generated/post-001' });
   });
 
   it('a rest parameter that matched nothing is undefined', () => {
     const [found] = matchRoutes(routes, '/tags/design', rules);
-    expect(found.route.pattern).toBe('/tags/[tag]/[...page]');
-    expect(found.params).toEqual({ tag: 'design', page: undefined });
-    expect(matchRoutes(routes, '/tags/design/2', rules)[0].params).toEqual({ tag: 'design', page: '2' });
+    expect(found!.route.pattern).toBe('/tags/[tag]/[...page]');
+    expect(found!.params).toEqual({ tag: 'design', page: undefined });
+    expect(matchRoutes(routes, '/tags/design/2', rules)[0]!.params).toEqual({ tag: 'design', page: '2' });
   });
 
   it('decodes parameters', () => {
-    expect(matchRoutes(routes, '/landing/caf%C3%A9', rules)[0].params).toEqual({ slug: 'café' });
+    expect(matchRoutes(routes, '/landing/caf%C3%A9', rules)[0]!.params).toEqual({ slug: 'café' });
   });
 
   it('ignores endpoints and unknown paths', () => {
@@ -70,7 +70,7 @@ describe('matchRoutes', () => {
 
   it('matches a parameter inside a segment', () => {
     const mixed = [route('/post-[id]')];
-    expect(matchRoutes(mixed, '/post-42', rules)[0].params).toEqual({ id: '42' });
+    expect(matchRoutes(mixed, '/post-42', rules)[0]!.params).toEqual({ id: '42' });
     expect(matchRoutes(mixed, '/page-42', rules)).toEqual([]);
   });
 });

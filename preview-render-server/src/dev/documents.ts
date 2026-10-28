@@ -40,7 +40,7 @@ const FRONTMATTER = /^---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)([\s
 export function splitFrontmatter(text: string): { data: unknown; body: string } {
   const match = FRONTMATTER.exec(text);
   if (!match) return { data: {}, body: text };
-  return { data: (match[1] === undefined ? undefined : parseYaml(match[1])) ?? {}, body: match[2].replace(/^(?:\r?\n)+/, '') };
+  return { data: (match[1] === undefined ? undefined : parseYaml(match[1])) ?? {}, body: match[2]!.replace(/^(?:\r?\n)+/, '') };
 }
 
 /** The document's raw value (D2): the parsed object for JSON and YAML, the

@@ -198,7 +198,7 @@ describe('previewRenderServer', () => {
     ]);
     expect(injectScript).toHaveBeenCalledExactlyOnceWith('page', expect.stringMatching(/^import \{ startBridge \} from ".*\/client\/bridge\.ts"; startBridge\(window, window\.fetch\.bind\(window\), \{ editorOrigins: \[\] \}\);$/),
     );
-    const plugins = updateConfig.mock.calls[0][0].vite.plugins as Plugin[];
+    const plugins = updateConfig.mock.calls[0]![0].vite!.plugins as Plugin[];
     expect(plugins.map((plugin) => plugin.name)).toEqual([
       'preview-render-server:regions',
       'preview-render-server:region-wrappers',
@@ -217,15 +217,15 @@ describe('previewRenderServer hooks', () => {
   const manifest = (name: string) => JSON.parse(fs.readFileSync(path.join(hookSite.manifestDir, name), 'utf8')) as unknown;
 
   it('writes routes.json from the routes Astro resolved', () => {
-    hooksOf(hookSite)['astro:routes:resolved']({ routes: [] });
+    hooksOf(hookSite)['astro:routes:resolved']!({ routes: [] });
     expect(manifest('routes.json')).toEqual([]);
   });
 
   it('writes documents.json and code-languages.json when the build is done', () => {
     const integration = hooksOf(hookSite);
-    integration['astro:config:done']({ config: { cacheDir: new URL('file:///' + posix(path.join(tmp, 'no-cache')) + '/'), base: '/', trailingSlash: 'ignore' } });
+    integration['astro:config:done']!({ config: { cacheDir: new URL('file:///' + posix(path.join(tmp, 'no-cache')) + '/'), base: '/', trailingSlash: 'ignore' } });
     const warn = vi.fn();
-    integration['astro:build:done']({ logger: { warn } });
+    integration['astro:build:done']!({ logger: { warn } });
     expect(manifest('documents.json')).toEqual([]);
     expect(manifest('code-languages.json')).toHaveProperty('languages');
     expect(warn).not.toHaveBeenCalled();
@@ -235,7 +235,7 @@ describe('previewRenderServer hooks', () => {
     const warn = vi.fn();
     const blocked = path.join(tmp, 'blocked');
     fs.writeFileSync(blocked, '');
-    hooksOf({ ...hookSite, manifestDir: path.join(blocked, 'manifest') })['astro:build:done']({ logger: { warn } });
+    hooksOf({ ...hookSite, manifestDir: path.join(blocked, 'manifest') })['astro:build:done']!({ logger: { warn } });
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('documents.json not written'));
   });
 });
@@ -261,8 +261,8 @@ const runSetup = async (target: ResolvedSiteConfig) => {
   const updateConfig = vi.fn();
   const integration = previewRenderServer(target);
   const hooks = integration.hooks as unknown as Record<string, (options: object) => unknown>;
-  await hooks['astro:config:setup']({ injectRoute, injectScript, updateConfig });
-  const plugins = updateConfig.mock.calls[0][0].vite.plugins as Plugin[];
+  await hooks['astro:config:setup']!({ injectRoute, injectScript, updateConfig });
+  const plugins = updateConfig.mock.calls[0]![0].vite!.plugins as Plugin[];
   return { integration, hooks, injectRoute, injectScript, plugins };
 };
 
@@ -425,7 +425,7 @@ describe('siteModule details', () => {
   it('numbers the images and keys each by its project path', () => {
     const lines = hook(siteModule(site), 'load').call({}, RESOLVED_ID) as string;
     const [first, second, third] = [0, 1, 2].map((i) => new RegExp(`^import image${i} from "[^"]+";$`, 'm'));
-    expect([first, second, third].map((re) => re.test(lines))).toEqual([true, true, true]);
+    expect([first, second, third].map((re) => re!.test(lines))).toEqual([true, true, true]);
     expect(lines).toMatch(/^export const images = \{ ("[^"]+": image\d, ){2}"[^"]+": image\d \};$/m);
   });
 });
@@ -461,9 +461,9 @@ describe('previewRenderServer setup', () => {
         '/__editor',
       ]);
       const dev = routes[5];
-      expect(dev.prerender).toBe(false);
-      expect(posix(path.relative(here, fileURLToPath(dev.entrypoint)))).toBe('dev/documents-route.ts');
-      expect(fs.existsSync(fileURLToPath(dev.entrypoint))).toBe(true);
+      expect(dev!.prerender).toBe(false);
+      expect(posix(path.relative(here, fileURLToPath(dev!.entrypoint)))).toBe('dev/documents-route.ts');
+      expect(fs.existsSync(fileURLToPath(dev!.entrypoint))).toBe(true);
     } finally {
       vi.unstubAllEnvs();
     }
@@ -476,7 +476,7 @@ describe('previewRenderServer setup', () => {
     expect(code).toContain('{ editorOrigins: ["https://editor.example","http://localhost:3000"] }');
     const bridge = /from "([^"]+)"/.exec(code)![1];
     expect(bridge).not.toContain('\\');
-    expect(fs.existsSync(bridge)).toBe(true);
+    expect(fs.existsSync(bridge!)).toBe(true);
   });
 
   it('creates the manifest folder and writes the region wrappers', async () => {
@@ -527,15 +527,15 @@ describe('previewRenderServer build hooks', () => {
     const { hooks, plugins } = await runSetup({ ...site, ...out });
     const cache = path.join(tmp, `cache-${extraCount++}`);
     fs.mkdirSync(cache, { recursive: true });
-    hooks['astro:config:done']({ config: { cacheDir: new URL('file:///' + posix(cache) + '/'), base: '/docs', trailingSlash: 'always' } });
-    const source = hook(plugins[0], 'load').call({}, RESOLVED_ID) as string;
+    hooks['astro:config:done']!({ config: { cacheDir: new URL('file:///' + posix(cache) + '/'), base: '/docs', trailingSlash: 'always' } });
+    const source = hook(plugins[0]!, 'load').call({}, RESOLVED_ID) as string;
     expect(source).toContain('export const urlRules = {"base":"/docs","trailingSlash":"always"};');
   });
 
   it('writes the routes it is given, shaped, into routes.json', async () => {
     const out = outputs();
     const { hooks } = await runSetup({ ...site, ...out });
-    hooks['astro:routes:resolved']({ routes: [{ pattern: '/about', entrypoint: 'src/pages/about.astro', type: 'page', params: [] }] });
+    hooks['astro:routes:resolved']!({ routes: [{ pattern: '/about', entrypoint: 'src/pages/about.astro', type: 'page', params: [] }] });
     const routes = JSON.parse(fs.readFileSync(path.join(out.manifestDir, 'routes.json'), 'utf8')) as Array<{ pattern: string; component: string }>;
     expect(routes.map((route) => [route.pattern, route.component])).toEqual([['/about', 'src/pages/about.astro']]);
     expect(fs.readFileSync(path.join(out.manifestDir, 'routes.json'), 'utf8')).toMatch(/\n$/);
@@ -546,15 +546,15 @@ describe('previewRenderServer build hooks', () => {
     const out = outputs();
     const { hooks } = await runSetup({ ...site, ...out, extraLanguages: ['Ruby'] });
     const warn = vi.fn();
-    hooks['astro:config:done']({ config: { cacheDir: new URL('file:///' + posix(path.join(tmp, 'no-cache')) + '/'), base: '/', trailingSlash: 'ignore' } });
-    hooks['astro:build:done']({ logger: { warn } });
+    hooks['astro:config:done']!({ config: { cacheDir: new URL('file:///' + posix(path.join(tmp, 'no-cache')) + '/'), base: '/', trailingSlash: 'ignore' } });
+    hooks['astro:build:done']!({ logger: { warn } });
     expect(JSON.parse(fs.readFileSync(path.join(out.manifestDir, 'code-languages.json'), 'utf8')).languages).toContain('ruby');
     expect(warn).not.toHaveBeenCalled();
 
     fs.writeFileSync(path.join(tmp, `blocked-${extraCount}`), '');
     const blocked = path.join(tmp, `blocked-${extraCount++}`, 'manifest');
     const broken = previewRenderServer({ ...site, ...out, manifestDir: blocked }).hooks as unknown as Record<string, (o: object) => unknown>;
-    broken['astro:build:done']({ logger: { warn } });
+    broken['astro:build:done']!({ logger: { warn } });
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/^documents\.json not written: \S/));
   });
 });

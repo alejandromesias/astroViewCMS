@@ -134,7 +134,7 @@ export default function previewRenderServer(site: ResolvedSiteConfig): AstroInte
       'astro:build:done': ({ logger }) => {
         try {
           const store = readDataStore(cacheDir);
-          const documents = shapeDocuments({ store, loaderKinds, scan, buildTimeFields: site.buildTimeFields });
+          const documents = shapeDocuments({ store, loaderKinds, scan, ...(site.buildTimeFields === undefined ? {} : { buildTimeFields: site.buildTimeFields }) });
           writeManifest(site, 'documents.json', documents);
           writeManifest(site, LANGUAGES_FILE, { languages: collectLanguages(site.root, store, site.extraLanguages) });
         } catch (error) {
@@ -286,7 +286,7 @@ function importPath(root: string, file: string): string {
 /** Vite ids use forward slashes and may carry a ?query; Windows paths are
  *  case-insensitive. */
 export function normalizeId(id: string): string {
-  return toPosix(id.split('?')[0]).toLowerCase();
+  return toPosix(id.split('?')[0]!).toLowerCase();
 }
 
 function toPosix(p: string): string {

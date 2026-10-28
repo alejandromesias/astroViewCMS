@@ -48,7 +48,7 @@ describe('code languages', () => {
     const render = createMarkdownRenderer(() => undefined, () => new Set(['javascript']), (async () => renderer) as never);
     const context = createOverlayContext();
     await runWithOverlay(context, () => render({ body, data: {} }));
-    expect(renderer.render.mock.calls[0][0]).toBe('```js\na\n```\n\n```text\nb\n```');
+    expect(renderer.render.mock.calls[0]![0]).toBe('```js\na\n```\n\n```text\nb\n```');
     expect([...context.limits]).toEqual(['code-language:cpp']);
   });
 
@@ -57,7 +57,7 @@ describe('code languages', () => {
     const render = createMarkdownRenderer(() => undefined, undefined, (async () => renderer) as never);
     const context = createOverlayContext();
     await runWithOverlay(context, () => render({ body, data: {} }));
-    expect(renderer.render.mock.calls[0][0]).toBe(body);
+    expect(renderer.render.mock.calls[0]![0]).toBe(body);
     expect(context.limits.size).toBe(0);
   });
 
@@ -66,7 +66,7 @@ describe('code languages', () => {
     const create = vi.fn(async () => renderer) as never;
     const render = createMarkdownRenderer(() => undefined, () => new Set(['css', 'javascript']), create);
     await render.warmUp();
-    expect(renderer.render.mock.calls[0][0]).toBe('```css\n```\n\n```javascript\n```');
+    expect(renderer.render.mock.calls[0]![0]).toBe('```css\n```\n\n```javascript\n```');
     await render({ body: 'x', data: {} });
     expect(create).toHaveBeenCalledTimes(1);
   });

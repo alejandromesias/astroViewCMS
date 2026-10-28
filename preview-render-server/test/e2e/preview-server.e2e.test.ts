@@ -105,7 +105,7 @@ describe('POST /__preview/render with no overlay', () => {
 
   it('images go through the on-demand image endpoint, which serves them', async () => {
     const { json } = await render('/blog/blog-1');
-    const src = (json as Rendered).html.match(/<img[^>]*? src="(\/_image\?[^"]*)"/)![1].replaceAll('&amp;', '&');
+    const src = (json as Rendered).html.match(/<img[^>]*? src="(\/_image\?[^"]*)"/)![1]!.replaceAll('&amp;', '&');
     const image = await fetch(BASE + src);
     expect(image.status).toBe(200);
     expect(image.headers.get('content-type')).toBe('image/webp');
@@ -313,7 +313,7 @@ describe('performance', () => {
     const renderStat = stat(server);
     const roundTrip = stat(wall);
     const fmt = ({ median, p95, max }: ReturnType<typeof stat>) =>
-      `median ${median.toFixed(1)} ms, p95 ${p95.toFixed(1)} ms, max ${max.toFixed(1)} ms`;
+      `median ${median!.toFixed(1)} ms, p95 ${p95!.toFixed(1)} ms, max ${max!.toFixed(1)} ms`;
     console.log(`100 renders of /landing/home-v2\n  render (server): ${fmt(renderStat)}\n  round trip:      ${fmt(roundTrip)}`);
 
     // Generous bound: only catches a big regression, not machine noise.

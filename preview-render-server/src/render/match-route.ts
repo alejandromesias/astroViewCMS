@@ -31,12 +31,12 @@ const END = 4;
 
 function parseSegment(text: string): Segment {
   const rest = /^\[\.\.\.(\w+)\]$/.exec(text);
-  if (rest) return { text, rest: rest[1], names: [rest[1]], rank: 1 };
+  if (rest) return { text, rest: rest[1]!, names: [rest[1]!], rank: 1 };
   const names: string[] = [];
   const source = text.split(/(\[\w+\])/).map((part) => {
     const param = /^\[(\w+)\]$/.exec(part);
     if (!param) return part.replace(/[.*+?^${}()|\\]/g, '\\$&');
-    names.push(param[1]);
+    names.push(param[1]!);
     return '(.+)';
   });
   return names.length === 0 ? { text, names, rank: 3 } : { text, regex: new RegExp(`^${source.join('')}$`), names, rank: 2 };
@@ -79,7 +79,7 @@ function matchSegments(
   if (segments.length === 0) return undefined;
   const [first, ...others] = segments;
   if (!head.regex) return head.text === first ? matchSegments(tail, others, params) : undefined;
-  const match = head.regex.exec(first);
+  const match = head.regex.exec(first!);
   if (!match) return undefined;
   const values = Object.fromEntries(head.names.map((name, i) => [name, match[i + 1]]));
   return matchSegments(tail, others, { ...params, ...values });

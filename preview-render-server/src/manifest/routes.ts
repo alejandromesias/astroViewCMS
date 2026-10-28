@@ -33,7 +33,7 @@ export function shapeRoutes(
         type: routeType(route.type),
         dynamic,
         params: route.params,
-        restParams: [...route.pattern.matchAll(REST_PARAM)].map((match) => match[1]),
+        restParams: [...route.pattern.matchAll(REST_PARAM)].map((match) => match[1]!),
         hasStaticPaths: dynamic && STATIC_PATHS.test(readSource(absolute) ?? ''),
       };
     })

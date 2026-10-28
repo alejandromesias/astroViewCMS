@@ -10,6 +10,6 @@ export function islandResolver(entryModules: Record<string, string>, base: strin
   return (specifier) => {
     if (!Object.hasOwn(entryModules, specifier)) return specifier;
     const file = entryModules[specifier];
-    return file === '' ? '' : `${prefix}/${file.replace(/^\//, '')}`;
+    return file === '' ? '' : `${prefix}/${file!.replace(/^\//, '')}`;
   };
 }

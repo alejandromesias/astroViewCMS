@@ -18,7 +18,7 @@ describe('reviveDates (D13)', () => {
     const raw = { updated: '2025-04-04', items: [{ since: '2024-01-02T10:00:00Z' }] };
     const revived = reviveDates(raw, issuesOf(schema, raw))! as unknown as { updated: Date; items: { since: Date }[] };
     expect(revived.updated).toEqual(new Date('2025-04-04'));
-    expect(revived.items[0].since).toEqual(new Date('2024-01-02T10:00:00Z'));
+    expect(revived.items[0]!.since).toEqual(new Date('2024-01-02T10:00:00Z'));
     expect(schema.safeParse(revived).success).toBe(true);
   });
 

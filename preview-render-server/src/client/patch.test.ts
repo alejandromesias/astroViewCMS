@@ -396,6 +396,6 @@ describe('head: meta keys', () => {
     load(head('<meta name="n" content="1"><meta name="n" content="1">'), region('a', '<p>x</p>'));
     patcher.patch(page(head('<meta name="n" content="2">'), region('a', '<p>x</p>')));
     const metas = document.querySelectorAll('meta[name="n"]');
-    expect([metas[0].getAttribute('content'), metas[1].getAttribute('content')]).toEqual(['2', '1']);
+    expect([metas[0]!.getAttribute('content'), metas[1]!.getAttribute('content')]).toEqual(['2', '1']);
   });
 });

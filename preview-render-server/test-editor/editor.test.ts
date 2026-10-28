@@ -10,7 +10,7 @@ import { RENDER_DELAY_MS, buildTimeNote, limitNote, startEditor } from './editor
 // URL: under happy-dom, URL is the DOM's, which node:fs doesn't accept.)
 const BODY = fs
   .readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'editor.astro'), 'utf8')
-  .match(/<body>([\s\S]*)<\/body>/)![1]
+  .match(/<body>([\s\S]*)<\/body>/)![1]!
   // A plain element stands in for the iframe: happy-dom would try to load it.
   // The editor only uses its src and contentWindow.
   .replace(/<iframe\b([^>]*)><\/iframe>/, '<div$1></div>');

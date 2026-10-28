@@ -12,13 +12,13 @@ const withDocs = <T>(documents: Record<string, unknown>, fn: () => T) => {
 describe('proxyData', () => {
   it('reads the built value outside a render and when the overlay has no such document', () => {
     const data = proxyData(KEY, built);
-    expect(data.main[0].name).toBe('Home');
-    expect(withDocs({}, () => data.main[0].name).value).toBe('Home');
+    expect(data.main[0]!.name).toBe('Home');
+    expect(withDocs({}, () => data.main[0]!.name).value).toBe('Home');
   });
 
   it('reads the overlay document when there is one', () => {
     const data = proxyData(KEY, built);
-    expect(withDocs({ [KEY]: { main: [{ name: 'Draft' }], footer: [] } }, () => data.main[0].name).value).toBe('Draft');
+    expect(withDocs({ [KEY]: { main: [{ name: 'Draft' }], footer: [] } }, () => data.main[0]!.name).value).toBe('Draft');
   });
 
   it('works for spread, Object.keys and JSON, which need more than get', () => {
@@ -64,7 +64,7 @@ describe('proxyData', () => {
     const read = (name: string, delay: number) =>
       runWithOverlay(createOverlayContext({ documents: { [KEY]: { main: [{ name }] } } }), async () => {
         await new Promise((resolve) => setTimeout(resolve, delay));
-        return data.main[0].name;
+        return data.main[0]!.name;
       });
     expect(await Promise.all([read('A', 5), read('B', 1)])).toEqual(['A', 'B']);
   });

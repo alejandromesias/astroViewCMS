@@ -49,7 +49,7 @@ export function schemaStubs(configFile: string, stubFile: string, query?: string
     name: 'preview-render-server:schema-stubs',
     enforce: 'pre',
     transform(code, id) {
-      if (!local(id) || !marked(id) || !(query === undefined || CODE_FILE.test(id.split('?')[0]))) return;
+      if (!local(id) || !marked(id) || !(query === undefined || CODE_FILE.test(id.split('?')[0]!))) return;
       return code.replace(/(\bfrom\s*)(["'])(?:astro:content|astro\/loaders)\2/g, `$1${stubImport}`);
     },
     async resolveId(source, importer, options) {
@@ -61,7 +61,7 @@ export function schemaStubs(configFile: string, stubFile: string, query?: string
       // Flavor 2: the config's local imports are the same files with the query.
       if (query !== undefined && importer.endsWith(`?${query}`)) {
         const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
-        if (resolved && !resolved.external && local(resolved.id) && CODE_FILE.test(resolved.id.split('?')[0])) {
+        if (resolved && !resolved.external && local(resolved.id) && CODE_FILE.test(resolved.id.split('?')[0]!)) {
           return { ...resolved, id: `${resolved.id.split('?')[0]}?${query}` };
         }
         return resolved ?? undefined;
@@ -83,7 +83,7 @@ export async function loadCmsCollections(
     input: configFile,
     cwd: root,
     platform: 'node',
-    tsconfig: fs.existsSync(tsconfig) ? tsconfig : undefined,
+    ...(fs.existsSync(tsconfig) ? { tsconfig } : {}),
     plugins: [schemaStubs(configFile, STUBS[1])],
     logLevel: 'warn',
   });
@@ -97,5 +97,5 @@ export async function loadCmsCollections(
 }
 
 function normalize(p: string): string {
-  return p.replaceAll('\\', '/').split('?')[0].toLowerCase();
+  return p.replaceAll('\\', '/').split('?')[0]!.toLowerCase();
 }

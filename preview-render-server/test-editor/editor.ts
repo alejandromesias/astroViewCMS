@@ -25,7 +25,7 @@ const LIMIT_NOTES: Record<string, string> = {
 /** What a `limits` value of a render means for the author; unknown values are
  *  shown as they are. */
 export function limitNote(limit: string): string {
-  if (Object.hasOwn(LIMIT_NOTES, limit)) return LIMIT_NOTES[limit];
+  if (Object.hasOwn(LIMIT_NOTES, limit)) return LIMIT_NOTES[limit]!;
   if (limit.startsWith('code-language:')) return `\`${limit.slice('code-language:'.length)}\` highlighted after publish`;
   return limit;
 }

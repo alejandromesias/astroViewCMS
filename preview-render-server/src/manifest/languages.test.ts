@@ -53,7 +53,7 @@ describe('readLanguages', () => {
 describe('collectLanguages: which files are read', () => {
   const FENCE = '```ruby\nx\n```\n';
   const storeOf = (...paths: Array<string | undefined>): DataStore =>
-    new Map([['c', new Map(paths.map((filePath, i) => [`e${i}`, { id: `e${i}`, filePath }]))]]);
+    new Map([['c', new Map(paths.map((filePath, i) => [`e${i}`, { id: `e${i}`, ...(filePath === undefined ? {} : { filePath }) }]))]]);
   const siteWith = (files: string[]) => {
     const root = tempDir();
     for (const file of files) {

@@ -90,7 +90,7 @@ describe('contentImportRewrite plugin', () => {
     expect(transform(code, pkg)).toBeUndefined();
     transform(code, pkg);
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0][0]).toMatch(/outside src\/.*won't be overlaid/);
+    expect(warn.mock.calls[0]![0]).toMatch(/outside src\/.*won't be overlaid/);
     transform(code, path.resolve('/site/node_modules/astro/dist/content/runtime.js'));
     transform(code, path.resolve('/site/.astro/content-modules.mjs'));
     expect(warn).toHaveBeenCalledTimes(1);
@@ -246,7 +246,7 @@ describe('contentImportRewrite: details', () => {
     transform.call({ warn }, 'import x from "astro:content";', `${pkg}?v=1`);
     transform.call({ warn }, 'import x from "astro:content";', `${pkg}?v=2`);
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0][0]).toContain(pkg);
+    expect(warn.mock.calls[0]![0]).toContain(pkg);
   });
 });
 

@@ -88,7 +88,7 @@ describe('extractHead: entities', () => {
   ])('decodes %s in titles and attribute values', (entity, character) => {
     const result = extractHead(`<head><title>a${entity}b</title><meta content="a${entity}b"></head>`);
     expect(result.title).toBe(`a${character}b`);
-    expect(result.meta[0].content).toBe(`a${character}b`);
+    expect(result.meta[0]!.content).toBe(`a${character}b`);
   });
 
   it('decodes every occurrence, and decodes &amp; last so that it is not decoded twice', () => {

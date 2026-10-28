@@ -191,7 +191,7 @@ describe('readAliases details', () => {
     const dir = makeSite({ 'tsconfig.json': '{"compilerOptions": {"paths": {"@/*": ["./src/*"]}}}' });
     expect(readAliases(dir)).toEqual([{ prefix: '@/', wildcard: true, targets: [path.join(dir, 'src', '*')] }]);
     const withBase = makeSite({ 'tsconfig.json': '{"compilerOptions": {"baseUrl": "src", "paths": {"~/*": ["lib/*"]}}}' });
-    expect(readAliases(withBase)[0].targets).toEqual([path.join(withBase, 'src', 'lib', '*')]);
+    expect(readAliases(withBase)[0]!.targets).toEqual([path.join(withBase, 'src', 'lib', '*')]);
   });
 
   it('tells wildcard patterns from exact ones, and strips only a final star', () => {

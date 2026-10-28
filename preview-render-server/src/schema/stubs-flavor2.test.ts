@@ -93,7 +93,7 @@ describe('content config through Vite with the flavor 2 stubs', () => {
 
   it('exposes the collections with their loaders', () => {
     expect(Object.keys(collections)).toEqual(['authors', 'quotes', 'posts']);
-    expect(collections.quotes.loader).toEqual({ kind: 'file', pattern: 'src/content/quotes.json' });
+    expect(collections.quotes!.loader).toEqual({ kind: 'file', pattern: 'src/content/quotes.json' });
   });
 
   it('parses a draft: shared helpers run, references are checked, images resolve', () => {
@@ -104,11 +104,11 @@ describe('content config through Vite with the flavor 2 stubs', () => {
       author,
       blocks: [{ type: 'quote', items: ['q1'] }],
     });
-    const parsed = collections.posts.schema!.parse(post('ana')) as { author: unknown; blocks: { items: unknown[] }[] };
+    const parsed = collections.posts!.schema!.parse(post('ana')) as { author: unknown; blocks: { items: unknown[] }[] };
     expect(parsed.author).toEqual({ collection: 'authors', id: 'ana' });
-    expect(parsed.blocks[0].items).toEqual([{ collection: 'quotes', id: 'q1' }]);
-    expect(() => collections.posts.schema!.parse(post('ghost'))).toThrow(/authors\/ghost/);
-    expect(() => collections.posts.schema!.parse(post('ana', 'Bad Slug'))).toThrow();
-    expect(collections.authors.schema!.parse({ name: 'Ana', avatar: 'a.png' })).toEqual({ name: 'Ana', avatar: png });
+    expect(parsed.blocks[0]!.items).toEqual([{ collection: 'quotes', id: 'q1' }]);
+    expect(() => collections.posts!.schema!.parse(post('ghost'))).toThrow(/authors\/ghost/);
+    expect(() => collections.posts!.schema!.parse(post('ana', 'Bad Slug'))).toThrow();
+    expect(collections.authors!.schema!.parse({ name: 'Ana', avatar: 'a.png' })).toEqual({ name: 'Ana', avatar: png });
   });
 });
