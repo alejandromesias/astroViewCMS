@@ -1,4 +1,3 @@
-
 Claude Feature Building & Token-Saving Protocol:
 
 Explore selectively: Use targeted searches and read only relevant files. Reuse existing context; avoid redundant file reads and repository-wide exploration when not planning for a design.
@@ -9,7 +8,7 @@ Keep changes focused: Implement the smallest complete solution consistent with e
 
 Never rewrite entire files. Output only the specific lines or blocks needing modification using clear comments or diff syntax.
 
-Strict Types: Write explicit TypeScript. Avoid 'any'. Do not generate type definitions from scratch if they can be inferred or imported.
+Strict Types: Write explicit TypeScript. Avoid 'any', except in tests if necessary. Do not generate type definitions from scratch if they can be inferred or imported.
 Component Isolation: When building Astro components (.astro) or UI components, isolate changes strictly to the script frontmatter or the HTML template—never rewrite both if only one is changing.
 
 Verify efficiently: Run targeted tests and checks first. Avoid repeating successful checks unless relevant code or the environment changes. Expand verification when warranted.
