@@ -7,7 +7,7 @@ import type { Plugin } from 'vite';
 import { isMediaMetadata } from './media.ts';
 
 interface ImageServiceLike {
-  getURL: (options: any, imageConfig: any) => string | Promise<string>;
+  getURL: (options: unknown, imageConfig: unknown) => string | Promise<string>;
   [key: string]: unknown;
 }
 
@@ -16,10 +16,12 @@ interface ImageServiceLike {
 export function wrapService<T extends ImageServiceLike>(service: T): T {
   return {
     ...service,
-    getURL: (options, imageConfig) =>
-      isMediaMetadata(options?.src)
-        ? options.src.src
-        : service.getURL(options, imageConfig),
+    getURL: (options, imageConfig) => {
+      const src = (options as { src?: unknown } | undefined)?.src;
+      return isMediaMetadata(src)
+        ? src.src
+        : service.getURL(options, imageConfig);
+    },
   };
 }
 

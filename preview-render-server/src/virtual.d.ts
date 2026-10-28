@@ -14,7 +14,7 @@ declare module 'virtual:preview-site' {
   export const manifestDir: string;
   /** The site's page components (`src/pages/**`: .astro, .md, .mdx, .html), loaded on demand, keyed
    *  by project path with a leading slash (`/src/pages/index.astro`). */
-  export const pages: Record<string, () => Promise<any>>;
+  export const pages: Record<string, () => Promise<unknown>>;
   /** The site's `base` and `trailingSlash`. */
   export const urlRules: {
     base: string;
@@ -35,13 +35,15 @@ declare module 'virtual:preview-site' {
 // The preview server only re-exports it and wraps its read functions, so this
 // declares the loose shape that the shim needs.
 declare module 'astro:content' {
+  // biome-ignore lint/suspicious/noExplicitAny: entry types depend on the site's collections
+  type Loose = any;
   export function getCollection(
     collection: string,
-    filter?: (entry: any) => unknown,
-  ): Promise<any[]>;
-  export function getEntry(...args: any[]): Promise<any>;
-  export function getEntries(refs: any[]): Promise<any[]>;
-  export function render(entry: any): Promise<any>;
+    filter?: (entry: Loose) => unknown,
+  ): Promise<Loose[]>;
+  export function getEntry(...args: Loose[]): Promise<Loose>;
+  export function getEntries(refs: Loose[]): Promise<Loose[]>;
+  export function render(entry: Loose): Promise<Loose>;
 }
 
 // Astro's list of the renderers its integrations registered (React, MDX, ...),

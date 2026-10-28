@@ -28,9 +28,12 @@ export function reviveDates<T>(
       issue.path.length === 0
     )
       continue;
-    let parent: any = copy;
+    let parent: Record<string | number, unknown> | undefined = copy as Record<
+      string | number,
+      unknown
+    >;
     for (const part of issue.path.slice(0, -1))
-      parent = parent?.[part as string | number];
+      parent = parent?.[part as string | number] as typeof parent;
     const last = issue.path[issue.path.length - 1] as string | number;
     const current = parent?.[last];
     if (

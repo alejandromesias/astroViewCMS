@@ -41,6 +41,11 @@ lands on its own, and leaves the typecheck and the targeted tests green.
   warnings are left visible, mostly `noNonNullAssertion` (208, the assertions
   from step 1) and `noExplicitAny` (39). Two floating promises in `patch.ts`
   are marked `void` because Idiomorph returns the node synchronously.
+- Follow-up, same day: trivial warnings fixed; `noNonNullAssertion` and
+  `noExplicitAny` are off for `*.test.ts` (an override). `noExplicitAny` is now
+  an `error`: the loose Astro content types in `content-api.ts` and
+  `virtual.d.ts` sit behind one `biome-ignore` alias each. 43 production
+  `noNonNullAssertion` warnings remain; revisit after step 3.
 
 ## 3. Zod at trust boundaries
 

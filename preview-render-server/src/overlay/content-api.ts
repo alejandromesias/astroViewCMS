@@ -26,14 +26,16 @@ export interface DraftInfo {
   extension: string;
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any -- Astro's entry types depend on the site's collections */
+// biome-ignore lint/suspicious/noExplicitAny: Astro's entry types depend on the site's collections
+type Loose = any;
+
 export interface RealContent {
   getCollection(
     collection: string,
-    filter?: (entry: any) => unknown,
-  ): Promise<any[]>;
-  getEntry(...args: any[]): Promise<any>;
-  render(entry: any): Promise<any>;
+    filter?: (entry: Loose) => unknown,
+  ): Promise<Loose[]>;
+  getEntry(...args: Loose[]): Promise<Loose>;
+  render(entry: Loose): Promise<Loose>;
 }
 
 export interface ContentApiDeps {
@@ -45,9 +47,9 @@ export interface ContentApiDeps {
   /** The stubs' hooks; the API fills them in. */
   hooks: SchemaHooks;
   /** Renders a Markdown draft's body (D2). Without it, such drafts render empty. */
-  renderMarkdown?: (entry: any) => Promise<any>;
+  renderMarkdown?: (entry: Loose) => Promise<Loose>;
   /** What a draft MDX body renders when there is nothing saved to show. */
-  emptyContent: () => any;
+  emptyContent: () => Loose;
 }
 
 const BODY_EXTENSIONS = new Set(['md', 'mdx', 'markdown']);
@@ -136,8 +138,8 @@ export function createContentApi(deps: ContentApiDeps) {
     context: OverlayContext,
     collection: string,
     id: string,
-    raw: any,
-    built?: any,
+    raw: Loose,
+    built?: Loose,
   ) {
     const key = entryKey(collection, id);
     const cached = context.parsed.get(key);
@@ -203,7 +205,7 @@ export function createContentApi(deps: ContentApiDeps) {
 
   async function getCollection(
     collection: string,
-    filter?: (entry: any) => unknown,
+    filter?: (entry: Loose) => unknown,
   ) {
     const context = currentOverlay();
     context?.reads.add(collection);
@@ -215,7 +217,7 @@ export function createContentApi(deps: ContentApiDeps) {
     if (!context || touched.length === 0)
       return real.getCollection(collection, filter);
 
-    const result: any[] = [];
+    const result: Loose[] = [];
     const seen = new Set<string>();
     for (const built of await real.getCollection(collection)) {
       const key = entryKey(collection, built.id);
@@ -247,7 +249,7 @@ export function createContentApi(deps: ContentApiDeps) {
   }
 
   /** `getEntry(collection, id)` and `getEntry({ collection, id })`. */
-  async function getEntry(...args: any[]) {
+  async function getEntry(...args: Loose[]) {
     const [first, second] = args;
     const ref =
       typeof first === 'string' ? { collection: first, id: second } : first;
@@ -268,11 +270,11 @@ export function createContentApi(deps: ContentApiDeps) {
   }
 
   /** One result per reference, in order, `undefined` for a missing one (as Astro does). */
-  async function getEntries(refs: any[]) {
+  async function getEntries(refs: Loose[]) {
     return Promise.all(refs.map((ref) => getEntry(ref)));
   }
 
-  async function render(entry: any) {
+  async function render(entry: Loose) {
     const draft: DraftInfo | undefined = entry?.[DRAFT];
     if (!draft) return real.render(entry);
     if (draft.extension === 'mdx') {
