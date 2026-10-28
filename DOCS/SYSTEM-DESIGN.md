@@ -1123,6 +1123,11 @@ file by extension (checked 2026-10-26):
 - **The preview node is format-agnostic.** A YAML document's value is a plain
   object, like a JSON document's. Markdown and MDX values are
   `{ data, body }` (D2). Nothing else in the preview depends on the format.
+  **One stated exception:** the test editor's dev-only route
+  `GET /__dev/documents` (WORKPLAN task 1.7, only with `PREVIEW_DEV=1`) parses
+  the site's files, because the data store holds schema-parsed values, not the
+  raw ones the overlay needs. It goes away with the CMS app's
+  `GET /api/documents` (phase 2), where the codecs live.
 - **Formats can mix,** within a collection and entry by entry. Editing keeps
   each document's own format, and **a save never converts formats.**
 - **New entries** use the collection's `newEntryFormat` from the site config

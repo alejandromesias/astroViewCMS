@@ -51,8 +51,8 @@ editor ──postMessage draft──▶ bridge (in the iframe) ──POST /__pre
   of its own, D14).
 - `src/types.ts` and `src/virtual.d.ts`: site config types and the generated
   virtual module's types.
-- `test-editor/`: a test editor at `/__editor`, with a JSON textbox per region
-  next to the site in an iframe (`editor.astro` markup, `editor.ts` logic).
+- `test-editor/`: a test editor at `/__editor`, with a JSON textbox for the
+  overlay (per document from task 1.7) next to the site in an iframe (`editor.astro` markup, `editor.ts` logic).
 - `src/start.ts`: runs `.build/<site>/server/entry.mjs`.
 - `test/`: test fixtures and helpers for the unit tests, and the end-to-end
   suite (`test/e2e/`). Unit tests sit next to each source file.

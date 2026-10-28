@@ -562,8 +562,8 @@ now runs on `sample-site` (31 tests); 301 unit tests. Things worth knowing:
   - The page list covers `.astro`, `.md`, `.mdx` and `.html` files in
     `src/pages/`. Checked once with a temporary Markdown page (it rendered);
     the sample site has no such page, so only the glob string is under test.
-- Not done: the `limits` for `mdx-body` etc. are typed in `protocol.ts`, but the
-  bridge messages there are still the v1 ones (1.6).
+- The `limits` values are typed in the protocol (now `preview-protocol/`, 1.6a)
+  and the bridge speaks v2 (1.6).
 
 `POST /__preview/render?path=<url path>`, contract in SYSTEM-DESIGN.md
 section 3:
@@ -752,29 +752,83 @@ console.
 
 ### 1.7 Test editor v2
 
-- **Documents, not regions:** after `preview:rendered`, list the page's
-  documents. A JSON or YAML document gets a JSON textbox. A `.md` or `.mdx`
-  document gets a frontmatter textbox, also as JSON, and a body textarea,
-  sent as `{ data, body }` (D2). The test editor shows every value as JSON,
-  whatever the file format (D13); dates appear as ISO strings. Writing YAML
-  back is phase 2.
-- **Build-time fields (D1):** documents flagged `buildTime` show "some
-  fields apply after rebuild", with the field list.
-- **Limits:** show each value in `limits` as a plain note, e.g. "MDX body:
-  preview after save", or "`cpp` highlighted after publish" for
-  `code-language:cpp`.
-- **Warm-up (D2):** call `POST /__preview/warm` when the editor opens, in
-  parallel with loading the documents.
-- **Data source:** a dev-only route `GET /__dev/documents?key=` on the
-  preview node. It returns the raw file content from the build snapshot, and
-  it's injected only when `PREVIEW_DEV=1`. It's a stopgap for the CMS app's
-  `GET /api/documents` (phase 2); mark it so in code and docs.
-- **Overlay:** every edited document goes out on each change, after the
-  120 ms pause, as today.
-- **Media map (D12):** keep the `{ url, width, height, format }` of each
-  upload and send the map with every draft.
+Reviewed against 1.5, 1.6, 1.6a and the design (2026-10-27). The design stands;
+the data source below was wrong in the first text, and the rest adds what 1.6
+and 1.6a found.
+
+- **Data source: a dev-only route `GET /__dev/documents?key=`.** The build
+  snapshot (Astro's data store) is the wrong source: its values have been
+  through the schema (images are placeholders, references are `{ collection,
+  id }`, dates are `Date`s), and the `data:` JSON files aren't in it. The
+  overlay needs the raw value (D2, D13). So the route reads the document's
+  `file` from the site's working copy (local dev only, the files are there)
+  and parses it:
+  - JSON: the object; YAML: the object; `.md` and `.mdx`: split at the `---`
+    fences into `{ data, body }`; a `file()` entry: the entry at `entryKey`.
+    Use a YAML parser that is already in the dependency tree.
+  - It answers `{ key, file, format, editable?, buildTime, buildTimeFields?,
+    value }`: the shape of the future `GET /api/documents?key=` (design
+    section 3, minus `revision`) plus the flags from `documents.json`, since
+    the render's `documents` is only a list of keys. Dates reach the editor as
+    ISO strings; the shim revives them (D13).
+  - **Injected at build time** when `PREVIEW_DEV=1`, like the other injected
+    routes. A build without it has no such route (404, tested in e2e). The
+    e2e build and `npm start` set it.
+  - It's a stopgap for the CMS app's `GET /api/documents` (phase 2); mark it
+    so in code and docs. It is a stated exception to D13's "the preview node
+    never parses file text"; it goes away with the stopgap.
+- **Order of events.** On `preview:ready`: check `protocolMismatch` (1.6a;
+  on a mismatch show it in the status line and send no drafts), then send the
+  overlay, even an empty one (priming), and call `POST /__preview/warm`, in
+  parallel. On `preview:rendered`: fetch each listed document the editor
+  doesn't have yet. A new `ready` (ClientRouter navigation, `?page=`) re-primes
+  with the same overlay; edits persist across pages and the list follows the
+  latest `rendered`. The render checks only documents the page reads, so an
+  invalid edit to another page's document gives no 422 here (1.6a); phase 2's
+  `/__preview/validate` catches it before saving.
+- **Documents, not regions.** A JSON or YAML document gets a JSON textbox. A
+  `.md` or `.mdx` document gets a frontmatter textbox, also as JSON, and a
+  body textarea, sent as `{ data, body }` (D2). Every value is shown as JSON
+  whatever the file format (D13). Writing YAML back is phase 2.
+  - A textbox with invalid JSON is marked and its document is left out of
+    the overlay; its last valid value is not sent silently.
+  - Documents with `editable: false` (TOML and others, D13) are listed
+    read-only with "shown as built" and never sent.
+- **Build-time fields (D1).** Documents flagged `buildTime` show "some fields
+  apply after rebuild", with the field list (`['*']` means the whole file).
+- **Errors.** `preview:error` carries `errors: [{ key, path, message }]` for a
+  422 (1.6): show each next to the matching document's textbox, with the
+  message in the status line for the rest (status `0` is a protocol mismatch
+  or a network failure).
+- **Limits.** Show each value of `limits` as a plain note: `mdx-body` "MDX
+  body: preview after save"; `schema-refinement` "a schema refinement could
+  not run"; `markdown-plugins` "Markdown plugins failed, shown without them";
+  `code-language:cpp` "`cpp` highlighted after publish". An unknown value is
+  shown as it is.
+- **Overlay.** Every edited document goes out on each change, after the
+  120 ms pause, in the envelope `{ documents, media }` the editor now builds
+  itself (the interim envelope-level checks of 1.6a go). The envelope sent
+  last is kept in a collapsed, read-only view: it found the 1.6a "empty
+  overlay" mistake and pairs with the bridge's debug log.
+- **Reset and delete.** "Reset" per document removes it from the overlay
+  (back to saved); it never sends `null`, which means "deleted in the draft"
+  (D3, D8). An optional "Delete in draft" sends `null`, to try that by hand.
+- **Media map (D12).** An upload answers a map entry `{ url, width, height,
+  format }`; its key is that `url`, which is what the document's image field
+  holds (a staging URL, as written in the draft). The editor adds each upload
+  to the map and sends the map with every draft. The interim "paste under
+  media" hint goes away.
 - **No Save button.** Saving arrives with the CMS app in phase 2.
-- Keep "Reset" per document.
+- **Tests.** Unit tests for the editor (loading order, mismatch, invalid JSON,
+  422 next to the field, reset vs delete, read-only documents, limits, media
+  map) and for the route's parsing (JSON, YAML, Markdown, MDX, a `file()`
+  entry, unknown key 404). E2E: `/__dev/documents` against the built sample,
+  and absent without `PREVIEW_DEV`.
+- **Check:** `npx tsc`; `npx vitest run test-editor src/dev` (or wherever the
+  route lives); `npm run test:e2e`; a manual run of `/__editor` repeating the
+  1.6a checks through the new UI: a JSON document, a Markdown body, the
+  hydrated pricing island keeping its state, a ClientRouter navigation, a 422
+  next to its field, and an image upload.
 
 ### 1.8 Tests
 
@@ -862,6 +916,10 @@ Work already decided for phase 2:
   - both the CMS session cookie and the preview cookie use the `__Host-`
     prefix (check the two-port local setup);
   - changing the CMS domain then needs a node restart, not a rebuild.
+- **`GET /api/documents` returns the build-time flags too.** The test editor's
+  stopgap route (1.7) answers `buildTime` and `buildTimeFields` next to the
+  value, because the editor marks those fields "applies after rebuild" (D1).
+  The CMS app's route must do the same, from `documents.json`.
 - **Protocol mismatch triggers one rebuild (D14).** When the CMS app sees a
   `protocol` mismatch, it starts a preview build, at most once per bundle
   (site, code revision, bundle id), and shows the saved page with a note while
