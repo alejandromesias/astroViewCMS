@@ -20,6 +20,7 @@
     "devalue": "^6.0.3",
     "es-module-lexer": "^3.0.4",
     "idiomorph": "^0.8.0",
+    "preview-protocol": "*",
     "rolldown": "^1.2.15",
     "sharp": "0.35.5"
   },

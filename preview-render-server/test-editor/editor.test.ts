@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PROTOCOL_VERSION } from 'preview-protocol';
 import { RENDER_DELAY_MS, startEditor } from './editor.ts';
 
 // The real markup from editor.astro, so the test follows it. (A path, not a
@@ -52,19 +53,33 @@ describe('loading the page', () => {
   });
 });
 
+describe('protocol mismatch', () => {
+  it.each([
+    ['a different protocol', { type: 'preview:ready', path: '/blog', protocol: 1 }],
+    ['no protocol', { type: 'preview:ready', path: '/blog' }],
+  ])('flags a ready with %s and sends no draft', (_, message) => {
+    const editor = setup();
+    editor.fromPage(message);
+    expect(editor.status().dataset.state).toBe('error');
+    expect(editor.status().textContent).toContain('protocol mismatch');
+    expect(editor.drafts()).toHaveLength(0);
+  });
+});
+
 describe('on preview:ready', () => {
   it('sends an empty overlay when the textbox is empty, which primes the page', () => {
-    editor.fromPage({ type: 'preview:ready', path: '/blog' });
+    editor.fromPage({ type: 'preview:ready', path: '/blog', protocol: PROTOCOL_VERSION });
     expect(editor.status().textContent).toBe('Page ready: /blog');
-    expect(editor.drafts()).toEqual([{ message: { type: 'preview:draft', documents: {}, media: {} }, target: editor.origin }]);
+    expect(editor.drafts()).toEqual([{ message: { type: 'preview:draft', protocol: PROTOCOL_VERSION, documents: {}, media: {} }, target: editor.origin }]);
   });
 
   it('after a reload of the page, resends the overlay in progress', () => {
     editor.textarea().value = '{"documents":{"blog/a":null},"media":{"a.png":{"url":"/x","width":1,"height":1,"format":"png"}}}';
-    editor.fromPage({ type: 'preview:ready', path: '/blog' });
-    editor.fromPage({ type: 'preview:ready', path: '/faq' });
+    editor.fromPage({ type: 'preview:ready', path: '/blog', protocol: PROTOCOL_VERSION });
+    editor.fromPage({ type: 'preview:ready', path: '/faq', protocol: PROTOCOL_VERSION });
     expect(editor.drafts().at(-1)!.message).toEqual({
       type: 'preview:draft',
+      protocol: PROTOCOL_VERSION,
       documents: { 'blog/a': null },
       media: { 'a.png': { url: '/x', width: 1, height: 1, format: 'png' } },
     });
@@ -84,7 +99,7 @@ describe('editing', () => {
     } finally {
       vi.useRealTimers();
     }
-    expect(editor.drafts()).toEqual([{ message: { type: 'preview:draft', documents: { 'a/b': 2 }, media: {} }, target: editor.origin }]);
+    expect(editor.drafts()).toEqual([{ message: { type: 'preview:draft', protocol: PROTOCOL_VERSION, documents: { 'a/b': 2 }, media: {} }, target: editor.origin }]);
   });
 
   it('flags invalid JSON and sends nothing', async () => {
@@ -97,6 +112,18 @@ describe('editing', () => {
     await vi.waitFor(() => expect(editor.drafts()).toHaveLength(1));
     expect(editor.textarea().hasAttribute('aria-invalid')).toBe(false);
     expect(document.querySelector('.region .error')!.textContent).toBe('');
+  });
+
+  it('flags JSON that is not { documents, media } instead of sending an empty overlay', async () => {
+    type(editor.textarea(), '{"landing/home-v2": {"title": "x"}}');
+    await vi.waitFor(() => expect(editor.textarea().getAttribute('aria-invalid')).toBe('true'));
+    expect(document.querySelector('.region .error')!.textContent).toContain('Unexpected key "landing/home-v2"');
+    expect(document.querySelector('.region .error')!.textContent).toContain('"<name>"');
+    expect(editor.drafts()).toHaveLength(0);
+
+    type(editor.textarea(), '[1]');
+    await vi.waitFor(() => expect(document.querySelector('.region .error')!.textContent).toContain('Expected an object'));
+    expect(editor.drafts()).toHaveLength(0);
   });
 
   it('"Reset" empties the textbox and reloads the page', () => {

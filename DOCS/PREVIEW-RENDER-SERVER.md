@@ -150,8 +150,8 @@ Three parts, each of which knows only its neighbor:
 
 ### Message protocol
 
-Defined once in `src/protocol.ts` (task 1.6a moves it to the `preview-protocol/`
-package, D14), as TypeScript types (`DraftMessage`,
+Defined once in the `preview-protocol/` workspace package (task 1.6a, D14), as
+TypeScript types (`DraftMessage`,
 `PageMessage`) plus runtime checks (`isDraftMessage`, `isPageMessage`). The
 bridge and the editor both import it. Each side ignores any message that
 fails its check, so a malformed or foreign message does nothing.
@@ -234,8 +234,6 @@ preview-render-server/
 │  ├─ preview-route.ts  GET saved props · POST render                   built server
 │  ├─ media-route.ts    draft image upload + serving                    built server
 │  ├─ request-guard.ts  content-type / cross-site / method checks       built server
-│  ├─ protocol.ts       postMessage types + runtime checks (moves to    browser (bridge + editor)
-│  │                    preview-protocol/ in task 1.6a, D14)
 │  ├─ types.ts          site config types                               (types only)
 │  ├─ virtual.d.ts      types of the generated virtual module           (types only)
 │  └─ client/

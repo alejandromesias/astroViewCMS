@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isDraftMessage, isPageMessage } from './protocol.ts';
+import { PROTOCOL_VERSION, isDraftMessage, isPageMessage, protocolMismatch } from './index.ts';
 
 describe('isDraftMessage', () => {
   it('accepts a draft with documents and media', () => {
@@ -45,5 +45,20 @@ describe('isPageMessage', () => {
     ['an unknown type', { type: 'pageNavigation', path: '/' }],
   ])('rejects %s', (_, data) => {
     expect(isPageMessage(data)).toBe(false);
+  });
+});
+
+describe('protocol version', () => {
+  it('the guards accept a message with or without protocol', () => {
+    expect(isDraftMessage({ type: 'preview:draft', protocol: PROTOCOL_VERSION, documents: {}, media: {} })).toBe(true);
+    expect(isDraftMessage({ type: 'preview:draft', documents: {}, media: {} })).toBe(true);
+    expect(isPageMessage({ type: 'preview:ready', path: '/', protocol: 1 })).toBe(true);
+    expect(isPageMessage({ type: 'preview:ready', path: '/' })).toBe(true);
+  });
+
+  it('protocolMismatch is null only for the current version', () => {
+    expect(protocolMismatch({ protocol: PROTOCOL_VERSION })).toBeNull();
+    expect(protocolMismatch({ protocol: 1 })).toContain('sent 1');
+    expect(protocolMismatch({})).toContain('sent none');
   });
 });

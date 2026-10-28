@@ -28,7 +28,7 @@ parent folder: `../../HANDOFF.md`, `../../*-SYSTEM-OVERVIEW.md`, and the `tinacm
 | Per-island save | parked and removed (0.1, 1.1) |
 | Richer sample site | `sample-site/` in the workspace with the 0.3 additions; preview-built unchanged (0.4) |
 | Page render with content overlay | done (1.4, 1.5); `.build/spike/` is still to delete (0.6) |
-| Protocol package and version (`preview-protocol/`) | planned, task 1.6a (D14) |
+| Protocol package and version (`preview-protocol/`) | done, task 1.6a (D14) |
 | CMS app, saving, publishing, real editor, auth | not started (phases 2 to 4) |
 
 Folder layout of `astroViewCMS/` (git repo on `master`, no remote):
@@ -694,9 +694,20 @@ Bridge (`src/client/bridge.ts`):
 
 ### 1.6a Protocol package and version (D14)
 
-**Status: planned.** Review of 1.6 (2026-10-27) found the bridge in the right
-place (it ships inside the bundle, see D14) but its contract in the wrong
-package, and no way to tell a bridge and an editor of different versions apart.
+**Status (2026-10-27): implemented.** `tsc` clean; 26 package tests, 63 in
+`src/client`, `handlers` and `test-editor`, 31 e2e. Checked by hand in a
+browser (`/__editor` on `sample-site`): version handshake, a JSON draft
+(`stats/sites`), a Markdown draft whose hydrated island kept its state
+(`pricing/-index`, Yearly stayed selected), ClientRouter navigation, a 422.
+The check found two things, fixed here: the test editor now rejects JSON that is
+not `{ documents, media }` (a misplaced document used to send an empty overlay
+with no sign of the mistake), and the bridge logs `[preview-bridge] patched`
+with the document keys it sent. Note: the render validates only the documents
+the page reads; `/__preview/validate` checks them all.
+
+Review of 1.6 (2026-10-27) found the bridge in the right place (it ships inside
+the bundle, see D14) but its contract in the wrong package, and no way to tell a
+bridge and an editor of different versions apart.
 
 - **New workspace package `preview-protocol/`**, no dependencies. Add it to the
   root `package.json` workspaces. Move `src/protocol.ts` and `protocol.test.ts`
@@ -730,6 +741,14 @@ package, and no way to tell a bridge and an editor of different versions apart.
   test-editor` plus the new package's tests; `npm run test:e2e` (the bundle
   still builds with the bridge importing the package); a manual run of
   `/__editor` (priming, a draft, a ClientRouter navigation).
+
+**Left for a later phase: the bridge's debug log.** `bridge.ts` writes
+`console.info('[preview-bridge] patched', path, { changed, sent, read, limits,
+renderMs })` after each patch and `console.error` when a draft fails. It stays
+on for now, because 1.7 and 1.8 exercise the bridge a lot. In phase 3, before a
+real editor embeds the preview, put it behind a flag (e.g. a `?previewDebug`
+query parameter or an option of `startBridge`) so it adds no noise to the
+console.
 
 ### 1.7 Test editor v2
 

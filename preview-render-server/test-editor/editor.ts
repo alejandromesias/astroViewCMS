@@ -1,9 +1,9 @@
 // Test editor logic (markup in editor.astro). It only speaks the bridge's
-// postMessage protocol (src/protocol.ts, v2) plus one plain request, POST
+// postMessage protocol (preview-protocol, v2) plus one plain request, POST
 // /__preview-media/new for uploads. INTERIM (WORKPLAN task 1.6): one JSON
 // textbox holds the whole overlay, `{ "documents": {...}, "media": {...} }`.
 // Task 1.7 replaces it with a form per document of the page.
-import { isPageMessage, type DraftMessage } from '../src/protocol.ts';
+import { PROTOCOL_VERSION, isPageMessage, protocolMismatch, type DraftMessage } from 'preview-protocol';
 
 export const RENDER_DELAY_MS = 120;
 
@@ -37,23 +37,34 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
   const error = section.querySelector('.error')!;
   byId('regions').append(section);
 
+  /** Flags the textbox and sends nothing, so the page keeps its last good state. */
+  function reject(text: string) {
+    textarea.setAttribute('aria-invalid', 'true');
+    error.textContent = text;
+  }
+
   /** Sends the textbox content to the page as a draft. An empty textbox is an
    *  empty overlay: it still makes the page render, which primes it. Invalid
-   *  JSON is flagged and not sent, so the page keeps its last good state. */
+   *  JSON, or JSON that is not `{ documents, media }`, is flagged and not
+   *  sent (otherwise a misplaced document would render as an empty overlay
+   *  with no sign of the mistake). */
   function sendDraft() {
     let overlay: { documents?: DraftMessage['documents']; media?: DraftMessage['media'] } = {};
     if (textarea.value.trim()) {
+      let parsed: unknown;
       try {
-        overlay = JSON.parse(textarea.value);
+        parsed = JSON.parse(textarea.value);
       } catch (parseError) {
-        textarea.setAttribute('aria-invalid', 'true');
-        error.textContent = (parseError as Error).message;
-        return;
+        return reject((parseError as Error).message);
       }
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return reject('Expected an object: { "documents": {...}, "media": {...} }');
+      const unknown = Object.keys(parsed).filter((key) => key !== 'documents' && key !== 'media');
+      if (unknown.length) return reject(`Unexpected key ${unknown.map((key) => `"${key}"`).join(', ')}. A document goes under "documents", keyed by its name from the status line: { "documents": { "<name>": {...the whole document...} }, "media": {} }`);
+      overlay = parsed;
     }
     textarea.removeAttribute('aria-invalid');
     error.textContent = '';
-    const message: DraftMessage = { type: 'preview:draft', documents: overlay.documents ?? {}, media: overlay.media ?? {} };
+    const message: DraftMessage = { type: 'preview:draft', protocol: PROTOCOL_VERSION, documents: overlay.documents ?? {}, media: overlay.media ?? {} };
     iframe.contentWindow?.postMessage(message, origin);
   }
 
@@ -78,6 +89,12 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
     if (!isPageMessage(message)) return;
 
     if (message.type === 'preview:ready') {
+      // A bundle of another version (or built before the field) can't be driven.
+      const mismatch = protocolMismatch(message);
+      if (mismatch) {
+        setStatus(`${message.path}: ${mismatch}`, 'error');
+        return;
+      }
       // The page (re)loaded: send the overlay so it shows the drafts.
       setStatus(`Page ready: ${message.path}`);
       sendDraft();

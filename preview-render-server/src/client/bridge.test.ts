@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PageMessage, RenderResponse } from '../protocol.ts';
+import { PROTOCOL_VERSION, type PageMessage, type RenderResponse } from 'preview-protocol';
 import { startBridge } from './bridge.ts';
 import type { BridgeOptions } from './bridge.ts';
 
@@ -39,12 +39,27 @@ const rendered = (body: string, extra: Partial<RenderResponse> = {}) =>
     renderMs: 4.2,
     ...extra,
   } satisfies RenderResponse);
-const draft = (documents: Record<string, unknown> = {}, media: Record<string, unknown> = {}) => ({ type: 'preview:draft', documents, media });
+const draft = (documents: Record<string, unknown> = {}, media: Record<string, unknown> = {}) => ({ type: 'preview:draft', protocol: PROTOCOL_VERSION, documents, media });
 const region = () => document.querySelector('[data-preview-region="blocks"]')!;
 const blocks = (inner: string) => `<main><div data-preview-region="blocks">${inner}</div></main>`;
 
 let bridge: ReturnType<typeof setup>;
 afterEach(() => bridge?.stop?.());
+
+describe('protocol version', () => {
+  it.each([
+    ['a different protocol', { type: 'preview:draft', protocol: 1, documents: {}, media: {} }, 'sent 1'],
+    ['no protocol', { type: 'preview:draft', documents: {}, media: {} }, 'sent none'],
+  ])('answers %s with an error and does not render', (_, message, text) => {
+    bridge = setup();
+    bridge.post(message);
+    expect(bridge.fetch).not.toHaveBeenCalled();
+    const error = bridge.sent().at(-1)!;
+    expect(error).toMatchObject({ type: 'preview:error', path: '/blog/blog-1', status: 0 });
+    expect((error as { message: string }).message).toContain('protocol mismatch');
+    expect((error as { message: string }).message).toContain(text.replace('sent', 'other sent'));
+  });
+});
 
 describe('startBridge', () => {
   it('does nothing outside an iframe', () => {
@@ -55,7 +70,7 @@ describe('startBridge', () => {
 
   it('announces the page path to the editor, with an explicit target origin', () => {
     bridge = setup();
-    expect(bridge.parent.postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'preview:ready', path: '/blog/blog-1' }, ORIGIN);
+    expect(bridge.parent.postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'preview:ready', path: '/blog/blog-1', protocol: PROTOCOL_VERSION }, ORIGIN);
   });
 
   it('announces to every allowed editor origin, never "*"', () => {
@@ -69,7 +84,7 @@ describe('startBridge', () => {
     bridge.parent.postMessage.mockClear();
     (bridge.win.location as { pathname: string }).pathname = '/faq';
     document.dispatchEvent(new Event('astro:page-load'));
-    expect(bridge.sent()).toEqual([{ type: 'preview:ready', path: '/faq' }]);
+    expect(bridge.sent()).toEqual([{ type: 'preview:ready', path: '/faq', protocol: PROTOCOL_VERSION }]);
   });
 
   it('drops the answer to a draft sent before a navigation', async () => {

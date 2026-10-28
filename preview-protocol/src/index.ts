@@ -1,7 +1,12 @@
 // The postMessage protocol between an editor (parent window) and the bridge
-// (src/client/bridge.ts, inside the previewed page), v2 (WORKPLAN task 1.6),
-// and the shapes of the render route's answers. Any editor that speaks it can
-// drive the preview.
+// (preview-render-server/src/client/bridge.ts, inside the previewed page), v2
+// (WORKPLAN tasks 1.6, 1.6a), and the shapes of the render route's answers.
+// Any editor that speaks it can drive the preview. No dependencies.
+
+/** Bumped when a message changes shape. Carried by `preview:ready` and
+ *  `preview:draft`; the render route's answers don't carry it (the route and
+ *  the bridge ship in the same bundle). */
+export const PROTOCOL_VERSION = 2;
 
 /** What a render could not show (SYSTEM-DESIGN.md D2, D3, D11). Add new
  *  values here so the render route and the editor agree on them. */
@@ -50,6 +55,7 @@ export interface MediaInfo {
 /** editor -> page: the whole overlay, on every change. */
 export interface DraftMessage {
   type: 'preview:draft';
+  protocol: number;
   /** Document key to its raw value; `null` means deleted in the draft. */
   documents: Record<string, unknown>;
   media: Record<string, MediaInfo>;
@@ -57,7 +63,7 @@ export interface DraftMessage {
 
 /** page -> editor */
 export type PageMessage =
-  | { type: 'preview:ready'; path: string }
+  | { type: 'preview:ready'; path: string; protocol: number }
   | { type: 'preview:rendered'; path: string; documents: string[]; limits: Limit[]; renderMs: number }
   | { type: 'preview:error'; path: string; status: number; message: string; errors?: FieldError[] };
 
@@ -83,4 +89,15 @@ export function isPageMessage(data: unknown): data is PageMessage {
     default:
       return false;
   }
+}
+
+/** Why a message from the other side can't be trusted to mean what we think,
+ *  or null when its version matches. A missing `protocol` counts as a
+ *  mismatch: it comes from a bundle built before the field existed. The guards
+ *  above accept both shapes on purpose, so a mismatch is reported rather than
+ *  looking like a preview that never loads. */
+export function protocolMismatch(message: { protocol?: unknown }): string | null {
+  if (message.protocol === PROTOCOL_VERSION) return null;
+  const theirs = message.protocol === undefined ? 'none' : String(message.protocol);
+  return `protocol mismatch: this side speaks ${PROTOCOL_VERSION}, the other sent ${theirs}; rebuild the preview bundle or update the editor`;
 }

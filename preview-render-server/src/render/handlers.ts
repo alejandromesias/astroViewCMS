@@ -7,7 +7,7 @@ import { createOverlayContext, runWithOverlay } from '../overlay/context.ts';
 import type { OverlayContext } from '../overlay/context.ts';
 import { DraftError } from '../overlay/errors.ts';
 import type { ValidationError } from '../overlay/content-api.ts';
-import type { Limit, RenderResponse, ValidationResponse } from '../protocol.ts';
+import type { Limit, RenderResponse, ValidationResponse } from 'preview-protocol';
 import { rejectUnlessContentType } from '../request-guard.ts';
 import { discoveredDocuments } from './discover.ts';
 import { parseEnvelope } from './envelope.ts';

@@ -1,0 +1,12 @@
+{
+  "name": "preview-protocol",
+  "type": "module",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "test": "vitest run"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

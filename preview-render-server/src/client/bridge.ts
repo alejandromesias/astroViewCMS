@@ -1,12 +1,12 @@
 // Preview bridge: runs in every page of a preview build (injected by
 // src/integration.ts), inactive unless the page is inside an iframe. It's the
 // browser half of POST /__preview/render: the editor (any editor) talks to it
-// with postMessage (see ../protocol.ts), it asks its own origin to render the
+// with postMessage (see preview-protocol), it asks its own origin to render the
 // page it is on with the editor's overlay, and patches the answer into the
 // live page (patch.ts).
 //
 // Pattern from Tina's bridge (@tinacms/bridge region-refresh.ts, Apache-2.0).
-import { isDraftMessage, type DraftMessage, type PageMessage, type RenderResponse, type ValidationResponse } from '../protocol.ts';
+import { PROTOCOL_VERSION, isDraftMessage, protocolMismatch, type DraftMessage, type PageMessage, type RenderResponse, type ValidationResponse } from 'preview-protocol';
 import { createPatcher } from './patch.ts';
 
 export interface BridgeOptions {
@@ -46,6 +46,12 @@ export function startBridge(
 
   async function onDraft(message: DraftMessage) {
     const path = currentPath();
+    const mismatch = protocolMismatch(message);
+    if (mismatch) {
+      requestCount++; // an answer in flight is stale now
+      send({ type: 'preview:error', path, status: 0, message: mismatch });
+      return;
+    }
     // Newest draft wins, per page: a slow answer to an older one is dropped.
     const id = ++requestCount;
     try {
@@ -64,10 +70,12 @@ export function startBridge(
         return;
       }
       const rendered = JSON.parse(text) as RenderResponse;
-      patcher.patch(rendered.html);
+      const summary = patcher.patch(rendered.html);
+      console.info('[preview-bridge] patched', path, { changed: summary.changed, sent: Object.keys(message.documents), read: rendered.documents.length, limits: rendered.limits, renderMs: rendered.renderMs });
       send({ type: 'preview:rendered', path, documents: rendered.documents, limits: rendered.limits, renderMs: rendered.renderMs });
     } catch (error) {
       if (id !== requestCount) return;
+      console.error('[preview-bridge] draft failed', path, error);
       send({ type: 'preview:error', path, status: 0, message: String(error) });
     }
   }
@@ -86,7 +94,7 @@ export function startBridge(
     // An answer still in flight belongs to the old page: drop it.
     requestCount++;
     patcher.reset();
-    send({ type: 'preview:ready', path: currentPath() }, allowed);
+    send({ type: 'preview:ready', path: currentPath(), protocol: PROTOCOL_VERSION }, allowed);
   };
 
   // Start listening before announcing, so a draft sent in reply isn't missed.
@@ -94,7 +102,7 @@ export function startBridge(
   doc.addEventListener('astro:page-load', onNavigated);
   // To every allowed origin: the editor's is not known until it speaks, and a
   // message only arrives where the target origin matches the parent's.
-  send({ type: 'preview:ready', path: currentPath() }, allowed);
+  send({ type: 'preview:ready', path: currentPath(), protocol: PROTOCOL_VERSION }, allowed);
   return () => {
     win.removeEventListener('message', onMessage);
     doc.removeEventListener('astro:page-load', onNavigated);
