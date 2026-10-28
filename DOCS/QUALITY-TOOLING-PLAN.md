@@ -7,7 +7,7 @@ lands on its own, and leaves the typecheck and the targeted tests green.
 | # | Step | Tool | When | Status |
 |---|---|---|---|---|
 | 1 | Stricter TypeScript flags | `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, `noFallthroughCasesInSwitch` | now | done |
-| 2 | Lint and format | Biome | next | todo |
+| 2 | Lint and format | Biome | now | done |
 | 3 | Boundary validation | Zod from `astro/zod` (already a dependency) | after 2 | todo |
 | 4 | Architecture map | Skott (graph, cycles) | after 3 | todo |
 | 5 | Vulnerable dependencies | osv-scanner (+ Renovate or Dependabot) | after 2 | todo |
@@ -35,6 +35,12 @@ lands on its own, and leaves the typecheck and the targeted tests green.
 - First run in report mode; fix or silence by rule, never by file. Format in a
   single commit so the diff of the rest stays readable.
 - Add `lint` and `format:check` scripts at the root.
+- Done 2026-10-28 (Biome 2.6.3, pinned). Scope: `preview-render-server` and
+  `preview-protocol`; test fixtures are excluded. Formatting and import order
+  were applied in one pass (87 files, uncommitted). No lint errors remain; 252
+  warnings are left visible, mostly `noNonNullAssertion` (208, the assertions
+  from step 1) and `noExplicitAny` (39). Two floating promises in `patch.ts`
+  are marked `void` because Idiomorph returns the node synchronously.
 
 ## 3. Zod at trust boundaries
 
