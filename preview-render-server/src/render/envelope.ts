@@ -1,7 +1,8 @@
 // The request body of the render and validate routes (SYSTEM-DESIGN.md
 // section 3, D12): `{ documents, media }`. Checked before anything else; a
 // failure names the part that is wrong and becomes a 400.
-import type { MediaMap } from '../overlay/context.ts';
+import { z } from 'astro/zod';
+import type { MediaEntry, MediaMap } from '../overlay/context.ts';
 
 // The formats of Astro's ImageMetadata.
 const IMAGE_FORMATS = new Set([
@@ -24,64 +25,74 @@ export type EnvelopeResult =
   | ({ ok: true } & Envelope)
   | { ok: false; message: string };
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
 const isPositiveInteger = (value: unknown): value is number =>
   Number.isInteger(value) && (value as number) > 0;
+const positiveInteger = (field: string) =>
+  z.custom<number>(isPositiveInteger, {
+    error: `"${field}" must be a positive integer`,
+  });
+
+// Messages are the text after the entry's location; `entryMessage` adds it, so
+// today's 400 bodies stay as they were.
+const mediaEntrySchema = z.object(
+  {
+    url: z
+      .string({ error: '"url" must be a string' })
+      .min(1, { error: '"url" must be a string' }),
+    width: positiveInteger('width'),
+    height: positiveInteger('height'),
+    format: z.custom<string>(
+      (value) => typeof value === 'string' && IMAGE_FORMATS.has(value),
+      { error: `"format" must be one of ${[...IMAGE_FORMATS].join(', ')}` },
+    ),
+  },
+  { error: 'must be an object' },
+) satisfies z.ZodType<MediaEntry>;
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+// `z.record` would drop a `__proto__` key, so objects are only checked here and
+// the media entries are validated one by one in `parseEnvelope`.
+const objectOf = (error: string) =>
+  z.custom<Record<string, unknown>>(isObject, { error });
+
+const envelopeSchema = z.object(
+  {
+    documents: objectOf('"documents" must be an object'),
+    media: objectOf('"media" must be an object').optional(),
+  },
+  { error: 'Body must be a JSON object with "documents"' },
+);
+
+/** The first issue as a one-line message that names the failing part. */
+function entryMessage(ref: string, error: z.ZodError): string {
+  const issue = error.issues[0];
+  const where = `"media" entry "${ref}"`;
+  if (!issue) return `${where} is invalid`;
+  return issue.path.length === 0
+    ? `${where} ${issue.message}`
+    : `${where}: ${issue.message}`;
+}
 
 export function parseEnvelope(body: unknown): EnvelopeResult {
-  if (!isObject(body))
+  const parsed = envelopeSchema.safeParse(body);
+  if (!parsed.success)
     return {
       ok: false,
-      message: 'Body must be a JSON object with "documents"',
+      message: parsed.error.issues[0]?.message ?? 'Invalid body',
     };
-  if (!isObject(body.documents))
-    return { ok: false, message: '"documents" must be an object' };
   // Entries are collected and then turned into an object, so that a ref named
   // `__proto__` becomes an ordinary key and not the prototype of the map.
-  const media: Array<[string, MediaMap[string]]> = [];
-  if (body.media !== undefined) {
-    if (!isObject(body.media))
-      return { ok: false, message: '"media" must be an object' };
-    for (const [ref, entry] of Object.entries(body.media)) {
-      const where = `"media" entry "${ref}"`;
-      if (!isObject(entry))
-        return { ok: false, message: `${where} must be an object` };
-      if (typeof entry.url !== 'string' || entry.url === '')
-        return { ok: false, message: `${where}: "url" must be a string` };
-      if (!isPositiveInteger(entry.width))
-        return {
-          ok: false,
-          message: `${where}: "width" must be a positive integer`,
-        };
-      if (!isPositiveInteger(entry.height))
-        return {
-          ok: false,
-          message: `${where}: "height" must be a positive integer`,
-        };
-      if (
-        typeof entry.format !== 'string' ||
-        !IMAGE_FORMATS.has(entry.format)
-      ) {
-        return {
-          ok: false,
-          message: `${where}: "format" must be one of ${[...IMAGE_FORMATS].join(', ')}`,
-        };
-      }
-      media.push([
-        ref,
-        {
-          url: entry.url,
-          width: entry.width,
-          height: entry.height,
-          format: entry.format,
-        },
-      ]);
-    }
+  const media: Array<[string, MediaEntry]> = [];
+  for (const [ref, value] of Object.entries(parsed.data.media ?? {})) {
+    const entry = mediaEntrySchema.safeParse(value);
+    if (!entry.success)
+      return { ok: false, message: entryMessage(ref, entry.error) };
+    media.push([ref, entry.data]);
   }
   return {
     ok: true,
-    documents: body.documents,
+    documents: parsed.data.documents,
     media: Object.fromEntries(media),
   };
 }

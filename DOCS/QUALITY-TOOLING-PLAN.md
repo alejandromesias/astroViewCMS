@@ -8,7 +8,7 @@ lands on its own, and leaves the typecheck and the targeted tests green.
 |---|---|---|---|---|
 | 1 | Stricter TypeScript flags | `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, `noFallthroughCasesInSwitch` | now | done |
 | 2 | Lint and format | Biome | now | done |
-| 3 | Boundary validation | Zod from `astro/zod` (already a dependency) | after 2 | todo |
+| 3 | Boundary validation | Zod from `astro/zod` (already a dependency) | after 2 | done |
 | 4 | Architecture map | Skott (graph, cycles) | after 3 | todo |
 | 5 | Vulnerable dependencies | osv-scanner (+ Renovate or Dependabot) | after 2 | todo |
 | 6 | Dead code | Knip, run on demand | after 4 | todo |
@@ -50,11 +50,48 @@ lands on its own, and leaves the typecheck and the targeted tests green.
 ## 3. Zod at trust boundaries
 
 - Server side only: the render and validate request envelope (replaces the
-  hand-written 400 checks in `render-route.ts` and friends), site config, and
-  later `PUT /api/changes`.
+  hand-written 400 checks in `parseEnvelope`, `src/render/envelope.ts`, called
+  from `readEnvelope` in `src/render/handlers.ts`), and optionally site config.
 - Keep the error messages naming the failing field, as the contract requires.
 - Not in the bridge or `preview-protocol`: the bridge ships in every previewed
   page (D14), so its size counts.
+- **Messages stay byte-identical.** `envelope.test.ts` and `handlers.test.ts`
+  assert the 400 bodies. Set per-field messages in the schema and add one small
+  formatter that turns the first Zod issue (with its path) into today's string.
+  Done = those tests pass unchanged.
+- **First failure only on 400.** The contract names one part; listing every
+  field is the 422's job, which comes from the schema pass, not this step.
+- **Don't validate document contents.** `documents` stays
+  `z.record(z.string(), z.unknown())`; values are checked by the shim's 422
+  pass (SYSTEM-DESIGN section 7).
+- **Keep today's edge cases:** unknown keys are stripped (`z.object`, not
+  `z.strictObject`); a media ref named `__proto__` stays an ordinary key (keep
+  that test); an empty `url` is rejected.
+- **One type, not two.** `MediaMap` lives in `overlay/context.ts`: derive it
+  with `z.infer`, or check the schema against it with `satisfies`.
+- **Import from `astro/zod` only** (Astro 7, Zod 4 API: `error:`, not
+  `message:`). `envelope.ts` runs in the built server bundle, which already
+  ships Astro's Zod; a bare `zod` import could add a second copy.
+- **Site config, optional.** `loadSiteConfig` (`src/site-config.ts`) casts a
+  dynamic import to `SiteConfig`. A schema there catches a missing default
+  export or a wrong field; the error names the config file and the field. Do it
+  only if it stays small; it matters once tenant configs come from storage.
+- **Optional:** the `?path=` check in `handleRender` can use the same
+  formatter if it reads cleanly. `dev/documents.ts` (dev only) stays out.
+- **Out of scope:** `PUT /api/changes`. It's a CMS-app route (the preview node
+  has no write routes); add Zod there when that route is built.
+- **Close the step 2 follow-up:** re-count the 43 production
+  `noNonNullAssertion` warnings afterwards and record the number here.
+- Done 2026-10-28. `parseEnvelope` now uses a Zod schema from `astro/zod`; the
+  envelope and handler tests pass unchanged (53). Two deviations: `documents`
+  and `media` are checked as plain objects (`z.custom`) and media entries are
+  parsed one by one, because `z.record` silently drops a `__proto__` key. Site
+  config was skipped (its `RegionConfig` is not small); the `?path=` check is
+  unchanged. The 43 production `noNonNullAssertion` warnings are still 43, as
+  `envelope.ts` had none; they remain for a later pass.
+- **Verify:** `typecheck` and `lint` clean; run `src/render/envelope.test.ts`
+  and `src/render/handlers.test.ts` (plus the `site-config` tests if done),
+  with no test edits except new cases.
 
 ## 4. Skott
 
@@ -75,6 +112,9 @@ lands on its own, and leaves the typecheck and the targeted tests green.
 - Entry points: `src/build.ts`, `src/start.ts`, `sites/*.config.ts`, the virtual
   modules. Run on demand and read the output; do not gate on it until the
   false positives are tuned out.
+- Same pass: go through the 43 production `noNonNullAssertion` warnings left
+  from steps 2 and 3. Replace each with a check or a narrower type, or keep it
+  with a `biome-ignore` that says why the value exists.
 
 ## 7. Budget tests
 
