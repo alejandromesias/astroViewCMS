@@ -239,3 +239,164 @@ describe('ignores messages', () => {
     expect(bridge.fetch).not.toHaveBeenCalled();
   });
 });
+
+describe('stale answers', () => {
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  beforeEach(() => {
+    bridge = setup();
+  });
+
+  it('drops the answer of a draft when a message with another protocol came after it', async () => {
+    let answerFirst!: (response: Response) => void;
+    bridge.fetch
+      .mockReturnValueOnce(new Promise((resolve) => (answerFirst = resolve)))
+      .mockReturnValueOnce(new Promise(() => {}));
+    bridge.post(draft({ n: 1 }));
+    bridge.post({ type: 'preview:draft', protocol: 1, documents: {}, media: {} });
+    bridge.post(draft({ n: 2 })); // in flight, never answered
+    bridge.parent.postMessage.mockClear();
+    answerFirst(rendered(blocks('<p>first</p>')));
+    await tick();
+    expect(region().innerHTML).toBe('<p>saved</p>');
+    expect(bridge.sent()).toEqual([]);
+  });
+
+  it('drops the answer of a draft sent before a navigation, also when a newer draft is in flight', async () => {
+    let answerFirst!: (response: Response) => void;
+    bridge.fetch
+      .mockReturnValueOnce(new Promise((resolve) => (answerFirst = resolve)))
+      .mockReturnValueOnce(new Promise(() => {}));
+    bridge.post(draft({ n: 1 }));
+    document.dispatchEvent(new Event('astro:page-load'));
+    bridge.post(draft({ n: 2 })); // in flight, never answered
+    bridge.parent.postMessage.mockClear();
+    answerFirst(rendered(blocks('<p>first</p>')));
+    await tick();
+    expect(region().innerHTML).toBe('<p>saved</p>');
+    expect(bridge.sent()).toEqual([]);
+  });
+
+  it('does not report the failure of a draft that a newer one replaced', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let failFirst!: (error: Error) => void;
+    bridge.fetch
+      .mockReturnValueOnce(new Promise((_, reject) => (failFirst = reject)))
+      .mockResolvedValueOnce(rendered(blocks('<p>second</p>')));
+    bridge.post(draft({ n: 1 }));
+    bridge.post(draft({ n: 2 }));
+    await vi.waitFor(() => expect(region().innerHTML).toBe('<p>second</p>'));
+    bridge.parent.postMessage.mockClear();
+    failFirst(new TypeError('Failed to fetch'));
+    await tick();
+    expect(bridge.sent()).toEqual([]);
+    expect(quiet).not.toHaveBeenCalled();
+    quiet.mockRestore();
+  });
+
+  it('does not report a bad answer to a draft that a newer one replaced', async () => {
+    let answerFirst!: (response: Response) => void;
+    bridge.fetch
+      .mockReturnValueOnce(new Promise((resolve) => (answerFirst = resolve)))
+      .mockResolvedValueOnce(rendered(blocks('<p>second</p>')));
+    bridge.post(draft({ n: 1 }));
+    bridge.post(draft({ n: 2 }));
+    await vi.waitFor(() => expect(region().innerHTML).toBe('<p>second</p>'));
+    bridge.parent.postMessage.mockClear();
+    answerFirst(new Response('not json', { status: 200 }));
+    await tick();
+    expect(bridge.sent()).toEqual([]);
+  });
+});
+
+describe('what the bridge does around a draft', () => {
+  it('ignores messages that are not drafts completely: nothing is sent and the editor origin does not change', () => {
+    bridge = setup(PAGE, { editorOrigins: [EDITOR] });
+    bridge.parent.postMessage.mockClear();
+    bridge.post({ type: 'preview:ready', path: '/' }, { origin: EDITOR });
+    bridge.post('hello', { origin: EDITOR });
+    expect(bridge.sent()).toEqual([]);
+    bridge.post({ type: 'preview:draft', documents: {}, media: {} }, { origin: ORIGIN }); // mismatch: answered to the page origin
+    expect(bridge.targets()).toEqual([ORIGIN]);
+  });
+
+  it('forgets the inline scripts it ran when the page is replaced, so the new page gets them', async () => {
+    bridge = setup();
+    const inline = '<script>window.island = 1</script>';
+    const scripts = () => Array.from(document.querySelectorAll('script'), (script) => script.textContent);
+    bridge.fetch.mockImplementation(async () => rendered(blocks('<p>x</p>') + inline));
+    bridge.post(draft({ n: 1 }));
+    await vi.waitFor(() => expect(scripts()).toEqual(['window.island = 1']));
+
+    document.body.innerHTML = PAGE; // a navigation replaced the document
+    document.dispatchEvent(new Event('astro:page-load'));
+    bridge.post(draft({ n: 2 }));
+    await vi.waitFor(() => expect(scripts()).toEqual(['window.island = 1']));
+  });
+
+  it('logs what it patched and what failed', async () => {
+    bridge = setup();
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    bridge.fetch.mockResolvedValueOnce(rendered(blocks('<p>x</p>')));
+    bridge.post(draft({ 'blog/blog-1': {} }));
+    await vi.waitFor(() => expect(info).toHaveBeenCalled());
+    expect(info).toHaveBeenCalledWith('[preview-bridge] patched', '/blog/blog-1', {
+      changed: expect.any(Array),
+      sent: ['blog/blog-1'],
+      read: 1,
+      limits: [],
+      renderMs: 4.2,
+    });
+    bridge.fetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    bridge.post(draft());
+    await vi.waitFor(() => expect(error).toHaveBeenCalledWith('[preview-bridge] draft failed', '/blog/blog-1', expect.any(TypeError)));
+    info.mockRestore();
+    error.mockRestore();
+  });
+
+  it('stops listening for navigations too', () => {
+    bridge = setup();
+    bridge.stop?.();
+    bridge.parent.postMessage.mockClear();
+    document.dispatchEvent(new Event('astro:page-load'));
+    expect(bridge.sent()).toEqual([]);
+  });
+});
+
+describe('error answers', () => {
+  beforeEach(() => {
+    bridge = setup();
+  });
+
+  it('only a 422 is read as field errors', async () => {
+    bridge.fetch.mockResolvedValue(Response.json({ errors: [{ key: 'a', path: [], message: 'm' }] }, { status: 500 }));
+    bridge.post(draft());
+    await vi.waitFor(() => expect(bridge.sent().at(-1)).toMatchObject({ type: 'preview:error', status: 500 }));
+    const message = bridge.sent().at(-1) as { message: string; errors?: unknown };
+    expect(message.message).toBe('{"errors":[{"key":"a","path":[],"message":"m"}]}');
+    expect('errors' in message).toBe(false);
+  });
+
+  it('a 422 that is not JSON is reported with its text', async () => {
+    bridge.fetch.mockResolvedValue(new Response('Unprocessable', { status: 422 }));
+    bridge.post(draft());
+    await vi.waitFor(() =>
+      expect(bridge.sent().at(-1)).toEqual({ type: 'preview:error', path: '/blog/blog-1', status: 422, message: 'Unprocessable' }),
+    );
+  });
+
+  it('cuts a long message at 500 characters', async () => {
+    bridge.fetch.mockResolvedValue(new Response('x'.repeat(501) + 'tail', { status: 500 }));
+    bridge.post(draft());
+    await vi.waitFor(() => expect(bridge.sent().at(-1)).toMatchObject({ status: 500 }));
+    expect((bridge.sent().at(-1) as { message: string }).message).toBe('x'.repeat(500));
+  });
+
+  it('keeps a message of exactly 500 characters whole', async () => {
+    bridge.fetch.mockResolvedValue(new Response('y'.repeat(500), { status: 500 }));
+    bridge.post(draft());
+    await vi.waitFor(() => expect(bridge.sent().at(-1)).toMatchObject({ status: 500 }));
+    expect((bridge.sent().at(-1) as { message: string }).message).toHaveLength(500);
+  });
+});

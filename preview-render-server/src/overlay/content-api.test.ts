@@ -362,3 +362,232 @@ describe('validate', () => {
     expect(errors).toEqual([{ key: 'blog/x', path: [], message: 'refinement blew up' }]);
   });
 });
+
+// -- Mutation-testing additions ----------------------------------------------
+const emptyRender = { Content: 'empty-content', headings: [], remarkPluginFrontmatter: {} };
+
+describe('the file that holds a new draft', () => {
+  const extra = {
+    yaml: defineCollection({ loader: glob({ pattern: '**/*.yaml', base: 'content/yaml' }) }),
+    spaced: defineCollection({ loader: glob({ pattern: '**/*.{ mdx , md}', base: 'content/spaced' }) }),
+    plain: defineCollection({ loader: glob({ pattern: 'data/*', base: 'content/plain' }) }),
+    mark: defineCollection({ loader: glob({ pattern: '**/*.markdown', base: 'content/mark' }) }),
+    noBase: defineCollection({ loader: glob({ pattern: '**/*.json' }) }),
+    noLoader: defineCollection({ loader: undefined, schema: undefined }),
+    one: defineCollection({ loader: file('content/one.json') }),
+  };
+  const extraApi = createContentApi({ real, collections: extra, images, hooks, emptyContent: () => 'empty-content' });
+  const entry = async (key: string, raw: unknown = {}) => (await run({ [key]: raw }, () => extraApi.getEntry(key.split('/')[0], key.slice(key.indexOf('/') + 1)))).value;
+
+  it.each([
+    ['yaml/a', 'content/yaml/a.yaml'],
+    ['spaced/a', 'content/spaced/a.mdx'],
+    ['plain/a', 'content/plain/a.json'],
+    ['mark/a', 'content/mark/a.markdown'],
+    ['noBase/a', 'a.json'],
+    ['noLoader/a', 'a.json'],
+    ['one/a', 'content/one.json'],
+  ])('%s is written to %s', async (key, expected) => {
+    expect((await entry(key)).filePath).toBe(expected);
+  });
+
+  it('a collection the site does not have falls back to a JSON file at the root', async () => {
+    expect((await entry('ghost/a')).filePath).toBe('a.json');
+  });
+
+  it('with no collections at all, drafts are passed through unparsed', async () => {
+    const bare = createContentApi({ real, collections: undefined, images, hooks, emptyContent: () => 'empty-content' });
+    const { value } = await run({ 'x/y': { any: 1 } }, () => bare.getEntry('x', 'y'));
+    expect(value).toMatchObject({ id: 'y', collection: 'x', data: { any: 1 }, filePath: 'y.json' });
+    expect(await run({ 'x/y': {} }, () => bare.getCollection('x')).then((r) => r.value.length)).toBe(1);
+  });
+
+  it('a .markdown document has a body; matching the extension is not case sensitive', async () => {
+    expect(await entry('mark/a', { data: { k: 1 }, body: 'B' })).toMatchObject({ data: { k: 1 }, body: 'B' });
+    const upper = { ...real, getEntry: async () => ({ id: 'up', collection: 'mark', data: {}, filePath: 'content\\mark\\up.MD' }) };
+    const upperApi = createContentApi({ real: upper, collections: extra, images, hooks, emptyContent: () => 'e' });
+    const { value } = await run({ 'mark/up': { data: {}, body: 'Z' } }, () => upperApi.getEntry('mark', 'up'));
+    expect(value.filePath).toBe('content/mark/up.MD'); // backslashes become slashes
+    expect(value.body).toBe('Z');
+    expect(value[DRAFT]).toEqual({ extension: 'md' });
+  });
+
+  it('an empty built filePath falls back to the loader', async () => {
+    const empty = { ...real, getEntry: async () => ({ id: 'a', collection: 'yaml', data: {}, filePath: '' }) };
+    const emptyApi = createContentApi({ real: empty, collections: extra, images, hooks, emptyContent: () => 'e' });
+    expect((await run({ 'yaml/a': {} }, () => emptyApi.getEntry('yaml', 'a'))).value.filePath).toBe('content/yaml/a.yaml');
+  });
+});
+
+describe('the built entry shape', () => {
+  it('has id, collection, digest and the draft marker', async () => {
+    const { value } = await run({ 'authors/new': { name: 'N', avatar: '../../assets/authors/ana.png' } }, () => api.getEntry('authors', 'new'));
+    expect(value).toMatchObject({ id: 'new', collection: 'authors', digest: 'preview-draft' });
+    expect(Symbol.keyFor(DRAFT)).toBe('preview-render-server.draft');
+  });
+
+  it('a Markdown draft without data or body gets {} and an empty string', async () => {
+    const bare = createContentApi({ real, collections: { blog: defineCollection({ loader: glob({ pattern: '*.md', base: 'b' }) }) }, images, hooks, emptyContent: () => 'e' });
+    const { value } = await run({ 'blog/x': undefined }, () => bare.getEntry('blog', 'x'));
+    expect(value.data).toEqual({});
+    expect(value.body).toBe('');
+  });
+});
+
+describe('schema issues', () => {
+  const issueApi = (schema: z.ZodType) =>
+    createContentApi({ real, collections: { c: defineCollection({ loader: glob({ pattern: '*.json', base: 'c' }), schema }) }, images, hooks, emptyContent: () => 'e' });
+  const failure = (schema: z.ZodType, raw: unknown) => {
+    const target = issueApi(schema);
+    return run({ 'c/x': raw }, () => target.getEntry('c', 'x')).then(() => { throw new Error('expected a DraftError'); }, (error) => error as DraftError);
+  };
+
+  it('keeps array indexes as numbers and turns symbols into strings', async () => {
+    const error = await failure(z.object({ tags: z.array(z.string()) }), { tags: ['a', 5] });
+    expect(error.issues).toEqual([{ path: ['tags', 1], message: expect.any(String) }]);
+    const symbol = Symbol('s');
+    const custom = await failure(
+      z.object({}).superRefine((_value, ctx) => ctx.addIssue({ code: 'custom', message: 'm', path: [symbol] })),
+      {},
+    );
+    expect(custom.issues).toEqual([{ path: ['Symbol(s)'], message: 'm' }]);
+  });
+
+  it('does not report the schema-refinement limit for an ordinary failure', async () => {
+    const target = issueApi(z.object({ n: z.number() }));
+    const { context, result } = render({ 'c/x': { n: 'no' } }, () => target.getEntry('c', 'x'));
+    await expect(result).rejects.toBeInstanceOf(DraftError);
+    expect(context.limits.size).toBe(0);
+  });
+
+  it('a refinement that throws a non-Error still reports an issue', async () => {
+    const error = await failure(
+      z.object({}).refine(() => {
+        throw new Error('boom');
+      }),
+      {},
+    );
+    expect(error.issues).toEqual([{ path: [], message: 'boom' }]);
+  });
+
+  it('fails a reference to a collection the site does not have', async () => {
+    const error = await failure(z.object({ r: reference('nowhere') }), { r: 'a' });
+    expect(error).toBeInstanceOf(DraftError);
+    expect(error.issues[0].path).toEqual(['r']);
+  });
+
+  it('loads the ids of the built entries once, however many drafts are parsed', async () => {
+    calls.length = 0;
+    const once = createContentApi({ real, collections, images, hooks, emptyContent: () => 'e' });
+    const doc = { data: { title: 'T', author: 'ana' }, body: '' };
+    await run({ 'blog/a': doc, 'blog/b': doc }, async () => [await once.getEntry('blog', 'a'), await once.getEntry('blog', 'b')]);
+    await run({ 'blog/c': doc }, () => once.getEntry('blog', 'c'));
+    expect(calls.filter((call) => call === 'getCollection:authors')).toHaveLength(1);
+  });
+
+  it('a reference to a built entry works, one to a ghost fails (the ids really are loaded)', async () => {
+    const ok = await run({ 'blog/a': { data: { title: 'T', author: 'kofi' }, body: '' } }, () => api.getEntry('blog', 'a'));
+    expect(ok.value.data.author).toEqual({ collection: 'authors', id: 'kofi' });
+  });
+});
+
+describe('getCollection details', () => {
+  it('applies the filter once when the overlay touches another collection, and builds nothing', async () => {
+    let filtered = 0;
+    const { value } = await run({ 'authors/ana': { name: 'A', avatar: '../../assets/authors/ana.png' } }, () =>
+      api.getCollection('blog', (entry) => (filtered++, !entry.data.draft)),
+    );
+    expect(value.map((e) => e.id)).toEqual(['hello', 'generated/post-001']);
+    expect(filtered).toBe(3);
+  });
+
+  it('an overlay with only data documents does not change a collection', async () => {
+    const { value } = await run({ 'data:src/x.json': { a: 1 } }, () => api.getCollection('authors'));
+    expect(value.map((e) => e.id)).toEqual(['ana', 'kofi']);
+  });
+
+  it('removing a document that was never built adds nothing', async () => {
+    const { value } = await run({ 'authors/ghost': null }, () => api.getCollection('authors'));
+    expect(value.map((e) => e.id)).toEqual(['ana', 'kofi']);
+  });
+
+  it('an overlay document for a collection id with a slash is found by its collection', async () => {
+    const { value } = await run({ 'blog/deep/new': { data: { title: 'D' }, body: '' } }, () => api.getCollection('blog'));
+    expect(value.at(-1).id).toBe('deep/new');
+  });
+});
+
+describe('getEntry and render pass-through', () => {
+  const spy = { ...real, getEntry: async (...args: any[]) => ({ passthrough: args }), render: async (entry: unknown) => ({ rendered: entry }) };
+  const spyApi = createContentApi({ real: spy, collections, images, hooks, emptyContent: () => 'e' });
+
+  it('hands calls without a usable reference to the built content', async () => {
+    expect(await spyApi.getEntry(undefined)).toEqual({ passthrough: [undefined] });
+    expect(await spyApi.getEntry({ collection: 'authors' })).toEqual({ passthrough: [{ collection: 'authors' }] });
+    const { value } = await run({ 'authors/ana': null }, () => spyApi.getEntry({ collection: 'authors' }));
+    expect(value).toEqual({ passthrough: [{ collection: 'authors' }] });
+  });
+
+  it('render() hands anything that is not a draft to the built content', async () => {
+    expect(await spyApi.render(undefined)).toEqual({ rendered: undefined });
+    expect(await spyApi.render(null)).toEqual({ rendered: null });
+    expect(await spyApi.render({ id: 'plain' })).toEqual({ rendered: { id: 'plain' } });
+  });
+});
+
+describe('render() of drafts, in full', () => {
+  it('a Markdown draft without renderMarkdown renders empty content', async () => {
+    const { value } = await run({ 'blog/hello': { data: { title: 'H' }, body: 'Draft' } }, async () => api.render(await api.getEntry('blog', 'hello')));
+    expect(value).toEqual(emptyRender);
+  });
+
+  it('an MDX draft with nothing saved renders the complete empty result', async () => {
+    let lookups = 0;
+    const flaky = { ...real, getEntry: async (...args: any[]) => (++lookups === 1 ? real.getEntry(...args) : undefined) };
+    const flakyApi = createContentApi({ real: flaky, collections, images, hooks, emptyContent: () => 'empty-content' });
+    const { value } = await run({ 'blog/generated/post-001': { data: { title: 'E' }, body: 'b' } }, async () =>
+      flakyApi.render(await flakyApi.getEntry('blog', 'generated/post-001')),
+    );
+    expect(value).toEqual(emptyRender);
+  });
+
+  it('an MDX draft rendered outside a request still renders (no limits to record)', async () => {
+    const draft = (await run({ 'blog/generated/post-001': { data: { title: 'E' }, body: 'b' } }, () => api.getEntry('blog', 'generated/post-001'))).value;
+    expect((await api.render(draft)).Content).toBe('built-content:generated/post-001');
+  });
+});
+
+describe('validate details', () => {
+  const validateWith = (target: typeof api, documents: Record<string, unknown>) => {
+    const context = createOverlayContext({ documents });
+    return runWithOverlay(context, () => target.validate(context));
+  };
+
+  it('describes the keys that are not documents', async () => {
+    expect(await validateWith(api, { nothing: {} })).toEqual([
+      { key: 'nothing', path: [], message: 'Not a document key (expected "collection/id" or "data:<path>")' },
+    ]);
+    expect(await validateWith(api, { '/lead': {} })).toHaveLength(1);
+  });
+
+  it('describes unknown collections', async () => {
+    expect(await validateWith(api, { 'nowhere/x': {} })).toEqual([{ key: 'nowhere/x', path: [], message: 'Unknown collection "nowhere"' }]);
+  });
+
+  it('does not judge collections when the site has none', async () => {
+    const bare = createContentApi({ real, collections: undefined, images, hooks, emptyContent: () => 'e' });
+    expect(await validateWith(bare, { 'nowhere/x': {} })).toEqual([]);
+  });
+
+  it('lets an unexpected error through instead of reporting it as a field error', async () => {
+    const broken = createContentApi({ real: { ...real, getEntry: async () => Promise.reject(new TypeError('disk gone')) }, collections, images, hooks, emptyContent: () => 'e' });
+    await expect(validateWith(broken, { 'authors/ana': {} })).rejects.toThrow('disk gone');
+  });
+});
+
+describe('images in drafts: refs that are names of Object.prototype', () => {
+  it.each(['constructor', 'toString', '__proto__', 'hasOwnProperty'])('"%s" is an image that is not found', async (ref) => {
+    const error = await run({ 'authors/ana': { name: 'A', avatar: ref } }, () => api.getEntry('authors', 'ana')).catch((e) => e);
+    expect(error.issues[0]).toMatchObject({ path: ['avatar'], message: expect.stringContaining('image not found') });
+  });
+});

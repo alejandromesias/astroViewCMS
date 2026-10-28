@@ -21,3 +21,10 @@ describe('islandResolver', () => {
     expect(islandResolver(entries, '/')('./Other.tsx')).toBe('./Other.tsx');
   });
 });
+
+describe('islandResolver: names of Object.prototype', () => {
+  it('leaves a specifier that is only an inherited member of the map as it is', () => {
+    const resolve = islandResolver(entries, '/');
+    for (const specifier of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) expect(resolve(specifier)).toBe(specifier);
+  });
+});

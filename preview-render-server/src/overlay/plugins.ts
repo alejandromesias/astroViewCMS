@@ -119,7 +119,7 @@ export function dataModuleSource(built: unknown, key: string, proxyFile: string)
   return lines.join('\n');
 }
 
-const RESERVED = new Set(['default', 'class', 'function', 'var', 'let', 'const', 'import', 'export', 'new', 'delete', 'if', 'else', 'return', 'switch', 'case', 'for', 'while', 'do', 'break', 'continue', 'typeof', 'void', 'null', 'true', 'false', 'this', 'super', 'in', 'of', 'try', 'catch', 'throw', 'with', 'yield', 'await', 'enum']);
+const RESERVED = new Set(['default', 'class', 'function', 'var', 'let', 'const', 'import', 'export', 'new', 'delete', 'if', 'else', 'return', 'switch', 'case', 'for', 'while', 'do', 'break', 'continue', 'typeof', 'void', 'null', 'true', 'false', 'this', 'super', 'in', 'of', 'try', 'catch', 'throw', 'with', 'yield', 'await', 'enum', 'implements', 'interface', 'package', 'private', 'protected', 'public', 'static', 'eval', 'arguments', 'debugger', 'instanceof', 'extends']);
 
 function normalize(p: string): string {
   return p.replaceAll('\\', '/').split('?')[0].toLowerCase();

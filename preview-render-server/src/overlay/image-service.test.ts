@@ -47,3 +47,114 @@ describe('previewImageService plugin', () => {
     expect(load('/some/file.ts')).toBeUndefined();
   });
 });
+
+describe('wrapService details', () => {
+  const make = () => {
+    const getURL = vi.fn(async (_options: unknown, _config: unknown) => 'site-url');
+    return { getURL, wrapped: wrapService({ getURL }) };
+  };
+
+  it('does not fail when there are no options or no src', async () => {
+    const { wrapped, getURL } = make();
+    expect(await wrapped.getURL(undefined, 'cfg')).toBe('site-url');
+    expect(await wrapped.getURL(null, 'cfg')).toBe('site-url');
+    expect(await wrapped.getURL({}, 'cfg')).toBe('site-url');
+    expect(getURL).toHaveBeenCalledTimes(3);
+    expect(getURL).toHaveBeenLastCalledWith({}, 'cfg');
+  });
+
+  it('only a tagged src is bypassed, not an object that merely has a src', async () => {
+    const { wrapped, getURL } = make();
+    expect(await wrapped.getURL({ src: { src: '/x.png', width: 1, height: 1, format: 'png' } }, {})).toBe('site-url');
+    expect(getURL).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns the src of the metadata, not the options', async () => {
+    const { wrapped } = make();
+    const tagged = mediaMetadata({ url: '/m/b.png', width: 1, height: 1, format: 'png' });
+    expect(await wrapped.getURL({ src: tagged, width: 100 }, {})).toBe('/m/b.png');
+  });
+});
+
+describe('previewImageService plugin details', () => {
+  const create = (wrapperFile = '/w/image-service.ts') => previewImageService({ wrapperFile });
+  const resolveOf = (plugin: ReturnType<typeof create>) =>
+    plugin.resolveId as unknown as (this: object, ...args: unknown[]) => Promise<unknown>;
+  const loadOf = (plugin: ReturnType<typeof create>) => plugin.load as unknown as (id: string) => string | undefined;
+
+  it('is a pre-enforced plugin with a name', () => {
+    const plugin = create();
+    expect(plugin.name).toBe('preview-render-server:image-service');
+    expect(plugin.enforce).toBe('pre');
+  });
+
+  it('asks for the original with skipSelf and keeps the other options', async () => {
+    const plugin = create();
+    const resolve = vi.fn(async () => ({ id: '/orig.js' }));
+    await resolveOf(plugin).call({ environment: { name: 'ssr' }, resolve }, 'virtual:image-service', '/imp.astro', { ssr: true, scan: false });
+    expect(resolve).toHaveBeenCalledTimes(1);
+    expect(resolve).toHaveBeenCalledWith('virtual:image-service', '/imp.astro', { ssr: true, scan: false, skipSelf: true });
+  });
+
+  it('gives an id that load recognizes, with the original after the prefix', async () => {
+    const plugin = create();
+    const context = { environment: { name: 'ssr' }, resolve: async () => ({ id: '/orig.js' }) };
+    const id = await resolveOf(plugin).call(context, 'virtual:image-service', '/imp', {});
+    expect(id).toBe('\0preview-image-service:/orig.js');
+  });
+
+  it('wraps also when the plugin context has no environment', async () => {
+    const plugin = create();
+    const context = { resolve: async () => ({ id: '/orig.js' }) };
+    expect(await resolveOf(plugin).call(context, 'virtual:image-service', '/imp', {})).toBe('\0preview-image-service:/orig.js');
+  });
+
+  it('wraps for any environment except the client', async () => {
+    const plugin = create();
+    for (const name of ['ssr', 'prerender', 'server']) {
+      const context = { environment: { name }, resolve: async () => ({ id: '/o.js' }) };
+      expect(await resolveOf(plugin).call(context, 'virtual:image-service', '/imp', {})).toBe('\0preview-image-service:/o.js');
+    }
+  });
+
+  it('does not even look for the original in the client build', async () => {
+    const plugin = create();
+    const resolve = vi.fn(async () => ({ id: '/o.js' }));
+    expect(await resolveOf(plugin).call({ environment: { name: 'client' }, resolve }, 'virtual:image-service', '/imp', {})).toBeUndefined();
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when the original cannot be resolved', async () => {
+    const plugin = create();
+    const context = { environment: { name: 'ssr' }, resolve: async () => null };
+    expect(await resolveOf(plugin).call(context, 'virtual:image-service', '/imp', {})).toBeUndefined();
+  });
+
+  it('only handles the exact virtual id', async () => {
+    const plugin = create();
+    for (const id of ['virtual:image-service2', 'xvirtual:image-service', 'virtual:image-services', '']) {
+      const resolve = vi.fn(async () => ({ id: '/o.js' }));
+      expect(await resolveOf(plugin).call({ environment: { name: 'ssr' }, resolve }, id, '/imp', {})).toBeUndefined();
+      expect(resolve).not.toHaveBeenCalled();
+    }
+  });
+
+  it('builds the wrapper module exactly, with every backslash of the wrapper path replaced', () => {
+    const plugin = create('C:\\a\\b\\image-service.ts');
+    expect(loadOf(plugin)('\0preview-image-service:/site/o"s.js')).toBe(
+      [
+        'import service from "/site/o\\"s.js";',
+        'import { wrapService } from "C:/a/b/image-service.ts";',
+        'export default wrapService(service);',
+      ].join('\n'),
+    );
+  });
+
+  it('only loads ids that start with the prefix', () => {
+    const plugin = create();
+    expect(loadOf(plugin)('x\0preview-image-service:/o.js')).toBeUndefined();
+    expect(loadOf(plugin)('preview-image-service:/o.js')).toBeUndefined();
+    expect(loadOf(plugin)('\0preview-image-service')).toBeUndefined();
+    expect(loadOf(plugin)('\0preview-image-service:')).toContain('import service from "";');
+  });
+});

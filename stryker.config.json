@@ -1,0 +1,45 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "_comment": "Docs: https://stryker-mutator.io/docs/stryker-js/configuration/. The exclusions mirror coverage.exclude in preview-render-server/vitest.config.ts.",
+  "packageManager": "npm",
+  "mutate": [
+    "preview-render-server/src/**/*.ts",
+    "!preview-render-server/src/**/*.test.ts",
+    "!preview-render-server/src/**/*.d.ts",
+    "!preview-render-server/src/types.ts",
+    "!preview-render-server/src/build.ts",
+    "!preview-render-server/src/start.ts",
+    "!preview-render-server/src/render-route.ts",
+    "!preview-render-server/src/validate-route.ts",
+    "!preview-render-server/src/warmup-route.ts",
+    "!preview-render-server/src/dev/documents-route.ts",
+    "!preview-render-server/src/render/runtime.ts",
+    "!preview-render-server/src/overlay/content-shim.ts",
+    "!preview-render-server/src/overlay/markdown-instance.ts",
+    "!preview-render-server/src/schema/stubs-flavor1.ts"
+  ],
+  "reporters": ["html", "clear-text", "progress"],
+  "testRunner": "vitest",
+  "testRunner_comment": "Take a look at https://stryker-mutator.io/docs/stryker-js/vitest-runner for information about the vitest plugin.",
+  "vitest": {
+    "configFile": "preview-render-server/vitest.config.ts",
+    "dir": "preview-render-server"
+  },
+  "coverageAnalysis": "perTest",
+  "concurrency": 4,
+  "ignorePatterns": [
+    "**/node_modules",
+    "**/.build",
+    "**/.vitest",
+    "**/coverage",
+    "**/.stryker-tmp",
+    "sample-site",
+    "sampleAstroProject",
+    "DOCS",
+    "reports"
+  ],
+  "tempDirName": ".stryker-tmp",
+  "thresholds": { "high": 80, "low": 60, "break": null },
+  "incremental": true,
+  "incrementalFile": "reports/stryker-incremental.json"
+}

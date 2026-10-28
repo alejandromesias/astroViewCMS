@@ -35,6 +35,18 @@ export default getViteConfig(
           'src/build.ts',
           'src/start.ts',
           'test-editor/editor.astro',
+          // Import virtual modules only a real build can load (or are bound
+          // to them in a line or two): covered by the end-to-end suite.
+          'src/render-route.ts',
+          'src/validate-route.ts',
+          'src/warmup-route.ts',
+          'src/dev/documents-route.ts',
+          'src/render/runtime.ts',
+          'src/overlay/content-shim.ts',
+          'src/overlay/markdown-instance.ts',
+          // Run as a bundled copy by loadCmsCollections (tested in
+          // config-bundle.test.ts), so v8 can't attribute it to this file.
+          'src/schema/stubs-flavor1.ts',
         ],
       },
     },

@@ -27,8 +27,8 @@ export function collectLanguages(root: string, store: DataStore, extra: string[]
  *  none (no restriction then: the languages are not known). */
 export function readLanguages(manifestDir: string): Set<string> | undefined {
   try {
-    const { languages } = JSON.parse(fs.readFileSync(path.join(manifestDir, LANGUAGES_FILE), 'utf8')) as { languages: string[] };
-    return new Set(languages);
+    const { languages } = JSON.parse(fs.readFileSync(path.join(manifestDir, LANGUAGES_FILE), 'utf8')) as { languages?: unknown };
+    return Array.isArray(languages) ? new Set(languages as string[]) : undefined;
   } catch {
     return undefined;
   }

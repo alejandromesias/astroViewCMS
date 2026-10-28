@@ -81,10 +81,12 @@ export function createContentApi(deps: ContentApiDeps) {
   function resolveImage(context: OverlayContext, ref: string): ImageMetadata | undefined {
     // D5: relative to the folder of the file that holds the document.
     const projectPath = posix.normalize(posix.join(posix.dirname(parsingFile), ref));
-    const built = images[projectPath] ?? images[posix.normalize(ref)];
+    // Own keys only: a ref such as `constructor` must not find Object.prototype.
+    const normalized = posix.normalize(ref);
+    const built = Object.hasOwn(images, projectPath) ? images[projectPath] : Object.hasOwn(images, normalized) ? images[normalized] : undefined;
     if (built) return built;
     // D12: images added since the bundle, from the request's media map.
-    const entry = context.media[ref] ?? context.media[projectPath];
+    const entry = Object.hasOwn(context.media, ref) ? context.media[ref] : Object.hasOwn(context.media, projectPath) ? context.media[projectPath] : undefined;
     return entry ? mediaMetadata(entry) : undefined;
   }
 

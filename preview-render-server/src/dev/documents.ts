@@ -65,8 +65,11 @@ export function parseDocument(text: string, record: Pick<DocumentRecord, 'format
  *  keyed by id. */
 function entryOf(parsed: unknown, id: string): unknown {
   const entry = Array.isArray(parsed)
-    ? parsed.find((item) => typeof item === 'object' && item !== null && String((item as { id?: unknown }).id) === id)
-    : typeof parsed === 'object' && parsed !== null
+    ? parsed.find((item) => {
+        const itemId = typeof item === 'object' && item !== null ? (item as { id?: unknown }).id : undefined;
+        return itemId !== undefined && String(itemId) === id;
+      })
+    : typeof parsed === 'object' && parsed !== null && Object.hasOwn(parsed, id)
       ? (parsed as Record<string, unknown>)[id]
       : undefined;
   if (entry === undefined) throw new Error(`No entry "${id}" in the file`);

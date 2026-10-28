@@ -39,3 +39,16 @@ describe('parseEnvelope', () => {
     expect(message({ documents: {}, media: { 'x.png': { ...entry, ...change } } })).toMatch(pattern);
   });
 });
+
+describe('parseEnvelope: media refs that are names of Object.prototype', () => {
+  it('keeps __proto__ as an ordinary key and does not change the prototype of the map', () => {
+    const body = JSON.parse(`{"documents": {}, "media": {"__proto__": ${JSON.stringify(entry)}, "constructor": ${JSON.stringify(entry)}}}`);
+    const result = parseEnvelope(body);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(Object.keys(result.media).sort()).toEqual(['__proto__', 'constructor']);
+    expect(Object.getPrototypeOf(result.media)).toBe(Object.prototype);
+    expect(({} as Record<string, unknown>).url).toBeUndefined();
+    expect((result.media as Record<string, unknown>).url).toBeUndefined();
+  });
+});

@@ -20,7 +20,9 @@ const isPositiveInteger = (value: unknown): value is number => Number.isInteger(
 export function parseEnvelope(body: unknown): EnvelopeResult {
   if (!isObject(body)) return { ok: false, message: 'Body must be a JSON object with "documents"' };
   if (!isObject(body.documents)) return { ok: false, message: '"documents" must be an object' };
-  const media: MediaMap = {};
+  // Entries are collected and then turned into an object, so that a ref named
+  // `__proto__` becomes an ordinary key and not the prototype of the map.
+  const media: Array<[string, MediaMap[string]]> = [];
   if (body.media !== undefined) {
     if (!isObject(body.media)) return { ok: false, message: '"media" must be an object' };
     for (const [ref, entry] of Object.entries(body.media)) {
@@ -32,8 +34,8 @@ export function parseEnvelope(body: unknown): EnvelopeResult {
       if (typeof entry.format !== 'string' || !IMAGE_FORMATS.has(entry.format)) {
         return { ok: false, message: `${where}: "format" must be one of ${[...IMAGE_FORMATS].join(', ')}` };
       }
-      media[ref] = { url: entry.url, width: entry.width, height: entry.height, format: entry.format };
+      media.push([ref, { url: entry.url, width: entry.width, height: entry.height, format: entry.format }]);
     }
   }
-  return { ok: true, documents: body.documents, media };
+  return { ok: true, documents: body.documents, media: Object.fromEntries(media) };
 }

@@ -35,7 +35,7 @@ const PLAIN = new Set(['', 'text', 'txt', 'plain', 'plaintext']);
 /** Lowercase language with aliases resolved (`JS` -> `javascript`). */
 export function canonicalLanguage(language: string): string {
   const lower = language.toLowerCase();
-  return ALIASES[lower] ?? lower;
+  return Object.hasOwn(ALIASES, lower) ? ALIASES[lower] : lower;
 }
 
 interface Fence {

@@ -156,7 +156,27 @@ export function stripJsonComments(text: string): string {
       out += char;
     }
   }
-  return out.replace(/,(\s*[}\]])/g, '$1');
+  return dropTrailingCommas(out);
+}
+
+/** Removes a comma followed only by whitespace and a closing bracket, except
+ *  inside strings. */
+function dropTrailingCommas(text: string): string {
+  const trailing = /,(?=\s*[}\]])/y;
+  let out = '';
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (char === '"') {
+      let end = i + 1;
+      while (end < text.length && text[end] !== '"') end += text[end] === '\\' ? 2 : 1;
+      out += text.slice(i, end + 1);
+      i = end;
+    } else {
+      trailing.lastIndex = i;
+      if (!trailing.test(text)) out += char;
+    }
+  }
+  return out;
 }
 
 /** The local file a specifier points at, or undefined for packages, URLs and

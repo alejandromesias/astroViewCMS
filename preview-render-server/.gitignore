@@ -3,3 +3,5 @@
 
 # test coverage reports
 coverage/
+.stryker/
+.vitest/
