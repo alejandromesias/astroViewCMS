@@ -4,7 +4,10 @@ import { measureImage } from './media-route.ts';
 // sharp is replaced here so that the metadata can be anything. (A plain
 // function rather than vi.fn(): Vitest reports an error thrown inside a mock
 // as a failure of the test even when the code under test catches it.)
-const state = vi.hoisted(() => ({ result: undefined as unknown, error: undefined as Error | undefined }));
+const state = vi.hoisted(() => ({
+  result: undefined as unknown,
+  error: undefined as Error | undefined,
+}));
 vi.mock('sharp', () => ({
   default: () => ({
     metadata: async () => {
@@ -23,7 +26,11 @@ describe('measureImage with the metadata that sharp reports', () => {
 
   it('gives width, height and format', async () => {
     state.result = { width: 10, height: 20, format: 'png' };
-    expect(await measureImage(bytes)).toEqual({ width: 10, height: 20, format: 'png' });
+    expect(await measureImage(bytes)).toEqual({
+      width: 10,
+      height: 20,
+      format: 'png',
+    });
   });
 
   it('renames jpeg to jpg and keeps every other format as it is', async () => {

@@ -6,7 +6,14 @@ import path from 'node:path';
 import type { Plugin } from 'vite';
 import { dataKey } from './keys.ts';
 
-const REWRITTEN_EXTENSIONS = new Set(['.astro', '.ts', '.js', '.tsx', '.jsx', '.mdx']);
+const REWRITTEN_EXTENSIONS = new Set([
+  '.astro',
+  '.ts',
+  '.js',
+  '.tsx',
+  '.jsx',
+  '.mdx',
+]);
 const CONTENT_CONFIG = /^content\.config\.[cm]?[jt]s$/;
 // from "astro:content", import "astro:content", import("astro:content")
 const IMPORT_PATTERNS = [
@@ -15,9 +22,15 @@ const IMPORT_PATTERNS = [
 ];
 
 /** Replaces every import of `astro:content` in `code` with `shimImport`. */
-export function rewriteContentImports(code: string, shimImport: string): string {
+export function rewriteContentImports(
+  code: string,
+  shimImport: string,
+): string {
   const target = JSON.stringify(shimImport);
-  return IMPORT_PATTERNS.reduce((out, pattern) => out.replace(pattern, `$1${target}`), code);
+  return IMPORT_PATTERNS.reduce(
+    (out, pattern) => out.replace(pattern, `$1${target}`),
+    code,
+  );
 }
 
 function isInside(file: string, dir: string): boolean {
@@ -29,14 +42,23 @@ function isInside(file: string, dir: string): boolean {
  *  that Vite compiles, except the content config (D8). */
 export function isRewritten(file: string, srcDir: string): boolean {
   if (!isInside(file, srcDir)) return false;
-  return REWRITTEN_EXTENSIONS.has(path.extname(file)) && !CONTENT_CONFIG.test(path.basename(file));
+  return (
+    REWRITTEN_EXTENSIONS.has(path.extname(file)) &&
+    !CONTENT_CONFIG.test(path.basename(file))
+  );
 }
 
 /** `enforce: 'post'`, so it sees the compiled code of `.astro` and `.mdx`
  *  files. Modules outside `src/` (npm packages, integration components) are
  *  not rewritten, so their reads aren't overlaid: they get a build warning
  *  (D8). */
-export function contentImportRewrite({ srcDir, shimFile }: { srcDir: string; shimFile: string }): Plugin {
+export function contentImportRewrite({
+  srcDir,
+  shimFile,
+}: {
+  srcDir: string;
+  shimFile: string;
+}): Plugin {
   const shim = normalize(shimFile);
   const warned = new Set<string>();
   return {
@@ -53,10 +75,14 @@ export function contentImportRewrite({ srcDir, shimFile }: { srcDir: string; shi
       }
       // Astro's own runtime and its generated files (.astro/) read
       // `astro:content` legitimately.
-      const legitimate = /[\\/]node_modules[\\/]astro[\\/]/.test(file) || /[\\/]\.astro[\\/]/.test(file);
+      const legitimate =
+        /[\\/]node_modules[\\/]astro[\\/]/.test(file) ||
+        /[\\/]\.astro[\\/]/.test(file);
       if (!legitimate && !warned.has(file)) {
         warned.add(file);
-        this.warn(`${file} imports astro:content but is outside src/: its reads won't be overlaid in previews`);
+        this.warn(
+          `${file} imports astro:content but is outside src/: its reads won't be overlaid in previews`,
+        );
       }
     },
   };
@@ -83,10 +109,14 @@ export function dataModules({
     name: 'preview-render-server:data-modules',
     enforce: 'pre',
     async resolveId(source, importer, options) {
-      if (!importer || !source.endsWith('.json') || importer.startsWith('\0')) return;
+      if (!importer || !source.endsWith('.json') || importer.startsWith('\0'))
+        return;
       const from = path.normalize(importer.split('?')[0]!);
       if (path.relative(srcDir, from).startsWith('..')) return;
-      const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
+      const resolved = await this.resolve(source, importer, {
+        ...options,
+        skipSelf: true,
+      });
       if (!resolved || !wanted.has(normalize(resolved.id))) return;
       // A suffix that is not .json, so Vite's own JSON plugin leaves it alone.
       return `${PREFIX}${path.normalize(resolved.id.split('?')[0]!)}.js`;
@@ -94,13 +124,21 @@ export function dataModules({
     load(id) {
       if (!id.startsWith(PREFIX)) return;
       const file = id.slice(PREFIX.length, -'.js'.length);
-      return dataModuleSource(JSON.parse(fs.readFileSync(file, 'utf8')), dataKey(toPosix(path.relative(root, file))), proxyFile);
+      return dataModuleSource(
+        JSON.parse(fs.readFileSync(file, 'utf8')),
+        dataKey(toPosix(path.relative(root, file))),
+        proxyFile,
+      );
     },
   };
 }
 
 /** The source of a data module for `built` (the parsed JSON file). */
-export function dataModuleSource(built: unknown, key: string, proxyFile: string): string {
+export function dataModuleSource(
+  built: unknown,
+  key: string,
+  proxyFile: string,
+): string {
   const lines = [
     `import { proxyData } from ${JSON.stringify(proxyFile.replaceAll('\\', '/'))};`,
     `const built = ${JSON.stringify(built)};`,
@@ -119,7 +157,56 @@ export function dataModuleSource(built: unknown, key: string, proxyFile: string)
   return lines.join('\n');
 }
 
-const RESERVED = new Set(['default', 'class', 'function', 'var', 'let', 'const', 'import', 'export', 'new', 'delete', 'if', 'else', 'return', 'switch', 'case', 'for', 'while', 'do', 'break', 'continue', 'typeof', 'void', 'null', 'true', 'false', 'this', 'super', 'in', 'of', 'try', 'catch', 'throw', 'with', 'yield', 'await', 'enum', 'implements', 'interface', 'package', 'private', 'protected', 'public', 'static', 'eval', 'arguments', 'debugger', 'instanceof', 'extends']);
+const RESERVED = new Set([
+  'default',
+  'class',
+  'function',
+  'var',
+  'let',
+  'const',
+  'import',
+  'export',
+  'new',
+  'delete',
+  'if',
+  'else',
+  'return',
+  'switch',
+  'case',
+  'for',
+  'while',
+  'do',
+  'break',
+  'continue',
+  'typeof',
+  'void',
+  'null',
+  'true',
+  'false',
+  'this',
+  'super',
+  'in',
+  'of',
+  'try',
+  'catch',
+  'throw',
+  'with',
+  'yield',
+  'await',
+  'enum',
+  'implements',
+  'interface',
+  'package',
+  'private',
+  'protected',
+  'public',
+  'static',
+  'eval',
+  'arguments',
+  'debugger',
+  'instanceof',
+  'extends',
+]);
 
 function normalize(p: string): string {
   return p.replaceAll('\\', '/').split('?')[0]!.toLowerCase();

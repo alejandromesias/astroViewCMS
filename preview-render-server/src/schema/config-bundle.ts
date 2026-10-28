@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { rolldown } from 'rolldown';
 import type { Plugin } from 'rolldown';
+import { rolldown } from 'rolldown';
 import type { CollectionInfo } from './stubs-flavor1.ts';
 
 export const STUBS = {
@@ -12,7 +12,12 @@ export const STUBS = {
 
 /** Finds the site's content config (Astro accepts a few names). */
 export function findContentConfig(root: string): string | undefined {
-  for (const name of ['content.config.ts', 'content.config.mts', 'content.config.js', 'content.config.mjs']) {
+  for (const name of [
+    'content.config.ts',
+    'content.config.mts',
+    'content.config.js',
+    'content.config.mjs',
+  ]) {
     const candidate = path.join(root, 'src', name);
     if (fs.existsSync(candidate)) return candidate;
   }
@@ -39,29 +44,56 @@ const CODE_FILE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
  *
  *  It rewrites the source instead of resolving the two specifiers: in an
  *  Astro build, Astro's own resolver for `astro:content` runs first. */
-export function schemaStubs(configFile: string, stubFile: string, query?: string): Plugin & { enforce: 'pre' } {
+export function schemaStubs(
+  configFile: string,
+  stubFile: string,
+  query?: string,
+): Plugin & { enforce: 'pre' } {
   const config = normalize(configFile);
   const stub = normalize(stubFile);
   const stubImport = JSON.stringify(stubFile.replaceAll('\\', '/'));
-  const marked = (id: string) => (query === undefined ? true : id.endsWith(`?${query}`));
-  const local = (id: string) => normalize(id) !== stub && !id.includes('node_modules') && !id.startsWith('\0');
+  const marked = (id: string) =>
+    query === undefined ? true : id.endsWith(`?${query}`);
+  const local = (id: string) =>
+    normalize(id) !== stub &&
+    !id.includes('node_modules') &&
+    !id.startsWith('\0');
   return {
     name: 'preview-render-server:schema-stubs',
     enforce: 'pre',
     transform(code, id) {
-      if (!local(id) || !marked(id) || !(query === undefined || CODE_FILE.test(id.split('?')[0]!))) return;
-      return code.replace(/(\bfrom\s*)(["'])(?:astro:content|astro\/loaders)\2/g, `$1${stubImport}`);
+      if (
+        !local(id) ||
+        !marked(id) ||
+        !(query === undefined || CODE_FILE.test(id.split('?')[0]!))
+      )
+        return;
+      return code.replace(
+        /(\bfrom\s*)(["'])(?:astro:content|astro\/loaders)\2/g,
+        `$1${stubImport}`,
+      );
     },
     async resolveId(source, importer, options) {
       if (!importer) return;
       if (source === 'astro/zod' && normalize(importer) === stub) {
-        const resolved = await this.resolve(source, configFile, { ...options, skipSelf: true });
+        const resolved = await this.resolve(source, configFile, {
+          ...options,
+          skipSelf: true,
+        });
         return resolved ?? undefined;
       }
       // Flavor 2: the config's local imports are the same files with the query.
       if (query !== undefined && importer.endsWith(`?${query}`)) {
-        const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
-        if (resolved && !resolved.external && local(resolved.id) && CODE_FILE.test(resolved.id.split('?')[0]!)) {
+        const resolved = await this.resolve(source, importer, {
+          ...options,
+          skipSelf: true,
+        });
+        if (
+          resolved &&
+          !resolved.external &&
+          local(resolved.id) &&
+          CODE_FILE.test(resolved.id.split('?')[0]!)
+        ) {
           return { ...resolved, id: `${resolved.id.split('?')[0]}?${query}` };
         }
         return resolved ?? undefined;
@@ -90,7 +122,9 @@ export async function loadCmsCollections(
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
   await bundle.write({ file: outFile, format: 'esm' });
   await bundle.close();
-  const mod = (await import(pathToFileURL(outFile).href + `?t=${Date.now()}`)) as {
+  const mod = (await import(
+    pathToFileURL(outFile).href + `?t=${Date.now()}`
+  )) as {
     collections: Record<string, CollectionInfo>;
   };
   return mod.collections;

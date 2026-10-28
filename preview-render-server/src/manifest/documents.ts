@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse } from 'devalue';
-import type { BuildTimeFields, DocumentRecord } from './types.ts';
 import type { ProjectScan } from './import-scan.ts';
+import type { BuildTimeFields, DocumentRecord } from './types.ts';
 
 /** One entry of Astro's content data store (.astro/data-store.json). */
 export interface StoreEntry {
@@ -22,9 +22,17 @@ export type LoaderKinds = Record<string, 'glob' | 'file' | undefined>;
 export function readDataStore(cacheDir: string): DataStore {
   const file = path.join(cacheDir, 'data-store.json');
   if (!fs.existsSync(file)) return new Map();
-  const store = parse(fs.readFileSync(file, 'utf8')) as Map<string, Map<string, StoreEntry> | unknown>;
+  const store = parse(fs.readFileSync(file, 'utf8')) as Map<
+    string,
+    Map<string, StoreEntry> | unknown
+  >;
   // `meta::meta` holds Astro's own bookkeeping, not documents.
-  return new Map([...store].filter(([name]) => !name.includes('::')) as [string, Map<string, StoreEntry>][]);
+  return new Map(
+    [...store].filter(([name]) => !name.includes('::')) as [
+      string,
+      Map<string, StoreEntry>,
+    ][],
+  );
 }
 
 /** Shapes documents.json: every content entry (D5, D10) and every JSON data
@@ -41,15 +49,24 @@ export function shapeDocuments({
   buildTimeFields?: BuildTimeFields;
 }): DocumentRecord[] {
   const documents: DocumentRecord[] = [];
-  const buildTime = (key: string, scanned: boolean): Pick<DocumentRecord, 'buildTime' | 'buildTimeFields'> => {
+  const buildTime = (
+    key: string,
+    scanned: boolean,
+  ): Pick<DocumentRecord, 'buildTime' | 'buildTimeFields'> => {
     // A flagged file without a list counts as all build-time (D1); an entry
     // in buildTimeFields flags a document the scan missed.
     const fields = buildTimeFields[key] ?? (scanned ? ['*'] : undefined);
-    return fields ? { buildTime: true, buildTimeFields: fields } : { buildTime: false };
+    return fields
+      ? { buildTime: true, buildTimeFields: fields }
+      : { buildTime: false };
   };
 
-  for (const [collection, entries] of [...store].sort(([a], [b]) => a.localeCompare(b))) {
-    for (const entry of [...entries.values()].sort((a, b) => a.id.localeCompare(b.id))) {
+  for (const [collection, entries] of [...store].sort(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
+    for (const entry of [...entries.values()].sort((a, b) =>
+      a.id.localeCompare(b.id),
+    )) {
       const key = `${collection}/${entry.id}`;
       documents.push({
         key,
@@ -62,15 +79,28 @@ export function shapeDocuments({
   }
 
   const scanned = new Set(scan.buildTimeFiles.map((file) => `data:${file}`));
-  const dataKeys = new Set([...scan.dataModules.map((file) => `data:${file}`), ...scanned]);
+  const dataKeys = new Set([
+    ...scan.dataModules.map((file) => `data:${file}`),
+    ...scanned,
+  ]);
   // A buildTimeFields entry for a data file the scan didn't see adds it too.
-  for (const key of Object.keys(buildTimeFields)) if (key.startsWith('data:')) dataKeys.add(key);
+  for (const key of Object.keys(buildTimeFields))
+    if (key.startsWith('data:')) dataKeys.add(key);
   for (const key of [...dataKeys].sort()) {
     const file = key.slice('data:'.length);
-    documents.push({ key, file, format: formatOf(file), ...buildTime(key, scanned.has(key)) });
+    documents.push({
+      key,
+      file,
+      format: formatOf(file),
+      ...buildTime(key, scanned.has(key)),
+    });
   }
   // D13: only these formats can be edited.
-  return documents.map((doc) => (doc.format === 'toml' || doc.format === 'other' ? { ...doc, editable: false } : doc));
+  return documents.map((doc) =>
+    doc.format === 'toml' || doc.format === 'other'
+      ? { ...doc, editable: false }
+      : doc,
+  );
 }
 
 function formatOf(file: string | undefined): DocumentRecord['format'] {

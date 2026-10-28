@@ -64,8 +64,20 @@ export interface DraftMessage {
 /** page -> editor */
 export type PageMessage =
   | { type: 'preview:ready'; path: string; protocol: number }
-  | { type: 'preview:rendered'; path: string; documents: string[]; limits: Limit[]; renderMs: number }
-  | { type: 'preview:error'; path: string; status: number; message: string; errors?: FieldError[] };
+  | {
+      type: 'preview:rendered';
+      path: string;
+      documents: string[];
+      limits: Limit[];
+      renderMs: number;
+    }
+  | {
+      type: 'preview:error';
+      path: string;
+      status: number;
+      message: string;
+      errors?: FieldError[];
+    };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -73,7 +85,12 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 /** Runtime check for what the bridge receives. Only the envelope is checked;
  *  the render route validates the documents and the media entries. */
 export function isDraftMessage(data: unknown): data is DraftMessage {
-  return isObject(data) && data.type === 'preview:draft' && isObject(data.documents) && isObject(data.media);
+  return (
+    isObject(data) &&
+    data.type === 'preview:draft' &&
+    isObject(data.documents) &&
+    isObject(data.media)
+  );
 }
 
 /** Runtime check for what the editor receives from the bridge. */
@@ -83,9 +100,17 @@ export function isPageMessage(data: unknown): data is PageMessage {
     case 'preview:ready':
       return true;
     case 'preview:rendered':
-      return Array.isArray(data.documents) && Array.isArray(data.limits) && typeof data.renderMs === 'number';
+      return (
+        Array.isArray(data.documents) &&
+        Array.isArray(data.limits) &&
+        typeof data.renderMs === 'number'
+      );
     case 'preview:error':
-      return typeof data.status === 'number' && typeof data.message === 'string' && (data.errors === undefined || Array.isArray(data.errors));
+      return (
+        typeof data.status === 'number' &&
+        typeof data.message === 'string' &&
+        (data.errors === undefined || Array.isArray(data.errors))
+      );
     default:
       return false;
   }
@@ -96,8 +121,11 @@ export function isPageMessage(data: unknown): data is PageMessage {
  *  mismatch: it comes from a bundle built before the field existed. The guards
  *  above accept both shapes on purpose, so a mismatch is reported rather than
  *  looking like a preview that never loads. */
-export function protocolMismatch(message: { protocol?: unknown }): string | null {
+export function protocolMismatch(message: {
+  protocol?: unknown;
+}): string | null {
   if (message.protocol === PROTOCOL_VERSION) return null;
-  const theirs = message.protocol === undefined ? 'none' : String(message.protocol);
+  const theirs =
+    message.protocol === undefined ? 'none' : String(message.protocol);
   return `protocol mismatch: this side speaks ${PROTOCOL_VERSION}, the other sent ${theirs}; rebuild the preview bundle or update the editor`;
 }

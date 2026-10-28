@@ -16,7 +16,10 @@ export function rejectCrossSite(request: Request): Response | null {
  *  image bodies without a CORS preflight, and the preview routes never answer
  *  one, so the content-type check alone keeps other sites out. 404 (not 415)
  *  so the route looks absent to anything else. */
-export function rejectUnlessContentType(request: Request, pattern: RegExp): Response | null {
+export function rejectUnlessContentType(
+  request: Request,
+  pattern: RegExp,
+): Response | null {
   const contentType = request.headers.get('content-type') ?? '';
   if (!pattern.test(contentType)) {
     return new Response('Not Found', { status: 404 });
@@ -26,5 +29,8 @@ export function rejectUnlessContentType(request: Request, pattern: RegExp): Resp
 
 /** 405 listing the methods a route does accept. */
 export function methodNotAllowed(allow: string): Response {
-  return new Response('Method Not Allowed', { status: 405, headers: { Allow: allow } });
+  return new Response('Method Not Allowed', {
+    status: 405,
+    headers: { Allow: allow },
+  });
 }

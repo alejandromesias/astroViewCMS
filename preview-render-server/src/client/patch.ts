@@ -31,13 +31,22 @@ export function createPatcher(win: Window & typeof globalThis): Patcher {
   // Inline scripts the bridge itself ran, by content, so each runs once.
   const ran = new Set<string>();
 
-  const liveScripts = () => new Set(Array.from(doc.querySelectorAll('script:not([src])'), (script) => script.textContent ?? ''));
+  const liveScripts = () =>
+    new Set(
+      Array.from(
+        doc.querySelectorAll('script:not([src])'),
+        (script) => script.textContent ?? '',
+      ),
+    );
 
   /** Morph options (D6): an existing island is opaque, only its attributes
    *  are synced; the build's scripts and styles are never removed. */
   const callbacks = {
     beforeNodeMorphed: (oldNode: Node, newNode: Node) => {
-      if ((oldNode as Element).tagName === ISLAND && (newNode as Element).tagName === ISLAND) {
+      if (
+        (oldNode as Element).tagName === ISLAND &&
+        (newNode as Element).tagName === ISLAND
+      ) {
         syncIslandAttributes(oldNode as Element, newNode as Element);
         return false;
       }
@@ -50,7 +59,8 @@ export function createPatcher(win: Window & typeof globalThis): Patcher {
 
   /** Page in its final state, without the animations a swap would replay. */
   const finishAnimations = (element: Element) => {
-    for (const animation of element.getAnimations?.({ subtree: true }) ?? []) animation.finish();
+    for (const animation of element.getAnimations?.({ subtree: true }) ?? [])
+      animation.finish();
   };
 
   return {
@@ -75,15 +85,19 @@ export function createPatcher(win: Window & typeof globalThis): Patcher {
 
       // Regions that changed.
       const live = new Map<string, Element>();
-      for (const element of Array.from(doc.querySelectorAll(`[${REGION_ATTR}]`))) {
+      for (const element of Array.from(
+        doc.querySelectorAll(`[${REGION_ATTR}]`),
+      )) {
         const name = element.getAttribute(REGION_ATTR)!;
         if (!live.has(name)) live.set(name, element);
       }
-      for (const region of Array.from(next.querySelectorAll(`[${REGION_ATTR}]`))) {
+      for (const region of Array.from(
+        next.querySelectorAll(`[${REGION_ATTR}]`),
+      )) {
         const name = region.getAttribute(REGION_ATTR)!;
         const target = live.get(name);
         if (!target || target.innerHTML === region.innerHTML) continue;
-        morph(target, region.innerHTML);
+        void morph(target, region.innerHTML);
         finishAnimations(target);
         changed.push(`region:${name}`);
       }
@@ -92,14 +106,15 @@ export function createPatcher(win: Window & typeof globalThis): Patcher {
 
       // Anything outside the regions: morph the whole body.
       if (bodyOutsideRegions(doc.body) !== bodyOutsideRegions(next.body)) {
-        morph(doc.body, next.body.innerHTML);
+        void morph(doc.body, next.body.innerHTML);
         finishAnimations(doc.body);
         changed.push('body');
       }
 
       for (const script of fresh) {
         const copy = doc.createElement('script');
-        for (const { name, value } of Array.from(script.attributes)) copy.setAttribute(name, value);
+        for (const { name, value } of Array.from(script.attributes))
+          copy.setAttribute(name, value);
         copy.textContent = script.textContent;
         doc.body.append(copy);
         ran.add(script.textContent ?? '');
@@ -118,10 +133,15 @@ export function createPatcher(win: Window & typeof globalThis): Patcher {
  *  renders the new props into its existing root, keeping the component's state. */
 function syncIslandAttributes(live: Element, next: Element): void {
   for (const { name, value } of Array.from(next.attributes)) {
-    if (!ISLAND_SPECIAL_ATTRIBUTES.has(name) && live.getAttribute(name) !== value) live.setAttribute(name, value);
+    if (
+      !ISLAND_SPECIAL_ATTRIBUTES.has(name) &&
+      live.getAttribute(name) !== value
+    )
+      live.setAttribute(name, value);
   }
   for (const { name } of Array.from(live.attributes)) {
-    if (!ISLAND_SPECIAL_ATTRIBUTES.has(name) && !next.hasAttribute(name)) live.removeAttribute(name);
+    if (!ISLAND_SPECIAL_ATTRIBUTES.has(name) && !next.hasAttribute(name))
+      live.removeAttribute(name);
   }
   const props = next.getAttribute('props');
   if (props !== live.getAttribute('props')) {
@@ -135,8 +155,12 @@ function syncIslandAttributes(live: Element, next: Element): void {
  *  links left out, to tell whether anything outside the regions changed. */
 function bodyOutsideRegions(body: HTMLElement): string {
   const copy = body.cloneNode(true) as HTMLElement;
-  for (const region of Array.from(copy.querySelectorAll(`[${REGION_ATTR}]`))) region.innerHTML = '';
-  for (const element of Array.from(copy.querySelectorAll('script, style, link'))) element.remove();
+  for (const region of Array.from(copy.querySelectorAll(`[${REGION_ATTR}]`)))
+    region.innerHTML = '';
+  for (const element of Array.from(
+    copy.querySelectorAll('script, style, link'),
+  ))
+    element.remove();
   return copy.innerHTML;
 }
 
@@ -169,7 +193,8 @@ function patchHead(doc: Document, next: Document): boolean {
       doc.head.append(doc.importNode(meta, true));
       changed = true;
     } else if (target.outerHTML !== meta.outerHTML) {
-      for (const { name, value } of Array.from(meta.attributes)) target.setAttribute(name, value);
+      for (const { name, value } of Array.from(meta.attributes))
+        target.setAttribute(name, value);
       changed = true;
     }
   }

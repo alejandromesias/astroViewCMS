@@ -2,8 +2,8 @@
 // build runs with PREVIEW_DEV=1. All logic is in dev/documents.ts.
 import fs from 'node:fs';
 import path from 'node:path';
-import type { APIRoute } from 'astro';
 import { siteRoot } from 'virtual:preview-site';
+import type { APIRoute } from 'astro';
 import { deps } from '../render/runtime.ts';
 import { handleDocument } from './documents.ts';
 
@@ -17,7 +17,8 @@ export const ALL: APIRoute = ({ request }) =>
       const full = path.resolve(siteRoot, file);
       const relative = path.relative(siteRoot, full);
       // `isAbsolute` catches a path on another drive (Windows).
-      if (relative.startsWith('..') || path.isAbsolute(relative)) return undefined;
+      if (relative.startsWith('..') || path.isAbsolute(relative))
+        return undefined;
       return fs.existsSync(full) ? fs.readFileSync(full, 'utf8') : undefined;
     },
   });

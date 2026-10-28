@@ -1,7 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalLanguage, codeLanguages, restrictLanguages } from './languages.ts';
+import {
+  canonicalLanguage,
+  codeLanguages,
+  restrictLanguages,
+} from './languages.ts';
 
-const doc = ['# T', '', '```js title="a.js"', 'const a = 1;', '```', '', '~~~Python', 'x = 1', '~~~', '', '```', 'plain', '```', ''].join('\n');
+const doc = [
+  '# T',
+  '',
+  '```js title="a.js"',
+  'const a = 1;',
+  '```',
+  '',
+  '~~~Python',
+  'x = 1',
+  '~~~',
+  '',
+  '```',
+  'plain',
+  '```',
+  '',
+].join('\n');
 
 describe('canonicalLanguage', () => {
   it('lowercases and resolves aliases', () => {
@@ -17,12 +36,22 @@ describe('codeLanguages', () => {
   });
 
   it('ignores fence-like lines inside a longer fence and an unclosed fence stays open', () => {
-    const text = ['````md', '```ruby', '```', '````', '', '```go', 'unclosed'].join('\n');
+    const text = [
+      '````md',
+      '```ruby',
+      '```',
+      '````',
+      '',
+      '```go',
+      'unclosed',
+    ].join('\n');
     expect([...codeLanguages(text)].sort()).toEqual(['go', 'markdown']);
   });
 
   it('reads the language before a brace or a space', () => {
-    expect([...codeLanguages('```ts{1,3}\nx\n```\n\n``` sh\nx\n```')].sort()).toEqual(['bash', 'typescript']);
+    expect(
+      [...codeLanguages('```ts{1,3}\nx\n```\n\n``` sh\nx\n```')].sort(),
+    ).toEqual(['bash', 'typescript']);
   });
 
   it('handles CRLF text', () => {
@@ -33,7 +62,9 @@ describe('codeLanguages', () => {
 describe('restrictLanguages', () => {
   it('turns fences outside the list into text, keeps the rest of the line, and reports each', () => {
     const limited: string[] = [];
-    const out = restrictLanguages(doc, new Set(['javascript']), (language) => limited.push(language));
+    const out = restrictLanguages(doc, new Set(['javascript']), (language) =>
+      limited.push(language),
+    );
     expect(out).toContain('```js title="a.js"');
     expect(out).toContain('~~~text\nx = 1');
     expect(limited).toEqual(['python']);
@@ -41,7 +72,11 @@ describe('restrictLanguages', () => {
 
   it('keeps a fence whose alias is allowed and leaves plain fences alone', () => {
     const limited: string[] = [];
-    const out = restrictLanguages('```ts\nx\n```\n\n```text\nx\n```\n\n```\nx\n```', new Set(['typescript']), (l) => limited.push(l));
+    const out = restrictLanguages(
+      '```ts\nx\n```\n\n```text\nx\n```\n\n```\nx\n```',
+      new Set(['typescript']),
+      (l) => limited.push(l),
+    );
     expect(out).toBe('```ts\nx\n```\n\n```text\nx\n```\n\n```\nx\n```');
     expect(limited).toEqual([]);
   });
@@ -49,7 +84,9 @@ describe('restrictLanguages', () => {
   it('does not touch text inside a code block that looks like a fence', () => {
     const text = '````md\n```ruby\nx\n```\n````';
     const limited: string[] = [];
-    expect(restrictLanguages(text, new Set(['markdown']), (l) => limited.push(l))).toBe(text);
+    expect(
+      restrictLanguages(text, new Set(['markdown']), (l) => limited.push(l)),
+    ).toBe(text);
     expect(limited).toEqual([]);
   });
 
@@ -62,12 +99,27 @@ describe('restrictLanguages', () => {
 
 describe('aliases', () => {
   it.each([
-    ['js', 'javascript'], ['mjs', 'javascript'], ['cjs', 'javascript'],
-    ['ts', 'typescript'], ['mts', 'typescript'], ['cts', 'typescript'],
-    ['sh', 'bash'], ['shell', 'bash'], ['shellscript', 'bash'], ['zsh', 'bash'],
-    ['yml', 'yaml'], ['md', 'markdown'], ['py', 'python'], ['rb', 'ruby'],
-    ['c++', 'cpp'], ['c#', 'csharp'], ['cs', 'csharp'], ['rs', 'rust'],
-    ['golang', 'go'], ['kt', 'kotlin'], ['ps1', 'powershell'],
+    ['js', 'javascript'],
+    ['mjs', 'javascript'],
+    ['cjs', 'javascript'],
+    ['ts', 'typescript'],
+    ['mts', 'typescript'],
+    ['cts', 'typescript'],
+    ['sh', 'bash'],
+    ['shell', 'bash'],
+    ['shellscript', 'bash'],
+    ['zsh', 'bash'],
+    ['yml', 'yaml'],
+    ['md', 'markdown'],
+    ['py', 'python'],
+    ['rb', 'ruby'],
+    ['c++', 'cpp'],
+    ['c#', 'csharp'],
+    ['cs', 'csharp'],
+    ['rs', 'rust'],
+    ['golang', 'go'],
+    ['kt', 'kotlin'],
+    ['ps1', 'powershell'],
   ])('%s is %s', (alias, language) => {
     expect(canonicalLanguage(alias)).toBe(language);
     expect(canonicalLanguage(alias.toUpperCase())).toBe(language);
@@ -82,24 +134,35 @@ describe('aliases', () => {
   it('does not read names inherited from Object.prototype as aliases', () => {
     expect(canonicalLanguage('constructor')).toBe('constructor');
     expect(canonicalLanguage('__proto__')).toBe('__proto__');
-    expect([...codeLanguages('```constructor\nx\n```')]).toEqual(['constructor']);
+    expect([...codeLanguages('```constructor\nx\n```')]).toEqual([
+      'constructor',
+    ]);
     const limited: unknown[] = [];
-    restrictLanguages('```__proto__\nx\n```', new Set(), (l) => limited.push(l));
+    restrictLanguages('```__proto__\nx\n```', new Set(), (l) =>
+      limited.push(l),
+    );
     expect(limited).toEqual(['__proto__']);
   });
 });
 
 describe('plain text languages', () => {
-  it.each(['', 'text', 'txt', 'plain', 'plaintext', 'TEXT', 'PlainText'])('%j is not reported and not limited', (language) => {
-    const text = `\`\`\`${language}\nx\n\`\`\``;
-    const limited: string[] = [];
-    expect(codeLanguages(text).size).toBe(0);
-    expect(restrictLanguages(text, new Set(), (l) => limited.push(l))).toBe(text);
-    expect(limited).toEqual([]);
-  });
+  it.each(['', 'text', 'txt', 'plain', 'plaintext', 'TEXT', 'PlainText'])(
+    '%j is not reported and not limited',
+    (language) => {
+      const text = `\`\`\`${language}\nx\n\`\`\``;
+      const limited: string[] = [];
+      expect(codeLanguages(text).size).toBe(0);
+      expect(restrictLanguages(text, new Set(), (l) => limited.push(l))).toBe(
+        text,
+      );
+      expect(limited).toEqual([]);
+    },
+  );
 
   it('a name that only contains a plain word is a language', () => {
-    expect([...codeLanguages('```texts\nx\n```\n\n```ptext\nx\n```')].sort()).toEqual(['ptext', 'texts']);
+    expect(
+      [...codeLanguages('```texts\nx\n```\n\n```ptext\nx\n```')].sort(),
+    ).toEqual(['ptext', 'texts']);
   });
 });
 
@@ -176,7 +239,10 @@ describe('closing fences', () => {
 describe('restrictLanguages edits', () => {
   const limit = (text: string, allowed: string[] = []) => {
     const limited: string[] = [];
-    return { out: restrictLanguages(text, new Set(allowed), (l) => limited.push(l)), limited };
+    return {
+      out: restrictLanguages(text, new Set(allowed), (l) => limited.push(l)),
+      limited,
+    };
   };
 
   it('replaces only the language, wherever it starts', () => {
@@ -193,17 +259,25 @@ describe('restrictLanguages edits', () => {
   });
 
   it('does not report allowed or plain languages', () => {
-    expect(limit('```rb\nx\n```', ['ruby'])).toEqual({ out: '```rb\nx\n```', limited: [] });
+    expect(limit('```rb\nx\n```', ['ruby'])).toEqual({
+      out: '```rb\nx\n```',
+      limited: [],
+    });
   });
 
   it('handles every fence in a document and leaves other lines alone', () => {
     const text = 'a\n```ruby\nx\n```\nb\n```go\ny\n```\nc';
-    expect(limit(text, ['go'])).toEqual({ out: 'a\n```text\nx\n```\nb\n```go\ny\n```\nc', limited: ['ruby'] });
+    expect(limit(text, ['go'])).toEqual({
+      out: 'a\n```text\nx\n```\nb\n```go\ny\n```\nc',
+      limited: ['ruby'],
+    });
     expect(limit(text).limited).toEqual(['ruby', 'go']);
   });
 
   it('keeps CRLF line ends', () => {
-    expect(limit('```ruby\r\nx\r\n```\r\n').out).toBe('```text\r\nx\r\n```\r\n');
+    expect(limit('```ruby\r\nx\r\n```\r\n').out).toBe(
+      '```text\r\nx\r\n```\r\n',
+    );
   });
 
   it('keeps text without fences exactly', () => {

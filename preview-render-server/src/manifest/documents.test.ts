@@ -3,15 +3,24 @@ import os from 'node:os';
 import path from 'node:path';
 import { stringify } from 'devalue';
 import { describe, expect, it } from 'vitest';
-import { readDataStore, shapeDocuments } from './documents.ts';
 import type { DataStore } from './documents.ts';
+import { readDataStore, shapeDocuments } from './documents.ts';
 
 const store: DataStore = new Map([
-  ['authors', new Map([['ana', { id: 'ana', filePath: 'src/content/authors/ana.json' }]])],
+  [
+    'authors',
+    new Map([['ana', { id: 'ana', filePath: 'src/content/authors/ana.json' }]]),
+  ],
   [
     'blog',
     new Map([
-      ['generated/post-001', { id: 'generated/post-001', filePath: 'src/content/blog/generated/post-001.mdx' }],
+      [
+        'generated/post-001',
+        {
+          id: 'generated/post-001',
+          filePath: 'src/content/blog/generated/post-001.mdx',
+        },
+      ],
       ['hello', { id: 'hello', filePath: 'src\\content\\blog\\hello.md' }],
     ]),
   ],
@@ -27,7 +36,11 @@ const store: DataStore = new Map([
 
 const scan = {
   buildTimeFiles: ['src/config/config.json', 'src/config/theme.json'],
-  dataModules: ['src/config/config.json', 'src/config/menu.json', 'src/config/theme.json'],
+  dataModules: [
+    'src/config/config.json',
+    'src/config/menu.json',
+    'src/config/theme.json',
+  ],
 };
 const loaderKinds = { testimonials: 'file' as const, authors: 'glob' as const };
 
@@ -35,7 +48,9 @@ const documents = shapeDocuments({
   store,
   loaderKinds,
   scan,
-  buildTimeFields: { 'data:src/config/config.json': ['site.base_url', 'site.base_path'] },
+  buildTimeFields: {
+    'data:src/config/config.json': ['site.base_url', 'site.base_path'],
+  },
 });
 const byKey = (key: string) => documents.find((d) => d.key === key);
 
@@ -50,13 +65,25 @@ describe('shapeDocuments: content entries', () => {
   });
 
   it('records the file that holds the document, with forward slashes (D5)', () => {
-    expect(byKey('blog/hello')).toMatchObject({ file: 'src/content/blog/hello.md', format: 'md' });
-    expect(byKey('authors/ana')).toMatchObject({ file: 'src/content/authors/ana.json', format: 'json' });
+    expect(byKey('blog/hello')).toMatchObject({
+      file: 'src/content/blog/hello.md',
+      format: 'md',
+    });
+    expect(byKey('authors/ana')).toMatchObject({
+      file: 'src/content/authors/ana.json',
+      format: 'json',
+    });
   });
 
   it('file() loader documents share a file and carry their key inside it', () => {
-    expect(byKey('testimonials/t-ana')).toMatchObject({ file: 'src/content/testimonials.json', entryKey: 't-ana' });
-    expect(byKey('testimonials/t-kofi')).toMatchObject({ file: 'src/content/testimonials.json', entryKey: 't-kofi' });
+    expect(byKey('testimonials/t-ana')).toMatchObject({
+      file: 'src/content/testimonials.json',
+      entryKey: 't-ana',
+    });
+    expect(byKey('testimonials/t-kofi')).toMatchObject({
+      file: 'src/content/testimonials.json',
+      entryKey: 't-kofi',
+    });
     expect(byKey('authors/ana')).not.toHaveProperty('entryKey');
   });
 
@@ -83,13 +110,20 @@ describe('shapeDocuments: content entries', () => {
   });
 
   it('keeps entries from loaders that read no file, without a file', () => {
-    expect(byKey('custom/x')).toEqual({ key: 'custom/x', format: 'other', editable: false, buildTime: false });
+    expect(byKey('custom/x')).toEqual({
+      key: 'custom/x',
+      format: 'other',
+      editable: false,
+      buildTime: false,
+    });
   });
 });
 
 describe('shapeDocuments: data modules and build-time flags (D1)', () => {
   it('adds every imported JSON as data:<path>', () => {
-    expect(documents.filter((d) => d.key.startsWith('data:')).map((d) => d.key)).toEqual([
+    expect(
+      documents.filter((d) => d.key.startsWith('data:')).map((d) => d.key),
+    ).toEqual([
       'data:src/config/config.json',
       'data:src/config/menu.json',
       'data:src/config/theme.json',
@@ -104,7 +138,10 @@ describe('shapeDocuments: data modules and build-time flags (D1)', () => {
   });
 
   it('a scanned file without a list counts as all build-time', () => {
-    expect(byKey('data:src/config/theme.json')).toMatchObject({ buildTime: true, buildTimeFields: ['*'] });
+    expect(byKey('data:src/config/theme.json')).toMatchObject({
+      buildTime: true,
+      buildTimeFields: ['*'],
+    });
   });
 
   it('a data module no build code reads is not build-time', () => {
@@ -121,13 +158,21 @@ describe('shapeDocuments: data modules and build-time flags (D1)', () => {
       store,
       loaderKinds,
       scan: { buildTimeFiles: [], dataModules: [] },
-      buildTimeFields: { 'data:src/config/read-with-fs.json': ['*'], 'authors/ana': ['name'] },
+      buildTimeFields: {
+        'data:src/config/read-with-fs.json': ['*'],
+        'authors/ana': ['name'],
+      },
     });
-    expect(flagged.find((d) => d.key === 'data:src/config/read-with-fs.json')).toMatchObject({
+    expect(
+      flagged.find((d) => d.key === 'data:src/config/read-with-fs.json'),
+    ).toMatchObject({
       file: 'src/config/read-with-fs.json',
       buildTime: true,
     });
-    expect(flagged.find((d) => d.key === 'authors/ana')).toMatchObject({ buildTime: true, buildTimeFields: ['name'] });
+    expect(flagged.find((d) => d.key === 'authors/ana')).toMatchObject({
+      buildTime: true,
+      buildTimeFields: ['name'],
+    });
   });
 });
 
@@ -139,13 +184,23 @@ describe('readDataStore', () => {
   it("reads Astro's devalue file and leaves out its bookkeeping collection", () => {
     const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'data-store-'));
     const written = new Map<string, unknown>([
-      ['authors', new Map([['ana', { id: 'ana', filePath: 'src/content/authors/ana.json' }]])],
+      [
+        'authors',
+        new Map([
+          ['ana', { id: 'ana', filePath: 'src/content/authors/ana.json' }],
+        ]),
+      ],
       ['meta::meta', new Map([['astro-config-digest', 'abc']])],
     ]);
-    fs.writeFileSync(path.join(cacheDir, 'data-store.json'), stringify(written));
+    fs.writeFileSync(
+      path.join(cacheDir, 'data-store.json'),
+      stringify(written),
+    );
     const read = readDataStore(cacheDir);
     expect([...read.keys()]).toEqual(['authors']);
-    expect(read.get('authors')!.get('ana')!.filePath).toBe('src/content/authors/ana.json');
+    expect(read.get('authors')!.get('ana')!.filePath).toBe(
+      'src/content/authors/ana.json',
+    );
     fs.rmSync(cacheDir, { recursive: true, force: true });
   });
 });

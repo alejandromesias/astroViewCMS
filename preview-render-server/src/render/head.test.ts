@@ -22,7 +22,8 @@ describe('extractHead', () => {
 
 describe('stripSourceScripts', () => {
   it('removes dev-only component script references and keeps real scripts', () => {
-    const dev = '<script type="module" src="/abs/Foo.astro?astro&amp;type=script&amp;index=0&amp;lang.ts"></script>';
+    const dev =
+      '<script type="module" src="/abs/Foo.astro?astro&amp;type=script&amp;index=0&amp;lang.ts"></script>';
     const real = '<script type="module" src="/_astro/page.abc.js"></script>';
     expect(stripSourceScripts(`<a></a>${dev}${real}`)).toBe(`<a></a>${real}`);
   });
@@ -30,51 +31,80 @@ describe('stripSourceScripts', () => {
 
 describe('extractHead: what counts as the head, the title and a meta tag', () => {
   it('does not take <header> for <head>, nor other tags that start with the same letters', () => {
-    expect(extractHead('<header><title>T</title><meta name="a" content="b"></header>')).toEqual({ meta: [] });
-    expect(extractHead('<head><title-x>no</title-x><titles>no</titles><metadata name="a"></metadata></head>')).toEqual({ meta: [] });
+    expect(
+      extractHead(
+        '<header><title>T</title><meta name="a" content="b"></header>',
+      ),
+    ).toEqual({ meta: [] });
+    expect(
+      extractHead(
+        '<head><title-x>no</title-x><titles>no</titles><metadata name="a"></metadata></head>',
+      ),
+    ).toEqual({ meta: [] });
   });
 
   it('accepts attributes on the tags, any letter case and line breaks', () => {
-    const html = '<HEAD lang="en">\n<TITLE id="t">\n  Two\n  lines\n</TITLE>\n<META NAME="a" content="b">\n</HEAD>';
-    expect(extractHead(html)).toEqual({ title: 'Two\n  lines', meta: [{ NAME: 'a', content: 'b' }] });
+    const html =
+      '<HEAD lang="en">\n<TITLE id="t">\n  Two\n  lines\n</TITLE>\n<META NAME="a" content="b">\n</HEAD>';
+    expect(extractHead(html)).toEqual({
+      title: 'Two\n  lines',
+      meta: [{ NAME: 'a', content: 'b' }],
+    });
   });
 
   it('ignores a title and meta tags outside the head', () => {
-    const html = '<title>Body</title><meta name="x" content="y"><head><meta name="a" content="b"></head><title>After</title>';
+    const html =
+      '<title>Body</title><meta name="x" content="y"><head><meta name="a" content="b"></head><title>After</title>';
     expect(extractHead(html)).toEqual({ meta: [{ name: 'a', content: 'b' }] });
   });
 
   it('stops at the first </head>, and a head without a title has no title key', () => {
-    const result = extractHead('<head><meta name="a" content="1"></head><meta name="b" content="2"></head>');
+    const result = extractHead(
+      '<head><meta name="a" content="1"></head><meta name="b" content="2"></head>',
+    );
     expect(result).toEqual({ meta: [{ name: 'a', content: '1' }] });
     expect('title' in result).toBe(false);
   });
 
   it('keeps an empty or blank title as an empty string', () => {
-    expect(extractHead('<head><title></title></head>')).toEqual({ title: '', meta: [] });
-    expect(extractHead('<head><title>   </title></head>')).toEqual({ title: '', meta: [] });
+    expect(extractHead('<head><title></title></head>')).toEqual({
+      title: '',
+      meta: [],
+    });
+    expect(extractHead('<head><title>   </title></head>')).toEqual({
+      title: '',
+      meta: [],
+    });
   });
 
   it('takes the first title', () => {
-    expect(extractHead('<head><title>One</title><title>Two</title></head>').title).toBe('One');
+    expect(
+      extractHead('<head><title>One</title><title>Two</title></head>').title,
+    ).toBe('One');
   });
 
   it('reads self-closing meta tags and attributes without a value', () => {
-    expect(extractHead('<head><meta name="a" content="b" /><meta itemscope></head>').meta).toEqual([
-      { name: 'a', content: 'b' },
-      { itemscope: '' },
-    ]);
+    expect(
+      extractHead('<head><meta name="a" content="b" /><meta itemscope></head>')
+        .meta,
+    ).toEqual([{ name: 'a', content: 'b' }, { itemscope: '' }]);
   });
 
   it('reads quoted values with spaces, single quotes inside double quotes and unquoted values', () => {
-    expect(extractHead(`<head><meta name="a b" content="it's"><meta name='x' content=y></head>`).meta).toEqual([
+    expect(
+      extractHead(
+        `<head><meta name="a b" content="it's"><meta name='x' content=y></head>`,
+      ).meta,
+    ).toEqual([
       { name: 'a b', content: "it's" },
       { name: 'x', content: 'y' },
     ]);
   });
 
   it('keeps an empty attribute value', () => {
-    expect(extractHead('<head><meta name="a" content=""></head>').meta).toEqual([{ name: 'a', content: '' }]);
+    expect(extractHead('<head><meta name="a" content=""></head>').meta).toEqual(
+      [{ name: 'a', content: '' }],
+    );
   });
 });
 
@@ -86,22 +116,33 @@ describe('extractHead: entities', () => {
     ['&gt;', '>'],
     ['&amp;', '&'],
   ])('decodes %s in titles and attribute values', (entity, character) => {
-    const result = extractHead(`<head><title>a${entity}b</title><meta content="a${entity}b"></head>`);
+    const result = extractHead(
+      `<head><title>a${entity}b</title><meta content="a${entity}b"></head>`,
+    );
     expect(result.title).toBe(`a${character}b`);
     expect(result.meta[0]!.content).toBe(`a${character}b`);
   });
 
   it('decodes every occurrence, and decodes &amp; last so that it is not decoded twice', () => {
-    expect(extractHead('<head><title>&lt;a&gt; &lt;b&gt; &amp;lt; &amp;amp;</title></head>').title).toBe('<a> <b> &lt; &amp;amp;'.replace('&amp;amp;', '&amp;'));
+    expect(
+      extractHead(
+        '<head><title>&lt;a&gt; &lt;b&gt; &amp;lt; &amp;amp;</title></head>',
+      ).title,
+    ).toBe('<a> <b> &lt; &amp;amp;'.replace('&amp;amp;', '&amp;'));
   });
 });
 
 describe('stripSourceScripts: details', () => {
-  const tag = (src: string, extra = '') => `<script ${extra}src="${src}"${extra ? '' : ''}></script>`;
+  const tag = (src: string, extra = '') =>
+    `<script ${extra}src="${src}"${extra ? '' : ''}></script>`;
 
   it('removes the tag with ?astro&type=script written either way', () => {
-    expect(stripSourceScripts(tag('/a/Foo.astro?astro&type=script&index=0&lang.ts'))).toBe('');
-    expect(stripSourceScripts(tag('/a/Foo.astro?astro&amp;type=script&amp;index=0'))).toBe('');
+    expect(
+      stripSourceScripts(tag('/a/Foo.astro?astro&type=script&index=0&lang.ts')),
+    ).toBe('');
+    expect(
+      stripSourceScripts(tag('/a/Foo.astro?astro&amp;type=script&amp;index=0')),
+    ).toBe('');
   });
 
   it('removes every such tag, also with other attributes around src', () => {

@@ -1,10 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { mediaDir } from 'virtual:preview-site';
 import sharp from 'sharp';
 import { afterAll, describe, expect, it } from 'vitest';
-import { mediaDir } from 'virtual:preview-site';
 import { BASE, callRoute } from '../test/helpers.ts';
-import { ALL, GET, MAX_BYTES, POST, measureImage, mediaFileName } from './media-route.ts';
+import {
+  ALL,
+  GET,
+  MAX_BYTES,
+  measureImage,
+  mediaFileName,
+  POST,
+} from './media-route.ts';
 
 // A 1×1 PNG.
 const PNG = Buffer.from(
@@ -12,14 +19,26 @@ const PNG = Buffer.from(
   'base64',
 );
 
-const upload = (body: BodyInit, type: string, headers: Record<string, string> = {}) =>
+const upload = (
+  body: BodyInit,
+  type: string,
+  headers: Record<string, string> = {},
+) =>
   callRoute(
     POST,
     { file: 'new' },
-    new Request(`${BASE}/__preview-media/new`, { method: 'POST', headers: { 'content-type': type, ...headers }, body }),
+    new Request(`${BASE}/__preview-media/new`, {
+      method: 'POST',
+      headers: { 'content-type': type, ...headers },
+      body,
+    }),
   );
 const get = (file: string, headers: Record<string, string> = {}) =>
-  callRoute(GET, { file }, new Request(`${BASE}/__preview-media/${file}`, { headers }));
+  callRoute(
+    GET,
+    { file },
+    new Request(`${BASE}/__preview-media/${file}`, { headers }),
+  );
 
 afterAll(() => fs.rmSync(mediaDir, { recursive: true, force: true }));
 
@@ -29,18 +48,34 @@ describe('mediaFileName', () => {
   });
 
   it('is the same for the same bytes and different for different bytes', () => {
-    expect(mediaFileName(PNG, 'png')).toBe(mediaFileName(Buffer.from(PNG), 'png'));
-    expect(mediaFileName(PNG, 'png')).not.toBe(mediaFileName(Buffer.from('other'), 'png'));
+    expect(mediaFileName(PNG, 'png')).toBe(
+      mediaFileName(Buffer.from(PNG), 'png'),
+    );
+    expect(mediaFileName(PNG, 'png')).not.toBe(
+      mediaFileName(Buffer.from('other'), 'png'),
+    );
   });
 });
 
 describe('measureImage and the upload answer (D12)', () => {
   const make = (format: 'png' | 'jpeg' | 'webp') =>
-    sharp({ create: { width: 40, height: 30, channels: 3, background: '#09f' } })[format]().toBuffer();
+    sharp({
+      create: { width: 40, height: 30, channels: 3, background: '#09f' },
+    })
+      [format]()
+      .toBuffer();
 
   it('reads width, height and format from the bytes', async () => {
-    expect(await measureImage(await make('png'))).toEqual({ width: 40, height: 30, format: 'png' });
-    expect(await measureImage(await make('webp'))).toEqual({ width: 40, height: 30, format: 'webp' });
+    expect(await measureImage(await make('png'))).toEqual({
+      width: 40,
+      height: 30,
+      format: 'png',
+    });
+    expect(await measureImage(await make('webp'))).toEqual({
+      width: 40,
+      height: 30,
+      format: 'webp',
+    });
   });
 
   it('names JPEG `jpg`, as ImageMetadata does', async () => {
@@ -61,7 +96,11 @@ describe('measureImage and the upload answer (D12)', () => {
       height: 30,
       format: 'jpg',
     });
-    expect(fs.readdirSync(mediaDir).every((name) => /^[0-9a-f]{16}\.\w+$/.test(name))).toBe(true);
+    expect(
+      fs
+        .readdirSync(mediaDir)
+        .every((name) => /^[0-9a-f]{16}\.\w+$/.test(name)),
+    ).toBe(true);
   });
 
   it('answers 415 to bytes that are not a readable image', async () => {
@@ -75,7 +114,9 @@ describe('POST /__preview-media/new', () => {
     expect(response.status).toBe(201);
     const { url } = (await response.json()) as { url: string };
     expect(url).toBe(`/__preview-media/${mediaFileName(PNG, 'png')}`);
-    expect(fs.readFileSync(path.join(mediaDir, path.basename(url)))).toEqual(PNG);
+    expect(fs.readFileSync(path.join(mediaDir, path.basename(url)))).toEqual(
+      PNG,
+    );
   });
 
   it.each([
@@ -98,19 +139,28 @@ describe('POST /__preview-media/new', () => {
   });
 
   it('answers 403 to cross-site uploads', async () => {
-    expect((await upload(PNG, 'image/png', { 'sec-fetch-site': 'cross-site' })).status).toBe(403);
+    expect(
+      (await upload(PNG, 'image/png', { 'sec-fetch-site': 'cross-site' }))
+        .status,
+    ).toBe(403);
   });
 
   it('answers 413 to empty and oversized images', async () => {
     expect((await upload(new Uint8Array(0), 'image/png')).status).toBe(413);
-    expect((await upload(new Uint8Array(MAX_BYTES + 1), 'image/png')).status).toBe(413);
+    expect(
+      (await upload(new Uint8Array(MAX_BYTES + 1), 'image/png')).status,
+    ).toBe(413);
   });
 
   it('only accepts POST on /new', async () => {
     const response = await callRoute(
       POST,
       { file: 'abc.png' },
-      new Request(`${BASE}/__preview-media/abc.png`, { method: 'POST', headers: { 'content-type': 'image/png' }, body: PNG }),
+      new Request(`${BASE}/__preview-media/abc.png`, {
+        method: 'POST',
+        headers: { 'content-type': 'image/png' },
+        body: PNG,
+      }),
     );
     expect(response.status).toBe(405);
   });
@@ -118,7 +168,9 @@ describe('POST /__preview-media/new', () => {
 
 describe('GET /__preview-media/<file>', () => {
   it('serves an uploaded image with safe headers', async () => {
-    const { url } = (await (await upload(PNG, 'image/png')).json()) as { url: string };
+    const { url } = (await (await upload(PNG, 'image/png')).json()) as {
+      url: string;
+    };
     const response = await get(path.basename(url));
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('image/png');
@@ -130,21 +182,31 @@ describe('GET /__preview-media/<file>', () => {
     expect((await get('0000000000000000.png')).status).toBe(404);
   });
 
-  it.each(['../secret.png', '..%2Fsecret.png', 'abc.png', '0123456789abcdef.svg', '0123456789ABCDEF.png'])(
-    'answers 404 to the name %s',
-    async (name) => {
-      expect((await get(name)).status).toBe(404);
-    },
-  );
+  it.each([
+    '../secret.png',
+    '..%2Fsecret.png',
+    'abc.png',
+    '0123456789abcdef.svg',
+    '0123456789ABCDEF.png',
+  ])('answers 404 to the name %s', async (name) => {
+    expect((await get(name)).status).toBe(404);
+  });
 
   it('refuses cross-site requests', async () => {
-    expect((await get('0000000000000000.png', { 'sec-fetch-site': 'cross-site' })).status).toBe(403);
+    expect(
+      (await get('0000000000000000.png', { 'sec-fetch-site': 'cross-site' }))
+        .status,
+    ).toBe(403);
   });
 });
 
 describe('other methods', () => {
   it('answer 405', async () => {
-    const response = await callRoute(ALL, {}, new Request(`${BASE}/__preview-media/x`, { method: 'DELETE' }));
+    const response = await callRoute(
+      ALL,
+      {},
+      new Request(`${BASE}/__preview-media/x`, { method: 'DELETE' }),
+    );
     expect(response.status).toBe(405);
   });
 });
@@ -152,7 +214,8 @@ describe('other methods', () => {
 const text = async (response: Response) => response.text();
 
 describe('upload: content type', () => {
-  const type = async (contentType: string) => (await upload(PNG, contentType)).status;
+  const type = async (contentType: string) =>
+    (await upload(PNG, contentType)).status;
 
   it('takes the type before any parameter, ignoring spaces around it', async () => {
     expect(await type('image/png; charset=binary')).toBe(201);
@@ -167,7 +230,10 @@ describe('upload: content type', () => {
     const noType = await callRoute(
       POST,
       { file: 'new' },
-      new Request(`${BASE}/__preview-media/new`, { method: 'POST', body: new Uint8Array([1]) }),
+      new Request(`${BASE}/__preview-media/new`, {
+        method: 'POST',
+        body: new Uint8Array([1]),
+      }),
     );
     expect(noType.status).toBe(404);
   });
@@ -182,7 +248,9 @@ describe('upload: content type', () => {
 
   it('lists the supported types in the 415 answer', async () => {
     const response = await upload(PNG, 'image/svg+xml');
-    expect(await text(response)).toBe('Supported types: image/png, image/jpeg, image/webp, image/avif, image/gif');
+    expect(await text(response)).toBe(
+      'Supported types: image/png, image/jpeg, image/webp, image/avif, image/gif',
+    );
   });
 });
 
@@ -203,7 +271,9 @@ describe('upload: size', () => {
     for (const body of [new Uint8Array(0), new Uint8Array(MAX_BYTES + 1)]) {
       const response = await upload(body, 'image/png');
       expect(response.status).toBe(413);
-      expect(await text(response)).toBe('Image must be between 1 byte and 10 MB');
+      expect(await text(response)).toBe(
+        'Image must be between 1 byte and 10 MB',
+      );
     }
   });
 });
@@ -211,12 +281,22 @@ describe('upload: size', () => {
 describe('upload: answers', () => {
   it('has plain-text bodies for the guard answers', async () => {
     expect(await text(await upload('hello', 'text/plain'))).toBe('Not Found');
-    expect(await text(await upload(PNG, 'image/png', { 'sec-fetch-site': 'cross-site' }))).toBe('Forbidden');
+    expect(
+      await text(
+        await upload(PNG, 'image/png', { 'sec-fetch-site': 'cross-site' }),
+      ),
+    ).toBe('Forbidden');
   });
 
   it('allows uploads from the same origin and same-site pages', async () => {
-    expect((await upload(PNG, 'image/png', { 'sec-fetch-site': 'same-origin' })).status).toBe(201);
-    expect((await upload(PNG, 'image/png', { 'sec-fetch-site': 'same-site' })).status).toBe(201);
+    expect(
+      (await upload(PNG, 'image/png', { 'sec-fetch-site': 'same-origin' }))
+        .status,
+    ).toBe(201);
+    expect(
+      (await upload(PNG, 'image/png', { 'sec-fetch-site': 'same-site' }))
+        .status,
+    ).toBe(201);
   });
 
   it('answers JSON with exactly url, width, height and format', async () => {
@@ -232,7 +312,9 @@ describe('upload: answers', () => {
 
   it('stores the same image twice under one name, and creates the folder when missing', async () => {
     fs.rmSync(mediaDir, { recursive: true, force: true });
-    const first = (await (await upload(PNG, 'image/png')).json()) as { url: string };
+    const first = (await (await upload(PNG, 'image/png')).json()) as {
+      url: string;
+    };
     const second = await upload(PNG, 'image/png');
     expect(second.status).toBe(201);
     expect(((await second.json()) as { url: string }).url).toBe(first.url);
@@ -243,12 +325,20 @@ describe('upload: answers', () => {
     const response = await callRoute(
       POST,
       { file: 'newer' },
-      new Request(`${BASE}/__preview-media/newer`, { method: 'POST', headers: { 'content-type': 'image/png' }, body: PNG }),
+      new Request(`${BASE}/__preview-media/newer`, {
+        method: 'POST',
+        headers: { 'content-type': 'image/png' },
+        body: PNG,
+      }),
     );
     expect(response.status).toBe(405);
     expect(response.headers.get('allow')).toBe('GET');
     expect(await text(response)).toBe('Method Not Allowed');
-    const none = await callRoute(POST, {}, new Request(`${BASE}/__preview-media/`, { method: 'POST', body: PNG }));
+    const none = await callRoute(
+      POST,
+      {},
+      new Request(`${BASE}/__preview-media/`, { method: 'POST', body: PNG }),
+    );
     expect(none.status).toBe(405);
   });
 });
@@ -269,8 +359,12 @@ describe('GET: names and headers', () => {
   });
 
   it('is never cached', async () => {
-    const { url } = (await (await upload(PNG, 'image/png')).json()) as { url: string };
-    expect((await get(path.basename(url))).headers.get('cache-control')).toBe('no-store');
+    const { url } = (await (await upload(PNG, 'image/png')).json()) as {
+      url: string;
+    };
+    expect((await get(path.basename(url))).headers.get('cache-control')).toBe(
+      'no-store',
+    );
   });
 
   it.each([
@@ -300,7 +394,11 @@ describe('GET: names and headers', () => {
   });
 
   it('answers 404 when the route has no file parameter', async () => {
-    const response = await callRoute(GET, {}, new Request(`${BASE}/__preview-media/`));
+    const response = await callRoute(
+      GET,
+      {},
+      new Request(`${BASE}/__preview-media/`),
+    );
     expect(response.status).toBe(404);
     expect(await text(response)).toBe('Not Found');
   });
@@ -312,8 +410,12 @@ describe('GET: names and headers', () => {
   });
 
   it('answers 403 "Forbidden" to cross-site requests, also for stored files', async () => {
-    const { url } = (await (await upload(PNG, 'image/png')).json()) as { url: string };
-    const response = await get(path.basename(url), { 'sec-fetch-site': 'cross-site' });
+    const { url } = (await (await upload(PNG, 'image/png')).json()) as {
+      url: string;
+    };
+    const response = await get(path.basename(url), {
+      'sec-fetch-site': 'cross-site',
+    });
     expect(response.status).toBe(403);
     expect(await text(response)).toBe('Forbidden');
   });
@@ -321,7 +423,11 @@ describe('GET: names and headers', () => {
 
 describe('ALL', () => {
   it('lists GET and POST', async () => {
-    const response = await callRoute(ALL, {}, new Request(`${BASE}/__preview-media/x`, { method: 'PUT' }));
+    const response = await callRoute(
+      ALL,
+      {},
+      new Request(`${BASE}/__preview-media/x`, { method: 'PUT' }),
+    );
     expect(response.headers.get('allow')).toBe('GET, POST');
     expect(await text(response)).toBe('Method Not Allowed');
   });

@@ -17,8 +17,11 @@ export function discoveredDocuments(
       continue;
     }
     const prefix = `${read}/`;
-    for (const doc of built ?? []) if (doc.key.startsWith(prefix) && overlay[doc.key] !== null) found.add(doc.key);
-    for (const [key, value] of Object.entries(overlay)) if (key.startsWith(prefix) && value !== null) found.add(key);
+    for (const doc of built ?? [])
+      if (doc.key.startsWith(prefix) && overlay[doc.key] !== null)
+        found.add(doc.key);
+    for (const [key, value] of Object.entries(overlay))
+      if (key.startsWith(prefix) && value !== null) found.add(key);
   }
   return [...found].sort();
 }

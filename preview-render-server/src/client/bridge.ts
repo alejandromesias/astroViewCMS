@@ -6,7 +6,15 @@
 // live page (patch.ts).
 //
 // Pattern from Tina's bridge (@tinacms/bridge region-refresh.ts, Apache-2.0).
-import { PROTOCOL_VERSION, isDraftMessage, protocolMismatch, type DraftMessage, type PageMessage, type RenderResponse, type ValidationResponse } from 'preview-protocol';
+import {
+  type DraftMessage,
+  isDraftMessage,
+  type PageMessage,
+  PROTOCOL_VERSION,
+  protocolMismatch,
+  type RenderResponse,
+  type ValidationResponse,
+} from 'preview-protocol';
 import { createPatcher } from './patch.ts';
 
 export interface BridgeOptions {
@@ -33,14 +41,20 @@ export function startBridge(
   if (win.parent === win) return null;
 
   const doc = win.document;
-  const allowed = new Set([win.location.origin, ...(options.editorOrigins ?? [])]);
+  const allowed = new Set([
+    win.location.origin,
+    ...(options.editorOrigins ?? []),
+  ]);
   const patcher = createPatcher(win);
   // The origin of the editor that last spoke to us; answers go there.
   let editorOrigin = win.location.origin;
   let requestCount = 0;
 
   const currentPath = () => win.location.pathname + win.location.search;
-  const send = (message: PageMessage, targets: Iterable<string> = [editorOrigin]) => {
+  const send = (
+    message: PageMessage,
+    targets: Iterable<string> = [editorOrigin],
+  ) => {
     for (const target of targets) win.parent.postMessage(message, target);
   };
 
@@ -55,13 +69,19 @@ export function startBridge(
     // Newest draft wins, per page: a slow answer to an older one is dropped.
     const id = ++requestCount;
     try {
-      const response = await fetchImpl(`/__preview/render?path=${encodeURIComponent(path)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documents: message.documents, media: message.media }),
-        cache: 'no-store',
-        credentials: 'same-origin',
-      });
+      const response = await fetchImpl(
+        `/__preview/render?path=${encodeURIComponent(path)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            documents: message.documents,
+            media: message.media,
+          }),
+          cache: 'no-store',
+          credentials: 'same-origin',
+        },
+      );
       const text = await response.text();
       if (id !== requestCount) return;
       if (!response.ok) {
@@ -71,8 +91,20 @@ export function startBridge(
       }
       const rendered = JSON.parse(text) as RenderResponse;
       const summary = patcher.patch(rendered.html);
-      console.info('[preview-bridge] patched', path, { changed: summary.changed, sent: Object.keys(message.documents), read: rendered.documents.length, limits: rendered.limits, renderMs: rendered.renderMs });
-      send({ type: 'preview:rendered', path, documents: rendered.documents, limits: rendered.limits, renderMs: rendered.renderMs });
+      console.info('[preview-bridge] patched', path, {
+        changed: summary.changed,
+        sent: Object.keys(message.documents),
+        read: rendered.documents.length,
+        limits: rendered.limits,
+        renderMs: rendered.renderMs,
+      });
+      send({
+        type: 'preview:rendered',
+        path,
+        documents: rendered.documents,
+        limits: rendered.limits,
+        renderMs: rendered.renderMs,
+      });
     } catch (error) {
       if (id !== requestCount) return;
       console.error('[preview-bridge] draft failed', path, error);
@@ -94,7 +126,14 @@ export function startBridge(
     // An answer still in flight belongs to the old page: drop it.
     requestCount++;
     patcher.reset();
-    send({ type: 'preview:ready', path: currentPath(), protocol: PROTOCOL_VERSION }, allowed);
+    send(
+      {
+        type: 'preview:ready',
+        path: currentPath(),
+        protocol: PROTOCOL_VERSION,
+      },
+      allowed,
+    );
   };
 
   // Start listening before announcing, so a draft sent in reply isn't missed.
@@ -102,7 +141,10 @@ export function startBridge(
   doc.addEventListener('astro:page-load', onNavigated);
   // To every allowed origin: the editor's is not known until it speaks, and a
   // message only arrives where the target origin matches the parent's.
-  send({ type: 'preview:ready', path: currentPath(), protocol: PROTOCOL_VERSION }, allowed);
+  send(
+    { type: 'preview:ready', path: currentPath(), protocol: PROTOCOL_VERSION },
+    allowed,
+  );
   return () => {
     win.removeEventListener('message', onMessage);
     doc.removeEventListener('astro:page-load', onNavigated);
@@ -114,7 +156,13 @@ function failure(path: string, status: number, body: string): PageMessage {
   if (status === 422) {
     try {
       const { errors } = JSON.parse(body) as ValidationResponse;
-      return { type: 'preview:error', path, status, message: 'A draft does not fit its schema', errors };
+      return {
+        type: 'preview:error',
+        path,
+        status,
+        message: 'A draft does not fit its schema',
+        errors,
+      };
     } catch {
       // Not the usual JSON: fall through to the plain message.
     }

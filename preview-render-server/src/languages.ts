@@ -49,20 +49,31 @@ const CLOSING = /^ {0,3}(`{3,}|~{3,})[ \t]*\r?$/;
 
 /** Walks the fenced code blocks of a Markdown text. `visit` is called for
  *  each opening fence with the line's text and returns the line to keep. */
-function walkFences(markdown: string, visit: (line: string, fence: Fence) => string): string {
+function walkFences(
+  markdown: string,
+  visit: (line: string, fence: Fence) => string,
+): string {
   const lines = markdown.split('\n');
   let open: { char: string; length: number } | undefined;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     if (open) {
       const closing = CLOSING.exec(line);
-      if (closing && closing[1]![0] === open.char && closing[1]!.length >= open.length) open = undefined;
+      if (
+        closing &&
+        closing[1]![0] === open.char &&
+        closing[1]!.length >= open.length
+      )
+        open = undefined;
       continue;
     }
     const match = OPENING.exec(line);
     if (!match) continue;
     open = { char: match[2]![0]!, length: match[2]!.length };
-    lines[i] = visit(line, { start: match[1]!.length + match[2]!.length + match[3]!.length, language: match[4]! });
+    lines[i] = visit(line, {
+      start: match[1]!.length + match[2]!.length + match[3]!.length,
+      language: match[4]!,
+    });
   }
   return lines.join('\n');
 }

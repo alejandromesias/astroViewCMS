@@ -5,7 +5,10 @@
 // other. An empty entry means "no such script" (e.g. before-hydration) and
 // stays empty, so Astro leaves the attribute out.
 
-export function islandResolver(entryModules: Record<string, string>, base: string): (specifier: string) => string {
+export function islandResolver(
+  entryModules: Record<string, string>,
+  base: string,
+): (specifier: string) => string {
   const prefix = base.replace(/\/+$/, '');
   return (specifier) => {
     if (!Object.hasOwn(entryModules, specifier)) return specifier;

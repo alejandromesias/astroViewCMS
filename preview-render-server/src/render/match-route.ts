@@ -39,7 +39,9 @@ function parseSegment(text: string): Segment {
     names.push(param[1]!);
     return '(.+)';
   });
-  return names.length === 0 ? { text, names, rank: 3 } : { text, regex: new RegExp(`^${source.join('')}$`), names, rank: 2 };
+  return names.length === 0
+    ? { text, names, rank: 3 }
+    : { text, regex: new RegExp(`^${source.join('')}$`), names, rank: 2 };
 }
 
 function safeDecode(value: string): string {
@@ -51,10 +53,14 @@ function safeDecode(value: string): string {
 }
 
 /** The URL path without `base`, as segments; undefined if outside `base`. */
-export function pathSegments(pathname: string, base: string): string[] | undefined {
+export function pathSegments(
+  pathname: string,
+  base: string,
+): string[] | undefined {
   const baseSegments = base.split('/').filter(Boolean);
   const segments = pathname.split('/').filter(Boolean);
-  for (let i = 0; i < baseSegments.length; i++) if (segments[i] !== baseSegments[i]) return undefined;
+  for (let i = 0; i < baseSegments.length; i++)
+    if (segments[i] !== baseSegments[i]) return undefined;
   return segments.slice(baseSegments.length).map(safeDecode);
 }
 
@@ -78,25 +84,38 @@ function matchSegments(
   }
   if (segments.length === 0) return undefined;
   const [first, ...others] = segments;
-  if (!head.regex) return head.text === first ? matchSegments(tail, others, params) : undefined;
+  if (!head.regex)
+    return head.text === first
+      ? matchSegments(tail, others, params)
+      : undefined;
   const match = head.regex.exec(first!);
   if (!match) return undefined;
-  const values = Object.fromEntries(head.names.map((name, i) => [name, match[i + 1]]));
+  const values = Object.fromEntries(
+    head.names.map((name, i) => [name, match[i + 1]]),
+  );
   return matchSegments(tail, others, { ...params, ...values });
 }
 
 /** Every page route that matches `pathname`, most specific first. A route
  *  can match and still have no such page (its getStaticPaths lacks the
  *  params), so the caller tries them in order. */
-export function matchRoutes(routes: RouteRecord[], pathname: string, rules: UrlRules): RouteMatch[] {
+export function matchRoutes(
+  routes: RouteRecord[],
+  pathname: string,
+  rules: UrlRules,
+): RouteMatch[] {
   const segments = pathSegments(pathname, rules.base);
   if (!segments) return [];
   const found: Array<RouteMatch & { ranks: number[] }> = [];
   for (const route of routes) {
     if (route.type !== 'page') continue;
-    const routeSegments = route.pattern.split('/').filter(Boolean).map(parseSegment);
+    const routeSegments = route.pattern
+      .split('/')
+      .filter(Boolean)
+      .map(parseSegment);
     const params = matchSegments(routeSegments, segments, {});
-    if (params) found.push({ route, params, ranks: routeSegments.map((s) => s.rank) });
+    if (params)
+      found.push({ route, params, ranks: routeSegments.map((s) => s.rank) });
   }
   found.sort((a, b) => {
     for (let i = 0; i < Math.max(a.ranks.length, b.ranks.length); i++) {
@@ -111,11 +130,20 @@ export function matchRoutes(routes: RouteRecord[], pathname: string, rules: UrlR
 
 /** The URL of a route for given params, with `base` and the trailing slash
  *  rule applied. A missing rest parameter drops its segment. */
-export function routeUrl(pattern: string, params: Record<string, string | undefined>, rules: UrlRules): string {
+export function routeUrl(
+  pattern: string,
+  params: Record<string, string | undefined>,
+  rules: UrlRules,
+): string {
   const segments = pattern
     .split('/')
     .filter(Boolean)
-    .map((segment) => segment.replace(/\[(?:\.\.\.)?(\w+)\]/g, (_, name: string) => params[name] ?? ''))
+    .map((segment) =>
+      segment.replace(
+        /\[(?:\.\.\.)?(\w+)\]/g,
+        (_, name: string) => params[name] ?? '',
+      ),
+    )
     .filter(Boolean);
   const base = rules.base.split('/').filter(Boolean);
   const path = '/' + [...base, ...segments].join('/');

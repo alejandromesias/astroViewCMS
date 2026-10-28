@@ -12,7 +12,8 @@ export interface ResolvedRouteInput {
 }
 
 const REST_PARAM = /\[\.\.\.(\w+)\]/g;
-const STATIC_PATHS = /\bexport\s+(?:async\s+)?(?:function|const|let)\s+getStaticPaths\b/;
+const STATIC_PATHS =
+  /\bexport\s+(?:async\s+)?(?:function|const|let)\s+getStaticPaths\b/;
 
 /** Shapes routes.json from the `astro:routes:resolved` hook data. The preview
  *  server's own routes (`/__…`) are left out. `readSource` returns a page's
@@ -25,7 +26,10 @@ export function shapeRoutes(
   return routes
     .filter((route) => !route.pattern.startsWith('/__'))
     .map((route) => {
-      const absolute = route.entrypoint instanceof URL ? fileURLToPath(route.entrypoint) : path.resolve(root, route.entrypoint);
+      const absolute =
+        route.entrypoint instanceof URL
+          ? fileURLToPath(route.entrypoint)
+          : path.resolve(root, route.entrypoint);
       const dynamic = route.params.length > 0;
       return {
         pattern: route.pattern,
@@ -33,15 +37,20 @@ export function shapeRoutes(
         type: routeType(route.type),
         dynamic,
         params: route.params,
-        restParams: [...route.pattern.matchAll(REST_PARAM)].map((match) => match[1]!),
-        hasStaticPaths: dynamic && STATIC_PATHS.test(readSource(absolute) ?? ''),
+        restParams: [...route.pattern.matchAll(REST_PARAM)].map(
+          (match) => match[1]!,
+        ),
+        hasStaticPaths:
+          dynamic && STATIC_PATHS.test(readSource(absolute) ?? ''),
       };
     })
     .sort((a, b) => a.pattern.localeCompare(b.pattern));
 }
 
 function routeType(type: string): RouteRecord['type'] {
-  return type === 'endpoint' || type === 'redirect' || type === 'fallback' ? type : 'page';
+  return type === 'endpoint' || type === 'redirect' || type === 'fallback'
+    ? type
+    : 'page';
 }
 
 function readIfExists(file: string): string | undefined {

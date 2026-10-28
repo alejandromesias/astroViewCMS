@@ -31,7 +31,9 @@ export interface OverlayContext {
 
 const storage = new AsyncLocalStorage<OverlayContext>();
 
-export function createOverlayContext(input: { documents?: Record<string, unknown>; media?: MediaMap } = {}): OverlayContext {
+export function createOverlayContext(
+  input: { documents?: Record<string, unknown>; media?: MediaMap } = {},
+): OverlayContext {
   return {
     documents: input.documents ?? {},
     media: input.media ?? {},

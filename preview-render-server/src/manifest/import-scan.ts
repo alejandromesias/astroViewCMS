@@ -7,9 +7,31 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { init, parse } from 'es-module-lexer';
 
-const CODE_EXTENSIONS = new Set(['.astro', '.ts', '.mts', '.js', '.mjs', '.cjs', '.tsx', '.jsx', '.mdx']);
-const RESOLVE_EXTENSIONS = ['.ts', '.mts', '.js', '.mjs', '.cjs', '.tsx', '.jsx', '.astro', '.json'];
-const CONFIG_NAMES = ['mjs', 'js', 'ts', 'mts', 'cjs'].map((ext) => `astro.config.${ext}`);
+const CODE_EXTENSIONS = new Set([
+  '.astro',
+  '.ts',
+  '.mts',
+  '.js',
+  '.mjs',
+  '.cjs',
+  '.tsx',
+  '.jsx',
+  '.mdx',
+]);
+const RESOLVE_EXTENSIONS = [
+  '.ts',
+  '.mts',
+  '.js',
+  '.mjs',
+  '.cjs',
+  '.tsx',
+  '.jsx',
+  '.astro',
+  '.json',
+];
+const CONFIG_NAMES = ['mjs', 'js', 'ts', 'mts', 'cjs'].map(
+  (ext) => `astro.config.${ext}`,
+);
 
 export interface ProjectScan {
   /** JSON files under src/ imported (directly or through helper modules) by
@@ -24,7 +46,9 @@ export async function scanProject(root: string): Promise<ProjectScan> {
   await init;
   const aliases = readAliases(root);
   const srcDir = path.join(root, 'src');
-  const sourceFiles = walk(srcDir).filter((file) => CODE_EXTENSIONS.has(path.extname(file)));
+  const sourceFiles = walk(srcDir).filter((file) =>
+    CODE_EXTENSIONS.has(path.extname(file)),
+  );
 
   // Everything any source file imports (one level), for the data modules.
   const dataModules = new Set<string>();
@@ -51,7 +75,8 @@ export async function scanProject(root: string): Promise<ProjectScan> {
     }
   }
 
-  const relative = (files: Set<string>) => [...files].map((file) => toPosix(path.relative(root, file))).sort();
+  const relative = (files: Set<string>) =>
+    [...files].map((file) => toPosix(path.relative(root, file))).sort();
   return {
     buildTimeFiles: relative(buildTime),
     dataModules: relative(new Set([...dataModules, ...buildTime])),
@@ -60,7 +85,9 @@ export async function scanProject(root: string): Promise<ProjectScan> {
 
 /** astro.config.*, plus the targets of `@plugin` / `@config` in the CSS. */
 function buildRoots(root: string, srcDir: string): string[] {
-  const roots = CONFIG_NAMES.map((name) => path.join(root, name)).filter((file) => fs.existsSync(file));
+  const roots = CONFIG_NAMES.map((name) => path.join(root, name)).filter(
+    (file) => fs.existsSync(file),
+  );
   for (const css of walk(srcDir).filter((file) => file.endsWith('.css'))) {
     for (const spec of cssDirectiveTargets(fs.readFileSync(css, 'utf8'))) {
       if (!spec.startsWith('.')) continue; // npm packages aren't local code
@@ -74,7 +101,9 @@ function buildRoots(root: string, srcDir: string): string[] {
 /** Targets of `@plugin "x"` and `@config "x"` in a stylesheet. */
 export function cssDirectiveTargets(css: string): string[] {
   const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
-  return [...withoutComments.matchAll(/@(?:plugin|config)\s+["']([^"']+)["']/g)].map((match) => match[1]!);
+  return [
+    ...withoutComments.matchAll(/@(?:plugin|config)\s+["']([^"']+)["']/g),
+  ].map((match) => match[1]!);
 }
 
 /** Specifiers that a source file imports, as written. JavaScript goes through
@@ -84,7 +113,9 @@ export function importSpecifiers(file: string, source: string): string[] {
   if (['.js', '.mjs', '.cjs'].includes(path.extname(file))) {
     try {
       const [imports] = parse(source);
-      return imports.flatMap((entry) => (entry.specifier ? [entry.specifier] : []));
+      return imports.flatMap((entry) =>
+        entry.specifier ? [entry.specifier] : [],
+      );
     } catch {
       // Not parseable as plain JavaScript (JSX in a .js file, say): match instead.
     }
@@ -124,11 +155,13 @@ export function readAliases(root: string): Alias[] {
       compilerOptions?: { baseUrl?: string; paths?: Record<string, string[]> };
     };
     const base = path.resolve(root, compilerOptions.baseUrl ?? '.');
-    return Object.entries(compilerOptions.paths ?? {}).map(([pattern, targets]) => ({
-      prefix: pattern.replace(/\*$/, ''),
-      wildcard: pattern.endsWith('*'),
-      targets: targets.map((target) => path.resolve(base, target)),
-    }));
+    return Object.entries(compilerOptions.paths ?? {}).map(
+      ([pattern, targets]) => ({
+        prefix: pattern.replace(/\*$/, ''),
+        wildcard: pattern.endsWith('*'),
+        targets: targets.map((target) => path.resolve(base, target)),
+      }),
+    );
   } catch {
     return [];
   }
@@ -143,7 +176,8 @@ export function stripJsonComments(text: string): string {
     const char = text[i];
     if (char === '"') {
       let end = i + 1;
-      while (end < text.length && text[end] !== '"') end += text[end] === '\\' ? 2 : 1;
+      while (end < text.length && text[end] !== '"')
+        end += text[end] === '\\' ? 2 : 1;
       out += text.slice(i, end + 1);
       i = end;
     } else if (char === '/' && text[i + 1] === '/') {
@@ -168,7 +202,8 @@ function dropTrailingCommas(text: string): string {
     const char = text[i];
     if (char === '"') {
       let end = i + 1;
-      while (end < text.length && text[end] !== '"') end += text[end] === '\\' ? 2 : 1;
+      while (end < text.length && text[end] !== '"')
+        end += text[end] === '\\' ? 2 : 1;
       out += text.slice(i, end + 1);
       i = end;
     } else {
@@ -181,8 +216,14 @@ function dropTrailingCommas(text: string): string {
 
 /** The local file a specifier points at, or undefined for packages, URLs and
  *  anything outside the site. */
-export function resolveSpecifier(spec: string, from: string, aliases: Alias[], root: string): string | undefined {
-  if (spec.startsWith('.')) return inside(resolveFile(path.resolve(path.dirname(from), spec)), root);
+export function resolveSpecifier(
+  spec: string,
+  from: string,
+  aliases: Alias[],
+  root: string,
+): string | undefined {
+  if (spec.startsWith('.'))
+    return inside(resolveFile(path.resolve(path.dirname(from), spec)), root);
   // The longest matching alias prefix wins, as in TypeScript.
   const alias = aliases
     .filter((a) => (a.wildcard ? spec.startsWith(a.prefix) : spec === a.prefix))
@@ -202,13 +243,17 @@ function resolveFile(base: string): string | undefined {
     ...RESOLVE_EXTENSIONS.map((ext) => base + ext),
     ...RESOLVE_EXTENSIONS.map((ext) => path.join(base, `index${ext}`)),
   ];
-  return candidates.find((candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile());
+  return candidates.find(
+    (candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
+  );
 }
 
 function inside(file: string | undefined, root: string): string | undefined {
   if (!file) return undefined;
   const relative = path.relative(root, file);
-  return relative.startsWith('..') || path.isAbsolute(relative) || relative.split(path.sep).includes('node_modules')
+  return relative.startsWith('..') ||
+    path.isAbsolute(relative) ||
+    relative.split(path.sep).includes('node_modules')
     ? undefined
     : file;
 }

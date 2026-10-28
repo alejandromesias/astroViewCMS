@@ -5,12 +5,12 @@
 // /__preview/warm, and POST /__preview-media/new for uploads. A form per
 // document: a JSON textbox, plus a body textarea for Markdown and MDX.
 import {
-  PROTOCOL_VERSION,
-  isPageMessage,
-  protocolMismatch,
   type DraftMessage,
   type FieldError,
+  isPageMessage,
   type MediaInfo,
+  PROTOCOL_VERSION,
+  protocolMismatch,
 } from 'preview-protocol';
 import type { DevDocument } from '../src/dev/documents.ts';
 
@@ -26,12 +26,15 @@ const LIMIT_NOTES: Record<string, string> = {
  *  shown as they are. */
 export function limitNote(limit: string): string {
   if (Object.hasOwn(LIMIT_NOTES, limit)) return LIMIT_NOTES[limit]!;
-  if (limit.startsWith('code-language:')) return `\`${limit.slice('code-language:'.length)}\` highlighted after publish`;
+  if (limit.startsWith('code-language:'))
+    return `\`${limit.slice('code-language:'.length)}\` highlighted after publish`;
   return limit;
 }
 
 /** The build-time warning of a document (D1), or '' for one that applies at once. */
-export function buildTimeNote(info: Pick<DevDocument, 'buildTime' | 'buildTimeFields'>): string {
+export function buildTimeNote(
+  info: Pick<DevDocument, 'buildTime' | 'buildTimeFields'>,
+): string {
   if (!info.buildTime) return '';
   const fields = info.buildTimeFields ?? ['*'];
   return `Some fields apply after rebuild: ${fields.includes('*') ? 'the whole file' : fields.join(', ')}`;
@@ -57,10 +60,14 @@ interface DocumentView {
  * type, shows render results, and handles draft image uploads. `win` and
  * `fetchImpl` are parameters so tests can pass fakes.
  */
-export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.fetch.bind(win)): void {
+export function startEditor(
+  win: Window = window,
+  fetchImpl: typeof fetch = win.fetch.bind(win),
+): void {
   const doc = win.document;
   const origin = win.location.origin;
-  const byId = <T extends HTMLElement>(id: string) => doc.getElementById(id) as T;
+  const byId = <T extends HTMLElement>(id: string) =>
+    doc.getElementById(id) as T;
 
   const iframe = byId<HTMLIFrameElement>('preview');
   const status = byId<HTMLElement>('status');
@@ -115,8 +122,17 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
       else view.value?.removeAttribute('aria-invalid');
       view.error.textContent = problem;
     }
-    const message: DraftMessage = { type: 'preview:draft', protocol: PROTOCOL_VERSION, documents, media: { ...media } };
-    envelopeView.textContent = JSON.stringify({ documents: message.documents, media: message.media }, null, 2);
+    const message: DraftMessage = {
+      type: 'preview:draft',
+      protocol: PROTOCOL_VERSION,
+      documents,
+      media: { ...media },
+    };
+    envelopeView.textContent = JSON.stringify(
+      { documents: message.documents, media: message.media },
+      null,
+      2,
+    );
     iframe.contentWindow?.postMessage(message, origin);
   }
 
@@ -129,33 +145,65 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
 
   // ---- the forms ------------------------------------------------------
 
-  function addView(key: string, info: DevDocument | undefined, failure = ''): DocumentView {
-    const section = template.content.firstElementChild!.cloneNode(true) as HTMLElement;
-    const slot = (name: string) => section.querySelector<HTMLElement>(`[data-slot="${name}"]`)!;
+  function addView(
+    key: string,
+    info: DevDocument | undefined,
+    failure = '',
+  ): DocumentView {
+    const section = template.content.firstElementChild!.cloneNode(
+      true,
+    ) as HTMLElement;
+    const slot = (name: string) =>
+      section.querySelector<HTMLElement>(`[data-slot="${name}"]`)!;
     section.dataset.key = key;
     slot('key').textContent = key;
     slot('file').textContent = info ? `${info.file} (${info.format})` : '';
-    const view: DocumentView = { key, section, error: slot('error'), saved: { value: '', body: '' }, state: 'saved' };
+    const view: DocumentView = {
+      key,
+      section,
+      error: slot('error'),
+      saved: { value: '', body: '' },
+      state: 'saved',
+    };
 
     const note = slot('note');
-    const notes = [info ? buildTimeNote(info) : '', info?.editable === false ? 'Shown as built (this format is not edited here)' : '', failure].filter(Boolean);
+    const notes = [
+      info ? buildTimeNote(info) : '',
+      info?.editable === false
+        ? 'Shown as built (this format is not edited here)'
+        : '',
+      failure,
+    ].filter(Boolean);
     note.textContent = notes.join('. ');
     note.hidden = notes.length === 0;
     if (failure) note.dataset.state = 'error';
 
     if (info && info.editable !== false) {
       const markdown = info.format === 'md' || info.format === 'mdx';
-      const raw = (info.value ?? (markdown ? { data: {}, body: '' } : {})) as { data?: unknown; body?: string };
+      const raw = (info.value ?? (markdown ? { data: {}, body: '' } : {})) as {
+        data?: unknown;
+        body?: string;
+      };
       view.saved = markdown
-        ? { value: JSON.stringify(raw.data ?? {}, null, 2), body: raw.body ?? '' }
+        ? {
+            value: JSON.stringify(raw.data ?? {}, null, 2),
+            body: raw.body ?? '',
+          }
         : { value: JSON.stringify(info.value, null, 2), body: '' };
 
-      view.value = section.querySelector<HTMLTextAreaElement>('[data-field="value"]')!;
-      view.value.setAttribute('aria-label', markdown ? `${key} frontmatter (JSON)` : `${key} (JSON)`);
+      view.value = section.querySelector<HTMLTextAreaElement>(
+        '[data-field="value"]',
+      )!;
+      view.value.setAttribute(
+        'aria-label',
+        markdown ? `${key} frontmatter (JSON)` : `${key} (JSON)`,
+      );
       if (markdown) {
         slot('value-label').textContent = 'Frontmatter (JSON)';
         slot('body-field').hidden = false;
-        view.body = section.querySelector<HTMLTextAreaElement>('[data-field="body"]')!;
+        view.body = section.querySelector<HTMLTextAreaElement>(
+          '[data-field="body"]',
+        )!;
         view.body.setAttribute('aria-label', `${key} body`);
       }
       writeForm(view);
@@ -165,15 +213,19 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
           scheduleDraft();
         });
       }
-      section.querySelector('[data-action="reset"]')!.addEventListener('click', () => {
-        view.state = 'saved';
-        writeForm(view);
-        sendDraft();
-      });
-      section.querySelector('[data-action="delete"]')!.addEventListener('click', () => {
-        view.state = 'deleted';
-        sendDraft();
-      });
+      section
+        .querySelector('[data-action="reset"]')!
+        .addEventListener('click', () => {
+          view.state = 'saved';
+          writeForm(view);
+          sendDraft();
+        });
+      section
+        .querySelector('[data-action="delete"]')!
+        .addEventListener('click', () => {
+          view.state = 'deleted';
+          sendDraft();
+        });
     } else {
       slot('fields').hidden = true;
     }
@@ -195,14 +247,24 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
   async function loadDocument(key: string) {
     requested.add(key);
     try {
-      const response = await fetchImpl(`/__dev/documents?key=${encodeURIComponent(key)}`);
+      const response = await fetchImpl(
+        `/__dev/documents?key=${encodeURIComponent(key)}`,
+      );
       if (!response.ok) {
-        addView(key, undefined, `Could not load (${response.status}): ${(await response.text()).trim()}`);
+        addView(
+          key,
+          undefined,
+          `Could not load (${response.status}): ${(await response.text()).trim()}`,
+        );
         return;
       }
       addView(key, (await response.json()) as DevDocument);
     } catch (loadError) {
-      addView(key, undefined, `Could not load: ${(loadError as Error).message}`);
+      addView(
+        key,
+        undefined,
+        `Could not load: ${(loadError as Error).message}`,
+      );
     }
   }
 
@@ -210,7 +272,8 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
    *  hidden with their edits, which keep going out. */
   function showDocuments(keys: string[]) {
     read = new Set(keys);
-    for (const view of views.values()) view.section.hidden = !read.has(view.key);
+    for (const view of views.values())
+      view.section.hidden = !read.has(view.key);
     for (const key of keys) if (!requested.has(key)) void loadDocument(key);
   }
 
@@ -232,16 +295,22 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
     for (const fieldError of errors) {
       const view = views.get(fieldError.key);
       if (!view) unmatched.push(fieldError);
-      else lines.set(view, [...(lines.get(view) ?? []), `${fieldError.path.join('.')}: ${fieldError.message}`]);
+      else
+        lines.set(view, [
+          ...(lines.get(view) ?? []),
+          `${fieldError.path.join('.')}: ${fieldError.message}`,
+        ]);
     }
-    for (const [view, messages] of lines) view.error.textContent = messages.join('; ');
+    for (const [view, messages] of lines)
+      view.error.textContent = messages.join('; ');
     return unmatched;
   }
 
   // ---- messages from the bridge: only from the iframe, same origin, well-formed
 
   win.addEventListener('message', (event) => {
-    if (event.source !== iframe.contentWindow || event.origin !== origin) return;
+    if (event.source !== iframe.contentWindow || event.origin !== origin)
+      return;
     const message = event.data;
     if (!isPageMessage(message)) return;
 
@@ -257,15 +326,24 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
       // warm the Markdown renderer, in parallel.
       setStatus(`Page ready: ${message.path}`);
       sendDraft();
-      void fetchImpl('/__preview/warm', { method: 'POST' }).catch(() => undefined);
+      void fetchImpl('/__preview/warm', { method: 'POST' }).catch(
+        () => undefined,
+      );
     } else if (message.type === 'preview:rendered') {
-      setStatus(`Rendered ${message.path} in ${message.renderMs} ms; documents: ${message.documents.join(', ') || 'none'}`);
+      setStatus(
+        `Rendered ${message.path} in ${message.renderMs} ms; documents: ${message.documents.join(', ') || 'none'}`,
+      );
       showLimits(message.limits);
       showDocuments(message.documents);
     } else {
       const unmatched = message.errors ? showFieldErrors(message.errors) : [];
-      const fields = unmatched.map((e) => `${e.key} ${e.path.join('.')}: ${e.message}`).join('; ');
-      setStatus(`${message.path} failed (${message.status}): ${message.message}${fields ? ` (${fields})` : ''}`, 'error');
+      const fields = unmatched
+        .map((e) => `${e.key} ${e.path.join('.')}: ${e.message}`)
+        .join('; ');
+      setStatus(
+        `${message.path} failed (${message.status}): ${message.message}${fields ? ` (${fields})` : ''}`,
+        'error',
+      );
     }
   });
 
@@ -286,7 +364,10 @@ export function startEditor(win: Window = window, fetchImpl: typeof fetch = win.
       body: file,
     });
     if (!response.ok) {
-      setStatus(`Upload failed (${response.status}): ${await response.text()}`, 'error');
+      setStatus(
+        `Upload failed (${response.status}): ${await response.text()}`,
+        'error',
+      );
       return;
     }
     const entry = (await response.json()) as MediaInfo;

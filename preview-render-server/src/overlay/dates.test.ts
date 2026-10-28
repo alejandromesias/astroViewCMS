@@ -8,15 +8,26 @@ const issuesOf = (schema: z.ZodType, value: unknown) => {
 };
 
 describe('reviveDates (D13)', () => {
-  const schema = z.object({ updated: z.date(), items: z.array(z.object({ since: z.date() })) });
+  const schema = z.object({
+    updated: z.date(),
+    items: z.array(z.object({ since: z.date() })),
+  });
 
   it('a plain z.date() rejects the ISO string that JSON carries (the TBD, answered)', () => {
-    expect(schema.safeParse({ updated: '2025-04-04', items: [] }).success).toBe(false);
+    expect(schema.safeParse({ updated: '2025-04-04', items: [] }).success).toBe(
+      false,
+    );
   });
 
   it('turns ISO strings at the reported paths into Dates, nested and in arrays', () => {
-    const raw = { updated: '2025-04-04', items: [{ since: '2024-01-02T10:00:00Z' }] };
-    const revived = reviveDates(raw, issuesOf(schema, raw))! as unknown as { updated: Date; items: { since: Date }[] };
+    const raw = {
+      updated: '2025-04-04',
+      items: [{ since: '2024-01-02T10:00:00Z' }],
+    };
+    const revived = reviveDates(raw, issuesOf(schema, raw))! as unknown as {
+      updated: Date;
+      items: { since: Date }[];
+    };
     expect(revived.updated).toEqual(new Date('2025-04-04'));
     expect(revived.items[0]!.since).toEqual(new Date('2024-01-02T10:00:00Z'));
     expect(schema.safeParse(revived).success).toBe(true);
@@ -36,7 +47,10 @@ describe('reviveDates (D13)', () => {
   });
 });
 
-const dateIssue = (path: PropertyKey[], extra: Partial<{ code: string; expected: string }> = {}) => ({
+const dateIssue = (
+  path: PropertyKey[],
+  extra: Partial<{ code: string; expected: string }> = {},
+) => ({
   code: 'invalid_type',
   expected: 'date',
   path,
@@ -102,11 +116,21 @@ describe('which issues are acted on', () => {
   const value = { d: '2025-04-04' };
 
   it('only invalid_type issues that expect a date', () => {
-    expect(reviveDates(value, [dateIssue(['d'], { code: 'custom' })])).toBeUndefined();
-    expect(reviveDates(value, [dateIssue(['d'], { code: 'invalid_value' })])).toBeUndefined();
-    expect(reviveDates(value, [dateIssue(['d'], { expected: 'string' })])).toBeUndefined();
-    expect(reviveDates(value, [{ code: 'invalid_type', path: ['d'] }])).toBeUndefined();
-    expect(reviveDates(value, [dateIssue(['d'])])).toEqual({ d: new Date('2025-04-04') });
+    expect(
+      reviveDates(value, [dateIssue(['d'], { code: 'custom' })]),
+    ).toBeUndefined();
+    expect(
+      reviveDates(value, [dateIssue(['d'], { code: 'invalid_value' })]),
+    ).toBeUndefined();
+    expect(
+      reviveDates(value, [dateIssue(['d'], { expected: 'string' })]),
+    ).toBeUndefined();
+    expect(
+      reviveDates(value, [{ code: 'invalid_type', path: ['d'] }]),
+    ).toBeUndefined();
+    expect(reviveDates(value, [dateIssue(['d'])])).toEqual({
+      d: new Date('2025-04-04'),
+    });
   });
 
   it('ignores an issue with an empty path, whatever the value is', () => {
@@ -120,22 +144,57 @@ describe('which issues are acted on', () => {
 
   it('follows keys and array indexes, and gives up quietly at a missing or non-object parent', () => {
     const nested = { a: [{ b: { c: '2025-04-04' } }], s: 'text', n: null };
-    const revived = reviveDates(nested, [dateIssue(['a', 0, 'b', 'c'])]) as unknown as typeof nested & { a: [{ b: { c: Date } }] };
+    const revived = reviveDates(nested, [
+      dateIssue(['a', 0, 'b', 'c']),
+    ]) as unknown as typeof nested & { a: [{ b: { c: Date } }] };
     expect(revived.a[0].b.c).toEqual(new Date('2025-04-04'));
-    for (const path of [['x', 'y', 'z'], ['a', 5, 'b'], ['s', 'length'], ['n', 'k'], ['a', 0, 'b', 'nope'], ['s', 'x', 'y']]) {
+    for (const path of [
+      ['x', 'y', 'z'],
+      ['a', 5, 'b'],
+      ['s', 'length'],
+      ['n', 'k'],
+      ['a', 0, 'b', 'nope'],
+      ['s', 'x', 'y'],
+    ]) {
       expect(reviveDates(nested, [dateIssue(path)])).toBeUndefined();
     }
   });
 
   it('revives a date at the root of the path and values that are not strings are left alone', () => {
-    expect(reviveDates({ d: 5, e: null, f: undefined, g: true }, [dateIssue(['d']), dateIssue(['e']), dateIssue(['f']), dateIssue(['g'])])).toBeUndefined();
-    expect(reviveDates(['2025-04-04'], [dateIssue([0])])).toEqual([new Date('2025-04-04')]);
+    expect(
+      reviveDates({ d: 5, e: null, f: undefined, g: true }, [
+        dateIssue(['d']),
+        dateIssue(['e']),
+        dateIssue(['f']),
+        dateIssue(['g']),
+      ]),
+    ).toBeUndefined();
+    expect(reviveDates(['2025-04-04'], [dateIssue([0])])).toEqual([
+      new Date('2025-04-04'),
+    ]);
   });
 
   it('revives every reported field and keeps the others as they were', () => {
-    const raw = { a: '2025-04-04', b: '2024-01-01', c: '2023-01-01', keep: 'x', n: 1 };
-    const revived = reviveDates(raw, [dateIssue(['a']), dateIssue(['b']), dateIssue(['zzz']), dateIssue(['keep'])]);
-    expect(revived).toEqual({ a: new Date('2025-04-04'), b: new Date('2024-01-01'), c: '2023-01-01', keep: 'x', n: 1 });
+    const raw = {
+      a: '2025-04-04',
+      b: '2024-01-01',
+      c: '2023-01-01',
+      keep: 'x',
+      n: 1,
+    };
+    const revived = reviveDates(raw, [
+      dateIssue(['a']),
+      dateIssue(['b']),
+      dateIssue(['zzz']),
+      dateIssue(['keep']),
+    ]);
+    expect(revived).toEqual({
+      a: new Date('2025-04-04'),
+      b: new Date('2024-01-01'),
+      c: '2023-01-01',
+      keep: 'x',
+      n: 1,
+    });
   });
 
   it('returns a copy, not the original, even when the copy changed nothing else', () => {
@@ -148,7 +207,9 @@ describe('which issues are acted on', () => {
 
   it('keeps Dates the value already holds', () => {
     const date = new Date('2020-01-01');
-    const revived = reviveDates({ d: '2025-04-04', old: date }, [dateIssue(['d'])])!;
+    const revived = reviveDates({ d: '2025-04-04', old: date }, [
+      dateIssue(['d']),
+    ])!;
     expect(revived.old).toEqual(date);
     expect(revived.old).toBeInstanceOf(Date);
   });

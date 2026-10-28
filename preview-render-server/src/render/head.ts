@@ -11,15 +11,24 @@ export interface PageHead {
 const HEAD = /<head\b[^>]*>([\s\S]*?)<\/head>/i;
 const TITLE = /<title\b[^>]*>([\s\S]*?)<\/title>/i;
 const META = /<meta\b([^>]*)>/gi;
-const ATTRIBUTE = /([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+const ATTRIBUTE =
+  /([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
 
 export function extractHead(html: string): PageHead {
   const head = HEAD.exec(html)?.[1] ?? '';
   const title = TITLE.exec(head)?.[1];
   const meta = [...head.matchAll(META)].map(([, attributes]) =>
-    Object.fromEntries([...attributes!.matchAll(ATTRIBUTE)].map(([, name, a, b, c]) => [name, decodeEntities(a ?? b ?? c ?? '')])),
+    Object.fromEntries(
+      [...attributes!.matchAll(ATTRIBUTE)].map(([, name, a, b, c]) => [
+        name,
+        decodeEntities(a ?? b ?? c ?? ''),
+      ]),
+    ),
   );
-  return { ...(title === undefined ? {} : { title: decodeEntities(title.trim()) }), meta };
+  return {
+    ...(title === undefined ? {} : { title: decodeEntities(title.trim()) }),
+    meta,
+  };
 }
 
 function decodeEntities(text: string): string {
@@ -35,7 +44,8 @@ function decodeEntities(text: string): string {
 // dev-server references to component scripts (src="<abs path>.astro?astro&
 // type=script..."). They'd 404 and leak local paths; the page has already
 // loaded the real bundled scripts.
-const SOURCE_SCRIPT_TAG = /<script\b[^>]*\bsrc="[^"]*\?astro&(?:amp;)?type=script[^"]*"[^>]*><\/script>/g;
+const SOURCE_SCRIPT_TAG =
+  /<script\b[^>]*\bsrc="[^"]*\?astro&(?:amp;)?type=script[^"]*"[^>]*><\/script>/g;
 
 /** Removes the dev-only `<script src="...astro?astro&type=script...">` tags. */
 export function stripSourceScripts(html: string): string {

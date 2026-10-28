@@ -15,16 +15,29 @@ export interface DateIssue {
 
 /** A copy of `value` with the ISO strings that `issues` ask dates for turned
  *  into Dates, or undefined if there was nothing to revive. */
-export function reviveDates<T>(value: T, issues: readonly DateIssue[]): T | undefined {
+export function reviveDates<T>(
+  value: T,
+  issues: readonly DateIssue[],
+): T | undefined {
   const copy = structuredClone(value);
   let changed = false;
   for (const issue of issues) {
-    if (issue.code !== 'invalid_type' || issue.expected !== 'date' || issue.path.length === 0) continue;
+    if (
+      issue.code !== 'invalid_type' ||
+      issue.expected !== 'date' ||
+      issue.path.length === 0
+    )
+      continue;
     let parent: any = copy;
-    for (const part of issue.path.slice(0, -1)) parent = parent?.[part as string | number];
+    for (const part of issue.path.slice(0, -1))
+      parent = parent?.[part as string | number];
     const last = issue.path[issue.path.length - 1] as string | number;
     const current = parent?.[last];
-    if (typeof current === 'string' && ISO_DATE.test(current) && !Number.isNaN(Date.parse(current))) {
+    if (
+      typeof current === 'string' &&
+      ISO_DATE.test(current) &&
+      !Number.isNaN(Date.parse(current))
+    ) {
       parent[last] = new Date(current);
       changed = true;
     }

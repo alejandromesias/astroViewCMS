@@ -11,7 +11,9 @@ export function dataKey(projectPath: string): string {
   return `${DATA_PREFIX}${projectPath}`;
 }
 
-export function splitKey(key: string): { collection: string; id: string } | undefined {
+export function splitKey(
+  key: string,
+): { collection: string; id: string } | undefined {
   if (key.startsWith(DATA_PREFIX)) return undefined;
   const slash = key.indexOf('/');
   if (slash <= 0) return undefined;

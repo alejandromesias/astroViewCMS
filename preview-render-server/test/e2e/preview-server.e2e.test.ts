@@ -7,7 +7,8 @@ import { describe, expect, inject, it } from 'vitest';
 const BASE = inject('baseUrl');
 const SITE = path.resolve(import.meta.dirname, '../../../sample-site');
 const CLIENT = path.join(inject('buildDir'), 'sample-site', 'client');
-const readJson = (file: string) => JSON.parse(fs.readFileSync(path.join(SITE, file), 'utf8'));
+const readJson = (file: string) =>
+  JSON.parse(fs.readFileSync(path.join(SITE, file), 'utf8'));
 
 interface Rendered {
   html: string;
@@ -17,7 +18,12 @@ interface Rendered {
   renderMs: number;
 }
 
-async function post(route: string, body: unknown, search = '', init: RequestInit = {}) {
+async function post(
+  route: string,
+  body: unknown,
+  search = '',
+  init: RequestInit = {},
+) {
   const response = await fetch(`${BASE}/__preview/${route}${search}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -31,10 +37,23 @@ async function post(route: string, body: unknown, search = '', init: RequestInit
   } catch {
     // Plain-text answers (400, 404, 500).
   }
-  return { status: response.status, text, json, timing: response.headers.get('server-timing') };
+  return {
+    status: response.status,
+    text,
+    json,
+    timing: response.headers.get('server-timing'),
+  };
 }
-const render = (path_: string, documents: Record<string, unknown> = {}, media?: unknown) =>
-  post('render', { documents, ...(media === undefined ? {} : { media }) }, `?path=${encodeURIComponent(path_)}`);
+const render = (
+  path_: string,
+  documents: Record<string, unknown> = {},
+  media?: unknown,
+) =>
+  post(
+    'render',
+    { documents, ...(media === undefined ? {} : { media }) },
+    `?path=${encodeURIComponent(path_)}`,
+  );
 
 // Three expected differences from the prerendered page; everything else must
 // be identical. The container leaves out the build's links, styles and bundled
@@ -51,7 +70,11 @@ const normalize = (html: string) =>
     .replace(/<link\b[^>]*>/g, '')
     .replace(/<!--.*?-->/g, '')
     .replace(/\s+/g, ' ');
-const builtPage = (urlPath: string) => fs.readFileSync(path.join(CLIENT, urlPath === '/' ? '' : urlPath, 'index.html'), 'utf8');
+const builtPage = (urlPath: string) =>
+  fs.readFileSync(
+    path.join(CLIENT, urlPath === '/' ? '' : urlPath, 'index.html'),
+    'utf8',
+  );
 
 describe('the built site', () => {
   it('serves prerendered pages and the test editor', async () => {
@@ -63,7 +86,12 @@ describe('the built site', () => {
 
   it('writes the manifests next to the bundle', () => {
     const manifest = path.join(inject('buildDir'), 'sample-site-manifest');
-    for (const name of ['routes.json', 'documents.json', 'schema.json', 'code-languages.json']) {
+    for (const name of [
+      'routes.json',
+      'documents.json',
+      'schema.json',
+      'code-languages.json',
+    ]) {
       expect(fs.existsSync(path.join(manifest, name)), name).toBe(true);
     }
   });
@@ -71,22 +99,38 @@ describe('the built site', () => {
 
 describe('POST /__preview/render with no overlay', () => {
   // Static, dynamic, rest-parameter, paginated, MDX and hydrated pages.
-  it.each(['/', '/blog', '/blog/blog-1', '/landing/home-v2', '/contact', '/faq', '/pricing', '/privacy-policy', '/tags/design', '/tags/design/2', '/blog/page/2', '/elements'])(
-    'renders %s as the prerendered page does',
-    async (urlPath) => {
-      const { status, json } = await render(urlPath);
-      expect(status).toBe(200);
-      expect(normalize((json as Rendered).html)).toBe(normalize(builtPage(urlPath)));
-    },
-  );
+  it.each([
+    '/',
+    '/blog',
+    '/blog/blog-1',
+    '/landing/home-v2',
+    '/contact',
+    '/faq',
+    '/pricing',
+    '/privacy-policy',
+    '/tags/design',
+    '/tags/design/2',
+    '/blog/page/2',
+    '/elements',
+  ])('renders %s as the prerendered page does', async (urlPath) => {
+    const { status, json } = await render(urlPath);
+    expect(status).toBe(200);
+    expect(normalize((json as Rendered).html)).toBe(
+      normalize(builtPage(urlPath)),
+    );
+  });
 
   it('points hydrated components at the built chunks (D6)', async () => {
     const { json } = await render('/pricing');
     const island = (json as Rendered).html.match(/<astro-island[^>]*>/)![0];
-    expect(island).toMatch(/component-url="\/_astro\/PricingPlans\.[\w-]+\.js"/);
+    expect(island).toMatch(
+      /component-url="\/_astro\/PricingPlans\.[\w-]+\.js"/,
+    );
     expect(island).toMatch(/renderer-url="\/_astro\/client\.[\w-]+\.js"/);
     expect(island).not.toContain('before-hydration-url');
-    expect(builtPage('/pricing')).toContain(island.match(/component-url="[^"]*"/)![0]);
+    expect(builtPage('/pricing')).toContain(
+      island.match(/component-url="[^"]*"/)![0],
+    );
   });
 
   it('answers head data, the documents the page read, and timings', async () => {
@@ -105,7 +149,9 @@ describe('POST /__preview/render with no overlay', () => {
 
   it('images go through the on-demand image endpoint, which serves them', async () => {
     const { json } = await render('/blog/blog-1');
-    const src = (json as Rendered).html.match(/<img[^>]*? src="(\/_image\?[^"]*)"/)![1]!.replaceAll('&amp;', '&');
+    const src = (json as Rendered).html
+      .match(/<img[^>]*? src="(\/_image\?[^"]*)"/)![1]!
+      .replaceAll('&amp;', '&');
     const image = await fetch(BASE + src);
     expect(image.status).toBe(200);
     expect(image.headers.get('content-type')).toBe('image/webp');
@@ -121,7 +167,9 @@ describe('POST /__preview/render with drafts', () => {
   it('shows a draft of a JSON document', async () => {
     const home = readJson('src/content/landing/home-v2.json');
     home.blocks[0].title = 'Draft banner title';
-    const { json } = await render('/landing/home-v2', { 'landing/home-v2': home });
+    const { json } = await render('/landing/home-v2', {
+      'landing/home-v2': home,
+    });
     expect((json as Rendered).html).toContain('Draft banner title');
     expect(builtPage('/landing/home-v2')).not.toContain('Draft banner title');
   });
@@ -135,13 +183,20 @@ describe('POST /__preview/render with drafts', () => {
 
   it('previews a brand-new post: its own page, and the list that now includes it', async () => {
     const post = {
-      data: { title: 'A brand new draft post', date: '2026-10-27', author: 'ana-torres', tags: ['design'] },
+      data: {
+        title: 'A brand new draft post',
+        date: '2026-10-27',
+        author: 'ana-torres',
+        tags: ['design'],
+      },
       body: '## Heading\n\nSome text.\n\n```css\na { color: red }\n```\n\n```cpp\nint x = 1;\n```\n',
     };
     const own = await render('/blog/brand-new', { 'blog/brand-new': post });
     expect(own.status).toBe(200);
     expect((own.json as Rendered).html).toContain('A brand new draft post');
-    expect((own.json as Rendered).html).toContain('<h2 id="heading">Heading</h2>');
+    expect((own.json as Rendered).html).toContain(
+      '<h2 id="heading">Heading</h2>',
+    );
     expect((own.json as Rendered).documents).toContain('blog/brand-new');
     // The css fence is highlighted; cpp is not in the built content, so it stays plain (D2).
     expect((own.json as Rendered).limits).toEqual(['code-language:cpp']);
@@ -153,14 +208,27 @@ describe('POST /__preview/render with drafts', () => {
 
   it('a removed document leaves the page list', async () => {
     expect((await render('/blog/blog-1')).status).toBe(200);
-    expect((await render('/blog/blog-1', { 'blog/blog-1': null })).status).toBe(404);
+    expect((await render('/blog/blog-1', { 'blog/blog-1': null })).status).toBe(
+      404,
+    );
   });
 
   it('shows an uploaded draft image through the media map (D12)', async () => {
-    const png = fs.readFileSync(path.join(SITE, 'src/assets/authors/ana-torres.png'));
-    const upload = await fetch(`${BASE}/__preview-media/new`, { method: 'POST', headers: { 'content-type': 'image/png' }, body: png });
+    const png = fs.readFileSync(
+      path.join(SITE, 'src/assets/authors/ana-torres.png'),
+    );
+    const upload = await fetch(`${BASE}/__preview-media/new`, {
+      method: 'POST',
+      headers: { 'content-type': 'image/png' },
+      body: png,
+    });
     expect(upload.status).toBe(201);
-    const entry = (await upload.json()) as { url: string; width: number; height: number; format: string };
+    const entry = (await upload.json()) as {
+      url: string;
+      width: number;
+      height: number;
+      format: string;
+    };
     expect(entry.url).toMatch(/^\/__preview-media\/[0-9a-f]{16}\.png$/);
     const served = await fetch(BASE + entry.url);
     expect(served.status).toBe(200);
@@ -168,7 +236,11 @@ describe('POST /__preview/render with drafts', () => {
 
     const author = readJson('src/content/authors/ana-torres.json');
     author.avatar = 'uploads/new-avatar.png';
-    const { status, json } = await render('/blog/blog-1', { 'authors/ana-torres': author }, { 'uploads/new-avatar.png': entry });
+    const { status, json } = await render(
+      '/blog/blog-1',
+      { 'authors/ana-torres': author },
+      { 'uploads/new-avatar.png': entry },
+    );
     expect(status).toBe(200);
     expect((json as Rendered).html).toContain(`src="${entry.url}"`);
   });
@@ -176,9 +248,14 @@ describe('POST /__preview/render with drafts', () => {
 
 describe('errors', () => {
   it('422 names the failing fields of a draft that does not fit its schema', async () => {
-    const { status, json } = await render('/blog/blog-1', { 'blog/blog-1': { data: { title: 5 }, body: '' }, 'authors/ana-torres': { name: 1 } });
+    const { status, json } = await render('/blog/blog-1', {
+      'blog/blog-1': { data: { title: 5 }, body: '' },
+      'authors/ana-torres': { name: 1 },
+    });
     expect(status).toBe(422);
-    const found = json.errors.map((e: { key: string; path: string[] }) => `${e.key}:${e.path.join('.')}`);
+    const found = json.errors.map(
+      (e: { key: string; path: string[] }) => `${e.key}:${e.path.join('.')}`,
+    );
     expect(found).toContain('blog/blog-1:title');
     expect(found).toContain('authors/ana-torres:name');
   });
@@ -191,20 +268,50 @@ describe('errors', () => {
 
   it('400 for a bad envelope or path, naming the part', async () => {
     expect((await post('render', '{not json', '?path=/')).status).toBe(400);
-    expect((await post('render', {}, '?path=/')).text).toMatch(/"documents" must be an object/);
-    expect((await post('render', { documents: [] }, '?path=/')).status).toBe(400);
-    const badMedia = await post('render', { documents: {}, media: { 'a.png': { url: 'u', width: 0, height: 1, format: 'png' } } }, '?path=/');
+    expect((await post('render', {}, '?path=/')).text).toMatch(
+      /"documents" must be an object/,
+    );
+    expect((await post('render', { documents: [] }, '?path=/')).status).toBe(
+      400,
+    );
+    const badMedia = await post(
+      'render',
+      {
+        documents: {},
+        media: { 'a.png': { url: 'u', width: 0, height: 1, format: 'png' } },
+      },
+      '?path=/',
+    );
     expect(badMedia.status).toBe(400);
     expect(badMedia.text).toMatch(/"width"/);
     expect((await post('render', { documents: {} }, '')).status).toBe(400);
-    expect((await post('render', { documents: {} }, '?path=//evil.example')).status).toBe(400);
+    expect(
+      (await post('render', { documents: {} }, '?path=//evil.example')).status,
+    ).toBe(400);
   });
 
   it('refuses other content types, cross-site calls and other methods', async () => {
     const body = JSON.stringify({ documents: {} });
-    expect((await fetch(`${BASE}/__preview/render?path=/`, { method: 'POST', headers: { 'content-type': 'text/plain' }, body })).status).toBe(404);
     expect(
-      (await fetch(`${BASE}/__preview/render?path=/`, { method: 'POST', headers: { 'content-type': 'application/json', 'sec-fetch-site': 'cross-site' }, body })).status,
+      (
+        await fetch(`${BASE}/__preview/render?path=/`, {
+          method: 'POST',
+          headers: { 'content-type': 'text/plain' },
+          body,
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await fetch(`${BASE}/__preview/render?path=/`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'sec-fetch-site': 'cross-site',
+          },
+          body,
+        })
+      ).status,
     ).toBe(403);
     expect((await fetch(`${BASE}/__preview/render?path=/`)).status).toBe(405);
     expect((await fetch(`${BASE}/__preview/validate`)).status).toBe(405);
@@ -212,22 +319,39 @@ describe('errors', () => {
 
   it('refuses bad uploads and paths outside the media folder', async () => {
     const upload = (type: string, body: string) =>
-      fetch(`${BASE}/__preview-media/new`, { method: 'POST', headers: { 'content-type': type }, body });
+      fetch(`${BASE}/__preview-media/new`, {
+        method: 'POST',
+        headers: { 'content-type': type },
+        body,
+      });
     expect((await upload('image/svg+xml', '<svg/>')).status).toBe(415);
     expect((await upload('image/png', 'not an image')).status).toBe(415);
     expect((await upload('text/plain', 'x')).status).toBe(404);
-    expect((await fetch(`${BASE}/__preview-media/..%2Fsecret.png`)).status).toBe(404);
+    expect(
+      (await fetch(`${BASE}/__preview-media/..%2Fsecret.png`)).status,
+    ).toBe(404);
   });
 });
 
 describe('POST /__preview/validate', () => {
   it('200 for drafts that fit, 422 with field paths for those that do not', async () => {
     const author = readJson('src/content/authors/ana-torres.json');
-    expect(await post('validate', { documents: { 'authors/ana-torres': author, 'blog/old': null } })).toMatchObject({ status: 200, json: { valid: true } });
+    expect(
+      await post('validate', {
+        documents: { 'authors/ana-torres': author, 'blog/old': null },
+      }),
+    ).toMatchObject({ status: 200, json: { valid: true } });
 
-    const bad = await post('validate', { documents: { 'authors/ana-torres': { ...author, name: 7 }, 'nowhere/x': {} } });
+    const bad = await post('validate', {
+      documents: {
+        'authors/ana-torres': { ...author, name: 7 },
+        'nowhere/x': {},
+      },
+    });
     expect(bad.status).toBe(422);
-    const found = bad.json.errors.map((e: { key: string; path: string[] }) => `${e.key}:${e.path.join('.')}`);
+    const found = bad.json.errors.map(
+      (e: { key: string; path: string[] }) => `${e.key}:${e.path.join('.')}`,
+    );
     expect(found).toContain('authors/ana-torres:name');
     expect(found).toContain('nowhere/x:');
   });
@@ -235,36 +359,63 @@ describe('POST /__preview/validate', () => {
 
 describe('warm-up', () => {
   it('POST answers 204 (also when repeated); other methods and cross-site calls are refused', async () => {
-    expect((await fetch(`${BASE}/__preview/warm`, { method: 'POST' })).status).toBe(204);
-    expect((await fetch(`${BASE}/__preview/warm`, { method: 'POST' })).status).toBe(204);
+    expect(
+      (await fetch(`${BASE}/__preview/warm`, { method: 'POST' })).status,
+    ).toBe(204);
+    expect(
+      (await fetch(`${BASE}/__preview/warm`, { method: 'POST' })).status,
+    ).toBe(204);
     expect((await fetch(`${BASE}/__preview/warm`)).status).toBe(405);
-    expect((await fetch(`${BASE}/__preview/warm`, { method: 'POST', headers: { 'sec-fetch-site': 'cross-site' } })).status).toBe(403);
+    expect(
+      (
+        await fetch(`${BASE}/__preview/warm`, {
+          method: 'POST',
+          headers: { 'sec-fetch-site': 'cross-site' },
+        })
+      ).status,
+    ).toBe(403);
   });
 });
 
 describe('GET /__dev/documents (built with PREVIEW_DEV=1)', () => {
   const get = async (key: string) => {
-    const response = await fetch(`${BASE}/__dev/documents?key=${encodeURIComponent(key)}`);
+    const response = await fetch(
+      `${BASE}/__dev/documents?key=${encodeURIComponent(key)}`,
+    );
     const text = await response.text();
-    return { status: response.status, text, json: response.ok ? JSON.parse(text) : undefined };
+    return {
+      status: response.status,
+      text,
+      json: response.ok ? JSON.parse(text) : undefined,
+    };
   };
 
   it('answers a JSON document with its raw value', async () => {
     const { status, json } = await get('landing/home-v2');
     expect(status).toBe(200);
-    expect(json).toMatchObject({ key: 'landing/home-v2', format: 'json', buildTime: false });
+    expect(json).toMatchObject({
+      key: 'landing/home-v2',
+      format: 'json',
+      buildTime: false,
+    });
     expect(json.value).toEqual(readJson('src/content/landing/home-v2.json'));
   });
 
   it('answers a YAML document', async () => {
     const { json } = await get('authors/noor-haddad');
-    expect(json).toMatchObject({ format: 'yaml', value: { name: expect.any(String) } });
+    expect(json).toMatchObject({
+      format: 'yaml',
+      value: { name: expect.any(String) },
+    });
   });
 
   it('answers a Markdown document as { data, body }', async () => {
     const { json } = await get('blog/blog-1');
     expect(json.format).toBe('md');
-    expect(json.value.data).toMatchObject({ title: 'What you need to know about Photography', tags: ['photography', 'design'] });
+    expect(json.value.data).toMatchObject({
+      title: 'What you need to know about Photography',
+      tags: ['photography', 'design'],
+    });
     expect(json.value.body).toContain('## Creative Design');
   });
 
@@ -276,12 +427,23 @@ describe('GET /__dev/documents (built with PREVIEW_DEV=1)', () => {
 
   it('answers one entry of a file() entry', async () => {
     const { json } = await get('testimonials/t-ana');
-    expect(json.value).toEqual(readJson('src/content/testimonials.json').find((t: { id: string }) => t.id === 't-ana'));
+    expect(json.value).toEqual(
+      readJson('src/content/testimonials.json').find(
+        (t: { id: string }) => t.id === 't-ana',
+      ),
+    );
   });
 
   it('answers a data module with its build-time flags', async () => {
     const { json } = await get('data:src/config/config.json');
-    expect(json).toMatchObject({ buildTime: true, buildTimeFields: ['site.base_url', 'site.base_path', 'site.trailing_slash'] });
+    expect(json).toMatchObject({
+      buildTime: true,
+      buildTimeFields: [
+        'site.base_url',
+        'site.base_path',
+        'site.trailing_slash',
+      ],
+    });
     expect(json.value).toEqual(readJson('src/config/config.json'));
     expect((await get('data:src/config/menu.json')).json.buildTime).toBe(false);
   });
@@ -300,7 +462,9 @@ describe('performance', () => {
     for (let i = 0; i < 100; i++) {
       home.blocks[0].title = `Edit ${i}`;
       const start = performance.now();
-      const { status, json } = await render('/landing/home-v2', { 'landing/home-v2': home });
+      const { status, json } = await render('/landing/home-v2', {
+        'landing/home-v2': home,
+      });
       wall.push(performance.now() - start);
       expect(status).toBe(200);
       server.push((json as Rendered).renderMs);
@@ -314,7 +478,9 @@ describe('performance', () => {
     const roundTrip = stat(wall);
     const fmt = ({ median, p95, max }: ReturnType<typeof stat>) =>
       `median ${median!.toFixed(1)} ms, p95 ${p95!.toFixed(1)} ms, max ${max!.toFixed(1)} ms`;
-    console.log(`100 renders of /landing/home-v2\n  render (server): ${fmt(renderStat)}\n  round trip:      ${fmt(roundTrip)}`);
+    console.log(
+      `100 renders of /landing/home-v2\n  render (server): ${fmt(renderStat)}\n  round trip:      ${fmt(roundTrip)}`,
+    );
 
     // Generous bound: only catches a big regression, not machine noise.
     expect(renderStat.median).toBeLessThan(100);

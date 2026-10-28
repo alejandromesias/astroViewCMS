@@ -5,7 +5,10 @@ import { createMarkdownRenderer } from './markdown.ts';
 const fakeRenderer = () => ({
   render: vi.fn(async (body: string) => ({
     code: `<p>${body}</p>`,
-    metadata: { headings: [{ depth: 1, slug: 'a', text: 'A' }], frontmatter: { added: true } },
+    metadata: {
+      headings: [{ depth: 1, slug: 'a', text: 'A' }],
+      frontmatter: { added: true },
+    },
   })),
 });
 
@@ -13,9 +16,15 @@ describe('createMarkdownRenderer', () => {
   it('renders the draft body with the frontmatter and returns what render() of Astro returns', async () => {
     const renderer = fakeRenderer();
     const create = vi.fn(async () => renderer) as never;
-    const render = createMarkdownRenderer(() => ({ gfm: false }), undefined, create);
+    const render = createMarkdownRenderer(
+      () => ({ gfm: false }),
+      undefined,
+      create,
+    );
     const result = await render({ body: 'Hello', data: { title: 'T' } });
-    expect(renderer.render).toHaveBeenCalledWith('Hello', { frontmatter: { title: 'T' } });
+    expect(renderer.render).toHaveBeenCalledWith('Hello', {
+      frontmatter: { title: 'T' },
+    });
     expect(result.headings).toEqual([{ depth: 1, slug: 'a', text: 'A' }]);
     expect(result.remarkPluginFrontmatter).toEqual({ added: true });
     expect(typeof result.Content).toBe('function');
@@ -34,7 +43,11 @@ describe('createMarkdownRenderer', () => {
 
   it('an entry without a body renders empty', async () => {
     const renderer = fakeRenderer();
-    const render = createMarkdownRenderer(() => undefined, undefined, (async () => renderer) as never);
+    const render = createMarkdownRenderer(
+      () => undefined,
+      undefined,
+      (async () => renderer) as never,
+    );
     await render({ data: {} });
     expect(renderer.render).toHaveBeenCalledWith('', { frontmatter: {} });
   });
@@ -45,16 +58,26 @@ describe('code languages', () => {
 
   it('renders a fence outside the allowed list as text and adds a code-language limit', async () => {
     const renderer = fakeRenderer();
-    const render = createMarkdownRenderer(() => undefined, () => new Set(['javascript']), (async () => renderer) as never);
+    const render = createMarkdownRenderer(
+      () => undefined,
+      () => new Set(['javascript']),
+      (async () => renderer) as never,
+    );
     const context = createOverlayContext();
     await runWithOverlay(context, () => render({ body, data: {} }));
-    expect(renderer.render.mock.calls[0]![0]).toBe('```js\na\n```\n\n```text\nb\n```');
+    expect(renderer.render.mock.calls[0]![0]).toBe(
+      '```js\na\n```\n\n```text\nb\n```',
+    );
     expect([...context.limits]).toEqual(['code-language:cpp']);
   });
 
   it('without a list nothing is limited', async () => {
     const renderer = fakeRenderer();
-    const render = createMarkdownRenderer(() => undefined, undefined, (async () => renderer) as never);
+    const render = createMarkdownRenderer(
+      () => undefined,
+      undefined,
+      (async () => renderer) as never,
+    );
     const context = createOverlayContext();
     await runWithOverlay(context, () => render({ body, data: {} }));
     expect(renderer.render.mock.calls[0]![0]).toBe(body);
@@ -64,33 +87,62 @@ describe('code languages', () => {
   it('warmUp builds the processor and renders one fence per allowed language', async () => {
     const renderer = fakeRenderer();
     const create = vi.fn(async () => renderer) as never;
-    const render = createMarkdownRenderer(() => undefined, () => new Set(['css', 'javascript']), create);
+    const render = createMarkdownRenderer(
+      () => undefined,
+      () => new Set(['css', 'javascript']),
+      create,
+    );
     await render.warmUp();
-    expect(renderer.render.mock.calls[0]![0]).toBe('```css\n```\n\n```javascript\n```');
+    expect(renderer.render.mock.calls[0]![0]).toBe(
+      '```css\n```\n\n```javascript\n```',
+    );
     await render({ body: 'x', data: {} });
     expect(create).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('plugin failure', () => {
-  const failing = () => ({ render: vi.fn(async () => Promise.reject(new Error('plugin broke'))) });
+  const failing = () => ({
+    render: vi.fn(async () => Promise.reject(new Error('plugin broke'))),
+  });
 
   it('renders without the plugins and adds markdown-plugins to the limits', async () => {
     const plain = fakeRenderer();
-    const create = vi.fn(async (options?: { remarkPlugins?: unknown[] }) => (options?.remarkPlugins?.length === 0 ? plain : failing()));
-    const render = createMarkdownRenderer(() => ({ remarkPlugins: [() => {}] }), undefined, create as never);
+    const create = vi.fn(async (options?: { remarkPlugins?: unknown[] }) =>
+      options?.remarkPlugins?.length === 0 ? plain : failing(),
+    );
+    const render = createMarkdownRenderer(
+      () => ({ remarkPlugins: [() => {}] }),
+      undefined,
+      create as never,
+    );
     const context = createOverlayContext();
-    const result = await runWithOverlay(context, () => render({ body: 'Hello', data: {} }));
+    const result = await runWithOverlay(context, () =>
+      render({ body: 'Hello', data: {} }),
+    );
     expect(result.headings).toHaveLength(1);
     expect(plain.render).toHaveBeenCalledWith('Hello', { frontmatter: {} });
-    expect(create).toHaveBeenLastCalledWith(expect.objectContaining({ syntaxHighlight: false, remarkPlugins: [], rehypePlugins: [] }));
+    expect(create).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        syntaxHighlight: false,
+        remarkPlugins: [],
+        rehypePlugins: [],
+      }),
+    );
     expect([...context.limits]).toEqual(['markdown-plugins']);
   });
 
   it('a processor that could not be built is tried again on the next render', async () => {
     const renderer = fakeRenderer();
-    const create = vi.fn().mockRejectedValueOnce(new Error('config')).mockResolvedValue(renderer);
-    const render = createMarkdownRenderer(() => undefined, undefined, create as never);
+    const create = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('config'))
+      .mockResolvedValue(renderer);
+    const render = createMarkdownRenderer(
+      () => undefined,
+      undefined,
+      create as never,
+    );
     await render({ body: 'a', data: {} });
     const context = createOverlayContext();
     await runWithOverlay(context, () => render({ body: 'b', data: {} }));

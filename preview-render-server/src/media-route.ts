@@ -8,10 +8,14 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { mediaDir } from 'virtual:preview-site';
 import type { APIRoute } from 'astro';
 import sharp from 'sharp';
-import { mediaDir } from 'virtual:preview-site';
-import { methodNotAllowed, rejectCrossSite, rejectUnlessContentType } from './request-guard.ts';
+import {
+  methodNotAllowed,
+  rejectCrossSite,
+  rejectUnlessContentType,
+} from './request-guard.ts';
 
 export const prerender = false;
 
@@ -24,7 +28,9 @@ const EXTENSIONS: Record<string, string> = {
   'image/avif': 'avif',
   'image/gif': 'gif',
 };
-const CONTENT_TYPES = Object.fromEntries(Object.entries(EXTENSIONS).map(([type, ext]) => [ext, type]));
+const CONTENT_TYPES = Object.fromEntries(
+  Object.entries(EXTENSIONS).map(([type, ext]) => [ext, type]),
+);
 const FILE_NAME = /^[0-9a-f]{16}\.(png|jpg|webp|avif|gif)$/;
 
 /**
@@ -40,13 +46,21 @@ export const POST: APIRoute = async ({ params, request }) => {
   if (rejection) return rejection;
 
   // The extension comes from the declared content type, never from user input.
-  const ext = EXTENSIONS[(request.headers.get('content-type') ?? '').split(';')[0]!.trim()];
+  const ext =
+    EXTENSIONS[
+      (request.headers.get('content-type') ?? '').split(';')[0]!.trim()
+    ];
   if (!ext) {
-    return new Response(`Supported types: ${Object.keys(EXTENSIONS).join(', ')}`, { status: 415 });
+    return new Response(
+      `Supported types: ${Object.keys(EXTENSIONS).join(', ')}`,
+      { status: 415 },
+    );
   }
   const bytes = Buffer.from(await request.arrayBuffer());
   if (bytes.length === 0 || bytes.length > MAX_BYTES) {
-    return new Response('Image must be between 1 byte and 10 MB', { status: 413 });
+    return new Response('Image must be between 1 byte and 10 MB', {
+      status: 413,
+    });
   }
 
   // Whoever stores an image measures it, once (D12): the request carries the
@@ -57,7 +71,10 @@ export const POST: APIRoute = async ({ params, request }) => {
   const name = mediaFileName(bytes, ext);
   await fs.mkdir(mediaDir, { recursive: true });
   await fs.writeFile(path.join(mediaDir, name), bytes);
-  return Response.json({ url: `/__preview-media/${name}`, ...measures }, { status: 201 });
+  return Response.json(
+    { url: `/__preview-media/${name}`, ...measures },
+    { status: 201 },
+  );
 };
 
 /**

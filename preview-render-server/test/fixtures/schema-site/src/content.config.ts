@@ -21,7 +21,10 @@ const posts = defineCollection({
     author: authorRef.optional(),
     blocks: z.array(
       z.discriminatedUnion('type', [
-        z.object({ type: z.literal('quote'), items: z.array(reference('quotes')) }),
+        z.object({
+          type: z.literal('quote'),
+          items: z.array(reference('quotes')),
+        }),
         z.object({ type: z.literal('text'), body: z.string() }),
       ]),
     ),

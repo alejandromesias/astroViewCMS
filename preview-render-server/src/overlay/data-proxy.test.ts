@@ -18,7 +18,12 @@ describe('proxyData', () => {
 
   it('reads the overlay document when there is one', () => {
     const data = proxyData(KEY, built);
-    expect(withDocs({ [KEY]: { main: [{ name: 'Draft' }], footer: [] } }, () => data.main[0]!.name).value).toBe('Draft');
+    expect(
+      withDocs(
+        { [KEY]: { main: [{ name: 'Draft' }], footer: [] } },
+        () => data.main[0]!.name,
+      ).value,
+    ).toBe('Draft');
   });
 
   it('works for spread, Object.keys and JSON, which need more than get', () => {
@@ -37,21 +42,40 @@ describe('proxyData', () => {
   });
 
   it('a named export reads its own key of the overlay document', () => {
-    const nav = proxyData('data:src/config/config.json', { label: 'Go' }, 'nav_button');
-    const { value } = withDocs({ 'data:src/config/config.json': { nav_button: { label: 'Draft go' } } }, () => nav.label);
+    const nav = proxyData(
+      'data:src/config/config.json',
+      { label: 'Go' },
+      'nav_button',
+    );
+    const { value } = withDocs(
+      { 'data:src/config/config.json': { nav_button: { label: 'Draft go' } } },
+      () => nav.label,
+    );
     expect(value).toBe('Draft go');
   });
 
   it('falls back to the built value when the draft lacks that key or the document is null', () => {
-    const nav = proxyData('data:src/config/config.json', { label: 'Go' }, 'nav_button');
-    expect(withDocs({ 'data:src/config/config.json': {} }, () => nav.label).value).toBe('Go');
-    expect(withDocs({ 'data:src/config/config.json': null }, () => nav.label).value).toBe('Go');
+    const nav = proxyData(
+      'data:src/config/config.json',
+      { label: 'Go' },
+      'nav_button',
+    );
+    expect(
+      withDocs({ 'data:src/config/config.json': {} }, () => nav.label).value,
+    ).toBe('Go');
+    expect(
+      withDocs({ 'data:src/config/config.json': null }, () => nav.label).value,
+    ).toBe('Go');
   });
 
   it('an array document behaves as an array', () => {
     const list = proxyData('data:src/list.json', ['a', 'b']);
     expect(Array.isArray(list)).toBe(true);
-    expect(withDocs({ 'data:src/list.json': ['x', 'y', 'z'] }, () => list.map((s) => s.toUpperCase())).value).toEqual(['X', 'Y', 'Z']);
+    expect(
+      withDocs({ 'data:src/list.json': ['x', 'y', 'z'] }, () =>
+        list.map((s) => s.toUpperCase()),
+      ).value,
+    ).toEqual(['X', 'Y', 'Z']);
   });
 
   it('logs every read', () => {
@@ -62,10 +86,13 @@ describe('proxyData', () => {
   it('concurrent renders see their own drafts', async () => {
     const data = proxyData(KEY, built);
     const read = (name: string, delay: number) =>
-      runWithOverlay(createOverlayContext({ documents: { [KEY]: { main: [{ name }] } } }), async () => {
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        return data.main[0]!.name;
-      });
+      runWithOverlay(
+        createOverlayContext({ documents: { [KEY]: { main: [{ name }] } } }),
+        async () => {
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          return data.main[0]!.name;
+        },
+      );
     expect(await Promise.all([read('A', 5), read('B', 1)])).toEqual(['A', 'B']);
   });
 });

@@ -33,28 +33,41 @@ export interface DevDocument {
  *  editor shows the same document the build did. Dates stay as text. */
 const parseYaml = (text: string): unknown => parse(text, { merge: true });
 
-const FRONTMATTER = /^---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)([\s\S]*)$/;
+const FRONTMATTER =
+  /^---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)([\s\S]*)$/;
 
 /** `{ data, body }` of a Markdown or MDX file: the YAML between the `---`
  *  fences and the text after them. A file without fences is all body. */
-export function splitFrontmatter(text: string): { data: unknown; body: string } {
+export function splitFrontmatter(text: string): {
+  data: unknown;
+  body: string;
+} {
   const match = FRONTMATTER.exec(text);
   if (!match) return { data: {}, body: text };
-  return { data: (match[1] === undefined ? undefined : parseYaml(match[1])) ?? {}, body: match[2]!.replace(/^(?:\r?\n)+/, '') };
+  return {
+    data: (match[1] === undefined ? undefined : parseYaml(match[1])) ?? {},
+    body: match[2]!.replace(/^(?:\r?\n)+/, ''),
+  };
 }
 
 /** The document's raw value (D2): the parsed object for JSON and YAML, the
  *  entry at `entryKey` for a `file()` entry, `{ data, body }` for Markdown and
  *  MDX. */
-export function parseDocument(text: string, record: Pick<DocumentRecord, 'format' | 'entryKey'>): unknown {
+export function parseDocument(
+  text: string,
+  record: Pick<DocumentRecord, 'format' | 'entryKey'>,
+): unknown {
   switch (record.format) {
     case 'md':
     case 'mdx':
       return splitFrontmatter(text);
     case 'json':
     case 'yaml': {
-      const parsed: unknown = record.format === 'json' ? JSON.parse(text) : parseYaml(text);
-      return record.entryKey === undefined ? parsed : entryOf(parsed, record.entryKey);
+      const parsed: unknown =
+        record.format === 'json' ? JSON.parse(text) : parseYaml(text);
+      return record.entryKey === undefined
+        ? parsed
+        : entryOf(parsed, record.entryKey);
     }
     default:
       throw new Error(`Cannot read a ${record.format} document`);
@@ -66,7 +79,10 @@ export function parseDocument(text: string, record: Pick<DocumentRecord, 'format
 function entryOf(parsed: unknown, id: string): unknown {
   const entry = Array.isArray(parsed)
     ? parsed.find((item) => {
-        const itemId = typeof item === 'object' && item !== null ? (item as { id?: unknown }).id : undefined;
+        const itemId =
+          typeof item === 'object' && item !== null
+            ? (item as { id?: unknown }).id
+            : undefined;
         return itemId !== undefined && String(itemId) === id;
       })
     : typeof parsed === 'object' && parsed !== null && Object.hasOwn(parsed, id)
@@ -78,7 +94,10 @@ function entryOf(parsed: unknown, id: string): unknown {
 
 /** 200 with the document, 400 without a key, 404 for a key the build doesn't
  *  list or a file that is gone, 500 for a file that doesn't parse. */
-export function handleDocument(request: Request, deps: DevDocumentsDeps): Response {
+export function handleDocument(
+  request: Request,
+  deps: DevDocumentsDeps,
+): Response {
   if (request.method !== 'GET') return methodNotAllowed('GET');
   const rejection = rejectCrossSite(request);
   if (rejection) return rejection;
@@ -86,7 +105,8 @@ export function handleDocument(request: Request, deps: DevDocumentsDeps): Respon
   const key = new URL(request.url).searchParams.get('key');
   if (!key) return new Response('Missing ?key=', { status: 400 });
   const record = deps.documents()?.find((doc) => doc.key === key);
-  if (!record?.file) return new Response(`Unknown document "${key}"`, { status: 404 });
+  if (!record?.file)
+    return new Response(`Unknown document "${key}"`, { status: 404 });
 
   const answer: DevDocument = {
     key,
@@ -94,16 +114,22 @@ export function handleDocument(request: Request, deps: DevDocumentsDeps): Respon
     format: record.format,
     ...(record.editable === false ? { editable: false as const } : {}),
     buildTime: record.buildTime,
-    ...(record.buildTimeFields ? { buildTimeFields: record.buildTimeFields } : {}),
+    ...(record.buildTimeFields
+      ? { buildTimeFields: record.buildTimeFields }
+      : {}),
   };
   // Read-only formats (D13) are listed without a value: the preview shows them as built.
   if (record.editable === false) return Response.json(answer);
 
   const text = deps.readFile(record.file);
-  if (text === undefined) return new Response(`File not found: ${record.file}`, { status: 404 });
+  if (text === undefined)
+    return new Response(`File not found: ${record.file}`, { status: 404 });
   try {
     return Response.json({ ...answer, value: parseDocument(text, record) });
   } catch (error) {
-    return new Response(`Cannot parse ${record.file}: ${(error as Error).message}`, { status: 500 });
+    return new Response(
+      `Cannot parse ${record.file}: ${(error as Error).message}`,
+      { status: 500 },
+    );
   }
 }

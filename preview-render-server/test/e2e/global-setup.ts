@@ -2,7 +2,7 @@
 // folder (.build/e2e-*, via PREVIEW_BUILD_DIR), starts `npm start`'s script on
 // a free port and hands its URL to the tests. The usual .build/<site> output
 // and a server already running on the usual port are left alone.
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -19,7 +19,13 @@ const SERVER_DIR = path.resolve(import.meta.dirname, '../..');
 const SITE_CONFIG = 'sites/sample-site.config.ts';
 // Astro 7 sends `astro` commands to the background when it detects an AI
 // agent (see HANDOFF environment notes); clear those markers for children.
-const AGENT_VARS = ['AI_AGENT', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_CHILD_SESSION', 'CLAUDE_AGENT_SDK_VERSION'];
+const AGENT_VARS = [
+  'AI_AGENT',
+  'CLAUDECODE',
+  'CLAUDE_CODE_ENTRYPOINT',
+  'CLAUDE_CODE_CHILD_SESSION',
+  'CLAUDE_AGENT_SDK_VERSION',
+];
 
 let server: ChildProcess | undefined;
 let buildDir: string | undefined;
@@ -29,7 +35,11 @@ export async function setup(project: TestProject) {
   // packages from node_modules, during prerendering and at runtime.
   fs.mkdirSync(path.join(SERVER_DIR, '.build'), { recursive: true });
   buildDir = fs.mkdtempSync(path.join(SERVER_DIR, '.build', 'e2e-'));
-  const env: NodeJS.ProcessEnv = { ...process.env, PREVIEW_BUILD_DIR: buildDir, PREVIEW_DEV: '1' };
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    PREVIEW_BUILD_DIR: buildDir,
+    PREVIEW_DEV: '1',
+  };
   for (const name of AGENT_VARS) delete env[name];
 
   const build = spawnSync(process.execPath, ['src/build.ts', SITE_CONFIG], {
@@ -39,7 +49,9 @@ export async function setup(project: TestProject) {
     timeout: 180_000,
   });
   if (build.status !== 0) {
-    throw new Error(`Preview build failed (${build.status}):\n${build.stdout}\n${build.stderr}`);
+    throw new Error(
+      `Preview build failed (${build.status}):\n${build.stdout}\n${build.stderr}`,
+    );
   }
 
   const port = await freePort();
@@ -74,10 +86,15 @@ function freePort(): Promise<number> {
   });
 }
 
-async function waitForServer(baseUrl: string, output: () => string, timeoutMs = 20_000) {
+async function waitForServer(
+  baseUrl: string,
+  output: () => string,
+  timeoutMs = 20_000,
+) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (server?.exitCode !== null) throw new Error(`Preview server exited:\n${output()}`);
+    if (server?.exitCode !== null)
+      throw new Error(`Preview server exited:\n${output()}`);
     try {
       await fetch(baseUrl);
       return;
@@ -85,5 +102,7 @@ async function waitForServer(baseUrl: string, output: () => string, timeoutMs = 
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
   }
-  throw new Error(`Preview server did not start within ${timeoutMs} ms:\n${output()}`);
+  throw new Error(
+    `Preview server did not start within ${timeoutMs} ms:\n${output()}`,
+  );
 }

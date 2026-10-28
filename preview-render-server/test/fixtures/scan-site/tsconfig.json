@@ -4,8 +4,8 @@
     "baseUrl": ".",
     "paths": {
       "@/components/*": ["./src/layouts/*"],
-      "@/*": ["./src/*"],
+      "@/*": ["./src/*"]
     }
   },
-  "include": ["**/*.ts", "src/**/*.astro"], // globs hold a comment terminator
+  "include": ["**/*.ts", "src/**/*.astro"] // globs hold a comment terminator
 }

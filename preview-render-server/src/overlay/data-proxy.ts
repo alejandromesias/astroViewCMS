@@ -7,14 +7,21 @@ import { currentOverlay, hasDocument } from './context.ts';
 
 /** `built` is the whole file (default export) or one top-level value (a named
  *  export, `pick` being its name). */
-export function proxyData<T extends object>(key: string, built: T, pick?: string): T {
+export function proxyData<T extends object>(
+  key: string,
+  built: T,
+  pick?: string,
+): T {
   const current = (): object => {
     const context = currentOverlay();
     if (!context) return built;
     context.reads.add(key);
     if (!hasDocument(context, key)) return built;
     const draft = context.documents[key];
-    const value = pick === undefined ? draft : (draft as Record<string, unknown> | null | undefined)?.[pick];
+    const value =
+      pick === undefined
+        ? draft
+        : (draft as Record<string, unknown> | null | undefined)?.[pick];
     return typeof value === 'object' && value !== null ? value : built;
   };
   return new Proxy(built, {

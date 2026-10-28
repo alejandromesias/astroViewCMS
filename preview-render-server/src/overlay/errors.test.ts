@@ -20,16 +20,23 @@ describe('DraftError', () => {
   });
 
   it('says which draft failed and lists each field as dotted path and message', () => {
-    expect(error.message).toBe('Draft posts/hello does not match its schema: blocks.2.title: Required; date: Invalid date');
+    expect(error.message).toBe(
+      'Draft posts/hello does not match its schema: blocks.2.title: Required; date: Invalid date',
+    );
   });
 
   it('lists a single issue without a separator, and an empty list as nothing', () => {
-    expect(new DraftError('a', [{ path: ['x'], message: 'bad' }]).message).toBe('Draft a does not match its schema: x: bad');
-    expect(new DraftError('a', []).message).toBe('Draft a does not match its schema: ');
+    expect(new DraftError('a', [{ path: ['x'], message: 'bad' }]).message).toBe(
+      'Draft a does not match its schema: x: bad',
+    );
+    expect(new DraftError('a', []).message).toBe(
+      'Draft a does not match its schema: ',
+    );
   });
 
   it('shows an issue on the whole document with an empty path', () => {
-    expect(new DraftError('a', [{ path: [], message: 'bad' }]).message).toBe('Draft a does not match its schema: : bad');
+    expect(new DraftError('a', [{ path: [], message: 'bad' }]).message).toBe(
+      'Draft a does not match its schema: : bad',
+    );
   });
-
 });

@@ -20,5 +20,9 @@ export function mediaMetadata(entry: MediaEntry): TaggedImageMetadata {
 }
 
 export function isMediaMetadata(value: unknown): value is TaggedImageMetadata {
-  return typeof value === 'object' && value !== null && (value as Record<symbol, unknown>)[MEDIA_TAG] === true;
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as Record<symbol, unknown>)[MEDIA_TAG] === true
+  );
 }

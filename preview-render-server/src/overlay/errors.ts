@@ -11,7 +11,9 @@ export class DraftError extends Error {
   readonly issues: FieldIssue[];
 
   constructor(key: string, issues: FieldIssue[]) {
-    super(`Draft ${key} does not match its schema: ${issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`);
+    super(
+      `Draft ${key} does not match its schema: ${issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`,
+    );
     this.name = 'DraftError';
     this.key = key;
     this.issues = issues;

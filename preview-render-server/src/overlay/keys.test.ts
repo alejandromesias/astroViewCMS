@@ -12,7 +12,10 @@ describe('keys', () => {
 describe('splitKey', () => {
   it('splits at the first slash, so the id may contain slashes', () => {
     expect(splitKey('blog/post')).toEqual({ collection: 'blog', id: 'post' });
-    expect(splitKey('blog/2025/post')).toEqual({ collection: 'blog', id: '2025/post' });
+    expect(splitKey('blog/2025/post')).toEqual({
+      collection: 'blog',
+      id: '2025/post',
+    });
     expect(splitKey('a/b')).toEqual({ collection: 'a', id: 'b' });
   });
 
@@ -27,7 +30,10 @@ describe('splitKey', () => {
   });
 
   it('only treats the prefix at the start as a data key', () => {
-    expect(splitKey('blog/data:x')).toEqual({ collection: 'blog', id: 'data:x' });
+    expect(splitKey('blog/data:x')).toEqual({
+      collection: 'blog',
+      id: 'data:x',
+    });
     expect(splitKey('xdata:a/b')).toEqual({ collection: 'xdata:a', id: 'b' });
     expect(splitKey('Data:a/b')).toEqual({ collection: 'Data:a', id: 'b' });
   });
@@ -40,6 +46,9 @@ describe('splitKey', () => {
   });
 
   it('round-trips with entryKey', () => {
-    expect(splitKey(entryKey('docs', 'guide/intro'))).toEqual({ collection: 'docs', id: 'guide/intro' });
+    expect(splitKey(entryKey('docs', 'guide/intro'))).toEqual({
+      collection: 'docs',
+      id: 'guide/intro',
+    });
   });
 });

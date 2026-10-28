@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { currentOverlay } from '../overlay/context.ts';
 import { DraftError } from '../overlay/errors.ts';
-import { handleRender, handleValidate } from './handlers.ts';
 import type { HandlerDeps } from './handlers.ts';
+import { handleRender, handleValidate } from './handlers.ts';
 import { NotFoundError } from './render-page.ts';
 
-const page = { html: '<html><head><title>T</title><meta name="a" content="b"></head><body>hi</body></html>', route: '/', pathsMs: 1, renderMs: 2 };
+const page = {
+  html: '<html><head><title>T</title><meta name="a" content="b"></head><body>hi</body></html>',
+  route: '/',
+  pathsMs: 1,
+  renderMs: 2,
+};
 
 function makeDeps(overrides: Partial<HandlerDeps> = {}): HandlerDeps {
   return {
@@ -16,7 +21,14 @@ function makeDeps(overrides: Partial<HandlerDeps> = {}): HandlerDeps {
   };
 }
 
-const post = (body: unknown, { path = '/', type = 'application/json', headers = {} as Record<string, string> } = {}) =>
+const post = (
+  body: unknown,
+  {
+    path = '/',
+    type = 'application/json',
+    headers = {} as Record<string, string>,
+  } = {},
+) =>
   new Request(`http://x/__preview/render?path=${encodeURIComponent(path)}`, {
     method: 'POST',
     headers: { 'content-type': type, ...headers },
@@ -34,9 +46,14 @@ describe('handleRender', () => {
         return page;
       }),
     });
-    const response = await handleRender(post({ documents: { 'blog/new': { data: {} } } }, { path: '/blog?x=1' }), deps);
+    const response = await handleRender(
+      post({ documents: { 'blog/new': { data: {} } } }, { path: '/blog?x=1' }),
+      deps,
+    );
     expect(response.status).toBe(200);
-    expect(response.headers.get('server-timing')).toBe('paths;dur=1.0, render;dur=2.0');
+    expect(response.headers.get('server-timing')).toBe(
+      'paths;dur=1.0, render;dur=2.0',
+    );
     expect(response.headers.get('cache-control')).toBe('no-store');
     const body = await response.json();
     expect(body).toMatchObject({
@@ -58,14 +75,34 @@ describe('handleRender', () => {
         return page;
       },
     });
-    await Promise.all([handleRender(post({ documents: { a: 1 } }), deps), handleRender(post({ documents: { b: 2 } }), deps)]);
+    await Promise.all([
+      handleRender(post({ documents: { a: 1 } }), deps),
+      handleRender(post({ documents: { b: 2 } }), deps),
+    ]);
     expect(seen).toEqual([{ a: 1 }, { b: 2 }]);
   });
 
   it('refuses what is not JSON, the wrong content type and cross-site calls', async () => {
     const deps = makeDeps();
-    expect((await handleRender(post({ documents: {} }, { type: 'text/plain' }), deps)).status).toBe(404);
-    expect((await handleRender(post({ documents: {} }, { headers: { 'sec-fetch-site': 'cross-site' } }), deps)).status).toBe(403);
+    expect(
+      (
+        await handleRender(
+          post({ documents: {} }, { type: 'text/plain' }),
+          deps,
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await handleRender(
+          post(
+            { documents: {} },
+            { headers: { 'sec-fetch-site': 'cross-site' } },
+          ),
+          deps,
+        )
+      ).status,
+    ).toBe(403);
     expect((await handleRender(post('{not json'), deps)).status).toBe(400);
     expect(deps.renderPage).not.toHaveBeenCalled();
   });
@@ -76,10 +113,36 @@ describe('handleRender', () => {
       ['"text"', /JSON object/],
       [{}, /"documents" must be an object/],
       [{ documents: [] }, /"documents" must be an object/],
-      [{ documents: {}, media: { 'x.png': { url: 1, width: 1, height: 1, format: 'png' } } }, /"url" must be a string/],
-      [{ documents: {}, media: { 'x.png': { url: 'u', width: 0, height: 1, format: 'png' } } }, /"width"/],
-      [{ documents: {}, media: { 'x.png': { url: 'u', width: 1.5, height: 1, format: 'png' } } }, /"width"/],
-      [{ documents: {}, media: { 'x.png': { url: 'u', width: 1, height: 1, format: 'bmp' } } }, /"format"/],
+      [
+        {
+          documents: {},
+          media: { 'x.png': { url: 1, width: 1, height: 1, format: 'png' } },
+        },
+        /"url" must be a string/,
+      ],
+      [
+        {
+          documents: {},
+          media: { 'x.png': { url: 'u', width: 0, height: 1, format: 'png' } },
+        },
+        /"width"/,
+      ],
+      [
+        {
+          documents: {},
+          media: {
+            'x.png': { url: 'u', width: 1.5, height: 1, format: 'png' },
+          },
+        },
+        /"width"/,
+      ],
+      [
+        {
+          documents: {},
+          media: { 'x.png': { url: 'u', width: 1, height: 1, format: 'bmp' } },
+        },
+        /"format"/,
+      ],
     ] as const) {
       const response = await handleRender(post(body), deps);
       expect(response.status).toBe(400);
@@ -89,42 +152,79 @@ describe('handleRender', () => {
 
   it('400 when the path is missing or not a path', async () => {
     const deps = makeDeps();
-    expect((await handleRender(post({ documents: {} }, { path: 'blog' }), deps)).status).toBe(400);
-    expect((await handleRender(post({ documents: {} }, { path: '//evil.example/x' }), deps)).status).toBe(400);
-    expect((await handleRender(new Request('http://x/__preview/render', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"documents":{}}' }), deps)).status).toBe(400);
+    expect(
+      (await handleRender(post({ documents: {} }, { path: 'blog' }), deps))
+        .status,
+    ).toBe(400);
+    expect(
+      (
+        await handleRender(
+          post({ documents: {} }, { path: '//evil.example/x' }),
+          deps,
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await handleRender(
+          new Request('http://x/__preview/render', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: '{"documents":{}}',
+          }),
+          deps,
+        )
+      ).status,
+    ).toBe(400);
   });
 
   it('404 when no page matches', async () => {
-    const deps = makeDeps({ renderPage: async () => Promise.reject(new NotFoundError('/nope')) });
-    const response = await handleRender(post({ documents: {} }, { path: '/nope' }), deps);
+    const deps = makeDeps({
+      renderPage: async () => Promise.reject(new NotFoundError('/nope')),
+    });
+    const response = await handleRender(
+      post({ documents: {} }, { path: '/nope' }),
+      deps,
+    );
     expect(response.status).toBe(404);
     expect(await response.text()).toContain('/nope');
   });
 
   it('422 lists every failing field when a draft does not fit its schema, also when Astro wraps the error', async () => {
-    const draft = new DraftError('blog/a', [{ path: ['title'], message: 'required' }]);
+    const draft = new DraftError('blog/a', [
+      { path: ['title'], message: 'required' },
+    ]);
     const wrapped = Object.assign(new Error('render failed'), { cause: draft });
     const all = [
       { key: 'blog/a', path: ['title'], message: 'required' },
       { key: 'authors/b', path: ['name'], message: 'bad' },
     ];
-    const deps = makeDeps({ renderPage: async () => Promise.reject(wrapped), validate: vi.fn(async () => all) });
+    const deps = makeDeps({
+      renderPage: async () => Promise.reject(wrapped),
+      validate: vi.fn(async () => all),
+    });
     const response = await handleRender(post({ documents: {} }), deps);
     expect(response.status).toBe(422);
     expect(await response.json()).toEqual({ errors: all });
   });
 
   it('422 falls back to the error the render hit when validation finds nothing', async () => {
-    const draft = new DraftError('blog/a', [{ path: ['title'], message: 'required' }]);
+    const draft = new DraftError('blog/a', [
+      { path: ['title'], message: 'required' },
+    ]);
     const deps = makeDeps({ renderPage: async () => Promise.reject(draft) });
     const response = await handleRender(post({ documents: {} }), deps);
     expect(response.status).toBe(422);
-    expect(await response.json()).toEqual({ errors: [{ key: 'blog/a', path: ['title'], message: 'required' }] });
+    expect(await response.json()).toEqual({
+      errors: [{ key: 'blog/a', path: ['title'], message: 'required' }],
+    });
   });
 
   it('500 with the message for any other error', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    const deps = makeDeps({ renderPage: async () => Promise.reject(new Error('component broke')) });
+    const deps = makeDeps({
+      renderPage: async () => Promise.reject(new Error('component broke')),
+    });
     const response = await handleRender(post({ documents: {} }), deps);
     expect(response.status).toBe(500);
     expect(await response.text()).toContain('component broke');
@@ -133,11 +233,18 @@ describe('handleRender', () => {
 
 describe('handleValidate', () => {
   const validateRequest = (body: unknown) =>
-    new Request('http://x/__preview/validate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    new Request('http://x/__preview/validate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
 
   it('200 valid when every document fits, and renders nothing', async () => {
     const deps = makeDeps();
-    const response = await handleValidate(validateRequest({ documents: { 'blog/a': {} } }), deps);
+    const response = await handleValidate(
+      validateRequest({ documents: { 'blog/a': {} } }),
+      deps,
+    );
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ valid: true });
     expect(deps.renderPage).not.toHaveBeenCalled();
@@ -147,7 +254,10 @@ describe('handleValidate', () => {
   it('422 with the errors', async () => {
     const errors = [{ key: 'blog/a', path: ['title'], message: 'required' }];
     const deps = makeDeps({ validate: async () => errors });
-    const response = await handleValidate(validateRequest({ documents: { 'blog/a': {} } }), deps);
+    const response = await handleValidate(
+      validateRequest({ documents: { 'blog/a': {} } }),
+      deps,
+    );
     expect(response.status).toBe(422);
     expect(await response.json()).toEqual({ errors });
   });
@@ -161,40 +271,57 @@ describe('handleValidate', () => {
 
 // -- Failure paths and details -------------------------------------------------
 
-const draftError = () => new DraftError('blog/a', [{ path: ['title'], message: 'required' }]);
+const draftError = () =>
+  new DraftError('blog/a', [{ path: ['title'], message: 'required' }]);
 /** An error whose `cause` chain holds `inner` after `depth` wrappers. */
 const wrapped = (inner: unknown, depth: number) => {
   let error = inner;
-  for (let i = 0; i < depth; i++) error = Object.assign(new Error(`wrapper ${i}`), { cause: error });
+  for (let i = 0; i < depth; i++)
+    error = Object.assign(new Error(`wrapper ${i}`), { cause: error });
   return error;
 };
-const failingRender = (error: unknown) => makeDeps({ renderPage: async () => Promise.reject(error) });
+const failingRender = (error: unknown) =>
+  makeDeps({ renderPage: async () => Promise.reject(error) });
 
 describe('handleRender: how far down a cause chain a DraftError is found', () => {
   it.each([0, 1, 2, 3, 4])('finds it under %i wrappers', async (depth) => {
-    const response = await handleRender(post({ documents: {} }), failingRender(wrapped(draftError(), depth)));
+    const response = await handleRender(
+      post({ documents: {} }),
+      failingRender(wrapped(draftError(), depth)),
+    );
     expect(response.status).toBe(422);
   });
 
   it('gives up after five errors in the chain', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    const response = await handleRender(post({ documents: {} }), failingRender(wrapped(draftError(), 5)));
+    const response = await handleRender(
+      post({ documents: {} }),
+      failingRender(wrapped(draftError(), 5)),
+    );
     expect(response.status).toBe(500);
   });
 
   it('stops at an error without a cause', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    const response = await handleRender(post({ documents: {} }), failingRender(wrapped(new Error('plain'), 2)));
+    const response = await handleRender(
+      post({ documents: {} }),
+      failingRender(wrapped(new Error('plain'), 2)),
+    );
     expect(response.status).toBe(500);
   });
 });
 
 describe('handleRender: the failure answers', () => {
   it('uses the issues of the error when validating again fails', async () => {
-    const deps = makeDeps({ renderPage: async () => Promise.reject(draftError()), validate: async () => Promise.reject(new Error('validate broke')) });
+    const deps = makeDeps({
+      renderPage: async () => Promise.reject(draftError()),
+      validate: async () => Promise.reject(new Error('validate broke')),
+    });
     const response = await handleRender(post({ documents: {} }), deps);
     expect(response.status).toBe(422);
-    expect(await response.json()).toEqual({ errors: [{ key: 'blog/a', path: ['title'], message: 'required' }] });
+    expect(await response.json()).toEqual({
+      errors: [{ key: 'blog/a', path: ['title'], message: 'required' }],
+    });
   });
 
   it('validates again inside the overlay of the request', async () => {
@@ -211,7 +338,10 @@ describe('handleRender: the failure answers', () => {
   });
 
   it('answers 422 as JSON that is not cached', async () => {
-    const response = await handleRender(post({ documents: {} }), failingRender(draftError()));
+    const response = await handleRender(
+      post({ documents: {} }),
+      failingRender(draftError()),
+    );
     expect(response.headers.get('content-type')).toBe('application/json');
     expect(response.headers.get('cache-control')).toBe('no-store');
   });
@@ -219,10 +349,16 @@ describe('handleRender: the failure answers', () => {
   it('answers 500 with the message, and logs the error with the path', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     const error = new Error('component broke');
-    const response = await handleRender(post({ documents: {} }, { path: '/blog/x' }), failingRender(error));
+    const response = await handleRender(
+      post({ documents: {} }, { path: '/blog/x' }),
+      failingRender(error),
+    );
     expect(response.status).toBe(500);
     expect(await response.text()).toBe('Page render failed: component broke');
-    expect(log).toHaveBeenCalledWith('[preview] render of "/blog/x" failed:', error);
+    expect(log).toHaveBeenCalledWith(
+      '[preview] render of "/blog/x" failed:',
+      error,
+    );
   });
 
   it.each([
@@ -231,13 +367,19 @@ describe('handleRender: the failure answers', () => {
     ['a number', 42, '42'],
   ])('answers 500 when %s was thrown', async (_name, thrown, message) => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    const response = await handleRender(post({ documents: {} }), failingRender(thrown));
+    const response = await handleRender(
+      post({ documents: {} }),
+      failingRender(thrown),
+    );
     expect(response.status).toBe(500);
     expect(await response.text()).toBe(`Page render failed: ${message}`);
   });
 
   it('answers 404 with the message of the error, as plain text', async () => {
-    const response = await handleRender(post({ documents: {} }), failingRender(new NotFoundError('/nope')));
+    const response = await handleRender(
+      post({ documents: {} }),
+      failingRender(new NotFoundError('/nope')),
+    );
     expect(response.status).toBe(404);
     expect(await response.text()).toBe(new NotFoundError('/nope').message);
   });
@@ -248,28 +390,52 @@ describe('handleRender: request checks', () => {
     const deps = makeDeps();
     const notJson = await handleRender(post('{not json'), deps);
     expect(await notJson.text()).toBe('Body must be JSON');
-    const badPath = await handleRender(post({ documents: {} }, { path: 'blog' }), deps);
-    expect(await badPath.text()).toBe('Query "path" must be a URL path starting with "/"');
+    const badPath = await handleRender(
+      post({ documents: {} }, { path: 'blog' }),
+      deps,
+    );
+    expect(await badPath.text()).toBe(
+      'Query "path" must be a URL path starting with "/"',
+    );
   });
 
   it('accepts paths that start with one slash, also with //inside, and refuses an empty one', async () => {
     const deps = makeDeps();
-    expect((await handleRender(post({ documents: {} }, { path: '/a//b' }), deps)).status).toBe(200);
-    expect((await handleRender(post({ documents: {} }, { path: '/' }), deps)).status).toBe(200);
-    expect((await handleRender(post({ documents: {} }, { path: '' }), deps)).status).toBe(400);
-    expect((await handleRender(post({ documents: {} }, { path: '/\\evil' }), deps)).status).toBe(200);
+    expect(
+      (await handleRender(post({ documents: {} }, { path: '/a//b' }), deps))
+        .status,
+    ).toBe(200);
+    expect(
+      (await handleRender(post({ documents: {} }, { path: '/' }), deps)).status,
+    ).toBe(200);
+    expect(
+      (await handleRender(post({ documents: {} }, { path: '' }), deps)).status,
+    ).toBe(400);
+    expect(
+      (await handleRender(post({ documents: {} }, { path: '/\\evil' }), deps))
+        .status,
+    ).toBe(200);
   });
 
   it('accepts JSON with a charset', async () => {
-    const response = await handleRender(post({ documents: {} }, { type: 'application/json; charset=utf-8' }), makeDeps());
+    const response = await handleRender(
+      post({ documents: {} }, { type: 'application/json; charset=utf-8' }),
+      makeDeps(),
+    );
     expect(response.status).toBe(200);
   });
 
   it('answers 403 "Forbidden" and 404 "Not Found" from the guard', async () => {
     const deps = makeDeps();
-    const cross = await handleRender(post({ documents: {} }, { headers: { 'sec-fetch-site': 'cross-site' } }), deps);
+    const cross = await handleRender(
+      post({ documents: {} }, { headers: { 'sec-fetch-site': 'cross-site' } }),
+      deps,
+    );
     expect(await cross.text()).toBe('Forbidden');
-    const other = await handleRender(post({ documents: {} }, { type: 'text/plain' }), deps);
+    const other = await handleRender(
+      post({ documents: {} }, { type: 'text/plain' }),
+      deps,
+    );
     expect(await other.text()).toBe('Not Found');
   });
 
@@ -281,8 +447,16 @@ describe('handleRender: request checks', () => {
         return page;
       },
     });
-    const entry = { url: '/__preview-media/a.png', width: 2, height: 3, format: 'png' };
-    await handleRender(post({ documents: {}, media: { 'a.png': entry } }), deps);
+    const entry = {
+      url: '/__preview-media/a.png',
+      width: 2,
+      height: 3,
+      format: 'png',
+    };
+    await handleRender(
+      post({ documents: {}, media: { 'a.png': entry } }),
+      deps,
+    );
     expect(media).toEqual({ 'a.png': entry });
   });
 });
@@ -293,56 +467,86 @@ describe('handleRender: the answer', () => {
   it('rounds the render time to one decimal', async () => {
     const now = vi.spyOn(performance, 'now');
     now.mockReturnValueOnce(100).mockReturnValueOnce(112.36);
-    const body = await (await handleRender(post({ documents: {} }), makeDeps())).json();
+    const body = await (
+      await handleRender(post({ documents: {} }), makeDeps())
+    ).json();
     expect(body.renderMs).toBe(12.4);
   });
 
   it('measures from before the render to after it', async () => {
     const now = vi.spyOn(performance, 'now');
     now.mockReturnValueOnce(5).mockReturnValueOnce(7);
-    const body = await (await handleRender(post({ documents: {} }), makeDeps())).json();
+    const body = await (
+      await handleRender(post({ documents: {} }), makeDeps())
+    ).json();
     expect(body.renderMs).toBe(2);
   });
 
   it('gives the timings of the page with one decimal', async () => {
-    const deps = makeDeps({ renderPage: async () => ({ ...page, pathsMs: 1.26, renderMs: 20 }) });
+    const deps = makeDeps({
+      renderPage: async () => ({ ...page, pathsMs: 1.26, renderMs: 20 }),
+    });
     const response = await handleRender(post({ documents: {} }), deps);
-    expect(response.headers.get('server-timing')).toBe('paths;dur=1.3, render;dur=20.0');
+    expect(response.headers.get('server-timing')).toBe(
+      'paths;dur=1.3, render;dur=20.0',
+    );
     expect(response.headers.get('content-type')).toBe('application/json');
   });
 
   it('sorts the limits', async () => {
     const deps = makeDeps({
       renderPage: async () => {
-        for (const limit of ['mdx-body', 'code-language:ruby', 'code-language:cpp']) currentOverlay()!.limits.add(limit as never);
+        for (const limit of [
+          'mdx-body',
+          'code-language:ruby',
+          'code-language:cpp',
+        ])
+          currentOverlay()!.limits.add(limit as never);
         return page;
       },
     });
-    const body = await (await handleRender(post({ documents: {} }), deps)).json();
-    expect(body.limits).toEqual(['code-language:cpp', 'code-language:ruby', 'mdx-body']);
+    const body = await (
+      await handleRender(post({ documents: {} }), deps)
+    ).json();
+    expect(body.limits).toEqual([
+      'code-language:cpp',
+      'code-language:ruby',
+      'mdx-body',
+    ]);
   });
 
   it('lists no documents when the page read none and there is no built list', async () => {
     const deps = makeDeps({ builtDocuments: () => undefined });
-    const body = await (await handleRender(post({ documents: { 'blog/new': {} } }), deps)).json();
+    const body = await (
+      await handleRender(post({ documents: { 'blog/new': {} } }), deps)
+    ).json();
     expect(body.documents).toEqual([]);
   });
 
   it('has an empty limits list when the page hit none', async () => {
-    const body = await (await handleRender(post({ documents: {} }), makeDeps())).json();
+    const body = await (
+      await handleRender(post({ documents: {} }), makeDeps())
+    ).json();
     expect(body.limits).toEqual([]);
   });
 });
 
 describe('handleValidate: failures and answers', () => {
   const validateRequest = (body: unknown) =>
-    new Request('http://x/__preview/validate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    new Request('http://x/__preview/validate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
 
   it('answers 500 with the message and logs the error when validating throws', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     const error = new Error('schema broke');
     const deps = makeDeps({ validate: async () => Promise.reject(error) });
-    const response = await handleValidate(validateRequest({ documents: {} }), deps);
+    const response = await handleValidate(
+      validateRequest({ documents: {} }),
+      deps,
+    );
     expect(response.status).toBe(500);
     expect(await response.text()).toBe('Validation failed: schema broke');
     expect(log).toHaveBeenCalledWith('[preview] validation failed:', error);
@@ -351,7 +555,10 @@ describe('handleValidate: failures and answers', () => {
   it('answers 500 also when something that is not an Error was thrown', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const deps = makeDeps({ validate: async () => Promise.reject('nope') });
-    const response = await handleValidate(validateRequest({ documents: {} }), deps);
+    const response = await handleValidate(
+      validateRequest({ documents: {} }),
+      deps,
+    );
     expect(await response.text()).toBe('Validation failed: nope');
   });
 
@@ -368,15 +575,27 @@ describe('handleValidate: failures and answers', () => {
   });
 
   it('answers JSON that is not cached', async () => {
-    const ok = await handleValidate(validateRequest({ documents: {} }), makeDeps());
+    const ok = await handleValidate(
+      validateRequest({ documents: {} }),
+      makeDeps(),
+    );
     expect(ok.headers.get('content-type')).toBe('application/json');
     expect(ok.headers.get('cache-control')).toBe('no-store');
-    const bad = await handleValidate(validateRequest({ documents: {} }), makeDeps({ validate: async () => [{ key: 'a', path: [], message: 'm' }] }));
+    const bad = await handleValidate(
+      validateRequest({ documents: {} }),
+      makeDeps({
+        validate: async () => [{ key: 'a', path: [], message: 'm' }],
+      }),
+    );
     expect(bad.headers.get('content-type')).toBe('application/json');
   });
 
   it('says "Body must be JSON" for a body that is not JSON', async () => {
-    const request = new Request('http://x/__preview/validate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{' });
+    const request = new Request('http://x/__preview/validate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{',
+    });
     const response = await handleValidate(request, makeDeps());
     expect(response.status).toBe(400);
     expect(await response.text()).toBe('Body must be JSON');

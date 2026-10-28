@@ -57,23 +57,40 @@ export const reference = (collection: string) =>
     .transform((value, ctx) => {
       const id = typeof value === 'string' ? value : value.id;
       if (!hooks.referenceExists(collection, id)) {
-        ctx.addIssue({ code: 'custom', message: `${collection}/${id} does not exist` });
+        ctx.addIssue({
+          code: 'custom',
+          message: `${collection}/${id} does not exist`,
+        });
         return z.NEVER;
       }
       return { collection, id };
     })
     .meta({ cms: 'reference', collection });
 
-export const glob = (options: { pattern: string | string[]; base?: string }): LoaderInfo => ({
+export const glob = (options: {
+  pattern: string | string[];
+  base?: string;
+}): LoaderInfo => ({
   kind: 'glob',
   pattern: [options.pattern].flat().join(','),
   ...(options.base === undefined ? {} : { base: options.base }),
 });
-export const file = (fileName: string): LoaderInfo => ({ kind: 'file', pattern: fileName });
+export const file = (fileName: string): LoaderInfo => ({
+  kind: 'file',
+  pattern: fileName,
+});
 
-type SchemaInput = z.ZodType | ((context: { image: typeof image }) => z.ZodType);
+type SchemaInput =
+  | z.ZodType
+  | ((context: { image: typeof image }) => z.ZodType);
 
-export const defineCollection = (config: { loader?: LoaderInfo; schema?: SchemaInput }): CollectionInfo => ({
+export const defineCollection = (config: {
+  loader?: LoaderInfo;
+  schema?: SchemaInput;
+}): CollectionInfo => ({
   loader: config.loader,
-  schema: typeof config.schema === 'function' ? config.schema({ image }) : config.schema,
+  schema:
+    typeof config.schema === 'function'
+      ? config.schema({ image })
+      : config.schema,
 });
