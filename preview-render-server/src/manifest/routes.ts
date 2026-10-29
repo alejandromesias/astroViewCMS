@@ -38,6 +38,7 @@ export function shapeRoutes(
         dynamic,
         params: route.params,
         restParams: [...route.pattern.matchAll(REST_PARAM)].map(
+          // biome-ignore lint/style/noNonNullAssertion: capture group of a pattern in which it always participates
           (match) => match[1]!,
         ),
         hasStaticPaths:

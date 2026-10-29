@@ -19,6 +19,7 @@ export function extractHead(html: string): PageHead {
   const title = TITLE.exec(head)?.[1];
   const meta = [...head.matchAll(META)].map(([, attributes]) =>
     Object.fromEntries(
+      // biome-ignore lint/style/noNonNullAssertion: capture group of a pattern in which it always participates
       [...attributes!.matchAll(ATTRIBUTE)].map(([, name, a, b, c]) => [
         name,
         decodeEntities(a ?? b ?? c ?? ''),

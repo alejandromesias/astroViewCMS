@@ -64,7 +64,7 @@ export function schemaStubs(
       if (
         !local(id) ||
         !marked(id) ||
-        !(query === undefined || CODE_FILE.test(id.split('?')[0]!))
+        !(query === undefined || CODE_FILE.test(id.replace(/\?.*/s, '')))
       )
         return;
       return code.replace(
@@ -91,7 +91,7 @@ export function schemaStubs(
           resolved &&
           !resolved.external &&
           local(resolved.id) &&
-          CODE_FILE.test(resolved.id.split('?')[0]!)
+          CODE_FILE.test(resolved.id.replace(/\?.*/s, ''))
         ) {
           return { ...resolved, id: `${resolved.id.split('?')[0]}?${query}` };
         }
@@ -130,5 +130,5 @@ export async function loadCmsCollections(
 }
 
 function normalize(p: string): string {
-  return p.replaceAll('\\', '/').split('?')[0]!.toLowerCase();
+  return p.replaceAll('\\', '/').replace(/\?.*/s, '').toLowerCase();
 }

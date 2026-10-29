@@ -11,8 +11,10 @@ export function islandResolver(
 ): (specifier: string) => string {
   const prefix = base.replace(/\/+$/, '');
   return (specifier) => {
-    if (!Object.hasOwn(entryModules, specifier)) return specifier;
-    const file = entryModules[specifier];
-    return file === '' ? '' : `${prefix}/${file!.replace(/^\//, '')}`;
+    const file = Object.hasOwn(entryModules, specifier)
+      ? entryModules[specifier]
+      : undefined;
+    if (file === undefined) return specifier;
+    return file === '' ? '' : `${prefix}/${file.replace(/^\//, '')}`;
   };
 }

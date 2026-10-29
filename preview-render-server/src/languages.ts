@@ -35,7 +35,7 @@ const PLAIN = new Set(['', 'text', 'txt', 'plain', 'plaintext']);
 /** Lowercase language with aliases resolved (`JS` -> `javascript`). */
 export function canonicalLanguage(language: string): string {
   const lower = language.toLowerCase();
-  return Object.hasOwn(ALIASES, lower) ? ALIASES[lower]! : lower;
+  return (Object.hasOwn(ALIASES, lower) ? ALIASES[lower] : undefined) ?? lower;
 }
 
 interface Fence {
@@ -55,13 +55,14 @@ function walkFences(
 ): string {
   const lines = markdown.split('\n');
   let open: { char: string; length: number } | undefined;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
+  for (const [i, line] of lines.entries()) {
     if (open) {
       const closing = CLOSING.exec(line);
       if (
         closing &&
+        // biome-ignore lint/style/noNonNullAssertion: capture group of a pattern in which it always participates
         closing[1]![0] === open.char &&
+        // biome-ignore lint/style/noNonNullAssertion: capture group of a pattern in which it always participates
         closing[1]!.length >= open.length
       )
         open = undefined;
@@ -69,9 +70,12 @@ function walkFences(
     }
     const match = OPENING.exec(line);
     if (!match) continue;
+    // biome-ignore lint/style/noNonNullAssertion: capture group of a pattern in which it always participates
     open = { char: match[2]![0]!, length: match[2]!.length };
     lines[i] = visit(line, {
+      // biome-ignore lint/style/noNonNullAssertion: capture group of a pattern in which it always participates
       start: match[1]!.length + match[2]!.length + match[3]!.length,
+      // biome-ignore lint/style/noNonNullAssertion: capture group of a pattern in which it always participates
       language: match[4]!,
     });
   }

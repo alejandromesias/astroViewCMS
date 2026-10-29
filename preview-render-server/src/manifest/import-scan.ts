@@ -62,8 +62,7 @@ export async function scanProject(root: string): Promise<ProjectScan> {
   const buildTime = new Set<string>();
   const seen = new Set<string>();
   const queue = [...buildRoots(root, srcDir)];
-  while (queue.length) {
-    const file = queue.pop()!;
+  for (let file = queue.pop(); file !== undefined; file = queue.pop()) {
     if (seen.has(file)) continue;
     seen.add(file);
     for (const target of importTargets(file, aliases, root)) {
@@ -103,6 +102,7 @@ export function cssDirectiveTargets(css: string): string[] {
   const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
   return [
     ...withoutComments.matchAll(/@(?:plugin|config)\s+["']([^"']+)["']/g),
+    // biome-ignore lint/style/noNonNullAssertion: capture group of a pattern in which it always participates
   ].map((match) => match[1]!);
 }
 
@@ -121,6 +121,7 @@ export function importSpecifiers(file: string, source: string): string[] {
     }
   }
   const pattern = /(?:\bfrom\s*|\bimport\s*\(?\s*)["']([^"']+)["']/g;
+  // biome-ignore lint/style/noNonNullAssertion: capture group of a pattern in which it always participates
   return [...source.matchAll(pattern)].map((match) => match[1]!);
 }
 

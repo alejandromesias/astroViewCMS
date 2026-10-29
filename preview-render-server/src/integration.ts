@@ -388,7 +388,7 @@ function importPath(root: string, file: string): string {
 /** Vite ids use forward slashes and may carry a ?query; Windows paths are
  *  case-insensitive. */
 export function normalizeId(id: string): string {
-  return toPosix(id.split('?')[0]!).toLowerCase();
+  return toPosix(id.replace(/\?.*/s, '')).toLowerCase();
 }
 
 function toPosix(p: string): string {

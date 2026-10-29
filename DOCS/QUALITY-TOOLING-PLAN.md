@@ -11,7 +11,7 @@ lands on its own, and leaves the typecheck and the targeted tests green.
 | 3   | Boundary validation       | Zod from `astro/zod` (already a dependency)                                                                  | after 2        | done     |
 | 4   | Architecture map          | Skott (graph, cycles)                                                                                        | after 3        | done     |
 | 5   | Vulnerable dependencies   | osv-scanner (Dependabot once there is a remote)                                                              | after 2        | done     |
-| 6   | Dead code                 | Knip, run on demand                                                                                          | after 4        | todo     |
+| 6   | Dead code                 | Knip, run on demand                                                                                          | after 4        | done     |
 | 7   | Budget tests              | bridge size, render time and memory                                                                          | after 2        | todo     |
 | 8   | CI                        | one `check` script run on every push                                                                         | after 2 and 5  | todo     |
 | 9   | Architecture rules        | dependency-cruiser                                                                                           | once CI exists | deferred |
@@ -189,9 +189,44 @@ lands on its own, and leaves the typecheck and the targeted tests green.
   `overlay/data-proxy.ts` (loaded by URL in `integration.ts`) and the client
   bridge (`client/bridge.ts`); without these, Knip reports them as unused. Run on demand and read the output; do not gate on it until the
   false positives are tuned out.
-- Same pass: go through the 43 production `noNonNullAssertion` warnings left
-  from steps 2 and 3. Replace each with a check or a narrower type, or keep it
-  with a `biome-ignore` that says why the value exists.
+- **Complete the entry list.** `integration.ts` also loads
+  `overlay/content-shim.ts` and `overlay/image-service.ts` by URL; add them.
+  Grep `new URL(` in `integration.ts` to be sure nothing else is loaded that
+  way.
+- **Install and scope.** Knip is a pinned root devDependency, run with
+  `npx knip` from the root (like Skott, step 4). A `knip.json` at the root with
+  `workspaces` for `preview-render-server` and `preview-protocol` only.
+  `sample-site` (third-party template) and `sampleAstroProject` (test site) are
+  left out. Record the version and the command here.
+- **Known false positives to configure, not to "fix":**
+  - `virtual:preview-site`, `virtual:astro:*` and `astro:*` imports are not
+    packages. Ignore them as unresolved imports or dependencies.
+  - Tests, the two Vitest configs, `test/e2e` and `test/fixtures` should be
+    picked up by Knip's Vitest plugin. Check that they are.
+  - `preview-protocol`'s `exports` are its public API for the future CMS app.
+    Unused exports there are expected; don't delete them.
+  - Knip parses the code itself. Check that it runs with TypeScript 7 in the
+    repo; if it can't, write down the error and stop.
+- **Act on what's left, in separate commits:** unused files, unused exports,
+  unused dependencies. Delete only what a grep confirms is unused (including
+  string references and `new URL(` loads). Run typecheck, lint and the targeted
+  tests of each touched folder. A removed dependency means `npm install` and a
+  lockfile change, so run `npm run audit` too. If an item is unclear, list it
+  in the done note instead of deleting it.
+- **Add a root `knip` script**, but don't put it in step 8's `check` yet.
+- **Non-null assertions, a commit of their own.** This is the follow-up from
+  steps 2 and 3. Go through the 43 production `noNonNullAssertion` warnings
+  (`npx biome lint --only=style/noNonNullAssertion`, production files). Replace
+  each with a check or a narrower type, or keep it with a `biome-ignore` that
+  says why the value exists. Behavior must not change: a new check that throws
+  where the code used to crash anyway is fine; a new silent fallback is not.
+  Record the count after.
+- **Verify:** `npx knip` reports nothing, or only items listed with a reason in
+  the done note; the typecheck, lint and targeted tests are green; the
+  `noNonNullAssertion` count in production code is recorded.
+
+- Done 2026-10-28 with Knip 6.43.0 (pinned root devDependency); `npm run knip` runs `knip` with the root `knip.json`. Config: `sample-site` and `sampleAstroProject` are in `ignoreWorkspaces`; `preview-render-server` lists the `injectRoute` and URL-loaded files as entries (routes, bridge, `content-shim`, `image-service`, `data-proxy`, the two `.astro` entries, `sites/*.config.ts`) and ignores `test/fixtures/**` (fixture sites, not code); `preview-protocol` adds `src/index.test.ts` as an entry (it has no Vitest config of its own). `osv-scanner`, `tsc` and `vitest` are in `ignoreBinaries` (winget tool; hoisted from the root). Knip runs fine with TypeScript 7. First run, with the config tuned: 1 unused export (`jsonRequest` in `test/helpers.ts`, deleted) and 6 exported types used only in their own file (`export` dropped: `PatchSummary`, `StoreEntry`, `DraftInfo`, `RealContent`, `StaticPath`, `RegionConfig`). No unused files or dependencies; `preview-protocol`'s API showed nothing. `npx knip` now reports nothing. `knip` is not in step 8's `check` yet.
+- Non-null assertions in production code: 43 warnings before, 0 now; 24 sites keep a `!` with a `biome-ignore` that says why (regex capture groups, DOM lookups in `test-editor/editor.ts` and `client/patch.ts`, `CONTENT_TYPES` lookup, `splitKey`). The rest were rewritten with the same behavior: `split('?')[0]!` became `.replace(/\?.*/s, '')` (7 sites) and `split(';')[0]!` became `.replace(/;.*/s, '')`; `queue.pop()!`, `lines[i]!`, `first!`, the `hasOwn` lookups in `languages.ts` and `islands.ts` use a `for` loop or an `undefined` check. Typecheck, lint and 1037 targeted tests are green.
 
 ## 7. Budget tests
 

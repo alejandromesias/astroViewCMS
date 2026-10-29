@@ -48,7 +48,7 @@ export const POST: APIRoute = async ({ params, request }) => {
   // The extension comes from the declared content type, never from user input.
   const ext =
     EXTENSIONS[
-      (request.headers.get('content-type') ?? '').split(';')[0]!.trim()
+      (request.headers.get('content-type') ?? '').replace(/;.*/s, '').trim()
     ];
   if (!ext) {
     return new Response(
@@ -93,6 +93,7 @@ export const GET: APIRoute = async ({ params, request }) => {
     const bytes = await fs.readFile(path.join(mediaDir, file));
     return new Response(bytes, {
       headers: {
+        // biome-ignore lint/style/noNonNullAssertion: FILE_NAME only admits extensions in CONTENT_TYPES
         'Content-Type': CONTENT_TYPES[path.extname(file).slice(1)]!,
         'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff',

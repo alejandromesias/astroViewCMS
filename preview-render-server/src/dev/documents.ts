@@ -46,6 +46,7 @@ export function splitFrontmatter(text: string): {
   if (!match) return { data: {}, body: text };
   return {
     data: (match[1] === undefined ? undefined : parseYaml(match[1])) ?? {},
+    // biome-ignore lint/style/noNonNullAssertion: capture group of a pattern in which it always participates
     body: match[2]!.replace(/^(?:\r?\n)+/, ''),
   };
 }

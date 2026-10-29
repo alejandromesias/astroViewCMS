@@ -31,11 +31,13 @@ const END = 4;
 
 function parseSegment(text: string): Segment {
   const rest = /^\[\.\.\.(\w+)\]$/.exec(text);
+  // biome-ignore lint/style/noNonNullAssertion: capture group of a pattern in which it always participates
   if (rest) return { text, rest: rest[1]!, names: [rest[1]!], rank: 1 };
   const names: string[] = [];
   const source = text.split(/(\[\w+\])/).map((part) => {
     const param = /^\[(\w+)\]$/.exec(part);
     if (!param) return part.replace(/[.*+?^${}()|\\]/g, '\\$&');
+    // biome-ignore lint/style/noNonNullAssertion: capture group of a pattern in which it always participates
     names.push(param[1]!);
     return '(.+)';
   });
@@ -82,13 +84,13 @@ function matchSegments(
     }
     return undefined;
   }
-  if (segments.length === 0) return undefined;
   const [first, ...others] = segments;
+  if (first === undefined) return undefined;
   if (!head.regex)
     return head.text === first
       ? matchSegments(tail, others, params)
       : undefined;
-  const match = head.regex.exec(first!);
+  const match = head.regex.exec(first);
   if (!match) return undefined;
   const values = Object.fromEntries(
     head.names.map((name, i) => [name, match[i + 1]]),

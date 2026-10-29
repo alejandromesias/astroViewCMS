@@ -240,6 +240,7 @@ export function createContentApi(deps: ContentApiDeps) {
         await buildEntry(
           context,
           collection,
+          // biome-ignore lint/style/noNonNullAssertion: touched holds collection keys only
           splitKey(key)!.id,
           context.documents[key],
         ),

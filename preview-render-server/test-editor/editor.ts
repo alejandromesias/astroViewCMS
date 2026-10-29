@@ -25,6 +25,7 @@ const LIMIT_NOTES: Record<string, string> = {
 /** What a `limits` value of a render means for the author; unknown values are
  *  shown as they are. */
 export function limitNote(limit: string): string {
+  // biome-ignore lint/style/noNonNullAssertion: guarded by Object.hasOwn above
   if (Object.hasOwn(LIMIT_NOTES, limit)) return LIMIT_NOTES[limit]!;
   if (limit.startsWith('code-language:'))
     return `\`${limit.slice('code-language:'.length)}\` highlighted after publish`;
@@ -96,6 +97,7 @@ export function startEditor(
 
   /** The text a form holds as the document's value. Throws on invalid JSON. */
   function formValue(view: DocumentView): unknown {
+    // biome-ignore lint/style/noNonNullAssertion: the template and the markup guarantee this element
     const data: unknown = JSON.parse(view.value!.value);
     return view.body ? { data, body: view.body.value } : data;
   }
@@ -150,10 +152,12 @@ export function startEditor(
     info: DevDocument | undefined,
     failure = '',
   ): DocumentView {
+    // biome-ignore lint/style/noNonNullAssertion: the template and the markup guarantee this element
     const section = template.content.firstElementChild!.cloneNode(
       true,
     ) as HTMLElement;
     const slot = (name: string) =>
+      // biome-ignore lint/style/noNonNullAssertion: the template and the markup guarantee this element
       section.querySelector<HTMLElement>(`[data-slot="${name}"]`)!;
     section.dataset.key = key;
     slot('key').textContent = key;
@@ -191,6 +195,7 @@ export function startEditor(
           }
         : { value: JSON.stringify(info.value, null, 2), body: '' };
 
+      // biome-ignore lint/style/noNonNullAssertion: the template and the markup guarantee this element
       view.value = section.querySelector<HTMLTextAreaElement>(
         '[data-field="value"]',
       )!;
@@ -201,6 +206,7 @@ export function startEditor(
       if (markdown) {
         slot('value-label').textContent = 'Frontmatter (JSON)';
         slot('body-field').hidden = false;
+        // biome-ignore lint/style/noNonNullAssertion: the template and the markup guarantee this element
         view.body = section.querySelector<HTMLTextAreaElement>(
           '[data-field="body"]',
         )!;
@@ -213,6 +219,7 @@ export function startEditor(
           scheduleDraft();
         });
       }
+      // biome-ignore lint/style/noNonNullAssertion: the template and the markup guarantee this element
       section
         .querySelector('[data-action="reset"]')!
         .addEventListener('click', () => {
@@ -220,6 +227,7 @@ export function startEditor(
           writeForm(view);
           sendDraft();
         });
+      // biome-ignore lint/style/noNonNullAssertion: the template and the markup guarantee this element
       section
         .querySelector('[data-action="delete"]')!
         .addEventListener('click', () => {

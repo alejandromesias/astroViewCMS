@@ -88,12 +88,14 @@ export function createPatcher(win: Window & typeof globalThis): Patcher {
       for (const element of Array.from(
         doc.querySelectorAll(`[${REGION_ATTR}]`),
       )) {
+        // biome-ignore lint/style/noNonNullAssertion: the selector matched on this attribute
         const name = element.getAttribute(REGION_ATTR)!;
         if (!live.has(name)) live.set(name, element);
       }
       for (const region of Array.from(
         next.querySelectorAll(`[${REGION_ATTR}]`),
       )) {
+        // biome-ignore lint/style/noNonNullAssertion: the selector matched on this attribute
         const name = region.getAttribute(REGION_ATTR)!;
         const target = live.get(name);
         if (!target || target.innerHTML === region.innerHTML) continue;

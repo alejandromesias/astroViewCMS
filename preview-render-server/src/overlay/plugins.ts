@@ -66,7 +66,7 @@ export function contentImportRewrite({
     enforce: 'post',
     transform(code, id) {
       if (!code.includes('astro:content') || id.startsWith('\0')) return;
-      const file = id.split('?')[0]!;
+      const file = id.replace(/\?.*/s, '');
       if (normalize(file) === shim) return;
       if (isInside(path.normalize(file), path.normalize(srcDir))) {
         if (!isRewritten(path.normalize(file), path.normalize(srcDir))) return; // the content config
@@ -111,7 +111,7 @@ export function dataModules({
     async resolveId(source, importer, options) {
       if (!importer || !source.endsWith('.json') || importer.startsWith('\0'))
         return;
-      const from = path.normalize(importer.split('?')[0]!);
+      const from = path.normalize(importer.replace(/\?.*/s, ''));
       if (path.relative(srcDir, from).startsWith('..')) return;
       const resolved = await this.resolve(source, importer, {
         ...options,
@@ -119,7 +119,7 @@ export function dataModules({
       });
       if (!resolved || !wanted.has(normalize(resolved.id))) return;
       // A suffix that is not .json, so Vite's own JSON plugin leaves it alone.
-      return `${PREFIX}${path.normalize(resolved.id.split('?')[0]!)}.js`;
+      return `${PREFIX}${path.normalize(resolved.id.replace(/\?.*/s, ''))}.js`;
     },
     load(id) {
       if (!id.startsWith(PREFIX)) return;
@@ -209,7 +209,7 @@ const RESERVED = new Set([
 ]);
 
 function normalize(p: string): string {
-  return p.replaceAll('\\', '/').split('?')[0]!.toLowerCase();
+  return p.replaceAll('\\', '/').replace(/\?.*/s, '').toLowerCase();
 }
 
 function toPosix(p: string): string {
