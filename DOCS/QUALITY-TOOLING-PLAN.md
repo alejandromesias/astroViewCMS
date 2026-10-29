@@ -17,8 +17,8 @@ lands on its own, and leaves the typecheck and the targeted tests green.
 | 7c  | Memory budget             | e2e, dev-only memory route                                                                                   | after 7b       | done     |
 | 8   | Manual and check script   | `DOCS/QUALITY-TOOLING.md`, root `npm run check` (CI groundwork)                                              | after 7c       | done     |
 | 9   | Architecture rules        | dependency-cruiser                                                                                           | after 8        | done     |
-| 10a | Gate `preview-protocol`   | typecheck + unit tests in `check.ts`                                                                         | after 9        | todo     |
-| 10b | Pre-commit hook           | `.githooks/pre-commit` (tsc, Biome, depcruise)                                                               | after 10a      | todo     |
+| 10a | Gate `preview-protocol`   | typecheck + unit tests in `check.ts`                                                                         | after 9        | done     |
+| 10b | Pre-commit hook           | `.githooks/pre-commit` (tsc, Biome, depcruise)                                                               | after 10a      | done     |
 | 10c | Quality floors            | Vitest coverage `thresholds`, Stryker `break`                                                                | after 10a      | todo     |
 | 10d | Third-package checklist   | manual section + design preamble; depcruise rules land with `cms-server`                                     | after 10a      | todo     |
 
@@ -593,6 +593,8 @@ on, with one hole and a few cheap upgrades. Each sub-step lands on its own.
 - **Verify.** Both steps pass in `npm run check`. Break one assertion in
   `preview-protocol/src/index.test.ts` and confirm `check` fails; revert.
 
+- Done 2026-10-29: `tsc protocol` and `protocol tests` gates added to `FAST` in `scripts/check.ts` after `tsc`; QUALITY-TOOLING.md command table and `--fast` row updated. Flipping an assertion in `index.test.ts` made `check` fail on `protocol tests` only; reverted. `--fast` is now about 20 s.
+
 ### 10b. Pre-commit hook
 
 - **Problem.** There is no CI, so nothing runs the gates unless someone
@@ -610,6 +612,8 @@ on, with one hole and a few cheap upgrades. Each sub-step lands on its own.
 - **Verify.** A deliberate type error blocks a commit attempt (do not
   actually commit: stop at the hook's failure). The hook is executable in the
   index (`git update-index --chmod=+x`). Ask the user before committing it.
+
+- Done 2026-10-29: `.githooks/pre-commit` (LF, mode 100755 staged via `git update-index --add --chmod=+x`; nothing committed). A deliberate type error in `preview-protocol/src/index.ts` made the hook exit 1 at the render-server `tsc`; reverted. Clean run takes about 7 s. Enabling it (`git config core.hooksPath .githooks`) is left to the user; the manual has a "Pre-commit hook" section.
 
 ### 10c. Quality floors
 

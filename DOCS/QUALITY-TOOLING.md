@@ -106,6 +106,8 @@ CI, fail the build). "Report" means the output needs a human reading it.
 | Tool | Command | Time |
 | --- | --- | --- |
 | Typecheck | `cd preview-render-server && ../node_modules/.bin/tsc` | seconds |
+| Typecheck, protocol | `npm run typecheck -w preview-protocol` | seconds |
+| Unit tests, protocol | `npm run test -w preview-protocol` | seconds |
 | Lint | `node_modules/.bin/biome lint` | ~2 s |
 | Format check | `node_modules/.bin/biome format` (fix with `--write`) | ~2 s |
 | Unit tests, one file | `cd preview-render-server && ../node_modules/.bin/vitest run <file>` | seconds |
@@ -161,7 +163,7 @@ behaves the same on Windows and a Linux CI). Flags go after `--` and combine:
 
 | Flag | Runs | Time |
 | --- | --- | --- |
-| `--fast` (default) | tsc, biome lint, biome format, unit tests, knip, depcruise, osv-scanner | ~17 s |
+| `--fast` (default) | tsc, tsc protocol, protocol tests, biome lint, biome format, unit tests, knip, depcruise, osv-scanner | ~20 s |
 | `--e2e` | the fast set, then e2e and the budget tests | ~39 s |
 | `--mutation` | `npx stryker run` (incremental) | 26 s when nothing changed; see below |
 | `--all` | everything above, then the Skott cycle check | ~83 s with a warm Stryker baseline |
@@ -186,6 +188,19 @@ The `depcruise` step enforces the import rules listed in the [annex](#annex-depe
   long (9 min once, when the stored baseline was stale and only 281 of 2684
   mutants were reused). The next run reused all 2684 and took 26 s. Changing
   one line of source re-runs only the mutants on that code.
+### Pre-commit hook
+
+`.githooks/pre-commit` (plain `sh`) runs both typechecks, `biome lint`,
+`biome format` and `depcruise`, stopping at the first failure (under ~10 s). Unit
+tests, Knip and the audit stay in `npm run check`. Enable it once per clone:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+Git for Windows runs it with its bundled `sh`, so PowerShell needs nothing
+extra. Skip it with `git commit --no-verify` only rarely, and say why in the
+commit message.
 
 ### How to read the results
 
