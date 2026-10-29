@@ -15,7 +15,7 @@ lands on its own, and leaves the typecheck and the targeted tests green.
 | 7a  | Bridge size budget        | unit test, rolldown + gzip                                                                                   | after 2        | done     |
 | 7b  | Render time budget        | e2e `performance` test                                                                                       | after 7a       | done     |
 | 7c  | Memory budget             | e2e, dev-only memory route                                                                                   | after 7b       | done     |
-| 8   | CI                        | one `check` script run on every push                                                                         | after 2 and 5  | todo     |
+| 8   | Manual and check script   | `DOCS/QUALITY-TOOLING.md`, root `npm run check` (CI groundwork)                                              | after 7c       | done     |
 | 9   | Architecture rules        | dependency-cruiser                                                                                           | once CI exists | deferred |
 
 ## 1. TypeScript flags
@@ -330,11 +330,102 @@ edits of `/landing/home-v2`, median and p95 logged, `median < 100 ms`.
       the leak check. The gap to the design's 150-250 MB figure (rss 240-330
       here) is reserved-but-empty heap, not retained objects or the dev routes.
 
-## 8. CI
+## 8. Tooling manual and check script (CI groundwork)
 
-- A root `check` script: typecheck, lint, targeted unit tests, osv-scanner.
-  A workflow runs it on every push. This is the precondition for step 9.
-- Enable the dependency bot from step 5 here, once the repo has a remote.
+There is no remote yet, so this step prepares CI rather than setting it up.
+It has two outputs.
+
+### 8a. `DOCS/QUALITY-TOOLING.md`, the manual
+
+This plan records how each tool was chosen and set up. The manual is the
+reference you use day to day, and it replaces this plan as the entry point.
+
+- **Overview:** one short section per tool covering what it guards in this
+  project, where its config lives, and whether it gates (fails the run) or only
+  reports. Tools: the strict `tsc` flags, Biome, Zod at the boundaries (a code
+  pattern, not a command), Skott, osv-scanner, Knip, the budget tests (7a to
+  7c), and Stryker.
+- **Guide:** for each tool that runs as a command, give the exact command, its
+  rough runtime, and how to read its output here. For example:
+  - an osv-scanner failure caused by an expired ignore entry means re-check
+    that entry, not upgrade;
+  - Knip should report nothing, and any new finding is either dead code or a
+    missing entry in `knip.json`;
+  - a budget failure prints the measured value next to its bound;
+  - the memory test checks heapUsed growth, not RSS (see 7c);
+  - a Skott cycle means a real cycle, and its edge list needs the API
+    workaround from step 4.
+- **Stryker section:**
+  - what the score means and the 60/80 thresholds in `stryker.config.json`;
+  - that `break` is `null`, so the score is a report, not a gate;
+  - how to open the HTML report under `reports/mutation/`;
+  - how to triage survivors: equivalent mutants and constants come last, as
+    [MUTATION-WEAK-SPOTS.md](MUTATION-WEAK-SPOTS.md) notes;
+  - how to run it on one file with `--mutate`.
+- **Incremental mode:**
+  - the baseline is `reports/stryker-incremental.json`, which is gitignored and
+    therefore local;
+  - deleting that file forces a full run;
+  - a change to a test or to the config re-runs every mutant those tests cover;
+  - `--force` re-runs everything.
+- Link MUTATION-WEAK-SPOTS.md as the last full-run snapshot, with its date.
+  Don't copy its table into the manual.
+- Keep the manual concise: a reference, not a history. Link this plan for the
+  reasoning behind each tool.
+
+- Done 2026-10-28: `DOCS/QUALITY-TOOLING.md` written (overview table, command table with runtimes, "how to read failures", Stryker and incremental sections). Measured runtimes: tsc, biome lint, biome format, knip and osv-scanner about 1-2 s each, the bridge test about 1.7 s; the e2e run, Skott and a full Stryker run are given as rough figures and 8b should measure them. Skott is listed as a report, not a gate, because the documented command passes `--exitCodeOnCircularDependencies=0`. The last full Stryker run is dated 2026-10-28 from the report files' timestamps (MUTATION-WEAK-SPOTS.md itself carries no date).
+
+### 8b. A root `check` script
+
+One command runs everything by hand, and later it becomes the body of the CI
+job.
+
+- **Form:** a Node script, `scripts/check.ts`, run with `node` like
+  `src/build.ts`. Add a root npm script, `"check": "node scripts/check.ts"`.
+  Use Node, not bash or PowerShell, so it runs the same on Windows and in a
+  Linux CI. It must not add dependencies.
+- **Sets**, selected by flag:
+
+  | Flag | Contents | Rough time |
+  | --- | --- | --- |
+  | `--fast` (default) | `tsc`, `biome lint`, `biome format`, unit tests (`vitest run`), `knip`, `npm run audit` | about 1 min |
+  | `--e2e` | the fast set, then `npm run test:e2e` (builds and spawns the server; includes the 7b and 7c budgets) | a few min |
+  | `--mutation` | `npx stryker run` (incremental) | depends on what changed |
+  | `--all` | all of the above, then the Skott cycle check | long |
+
+  Flags combine, for example `--fast --mutation`. The builder measures the
+  times and records them in the manual.
+- **Behavior:**
+  - run the tools one after another, never in parallel, because memory is low;
+  - keep going after a failure, so one run reports every problem;
+  - finish with a summary table: tool, pass/fail/report, duration;
+  - exit non-zero if any gate failed;
+  - Stryker and Knip's output never fail the run in `--mutation`; Stryker's
+    score is printed as a report;
+  - stream each tool's output as it runs, without capturing and replaying it.
+- **Skott:** use the pinned `npx skott@0.35.12` cycle check from step 4, and
+  only in `--all`, because `npx` fetches it over the network.
+- **osv-scanner** is a winget install, not an npm package. If it isn't on PATH,
+  report "skipped" with the install command and don't fail the run. CI will
+  install it.
+- **The "targeted tests only" rule** in `CLAUDE.md` applies to agent sessions.
+  This script is the one place where the full unit suite runs, started by a
+  person. Say so in the manual. Agents don't run `npm run check` unless asked.
+- **Done:**
+  - `npm run check` and `npm run check -- --e2e` pass on a clean tree;
+  - a deliberately broken file (a type error) fails `--fast` with a non-zero
+    exit, and the summary still lists every tool;
+  - a second `--mutation` run after a one-line change finishes in minutes and
+    reports the reused mutants.
+
+- Done 2026-10-28: `scripts/check.ts` plus root `"check"` script (no new dependencies; spawns each command with `shell: true`; `"type": "module"` added to the root `package.json` to silence Node's typeless-package warning). Measured: fast set about 14 s (993 unit tests), `--e2e` adds about 22 s, `--all` about 79 s end to end. A deliberate type error fails `--fast` with exit 1 and the summary still lists all six tools; an unknown flag exits 2. Mutation: the stored baseline was stale (tests had changed since the last full run), so the first `--mutation` run took 9 min and reused only 281 of 2684 mutants; the next run reused 2684 of 2684 and took 26 s. The manual documents this.
+
+### Later, once there is a remote
+
+- A CI workflow runs `npm run check -- --e2e` on every push. The mutation run
+  stays manual or nightly, with the incremental file cached between runs.
+- Turn on the dependency bot from step 5.
+- Step 9 depends on this CI workflow.
 
 ## 9. dependency-cruiser (deferred)
 

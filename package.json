@@ -1,6 +1,7 @@
 {
   "name": "astroviewcms",
   "private": true,
+  "type": "module",
   "workspaces": [
     "sampleAstroProject",
     "preview-protocol",
@@ -14,6 +15,7 @@
     "knip": "6.43.0"
   },
   "scripts": {
+    "check": "node scripts/check.ts",
     "audit": "osv-scanner scan source -L package-lock.json --config osv-scanner.toml",
     "knip": "knip",
     "lint": "biome lint",
