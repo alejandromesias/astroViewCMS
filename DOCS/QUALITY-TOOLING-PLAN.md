@@ -4,17 +4,17 @@ Written 2026-10-28. Goal: keep the codebase reliable as it grows toward the
 multi-tenant shape in [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md). Each step is small,
 lands on its own, and leaves the typecheck and the targeted tests green.
 
-| # | Step | Tool | When | Status |
-|---|---|---|---|---|
-| 1 | Stricter TypeScript flags | `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, `noFallthroughCasesInSwitch` | now | done |
-| 2 | Lint and format | Biome | now | done |
-| 3 | Boundary validation | Zod from `astro/zod` (already a dependency) | after 2 | done |
-| 4 | Architecture map | Skott (graph, cycles) | after 3 | done |
-| 5 | Vulnerable dependencies | osv-scanner (+ Renovate or Dependabot) | after 2 | todo |
-| 6 | Dead code | Knip, run on demand | after 4 | todo |
-| 7 | Budget tests | bridge size, render time and memory | after 2 | todo |
-| 8 | CI | one `check` script run on every push | after 2 and 5 | todo |
-| 9 | Architecture rules | dependency-cruiser | once CI exists | deferred |
+| #   | Step                      | Tool                                                                                                         | When           | Status   |
+| --- | ------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------- | -------- |
+| 1   | Stricter TypeScript flags | `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, `noFallthroughCasesInSwitch` | now            | done     |
+| 2   | Lint and format           | Biome                                                                                                        | now            | done     |
+| 3   | Boundary validation       | Zod from `astro/zod` (already a dependency)                                                                  | after 2        | done     |
+| 4   | Architecture map          | Skott (graph, cycles)                                                                                        | after 3        | done     |
+| 5   | Vulnerable dependencies   | osv-scanner (Dependabot once there is a remote)                                                              | after 2        | done     |
+| 6   | Dead code                 | Knip, run on demand                                                                                          | after 4        | todo     |
+| 7   | Budget tests              | bridge size, render time and memory                                                                          | after 2        | todo     |
+| 8   | CI                        | one `check` script run on every push                                                                         | after 2 and 5  | todo     |
+| 9   | Architecture rules        | dependency-cruiser                                                                                           | once CI exists | deferred |
 
 ## 1. TypeScript flags
 
@@ -144,8 +144,41 @@ lands on its own, and leaves the typecheck and the targeted tests green.
 
 - Scan `package-lock.json`. Keep an ignore file where every entry has a reason
   and an expiry date.
-- Add Renovate or Dependabot so fixes arrive, with `astro`, `sharp` and
-  `rolldown` grouped.
+- **One lockfile, four workspaces.** The root `package-lock.json` covers
+  `preview-render-server`, `preview-protocol`, `sample-site` (a third-party
+  template), `sampleAstroProject` and the root dev tools (Biome, Stryker). Scan
+  it once from the root; don't scan per package.
+- **Triage by who pulls it in**, with `npm ls <package>`: the preview node's
+  runtime dependencies (`astro`, `@astrojs/node`, `sharp`, `rolldown`,
+  `devalue`, `es-module-lexer`, `idiomorph`, `yaml`) are what ship and get
+  fixed first; dev tools and the two sample sites are fixed or ignored with a
+  reason. Record the source in each ignore entry's reason.
+- **Baseline today** (`npm audit`, 2026-10-28): 4 moderate, none in shipping
+  code. `qs` and `typed-rest-client` come from `@stryker-mutator/core`;
+  `@tailwindcss/typography` and `postcss-selector-parser` from `sample-site`.
+  osv-scanner should find at least these; write down what it finds beyond them.
+- **Install:** osv-scanner is not on this machine and there is no Go. Use a
+  pinned release binary (or `scoop`/`winget`), not `go install`. Record the
+  version and the exact command in this section, as step 4 did.
+- **Command and ignore file:** `osv-scanner scan source -L package-lock.json`
+  (v2 syntax) with `osv-scanner.toml` at the root. Each ignore is an
+  `[[IgnoredVulns]]` entry with `id`, `ignoreUntil` (at most three months out)
+  and `reason`. An expired entry makes the scan fail again; that's the point.
+- **Add a root `audit` script** that runs the scan, so step 8's `check` can call
+  it. Exit code non-zero on any finding not ignored.
+- **Don't fix by upgrading in this step** unless it's a patch bump of a
+  shipping dependency. Larger upgrades (Astro, Stryker) go in their own commit
+  with the targeted tests; the `legacy-peer-deps` in `.npmrc` hides peer
+  conflicts, so check `sample-site` still builds after any bump that touches it.
+- **Dependabot waits for a remote.** The repo has none yet, so step 8 enables
+  it: npm, weekly, `astro*`, `@astrojs/*`, `sharp` and `rolldown` in one
+  group. `sharp` is pinned exactly in `preview-render-server` and `sample-site`;
+  bump both together.
+- **Verify:** the scan runs from the root with the pinned version; the result
+  is clean or every finding has an ignore entry with reason and expiry; the
+  `audit` script exits 0.
+
+- Done 2026-10-28 with osv-scanner 2.7.0, installed by `winget install -e --id Google.OSVScanner --version 2.7.0` (new shell needed for PATH). `npm run audit` runs `osv-scanner scan source -L package-lock.json --config osv-scanner.toml` and exits 0. First scan: 688 packages, 5 medium findings, none in shipping code: 4 `qs` advisories (via `@stryker-mutator/core > typed-rest-client`) and 1 `postcss-selector-parser` (via `sample-site > @tailwindcss/typography`). All five are ignored in `osv-scanner.toml` until 2027-01-28 with the source as reason. Nothing beyond the `npm audit` baseline, except that osv does not flag `typed-rest-client` or `@tailwindcss/typography` themselves. Nothing was upgraded.
 
 ## 6. Knip
 
@@ -173,6 +206,7 @@ lands on its own, and leaves the typecheck and the targeted tests green.
 
 - A root `check` script: typecheck, lint, targeted unit tests, osv-scanner.
   A workflow runs it on every push. This is the precondition for step 9.
+- Enable the dependency bot from step 5 here, once the repo has a remote.
 
 ## 9. dependency-cruiser (deferred)
 

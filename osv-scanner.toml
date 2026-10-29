@@ -1,0 +1,31 @@
+# Every entry needs a reason and an expiry (at most three months out). An
+# expired entry makes `npm run audit` fail again. See DOCS/QUALITY-TOOLING-PLAN.md step 5.
+
+# qs 6.15.1 <- @stryker-mutator/core > typed-rest-client. Dev tool only (mutation
+# testing); it never parses untrusted input and does not ship. Fix with the Stryker upgrade.
+[[IgnoredVulns]]
+id = "GHSA-4mjr-xmp4-gh2g"
+ignoreUntil = 2027-01-28
+reason = "qs via Stryker (dev only, not shipped)"
+
+[[IgnoredVulns]]
+id = "GHSA-6pq8-jhm2-2vcw"
+ignoreUntil = 2027-01-28
+reason = "qs via Stryker (dev only, not shipped)"
+
+[[IgnoredVulns]]
+id = "GHSA-q8mj-m7cp-5q26"
+ignoreUntil = 2027-01-28
+reason = "qs via Stryker (dev only, not shipped)"
+
+[[IgnoredVulns]]
+id = "GHSA-x5fp-wj9c-mxmx"
+ignoreUntil = 2027-01-28
+reason = "qs via Stryker (dev only, not shipped)"
+
+# postcss-selector-parser 6.0.10 <- sample-site > @tailwindcss/typography. Build-time
+# CSS tooling of the third-party sample template; not part of the preview node.
+[[IgnoredVulns]]
+id = "GHSA-rj75-hqrm-r3gf"
+ignoreUntil = 2027-01-28
+reason = "postcss-selector-parser via sample-site's tailwind typography (build-time, not shipped)"
