@@ -188,6 +188,7 @@ The `depcruise` step enforces the import rules listed in the [annex](#annex-depe
   long (9 min once, when the stored baseline was stale and only 281 of 2684
   mutants were reused). The next run reused all 2684 and took 26 s. Changing
   one line of source re-runs only the mutants on that code.
+
 ### Pre-commit hook
 
 `.githooks/pre-commit` (plain `sh`) runs both typechecks, `biome lint`,
