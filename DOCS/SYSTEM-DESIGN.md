@@ -617,6 +617,26 @@ core.
 | **4. Self-host package** | One container image (cms-server + preview node + git), env config, auth (one admin, argon2, sessions), rebuild on push webhook, bundled preview build (`--bundle`), Biome + CI | `docker run` on a small VPS edits and publishes the sample site |
 | **5. Multi-tenant** | Tenants, sites, users, roles in Postgres; preview router with on-demand start and idle stop; build queue with sandboxed workers; bundles and media in object storage; GitHub App for commits; server-side drafts | Two tenants edit two sites at once, isolated. Idle sites use no memory. Measured: memory per active site, cold start, build cost |
 
+### Before phase 2: preparing for a third package
+
+Phase 2 adds `cms-server`. It holds saving, validation, git credentials and
+publishing, which makes it the riskiest code in the system. Quality-tooling
+review (2026-10-29, [QUALITY-TOOLING-PLAN.md](QUALITY-TOOLING-PLAN.md) step
+10) found that the guardrails list their scope by path, so a new package is
+unchecked until it is added. At the start of phase 2:
+
+- Create the package with the checklist in [QUALITY-TOOLING.md, "Adding a
+  workspace package"](QUALITY-TOOLING.md#adding-a-workspace-package), so it
+  has the strict flags, Biome, Knip, Stryker and depcruise from its first commit.
+- Add the import rules the design already implies, mirroring decision 4:
+  - the preview renderer never imports `cms-server`;
+  - only `cms-server` may use `child_process` and git (the mirror of the
+    renderer's read-only request-path rule);
+  - `cms-server` may import `preview-protocol`, but not the renderer's
+    internals; anything they share belongs in `preview-protocol`.
+- Keep `cms-server`'s HTTP boundary on the same pattern as the render envelope:
+  parse every request with Zod; never cast.
+
 ## 10. Open questions and risks
 
 - **Draft-to-parsed conversion in the shim** (section 3). D3 sets the

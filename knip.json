@@ -3,7 +3,7 @@
   "ignoreWorkspaces": ["sample-site", "sampleAstroProject"],
   "ignoreBinaries": ["osv-scanner", "tsc", "vitest"],
   "workspaces": {
-    ".": {},
+    ".": { "ignoreDependencies": ["@swc/core"] },
     "preview-render-server": {
       "entry": [
         "sites/*.config.ts",

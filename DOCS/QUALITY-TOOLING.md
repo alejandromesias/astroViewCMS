@@ -43,6 +43,7 @@ tests for it; the full unit suite is for a person running the checks.
 | Skott | circular imports | none (CLI flags) | report (read the printed cycles) |
 | osv-scanner | known vulnerabilities in dependencies | `osv-scanner.toml` | gate |
 | Knip | dead code, unused exports and dependencies | `knip.json` | gate (should print nothing) |
+| dependency-cruiser | import rules: client stays browser-safe, protocol is a leaf, read-only request path, cycles, tests | `.dependency-cruiser.cjs` | gate |
 | Budget tests | bridge size, render latency, memory growth | tests | gate |
 | Stryker | whether the tests catch changes to the code | `stryker.config.json` | report only |
 
@@ -112,9 +113,10 @@ CI, fail the build). "Report" means the output needs a human reading it.
 | e2e and budgets | `cd preview-render-server && ../node_modules/.bin/vitest run --config vitest.e2e.config.ts` | ~22 s |
 | Audit | `npm run audit` (needs `osv-scanner`, see below) | ~3 s |
 | Knip | `npm run knip` | ~2 s |
+| dependency-cruiser | `npm run depcruise` (rules: [Annex](#annex-dependency-cruiser-rules)) | ~3 s |
 | Skott cycles | the command below | ~7 s |
 | Stryker | `npx stryker run` | see Stryker |
-| Everything | `npm run check [-- flags]` | ~14 s fast, ~80 s with `--all` |
+| Everything | `npm run check [-- flags]` | ~17 s fast, ~83 s with `--all` |
 
 The e2e run builds the sample site and spawns the server, so it needs a free
 port and some memory. Add `--disableConsoleIntercept` to see its `console.log`
@@ -159,12 +161,14 @@ behaves the same on Windows and a Linux CI). Flags go after `--` and combine:
 
 | Flag | Runs | Time |
 | --- | --- | --- |
-| `--fast` (default) | tsc, biome lint, biome format, unit tests, knip, osv-scanner | ~14 s |
-| `--e2e` | the fast set, then e2e and the budget tests | ~36 s |
+| `--fast` (default) | tsc, biome lint, biome format, unit tests, knip, depcruise, osv-scanner | ~17 s |
+| `--e2e` | the fast set, then e2e and the budget tests | ~39 s |
 | `--mutation` | `npx stryker run` (incremental) | 26 s when nothing changed; see below |
-| `--all` | everything above, then the Skott cycle check | ~80 s with a warm Stryker baseline |
+| `--all` | everything above, then the Skott cycle check | ~83 s with a warm Stryker baseline |
 
 Example: `npm run check -- --e2e --mutation`. An unknown flag exits with code 2.
+
+The `depcruise` step enforces the import rules listed in the [annex](#annex-dependency-cruiser-rules).
 
 - Tools run one after another (memory is low) and their output streams live.
 - A failure does not stop the run; the closing summary table lists every tool
@@ -201,6 +205,7 @@ Example: `npm run check -- --e2e --mutation`. An unknown flag exits with code 2.
 - **Knip:** it should print nothing. A new finding is either dead code (delete
   it) or a file used in a way Knip cannot see (declare it in `knip.json`).
   Knip's output is easy to over-trust: check a flagged item before deleting it.
+- **dependency-cruiser:** a violation names the rule (see the [annex](#annex-dependency-cruiser-rules)) and the `from → to` edge. Fix the import, not the config. The one legitimate config edit is an `fs` allowlist entry (`request-path-fs-allowlist`), which needs a comment giving the reason the file only reads. Orphan warnings print but never fail the run.
 - **Skott:** it follows only `import` statements, so a file loaded by a path
   string shows as an orphan. `src/dev/memory-route.ts` and `src/client/bridge.ts`
   (both loaded through `new URL(...)` in `integration.ts`) are expected to look
@@ -271,3 +276,58 @@ that behaviour down).
   `--force` to re-run everything while still updating the file.
 - A fresh clone has no baseline, so its first run is a full run. A future CI
   would have to cache this file between runs to benefit from incremental mode.
+
+## Adding a workspace package
+
+Every new package (`cms-server` is next) has to join the guardrails, because
+most tools list their scope by path and a package they do not list is
+unchecked. Go through this list when the package is created:
+
+1. **Root `package.json`:** add it to `workspaces`.
+2. **Package scripts:** `typecheck` (`tsc`) and `test` (`vitest run`), as in
+   `preview-protocol`.
+3. **`tsconfig.json`:** copy `preview-protocol/tsconfig.json`, so the strict
+   flags carry over. Do not relax one for the new package.
+4. **`biome.json`:** add `<package>/**` to `files.includes`.
+5. **`knip.json`:** add a `workspaces` entry with its entry points (files
+   loaded by name rather than imported).
+6. **`stryker.config.json`:** add its `src` globs to `mutate`, with the same
+   exclusions as for the render server (glue scripts with top-level effects).
+7. **`package.json` `depcruise` script:** add `<package>/src` to the paths, and
+   add rules for what the package may and may not import (see the
+   [annex](#annex-dependency-cruiser-rules)). Update the annex table.
+8. **`scripts/check.ts`:** add its `typecheck` and `test` steps to `FAST`.
+9. **Skott step in `scripts/check.ts` and `tsconfig.skott.json`:** map any workspace import to
+   its source, as for `preview-protocol`.
+10. **This manual:** update the overview and command tables.
+
+Skipping a line does not fail anything; the package is just unchecked. That
+is the reason for the list.
+
+## Annex: dependency-cruiser rules
+
+`npm run depcruise` checks every import under `preview-render-server/src` and
+`preview-protocol/src` against `.dependency-cruiser.cjs`. A rule is an
+"allowed to import" question; a violation prints the rule name below.
+"Request path" means the files that serve a preview request: `render/`,
+`overlay/`, `client/`, `*-route.ts` and `request-guard.ts`.
+
+| Rule | In plain words | Why | Severity |
+| --- | --- | --- | --- |
+| `client-stays-browser-safe` | `client/` imports no `node:*` builtin and no server module outside `client/` | the bridge runs in the browser and has a size budget | error |
+| `protocol-is-a-leaf` | `preview-protocol` never imports `preview-render-server` | it is the shared contract; the CMS app imports it too | error |
+| `request-path-no-process-or-git` | the request path imports no `child_process`, git library or store/write module | the preview node is read-only (decision 4) | error |
+| `request-path-fs-allowlist` | only `render/runtime.ts`, `overlay/plugins.ts` and `media-route.ts` import `fs` | the tool sees imports, not calls, so each `fs` user is reviewed once | error |
+| `no-circular` | no runtime import cycles (`import type` is ignored) | cycles break load order and make code hard to test | error |
+| `no-test-in-production` | production code never imports a test, test helper or fixture | tests must not ship or shape the build | error |
+| `no-orphans` | lists files nothing imports | Knip already gates dead code; entries loaded by URL look orphaned | warning |
+| `not-to-unresolvable` | every import resolves (`virtual:` and `astro:` are exempt) | a typo or missing dependency fails here | error |
+
+Out of scope on purpose: build-time code (`manifest/`, `schema/`, `build.ts`,
+`integration.ts`) writes files, and `dev/` runs only under `PREVIEW_DEV`.
+
+**When a rule fails:** fix the import, not the rule. The one routine config
+edit is a new `fs` allowlist entry, with a comment saying why the file only
+reads. To change or add a rule, edit `.dependency-cruiser.cjs` and update this
+table. The reasoning behind each rule is in step 9 of
+`QUALITY-TOOLING-PLAN.md`.

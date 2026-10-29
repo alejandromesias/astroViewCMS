@@ -12,12 +12,15 @@
     "@biomejs/biome": "2.6.3",
     "@stryker-mutator/core": "^10.1.1",
     "@stryker-mutator/vitest-runner": "^10.1.1",
+    "@swc/core": "1.16.20",
+    "dependency-cruiser": "18.7.0",
     "knip": "6.43.0"
   },
   "scripts": {
     "check": "node scripts/check.ts",
     "audit": "osv-scanner scan source -L package-lock.json --config osv-scanner.toml",
     "knip": "knip",
+    "depcruise": "depcruise preview-render-server/src preview-protocol/src --config .dependency-cruiser.cjs",
     "lint": "biome lint",
     "format:check": "biome format"
   }

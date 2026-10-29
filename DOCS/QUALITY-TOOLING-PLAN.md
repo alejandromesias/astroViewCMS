@@ -16,7 +16,11 @@ lands on its own, and leaves the typecheck and the targeted tests green.
 | 7b  | Render time budget        | e2e `performance` test                                                                                       | after 7a       | done     |
 | 7c  | Memory budget             | e2e, dev-only memory route                                                                                   | after 7b       | done     |
 | 8   | Manual and check script   | `DOCS/QUALITY-TOOLING.md`, root `npm run check` (CI groundwork)                                              | after 7c       | done     |
-| 9   | Architecture rules        | dependency-cruiser                                                                                           | once CI exists | deferred |
+| 9   | Architecture rules        | dependency-cruiser                                                                                           | after 8        | done     |
+| 10a | Gate `preview-protocol`   | typecheck + unit tests in `check.ts`                                                                         | after 9        | todo     |
+| 10b | Pre-commit hook           | `.githooks/pre-commit` (tsc, Biome, depcruise)                                                               | after 10a      | todo     |
+| 10c | Quality floors            | Vitest coverage `thresholds`, Stryker `break`                                                                | after 10a      | todo     |
+| 10d | Third-package checklist   | manual section + design preamble; depcruise rules land with `cms-server`                                     | after 10a      | todo     |
 
 ## 1. TypeScript flags
 
@@ -425,14 +429,212 @@ job.
 - A CI workflow runs `npm run check -- --e2e` on every push. The mutation run
   stays manual or nightly, with the incremental file cached between runs.
 - Turn on the dependency bot from step 5.
-- Step 9 depends on this CI workflow.
+- Step 9's `depcruise` gate joins that workflow through `npm run check`.
 
-## 9. dependency-cruiser (deferred)
+## 9. dependency-cruiser
 
-Added once CI exists, with the rules the design implies:
+Skott (step 4) showed the shape of the graph; dependency-cruiser enforces it.
+Step 4 checked these rules once, by hand. This step turns them into rules that
+fail the run when broken. It no longer waits for CI: it runs locally through
+`npm run check`, and CI picks it up from there.
 
-- `client/**` must not import `node:*` or server modules.
-- `preview-protocol` must not import from the server.
-- The preview node is read-only (decision 4): no write or git helpers in the
-  render, overlay and request paths.
-- No cycles, and no production code importing test fixtures.
+- **The rules**, from the design and from what step 4 checked by hand:
+  - `client/**` (`bridge.ts`, `patch.ts`) must not import `node:*` builtins or
+    any server module under `preview-render-server/src` outside `client/`.
+    `preview-protocol` and `idiomorph` are allowed. The bridge size budget (7a,
+    D14) depends on this rule.
+  - `preview-protocol/src/**` must not import from `preview-render-server`.
+    It is the shared contract and the future CMS app imports it too.
+  - **Read-only preview node (decision 4; "D4" is something else, see the
+    terminology note in SYSTEM-DESIGN).** In the request path (`render/**`,
+    `overlay/**`, `client/**`, `*-route.ts`, `request-guard.ts`), forbid
+    `node:child_process`, any git library (`simple-git`, `isomorphic-git`,
+    `nodegit`), and any future store or write module. dependency-cruiser sees
+    imports, not calls, so it can't tell `fs.readFile` from `fs.writeFile`. For
+    that reason `node:fs` and `node:fs/promises` get an **allowlist** in the
+    request path: today only `render/runtime.ts`, `overlay/plugins.ts` and
+    `media-route.ts` import them, and they only read. A new `fs` import in the
+    request path then fails the run and gets a review. Build-time code
+    (`manifest/**`, `schema/**`, `build.ts`, `integration.ts`) writes files and
+    is out of scope for this rule. `dev/**` is `PREVIEW_DEV` only and is also
+    out of scope.
+  - `no-circular`, as an error. Skott found no cycles, so this starts green.
+    Use `dependencyTypesNot: ["type-only"]` so the rule matches Skott's
+    runtime list. If the parser can't tell type-only imports apart (see the
+    parser bullet), gate on every cycle and say so.
+  - No production file imports `**/test/**` or `*.test.ts`. That is the
+    fixture rule from step 4, now gated.
+  - `no-orphans` as a **warning**, with `pathNot` for the known isolated
+    files: the `injectRoute` and URL-loaded entries listed in `knip.json`,
+    `memory-route.ts`, `virtual.d.ts`, the `sites/*.config.ts`, and the
+    Vitest configs. Knip already gates dead code, so this rule only reports.
+  - `not-to-unresolvable`, with `pathNot` for `^virtual:` and `^astro:`.
+    These are not packages (see the step 4 blind spots).
+- **Install.** Add dependency-cruiser as a pinned root devDependency, like Knip
+  (step 6): `18.7.0` is the stable release, `18.8.0-beta-1` is the one with
+  native TS 7.1 support (see the parser bullet for which to use). Do not use `npx`: this is a gate and should not fetch
+  from the network. Record the version and the command here.
+- **Parser: TypeScript 7 has no JS compiler API.** The `typescript@7.0.2`
+  package exports only `version` and `unstable/sync`. dependency-cruiser's
+  default `tsc` route for `.ts` files and its `tsPreCompilationDeps` option
+  need the classic API. Three routes exist, plus a stop rule; try them in order and record
+  which one worked:
+  1. **Native TypeScript support in the beta.** The `v18.8.0-beta-1`
+     release (23 Oct) adds "support for typescript >=7.1 (the native
+     compiler)" ([release notes](https://github.com/sverweij/dependency-cruiser/releases)).
+     Two catches: the repo has `typescript@7.0.2`, and the note says
+     **>=7.1**, so check that a 7.1 exists and that the workspace typechecks
+     with it; and a beta is not a stable pin. Install it with an exact version
+     (`dependency-cruiser@18.8.0-beta-1`, no caret), say in the done note that
+     it is a beta, and move to the stable 18.8.0 when it ships. Then run
+     `npx depcruise --info` and record what it reports for `typescript`.
+  2. **`@swc/core`, if the beta isn't usable.** Add it as a pinned root
+     devDependency (1.16.20 today), keep stable `dependency-cruiser@18.7.0`,
+     and set `options.parser: "swc"`. Check that `swc` marks `import type` as
+     `type-only`. Run a probe with `--output-type json` on `render/handlers.ts`,
+     whose `preview-protocol` import is type-only (step 4). If it doesn't,
+     write that down; it decides the `no-circular` setting above.
+  3. **Side-by-side TypeScript, as the
+     [Syncfusion TS 7 upgrade guide](https://www.syncfusion.com/blogs/post/typescript-7-upgrade-guide)
+     describes (its section 8).** Microsoft publishes `@typescript/typescript6`,
+     a compatibility package with the TS 6 API for tools that still need it.
+     The aliasing is:
+     `"@typescript/native": "npm:typescript@^7.0.2"` and
+     `"typescript": "npm:@typescript/typescript6@^6.0.2"`. This changes what
+     `typescript` means for the whole workspace, so `tsc`, Biome, Knip,
+     Vitest and Stryker would all resolve the TS 6 package and the `tsc` binary
+     would come from `@typescript/native`. It is the most invasive route; use it
+     only if routes 1 and 2 fail. If used, re-run `npm run typecheck` and the
+     whole `check --fast` set, and do not use `npm:`-aliased packages without
+     checking `npm ls typescript` first. The guide is a secondary source; check
+     Microsoft's install page for the current alias before copying it.
+  4. If no route parses `.ts`, write down the error and stop, as step 6 said
+     for Knip.
+- **Resolution.** `preview-protocol`'s `exports` point at `./src/index.ts`, and
+  `node_modules/preview-protocol` is a workspace symlink. dependency-cruiser
+  follows symlinks to the real path, so the cross-package edge should resolve
+  without `tsconfig.skott.json`. Confirm that the
+  `client/bridge.ts → preview-protocol/src/index.ts` edge appears. Don't
+  point `options.tsConfig` at a tsconfig unless it is needed: reading one may
+  also need the TS API.
+- **Config and scope.** Put a `.dependency-cruiser.cjs` at the root. Write it
+  by hand, or start from `npx depcruise --init` and cut it down to the rules
+  above. Keep the presets' `not-to-dev-dep` rule only if it passes without
+  noise. Scope and options:
+  - Cruise `preview-render-server/src` and `preview-protocol/src`.
+  - `options.exclude` for `sample-site`, `sampleAstroProject`, `reports`,
+    `node_modules` and `test/fixtures`.
+  - Keep tests in the cruise: they have to be visible for the fixture rule.
+    Rules that are about production code use `pathNot: "\\.test\\.ts$"` on
+    `from`.
+  - `options.doNotFollow` for `node_modules`.
+  - `.astro` files stay outside the graph, as in step 4.
+- **Script and check.** Add a root script:
+  `"depcruise": "depcruise preview-render-server/src preview-protocol/src --config .dependency-cruiser.cjs"`.
+  Add it to the `--fast` set in `scripts/check.ts` as a **gate**. Errors exit
+  non-zero; warnings (orphans) print but don't fail the run.
+- **Skott is under evaluation against dependency-cruiser.** dependency-cruiser
+  can do both jobs: rule enforcement and visualization (`--output-type dot`,
+  `mermaid`, `archi`, `ddot`, `html`). `no-circular` is now the cycle gate.
+  While the comparison runs, Skott stays in `--all` as a report only. Compare:
+  the graph readability, what each tool misses (URL-loaded routes, `virtual:`
+  imports, `preview-protocol`), install weight, and run time. Then pick one.
+  If dependency-cruiser wins, remove Skott from `scripts/check.ts`,
+  `tsconfig.skott.json` and the manual, and keep the module-graph output
+  under `reports/` (gitignored). Record the decision in the done note. Until
+  then, say in the Skott comment in `check.ts` that it is being evaluated.
+- **Prove each rule bites.** For each rule, add a throwaway violation and see
+  the run fail with the rule name. Then revert it. The violations:
+  - `import 'node:fs'` in `client/patch.ts`;
+  - an import of `preview-render-server` from `preview-protocol/src/index.ts`;
+  - `import 'node:child_process'` in `render/handlers.ts`, plus a new `node:fs`
+    import in `overlay/context.ts`;
+  - an import of `test/helpers.ts` from a production file;
+  - a two-file cycle.
+
+  List the five checks in the done note. Leave no violation in the tree.
+- **Docs.** In `DOCS/QUALITY-TOOLING.md`:
+  - add a row to the overview table (gate);
+  - add a row to the command table with its runtime;
+  - add a "how to read failures" entry. A violation names the rule and the
+    `from → to` edge. The fix is the import, not the config. An allowlist
+    entry (the `fs` one) needs a reason in a comment.
+  - add `depcruise` to the `--fast` row.
+
+  In `DOCS/MODULE-GRAPH.md`, note that the hand checks of step 4 are now rules
+  in `.dependency-cruiser.cjs`. Optional: `--output-type dot` or `mermaid` can
+  render a graph, but don't commit generated images.
+- **Verify:** `npm run depcruise` exits 0 with zero errors, and every warning
+  is listed in the done note. Each of the five deliberate violations failed
+  with its rule name. `npm run lint` and `npm run knip` are clean: Knip may
+  flag the new devDependencies or the `.cjs` config, so add them to
+  `knip.json` if so. `npm run audit` passes after the lockfile change. The done
+  note records the dependency-cruiser and swc versions, the parser that was
+  used, the type-only finding, and the runtime.
+
+- Done 2026-10-29: `.dependency-cruiser.cjs`, root `depcruise` script, and a `depcruise` gate in the `--fast` set of `scripts/check.ts`. Versions: `dependency-cruiser@18.7.0` (stable) and `@swc/core@1.16.20`, both pinned. Parser: route 2 (`options.parser: "swc"`). Route 1 failed: `18.8.0-beta-1` needs TypeScript >=7.1, and only `7.1.0-dev.*` builds exist (`depcruise --info` reports typescript unsupported with 7.0.2). Needed `options.enhancedResolveOptions` (`exportsFields: ["exports"]`, `conditionNames: [import, require, node, default, types]`) or every package import (`astro`, `preview-protocol`) was unresolvable. The `client/bridge.ts → preview-protocol/src/index.ts` edge resolves without a tsconfig. Type-only finding: swc marks `import type` as `type-only` (`render/handlers.ts → preview-protocol` is `type-only`), so `no-circular` uses `dependencyTypesNot: ["type-only"]`. Result: 97 modules, 214 dependencies, 0 errors, 0 warnings (no orphans), about 2-3 s. Five deliberate violations each failed with its rule: `import 'node:fs'` in `client/patch.ts` (`client-stays-browser-safe` plus `request-path-fs-allowlist`); `preview-protocol` importing the render server (`protocol-is-a-leaf`); `node:child_process` in `render/handlers.ts` (`request-path-no-process-or-git`) and a new `node:fs` in `overlay/context.ts` (`request-path-fs-allowlist`); a production file importing `test/helpers.ts` (`no-test-in-production`); a two-file cycle (`no-circular`). All reverted. `@swc/core` is in `knip.json` `ignoreDependencies` (loaded by depcruise, not imported). `npm run lint`, `format:check`, `knip`, `audit` clean; `npm run check` all gates pass. The Skott comparison is not done: Skott stays in `--all` as a report, marked "under evaluation" in `check.ts`; no winner picked yet.
+
+## 10. Guardrail gaps before the functional work
+
+Review on 2026-10-29 (after step 9): the guardrails are good enough to build
+on, with one hole and a few cheap upgrades. Each sub-step lands on its own.
+
+### 10a. Gate `preview-protocol`
+
+- **Problem.** `scripts/check.ts` type-checks and tests only
+  `preview-render-server`. `preview-protocol/src/index.test.ts` never runs
+  (the render server's Vitest `include` is its own `src/**`), and the
+  protocol's own `tsconfig.json` is only exercised indirectly. D14 makes this
+  package the editor/preview contract.
+- **Do.** Add two gates to the `FAST` set, after `tsc`:
+  `npm run typecheck -w preview-protocol` and
+  `npm run test -w preview-protocol`. Update the `--fast` row and times in
+  `DOCS/QUALITY-TOOLING.md`; add the commands to the command table.
+- **Verify.** Both steps pass in `npm run check`. Break one assertion in
+  `preview-protocol/src/index.test.ts` and confirm `check` fails; revert.
+
+### 10b. Pre-commit hook
+
+- **Problem.** There is no CI, so nothing runs the gates unless someone
+  remembers to.
+- **Do.** A plain `sh` script `.githooks/pre-commit` (LF) that runs
+  `npm run typecheck -w preview-render-server`,
+  `npm run typecheck -w preview-protocol`, `npm run lint`,
+  `npm run format:check` and `npm run depcruise`, and stops at the first
+  failure. No new dependency. Not the unit tests, Knip or the audit: those stay in
+  `npm run check`, so the hook stays under about 10 s. Enable per clone with
+  `git config core.hooksPath .githooks`; document it, and the `--no-verify`
+  escape hatch (use rarely, say why in the commit), in the manual.
+  Git for Windows runs the hook with its bundled `sh`, so PowerShell users need
+  nothing extra.
+- **Verify.** A deliberate type error blocks a commit attempt (do not
+  actually commit: stop at the hook's failure). The hook is executable in the
+  index (`git update-index --chmod=+x`). Ask the user before committing it.
+
+### 10c. Quality floors
+
+- **Problem.** Coverage and mutation scores can fall without anything
+  failing. `preview-render-server/vitest.config.ts` has coverage settings
+  but no `thresholds`; `stryker.config.json` has `"break": null`.
+- **Do.** Run coverage once (`vitest run --coverage` in
+  `preview-render-server`) and the Stryker report, record both numbers, and
+  set floors a few points below them. Add `coverage.thresholds`
+  (lines, functions, branches, statements). Set Stryker `thresholds.break`.
+  A floor is a ratchet: it moves up when the score does, never down without a
+  reason in the commit. Decide whether coverage joins the `--fast` unit step
+  (adds time) or runs only with `--e2e`; recommended: with `--e2e`.
+  Stryker stays report-only in `check.ts` unless the user changes that.
+- **Verify.** Lower a threshold's headroom to zero temporarily and confirm the
+  run fails with the measured number. The done note records both baselines and
+  the floors chosen.
+
+### 10d. Third-package checklist
+
+- **Do.** Add the "Adding a workspace package" section to
+  `DOCS/QUALITY-TOOLING.md` (the checklist lives there, once) and the
+  preamble to phase 2 in `DOCS/SYSTEM-DESIGN.md` section 9, which points to
+  it. Docs only; done 2026-10-29 with the writing of this step.
+- **Later, with `cms-server`** (start of phase 2): work through the checklist
+  and add its depcruise rules: the renderer must never import `cms-server`;
+  only `cms-server` may use `child_process` and git; `cms-server` may import
+  `preview-protocol` but not renderer internals. Update the annex.

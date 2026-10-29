@@ -21,6 +21,7 @@ const FAST: Step[] = [
   { name: 'biome format', command: 'npm run format:check', kind: 'gate' },
   { name: 'unit tests', command: 'npm run test -w preview-render-server', kind: 'gate' },
   { name: 'knip', command: 'npm run knip', kind: 'gate' },
+  { name: 'depcruise', command: 'npm run depcruise', kind: 'gate' },
   {
     name: 'osv-scanner',
     command: 'npm run audit',
@@ -41,7 +42,8 @@ const MUTATION: Step[] = [
   { name: 'stryker', command: 'npx stryker run', kind: 'report' },
 ];
 
-// Same flags as DOCS/MODULE-GRAPH.md. Exit code 0 on cycles: the cycles are printed, not gated.
+// Under evaluation against dependency-cruiser (its no-circular rule is now the cycle gate);
+// see QUALITY-TOOLING-PLAN.md step 9. Same flags as DOCS/MODULE-GRAPH.md. Exit code 0 on cycles: the cycles are printed, not gated.
 const SKOTT: Step[] = [
   {
     name: 'skott cycles',

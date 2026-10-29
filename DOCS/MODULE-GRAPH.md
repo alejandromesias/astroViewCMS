@@ -1,8 +1,8 @@
 # Module graph of `preview-render-server` and `preview-protocol`
 
 Quality plan step 4. Generated 2026-10-28 with Skott 0.35.12 from the
-`astroViewCMS` root. Nothing is enforced yet; step 9 (dependency-cruiser) takes
-the rules over.
+`astroViewCMS` root. The hand checks below are now rules in
+`.dependency-cruiser.cjs` (step 9), run by `npm run depcruise`.
 
 ## Result
 
@@ -16,7 +16,7 @@ the rules over.
 - **No cycles**, with or without `import type`. Both lists are empty.
 - 23 of the 76 production edges are type-only (`import type`).
 - **No production file imports a fixture.** The tests-included run has 4 fixture
-  files and none is reached from a non-test file (step 9 rule holds today).
+  files and none is reached from a non-test file (the `no-test-in-production` rule in step 9 now gates this).
 - **`client/` is clean.** With builtin and third-party tracking on,
   `client/bridge.ts` imports only `client/patch.ts` (plus the package
   `preview-protocol`), and `client/patch.ts` imports nothing local (plus the
@@ -104,10 +104,10 @@ sites/*.config.ts (both) -> types.ts   (preview-render-server/sites/)
   integration), and the five route files. Everything else is reached from them.
 - `render/` depends on `overlay/` and `manifest/types.ts`; `overlay/` never
   imports `render/`. `manifest/` never imports `overlay/` or `render/`. These
-  one-way directions are candidates for step 9 rules.
+  one-way directions were not made step 9 rules; only the rules in `.dependency-cruiser.cjs` are gated.
 - `overlay/markdown-instance.ts -> manifest/languages.ts` is the only
   `overlay -> manifest` edge, so the "overlay never imports manifest" direction
-  has one exception to decide on in step 9.
+  has one exception, and no step 9 rule covers this direction.
 - `render/handlers.ts` and `integration.ts` are the busiest files (9 local
   imports each).
 
@@ -140,5 +140,5 @@ sites/*.config.ts (both) -> types.ts   (preview-render-server/sites/)
   `ValidationResponse`). Skott records it only as a third-party dependency of
   `client/bridge.ts` (visible with third-party tracking on); the type-only import
   in `handlers.ts` does not appear, so check this boundary by hand.
-  `preview-protocol/src/index.ts` shows no importers in any run. A step 9 rule
+  `preview-protocol/src/index.ts` shows no importers in any run. The step 9 rule
   on that boundary has to match the package name.
