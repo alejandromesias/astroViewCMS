@@ -13,7 +13,7 @@ lands on its own, and leaves the typecheck and the targeted tests green.
 | 5   | Vulnerable dependencies   | osv-scanner (Dependabot once there is a remote)                                                              | after 2        | done     |
 | 6   | Dead code                 | Knip, run on demand                                                                                          | after 4        | done     |
 | 7a  | Bridge size budget        | unit test, rolldown + gzip                                                                                   | after 2        | done     |
-| 7b  | Render time budget        | e2e `performance` test                                                                                       | after 7a       | todo     |
+| 7b  | Render time budget        | e2e `performance` test                                                                                       | after 7a       | done     |
 | 7c  | Memory budget             | e2e, dev-only memory route                                                                                   | after 7b       | todo     |
 | 8   | CI                        | one `check` script run on every push                                                                         | after 2 and 5  | todo     |
 | 9   | Architecture rules        | dependency-cruiser                                                                                           | once CI exists | deferred |
@@ -266,6 +266,7 @@ edits of `/landing/home-v2`, median and p95 logged, `median < 100 ms`.
   step 8's `check`.
 - **Verify:** `npm run test:e2e` passes; the done note records the medians,
   p95s and bounds.
+- Done 2026-10-28 in `test/e2e/preview-server.e2e.test.ts`: the `performance` block now has a shared `hundredEdits` helper and two tests, `/landing/home-v2` and a Markdown post (`/blog/perf-draft`, css fence). Three runs, server render time: home median 2.2-3.0 ms, p95 3.5-5.3 ms; Markdown median 2.6-3.2 ms, p95 3.7-4.6 ms. Bounds (about 10x): median < 30 ms, p95 < 50 ms. Run with `--disableConsoleIntercept` to see the logged numbers.
 
 ### 7c. Memory
 

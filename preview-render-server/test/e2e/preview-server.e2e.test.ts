@@ -455,34 +455,60 @@ describe('GET /__dev/documents (built with PREVIEW_DEV=1)', () => {
 });
 
 describe('performance', () => {
-  it('renders 100 consecutive edits of a page quickly', async () => {
-    const home = readJson('src/content/landing/home-v2.json');
+  const stat = (values: number[]) => {
+    const sorted = [...values].sort((a, b) => a - b);
+    const at = (q: number) => sorted[Math.floor(q * (sorted.length - 1))]!;
+    return { median: at(0.5), p95: at(0.95), max: at(1) };
+  };
+  const fmt = ({ median, p95, max }: ReturnType<typeof stat>) =>
+    `median ${median.toFixed(1)} ms, p95 ${p95.toFixed(1)} ms, max ${max.toFixed(1)} ms`;
+
+  /** 100 consecutive renders of `urlPath`; `documents(i)` is edit number i. */
+  async function hundredEdits(
+    urlPath: string,
+    documents: (i: number) => Record<string, unknown>,
+  ) {
     const server: number[] = [];
     const wall: number[] = [];
     for (let i = 0; i < 100; i++) {
-      home.blocks[0].title = `Edit ${i}`;
       const start = performance.now();
-      const { status, json } = await render('/landing/home-v2', {
-        'landing/home-v2': home,
-      });
+      const { status, json } = await render(urlPath, documents(i));
       wall.push(performance.now() - start);
       expect(status).toBe(200);
       server.push((json as Rendered).renderMs);
     }
-    const stat = (values: number[]) => {
-      const sorted = [...values].sort((a, b) => a - b);
-      const at = (q: number) => sorted[Math.floor(q * (sorted.length - 1))];
-      return { median: at(0.5), p95: at(0.95), max: at(1) };
-    };
     const renderStat = stat(server);
-    const roundTrip = stat(wall);
-    const fmt = ({ median, p95, max }: ReturnType<typeof stat>) =>
-      `median ${median!.toFixed(1)} ms, p95 ${p95!.toFixed(1)} ms, max ${max!.toFixed(1)} ms`;
     console.log(
-      `100 renders of /landing/home-v2\n  render (server): ${fmt(renderStat)}\n  round trip:      ${fmt(roundTrip)}`,
+      `100 renders of ${urlPath}\n  render (server): ${fmt(renderStat)}\n  round trip:      ${fmt(stat(wall))}`,
     );
+    return renderStat;
+  }
 
-    // Generous bound: only catches a big regression, not machine noise.
-    expect(renderStat.median).toBeLessThan(100);
+  // Generous bounds (step 7b of QUALITY-TOOLING-PLAN.md): they only catch a big
+  // regression, not machine noise.
+  it('renders 100 consecutive edits of a page quickly', async () => {
+    const home = readJson('src/content/landing/home-v2.json');
+    const renderStat = await hundredEdits('/landing/home-v2', (i) => {
+      home.blocks[0].title = `Edit ${i}`;
+      return { 'landing/home-v2': home };
+    });
+    expect(renderStat.median).toBeLessThan(30);
+    expect(renderStat.p95).toBeLessThan(50);
+  });
+
+  it('renders 100 consecutive edits of a Markdown page quickly', async () => {
+    const renderStat = await hundredEdits('/blog/perf-draft', (i) => ({
+      'blog/perf-draft': {
+        data: {
+          title: `Edit ${i}`,
+          date: '2026-10-27',
+          author: 'ana-torres',
+          tags: ['design'],
+        },
+        body: `## Heading ${i}\n\nSome **text** with a [link](/blog).\n\n\`\`\`css\na { color: red }\n\`\`\`\n`,
+      },
+    }));
+    expect(renderStat.median).toBeLessThan(30);
+    expect(renderStat.p95).toBeLessThan(50);
   });
 });
