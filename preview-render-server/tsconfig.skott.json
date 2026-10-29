@@ -1,0 +1,10 @@
+{
+  // Only for Skott (the architecture map). It resolves the workspace import
+  // 'preview-protocol' to its source, which Skott otherwise reads as an npm
+  // package and draws no edge for. Not used for type checking.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": { "preview-protocol": ["../preview-protocol/src/index.ts"] }
+  }
+}

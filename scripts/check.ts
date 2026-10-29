@@ -48,9 +48,10 @@ const SKOTT: Step[] = [
     command:
       'npx skott@0.35.12 --fileExtensions=.ts --displayMode=file-tree ' +
       '--showCircularDependencies --exitCodeOnCircularDependencies=0 ' +
-      '-ts preview-render-server/tsconfig.json ' +
+      '-ts preview-render-server/tsconfig.skott.json ' +
       '-ig "sample-site/**" -ig "sampleAstroProject/**" -ig "reports/**" ' +
-      '-ig "**/node_modules/**" -ig "DOCS/**" -ig "**/*.test.ts" -ig "**/test/fixtures/**"',
+      '-ig "**/node_modules/**" -ig "DOCS/**" -ig "**/*.test.ts" -ig "**/test/**" ' +
+      '-ig "**/vitest*.config.ts" -ig "scripts/**"',
     kind: 'report',
   },
 ];

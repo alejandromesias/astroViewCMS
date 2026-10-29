@@ -132,16 +132,22 @@ in either shell.
 ```sh
 npx skott@0.35.12 --fileExtensions=.ts --displayMode=file-tree \
   --showCircularDependencies --exitCodeOnCircularDependencies=0 \
-  -ts preview-render-server/tsconfig.json \
+  -ts preview-render-server/tsconfig.skott.json \
   -ig 'sample-site/**' -ig 'sampleAstroProject/**' -ig 'reports/**' \
-  -ig '**/node_modules/**' -ig 'DOCS/**' -ig '**/*.test.ts' -ig '**/test/fixtures/**'
+  -ig '**/node_modules/**' -ig 'DOCS/**' -ig '**/*.test.ts' -ig '**/test/**' \
+  -ig '**/vitest*.config.ts' -ig 'scripts/**'
 ```
 
 PowerShell (no `\` continuations, double quotes):
 
 ```powershell
-npx skott@0.35.12 --fileExtensions=.ts --displayMode=file-tree --showCircularDependencies --exitCodeOnCircularDependencies=0 -ts preview-render-server/tsconfig.json -ig "sample-site/**" -ig "sampleAstroProject/**" -ig "reports/**" -ig "**/node_modules/**" -ig "DOCS/**" -ig "**/*.test.ts" -ig "**/test/fixtures/**"
+npx skott@0.35.12 --fileExtensions=.ts --displayMode=file-tree --showCircularDependencies --exitCodeOnCircularDependencies=0 -ts preview-render-server/tsconfig.skott.json -ig "sample-site/**" -ig "sampleAstroProject/**" -ig "reports/**" -ig "**/node_modules/**" -ig "DOCS/**" -ig "**/*.test.ts" -ig "**/test/**" -ig "**/vitest*.config.ts" -ig "scripts/**"
 ```
+
+The graph covers production code only: tests, test helpers, the Vitest configs
+and `scripts/` are ignored, since only a runner loads them. The extra
+`tsconfig.skott.json` maps the workspace import `preview-protocol` to its
+source; without it Skott reads that name as an npm package and draws no edge.
 
 Add `--no-trackTypeOnlyDependencies` to see cycles that exist at runtime only
 (type-only imports vanish when the code is compiled).
@@ -195,7 +201,10 @@ Example: `npm run check -- --e2e --mutation`. An unknown flag exits with code 2.
 - **Knip:** it should print nothing. A new finding is either dead code (delete
   it) or a file used in a way Knip cannot see (declare it in `knip.json`).
   Knip's output is easy to over-trust: check a flagged item before deleting it.
-- **Skott:** a reported cycle is a real cycle, so fix the import structure
+- **Skott:** it follows only `import` statements, so a file loaded by a path
+  string shows as an orphan. `src/dev/memory-route.ts` and `src/client/bridge.ts`
+  (both loaded through `new URL(...)` in `integration.ts`) are expected to look
+  unused; they are not dead code. A reported cycle is a real cycle, so fix the import structure
   (move the shared piece to a third file). The CLI prints the cycle verdict but
   not the edge list; to see all edges, use Skott's API as described in
   [MODULE-GRAPH.md](MODULE-GRAPH.md).
