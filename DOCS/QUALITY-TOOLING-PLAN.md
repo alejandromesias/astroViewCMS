@@ -12,7 +12,9 @@ lands on its own, and leaves the typecheck and the targeted tests green.
 | 4   | Architecture map          | Skott (graph, cycles)                                                                                        | after 3        | done     |
 | 5   | Vulnerable dependencies   | osv-scanner (Dependabot once there is a remote)                                                              | after 2        | done     |
 | 6   | Dead code                 | Knip, run on demand                                                                                          | after 4        | done     |
-| 7   | Budget tests              | bridge size, render time and memory                                                                          | after 2        | todo     |
+| 7a  | Bridge size budget        | unit test, rolldown + gzip                                                                                   | after 2        | done     |
+| 7b  | Render time budget        | e2e `performance` test                                                                                       | after 7a       | todo     |
+| 7c  | Memory budget             | e2e, dev-only memory route                                                                                   | after 7b       | todo     |
 | 8   | CI                        | one `check` script run on every push                                                                         | after 2 and 5  | todo     |
 | 9   | Architecture rules        | dependency-cruiser                                                                                           | once CI exists | deferred |
 
@@ -230,12 +232,57 @@ lands on its own, and leaves the typecheck and the targeted tests green.
 
 ## 7. Budget tests
 
-- **Bridge size:** a test that bundles the client and fails above a byte
-  budget (set from today's size plus a margin).
-- **Render time and memory:** in the style of `media-route.measure.test.ts`.
-  They protect the capacity estimate in section 6 of the design (about 80 MB
-  per preview node, about 1 ms per render). Loose thresholds, so they flag
-  regressions and not noise.
+They protect the capacity estimate in the design (SYSTEM-DESIGN section 6:
+about 80 MB per preview node, about 1 ms per render). Loose thresholds, so they
+flag regressions and not noise. Done one at a time, each with its own commit
+and done note, in the order below (cheapest first).
+
+Note: the earlier reference to `media-route.measure.test.ts` was wrong; that
+file tests `measureImage` (image metadata), not speed. The precedent is the
+`performance` block at the end of `test/e2e/preview-server.e2e.test.ts`: 100
+edits of `/landing/home-v2`, median and p95 logged, `median < 100 ms`.
+
+### 7a. Bridge size
+
+- A unit test bundles `src/client/bridge.ts` with `rolldown` (already a
+  dependency, used in `schema/config-bundle.ts`): browser platform, minified,
+  every import bundled (`preview-protocol`, `patch.ts`, `idiomorph`). Measure
+  the gzipped bytes with `node:zlib`.
+- Budget: today's size plus about 20%, rounded; write both numbers in the test
+  and here. On failure, the message gives the size and the budget.
+- It is fast, so step 8's `check` runs it.
+- **Verify:** the test passes; the done note records the size and the budget.
+- Done 2026-10-28 in `src/client/bridge-size.test.ts` (picked up by the normal `vitest run`, about 1 s). Measured 5318 bytes gzipped (minified, browser platform, `idiomorph` and `preview-protocol` bundled); budget 6400 (+20%). Both numbers are constants in the test; the failure message gives the size and the budget.
+
+### 7b. Render time
+
+- Extend the existing e2e `performance` test; don't add a second one. Keep the
+  100-edit loop and its `console.log` of the numbers.
+- Add a p95 bound, and a second page with Markdown (Markdown and Shiki cost
+  much more; SYSTEM-DESIGN section 10).
+- Set the bounds from a few runs on this machine: about 10x the measured
+  median, so only a real regression fails.
+- Needs the e2e build (minutes), so it stays in `npm run test:e2e`, not in
+  step 8's `check`.
+- **Verify:** `npm run test:e2e` passes; the done note records the medians,
+  p95s and bounds.
+
+### 7c. Memory
+
+- The e2e server is a separate process (`global-setup.ts` spawns it with
+  `PREVIEW_DEV=1`), so the test can't read its memory directly. Add a dev
+  route next to `dev/documents-route.ts` (`devRoutes()`, `PREVIEW_DEV` only,
+  never in a production build) that returns `process.memoryUsage()` after
+  `globalThis.gc?.()`, and spawn the server with `--expose-gc`.
+- Check two things:
+  - the RSS after warmup is under a loose bound (the design measured about
+    150 to 250 MB for `sample-site` with overlay routes and Markdown loaded;
+    the 80 MB figure is a static site);
+  - the RSS after 500 more renders has not grown by more than a small margin
+    (a leak check, worth more than the absolute number).
+- Stays in `npm run test:e2e`, not in step 8's `check`.
+- **Verify:** `npm run test:e2e` passes; the done note records the RSS numbers
+  and bounds.
 
 ## 8. CI
 
