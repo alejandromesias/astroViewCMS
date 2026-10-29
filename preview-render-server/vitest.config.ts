@@ -30,6 +30,9 @@ export default getViteConfig(
       coverage: {
         provider: 'v8',
         reporter: ['text', 'html'],
+        // Floors a few points under the 2026-10-29 baseline (99.2 / 97.2 / 99.3 / 99.1).
+        // A ratchet: raise when the score rises; lower only with a reason in the commit.
+        thresholds: { lines: 96, functions: 96, branches: 94, statements: 96 },
         include: ['src/**', 'test-editor/**'],
         exclude: [
           '**/*.test.ts',

@@ -37,9 +37,11 @@ const FAST: Step[] = [
 
 const E2E: Step[] = [
   { name: 'e2e + budgets', command: 'npm run test:e2e -w preview-render-server', kind: 'gate' },
+  // Fails below coverage.thresholds in vitest.config.ts (step 10c).
+  { name: 'coverage floors', command: 'npm run coverage -w preview-render-server', kind: 'gate' },
 ];
 
-// A crash fails the run; the score itself never does (`break` is null).
+// A crash fails the run, and so does a score under `thresholds.break` in stryker.config.json (step 10c).
 const MUTATION: Step[] = [
   { name: 'stryker', command: 'npx stryker run', kind: 'report' },
 ];

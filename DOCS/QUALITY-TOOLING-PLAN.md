@@ -19,7 +19,7 @@ lands on its own, and leaves the typecheck and the targeted tests green.
 | 9   | Architecture rules        | dependency-cruiser                                                                                           | after 8        | done     |
 | 10a | Gate `preview-protocol`   | typecheck + unit tests in `check.ts`                                                                         | after 9        | done     |
 | 10b | Pre-commit hook           | `.githooks/pre-commit` (tsc, Biome, depcruise)                                                               | after 10a      | done     |
-| 10c | Quality floors            | Vitest coverage `thresholds`, Stryker `break`                                                                | after 10a      | todo     |
+| 10c | Quality floors            | Vitest coverage `thresholds`, Stryker `break`                                                                | after 10a      | done     |
 | 10d | Third-package checklist   | manual section + design preamble; depcruise rules land with `cms-server`                                     | after 10a      | todo     |
 
 ## 1. TypeScript flags
@@ -361,7 +361,7 @@ reference you use day to day, and it replaces this plan as the entry point.
     workaround from step 4.
 - **Stryker section:**
   - what the score means and the 60/80 thresholds in `stryker.config.json`;
-  - that `break` is `null`, so the score is a report, not a gate;
+  - that `break` was `null` here (a report); step 10c later set it to 85;
   - how to open the HTML report under `reports/mutation/`;
   - how to triage survivors: equivalent mutants and constants come last, as
     [MUTATION-WEAK-SPOTS.md](MUTATION-WEAK-SPOTS.md) notes;
@@ -404,8 +404,8 @@ job.
   - keep going after a failure, so one run reports every problem;
   - finish with a summary table: tool, pass/fail/report, duration;
   - exit non-zero if any gate failed;
-  - Stryker and Knip's output never fail the run in `--mutation`; Stryker's
-    score is printed as a report;
+  - Stryker and Knip's output never fail the run in `--mutation` on their own;
+    Stryker's score is a report (step 10c later added a `break` floor);
   - stream each tool's output as it runs, without capturing and replaying it.
 - **Skott:** use the pinned `npx skott@0.35.12` cycle check from step 4, and
   only in `--all`, because `npx` fetches it over the network.
@@ -631,6 +631,8 @@ on, with one hole and a few cheap upgrades. Each sub-step lands on its own.
 - **Verify.** Lower a threshold's headroom to zero temporarily and confirm the
   run fails with the measured number. The done note records both baselines and
   the floors chosen.
+
+- Done 2026-10-29: baselines coverage 99.09 statements / 97.15 branches / 99.3 functions / 99.15 lines; Stryker 91.83. Floors: coverage lines 96, functions 96, branches 94, statements 96 (`vitest.config.ts`); Stryker `thresholds.break` 85. Coverage runs as a `coverage floors` gate in `--e2e` (not `--fast`). Stryker stays in `--mutation`, now failing the run below 85. Verified: branches floor at 99 failed with "97.15% does not meet 99%"; break at 95 made Stryker exit 1. Both reverted.
 
 ### 10d. Third-package checklist
 

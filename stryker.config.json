@@ -39,7 +39,7 @@
     "reports"
   ],
   "tempDirName": ".stryker-tmp",
-  "thresholds": { "high": 80, "low": 60, "break": null },
+  "thresholds": { "high": 80, "low": 60, "break": 85 },
   "incremental": true,
   "incrementalFile": "reports/stryker-incremental.json"
 }

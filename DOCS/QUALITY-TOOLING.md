@@ -45,7 +45,7 @@ tests for it; the full unit suite is for a person running the checks.
 | Knip | dead code, unused exports and dependencies | `knip.json` | gate (should print nothing) |
 | dependency-cruiser | import rules: client stays browser-safe, protocol is a leaf, read-only request path, cycles, tests | `.dependency-cruiser.cjs` | gate |
 | Budget tests | bridge size, render latency, memory growth | tests | gate |
-| Stryker | whether the tests catch changes to the code | `stryker.config.json` | report only |
+| Stryker | whether the tests catch changes to the code | `stryker.config.json` | gate in `--mutation` (score floor) |
 
 "Gate" means a failure should stop a change from landing (and, once there is
 CI, fail the build). "Report" means the output needs a human reading it.
@@ -118,7 +118,7 @@ CI, fail the build). "Report" means the output needs a human reading it.
 | dependency-cruiser | `npm run depcruise` (rules: [Annex](#annex-dependency-cruiser-rules)) | ~3 s |
 | Skott cycles | the command below | ~7 s |
 | Stryker | `npx stryker run` | see Stryker |
-| Everything | `npm run check [-- flags]` | ~17 s fast, ~83 s with `--all` |
+| Everything | `npm run check [-- flags]` | ~21 s fast, ~87 s with `--all` |
 
 The e2e run builds the sample site and spawns the server, so it needs a free
 port and some memory. Add `--disableConsoleIntercept` to see its `console.log`
@@ -164,9 +164,9 @@ behaves the same on Windows and a Linux CI). Flags go after `--` and combine:
 | Flag | Runs | Time |
 | --- | --- | --- |
 | `--fast` (default) | tsc, tsc protocol, protocol tests, biome lint, biome format, unit tests, knip, depcruise, osv-scanner | ~20 s |
-| `--e2e` | the fast set, then e2e and the budget tests | ~39 s |
-| `--mutation` | `npx stryker run` (incremental) | 26 s when nothing changed; see below |
-| `--all` | everything above, then the Skott cycle check | ~83 s with a warm Stryker baseline |
+| `--e2e` | the fast set, then e2e, the budget tests and the coverage floors | ~51 s |
+| `--mutation` | `npx stryker run` (incremental) | ~29 s when nothing changed; see below |
+| `--all` | everything above, then the Skott cycle check | ~87 s with a warm Stryker baseline |
 
 Example: `npm run check -- --e2e --mutation`. An unknown flag exits with code 2.
 
@@ -176,8 +176,9 @@ The `depcruise` step enforces the import rules listed in the [annex](#annex-depe
 - A failure does not stop the run; the closing summary table lists every tool
   with `pass`, `fail`, `report` or `skipped`, and its duration. The exit code
   is non-zero if any gate failed.
-- Stryker and Skott are reports: they show `report`, never fail the run on
-  their score or cycles (only a crash of the tool itself counts as `fail`).
+- Skott is a report: it shows `report`, never fails the run on cycles (only a
+  crash of the tool itself counts as `fail`). Stryker also shows `report`, but
+  fails the run when its score is under `thresholds.break`.
 - If `osv-scanner` is not on PATH, that step is `skipped` with the install
   command, and the run does not fail. CI will install it.
 - Skott runs only with `--all`, because `npx` fetches it over the network.
@@ -255,8 +256,9 @@ that behaviour down).
 - **Score:** (killed + timeout) / (killed + timeout + survived + no coverage).
   Errored mutants are not counted. Thresholds in `stryker.config.json`: `high`
   80, `low` 60. Above 80 is healthy; below 60 needs attention.
-- **It does not gate.** `break` is `null`, so a low score never fails the run.
-  Treat the score as a report to read.
+- **Floor:** `break` is 85 (baseline 91.83 on 2026-10-29), so a score below 85
+  fails the run. It is a ratchet: raise it when the score rises; lower it only
+  with a reason in the commit.
 - **Report:** open `reports/mutation/mutation.html` in a browser. Filter by
   file, then by status (Survived, NoCoverage); each survivor shows the original
   and the changed code. `reports/` is gitignored.
