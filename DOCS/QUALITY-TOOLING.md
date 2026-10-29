@@ -125,7 +125,9 @@ output (the memory test prints its readings that way).
 afterwards so it is on PATH).
 
 Skott cycle check (from the repo root; it exits 0 whether or not it finds
-cycles, so read what it prints):
+cycles, so read what it prints). The block below is bash (Git Bash, Linux, CI);
+the PowerShell one-liner follows it. `npm run check -- --all` runs it for you
+in either shell.
 
 ```sh
 npx skott@0.35.12 --fileExtensions=.ts --displayMode=file-tree \
@@ -133,6 +135,12 @@ npx skott@0.35.12 --fileExtensions=.ts --displayMode=file-tree \
   -ts preview-render-server/tsconfig.json \
   -ig 'sample-site/**' -ig 'sampleAstroProject/**' -ig 'reports/**' \
   -ig '**/node_modules/**' -ig 'DOCS/**' -ig '**/*.test.ts' -ig '**/test/fixtures/**'
+```
+
+PowerShell (no `\` continuations, double quotes):
+
+```powershell
+npx skott@0.35.12 --fileExtensions=.ts --displayMode=file-tree --showCircularDependencies --exitCodeOnCircularDependencies=0 -ts preview-render-server/tsconfig.json -ig "sample-site/**" -ig "sampleAstroProject/**" -ig "reports/**" -ig "**/node_modules/**" -ig "DOCS/**" -ig "**/*.test.ts" -ig "**/test/fixtures/**"
 ```
 
 Add `--no-trackTypeOnlyDependencies` to see cycles that exist at runtime only
