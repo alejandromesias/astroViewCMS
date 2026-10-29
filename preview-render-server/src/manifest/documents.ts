@@ -5,7 +5,7 @@ import type { ProjectScan } from './import-scan.ts';
 import type { BuildTimeFields, DocumentRecord } from './types.ts';
 
 /** One entry of Astro's content data store (.astro/data-store.json). */
-export interface StoreEntry {
+interface StoreEntry {
   id: string;
   filePath?: string;
 }

@@ -21,7 +21,7 @@ export interface ValidationError extends FieldIssue {
   key: string;
 }
 
-export interface DraftInfo {
+interface DraftInfo {
   /** The file extension of the document that holds the draft (`md`, `json`, ...). */
   extension: string;
 }
@@ -29,7 +29,7 @@ export interface DraftInfo {
 // biome-ignore lint/suspicious/noExplicitAny: Astro's entry types depend on the site's collections
 type Loose = any;
 
-export interface RealContent {
+interface RealContent {
   getCollection(
     collection: string,
     filter?: (entry: Loose) => unknown,

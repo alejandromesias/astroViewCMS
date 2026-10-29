@@ -10,7 +10,7 @@ import { createPaginate } from './paginate.ts';
 
 type Params = Record<string, string | undefined>;
 
-export interface StaticPath {
+interface StaticPath {
   params: Record<string, string | number | undefined>;
   props?: Record<string, unknown>;
 }

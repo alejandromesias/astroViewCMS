@@ -1,0 +1,25 @@
+{
+  "$schema": "https://unpkg.com/knip@6.43.0/schema.json",
+  "ignoreWorkspaces": ["sample-site", "sampleAstroProject"],
+  "ignoreBinaries": ["osv-scanner", "tsc", "vitest"],
+  "workspaces": {
+    ".": {},
+    "preview-render-server": {
+      "entry": [
+        "sites/*.config.ts",
+        "src/{render,validate,media,warmup}-route.ts",
+        "src/dev/documents-route.ts",
+        "src/client/bridge.ts",
+        "src/overlay/{content-shim,image-service,data-proxy}.ts",
+        "src/render/renderers-anchor.astro",
+        "test-editor/editor.astro"
+      ],
+      "project": ["src/**", "sites/**", "test/**", "test-editor/**"],
+      "ignore": ["test/fixtures/**"]
+    },
+    "preview-protocol": {
+      "entry": ["src/index.test.ts"],
+      "project": ["src/**"]
+    }
+  }
+}

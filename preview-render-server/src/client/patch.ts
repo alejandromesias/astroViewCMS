@@ -15,7 +15,7 @@ const KEEP = new Set(['SCRIPT', 'STYLE', 'LINK']);
 // except these two, which syncIslandAttributes handles itself.
 const ISLAND_SPECIAL_ATTRIBUTES = new Set(['ssr', 'props']);
 
-export interface PatchSummary {
+interface PatchSummary {
   /** What changed: `region:<name>`, `head`, `body`, `script`. */
   changed: string[];
 }

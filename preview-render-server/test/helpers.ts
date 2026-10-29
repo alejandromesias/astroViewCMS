@@ -10,15 +10,3 @@ export async function callRoute(
 }
 
 export const BASE = 'http://localhost:4400';
-
-export function jsonRequest(
-  path: string,
-  body: unknown,
-  headers: Record<string, string> = {},
-): Request {
-  return new Request(BASE + path, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', ...headers },
-    body: typeof body === 'string' ? body : JSON.stringify(body),
-  });
-}

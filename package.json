@@ -10,10 +10,12 @@
   "devDependencies": {
     "@biomejs/biome": "2.6.3",
     "@stryker-mutator/core": "^10.1.1",
-    "@stryker-mutator/vitest-runner": "^10.1.1"
+    "@stryker-mutator/vitest-runner": "^10.1.1",
+    "knip": "6.43.0"
   },
   "scripts": {
     "audit": "osv-scanner scan source -L package-lock.json --config osv-scanner.toml",
+    "knip": "knip",
     "lint": "biome lint",
     "format:check": "biome format"
   }

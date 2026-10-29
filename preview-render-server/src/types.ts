@@ -1,7 +1,7 @@
 // Site configuration: what the preview render server needs to know about one
 // site (see sites/*.config.ts).
 
-export interface RegionConfig {
+interface RegionConfig {
   /** The component that renders the region, relative to the site root. */
   component: string;
 }
