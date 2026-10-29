@@ -9,7 +9,7 @@ lands on its own, and leaves the typecheck and the targeted tests green.
 | 1 | Stricter TypeScript flags | `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, `noFallthroughCasesInSwitch` | now | done |
 | 2 | Lint and format | Biome | now | done |
 | 3 | Boundary validation | Zod from `astro/zod` (already a dependency) | after 2 | done |
-| 4 | Architecture map | Skott (graph, cycles) | after 3 | todo |
+| 4 | Architecture map | Skott (graph, cycles) | after 3 | done |
 | 5 | Vulnerable dependencies | osv-scanner (+ Renovate or Dependabot) | after 2 | todo |
 | 6 | Dead code | Knip, run on demand | after 4 | todo |
 | 7 | Budget tests | bridge size, render time and memory | after 2 | todo |
@@ -99,6 +99,46 @@ lands on its own, and leaves the typecheck and the targeted tests green.
   and `preview-protocol`. The point is to see the real shape first.
 - Output: a short section in this folder with the graph and any cycles found.
   No rule enforcement yet.
+- **One run from the `astroViewCMS` root**, so both packages land in one graph.
+  Ignore `sample-site/**`, `sampleAstroProject/**`, `reports/**` and
+  `node_modules/**`; `--fileExtensions=.ts`. There is no root tsconfig and no
+  path aliases, so none is needed; if Skott insists, point it at
+  `preview-render-server/tsconfig.json`.
+- **Run it with `npx skott@<version>`, pinned**, not as a dependency: this step
+  only looks, and step 9's dependency-cruiser takes over the rules. Record the
+  version and the exact command in the output so it can be re-run.
+- **Incremental mode is on by default** and writes `.skott/cache.json`: turn it
+  off, or add `.skott/` to `.gitignore`.
+- **Production graph first:** ignore `**/*.test.ts` and `**/test/fixtures/**`
+  (tests are about half of `src/` and bury the shape). Then one run with tests
+  included, read for a single thing: no production file imports a fixture (a
+  step 9 rule).
+- **Cycles, two lists.** Skott follows `import type` by default; a type-only
+  cycle does nothing at runtime. Run with type-only tracking on and off and
+  record both.
+- **Check `client/` by hand** with builtin tracking on: `bridge.ts` and
+  `patch.ts` must not reach `node:*` or server modules (a step 9 rule, and the
+  bridge size of D14 depends on it).
+- **Known blind spots, to write down, not fix:**
+  - route files look isolated but aren't dead: `render-route.ts`,
+    `validate-route.ts`, `media-route.ts`, the warmup route and
+    `dev/documents-route.ts` are wired by URL strings in `injectRoute`
+    (`src/integration.ts`), not imports;
+  - `virtual:preview-site` and `virtual:astro:*` don't resolve;
+  - `preview-protocol` is imported by package name, so the edge between the two
+    packages only shows with third-party tracking on (or if Skott follows the
+    workspace link); confirm which and say so.
+- **Output file:** `DOCS/MODULE-GRAPH.md`, using the text modes (file-tree or
+  raw). The webapp view is interactive and can't be stored.
+- Done 2026-10-28 with Skott 0.35.12; see `DOCS/MODULE-GRAPH.md`. No cycles
+  (types followed or not), no production file imports a fixture, and `client/`
+  reaches no `node:*` or server module. Two deviations: the CLI's raw and
+  file-tree modes print no edges, so the edge list came from Skott's API in a
+  scratch folder (the cycle check works from the CLI); incremental mode is off
+  by default in this version, so no `.skott/` ignore was needed. Review
+  corrections: `preview-protocol` is imported by `bridge.ts` and (types only)
+  `render/handlers.ts`, though Skott shows only the first; `.astro` files are
+  outside the graph (two `injectRoute` entry points).
 
 ## 5. osv-scanner
 
@@ -110,7 +150,11 @@ lands on its own, and leaves the typecheck and the targeted tests green.
 ## 6. Knip
 
 - Entry points: `src/build.ts`, `src/start.ts`, `sites/*.config.ts`, the virtual
-  modules. Run on demand and read the output; do not gate on it until the
+  modules, the `injectRoute` entrypoints in `src/integration.ts` (render,
+  validate, media, warmup and dev documents routes, plus
+  `render/renderers-anchor.astro` and `test-editor/editor.astro`),
+  `overlay/data-proxy.ts` (loaded by URL in `integration.ts`) and the client
+  bridge (`client/bridge.ts`); without these, Knip reports them as unused. Run on demand and read the output; do not gate on it until the
   false positives are tuned out.
 - Same pass: go through the 43 production `noNonNullAssertion` warnings left
   from steps 2 and 3. Replace each with a check or a narrower type, or keep it
