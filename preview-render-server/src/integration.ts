@@ -217,6 +217,10 @@ export function devRoutes(
       pattern: '/__dev/documents',
       entrypoint: new URL('./dev/documents-route.ts', import.meta.url),
     },
+    {
+      pattern: '/__dev/memory',
+      entrypoint: new URL('./dev/memory-route.ts', import.meta.url),
+    },
   ];
 }
 

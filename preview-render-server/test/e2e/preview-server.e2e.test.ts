@@ -463,6 +463,19 @@ describe('performance', () => {
   const fmt = ({ median, p95, max }: ReturnType<typeof stat>) =>
     `median ${median.toFixed(1)} ms, p95 ${p95.toFixed(1)} ms, max ${max.toFixed(1)} ms`;
 
+  /** Edit number i of the Markdown post (a css fence, so Shiki runs). */
+  const perfDraft = (i: number) => ({
+    'blog/perf-draft': {
+      data: {
+        title: `Edit ${i}`,
+        date: '2026-10-27',
+        author: 'ana-torres',
+        tags: ['design'],
+      },
+      body: `## Heading ${i}\n\nSome **text** with a [link](/blog).\n\n\`\`\`css\na { color: red }\n\`\`\`\n`,
+    },
+  });
+
   /** 100 consecutive renders of `urlPath`; `documents(i)` is edit number i. */
   async function hundredEdits(
     urlPath: string,
@@ -497,18 +510,55 @@ describe('performance', () => {
   });
 
   it('renders 100 consecutive edits of a Markdown page quickly', async () => {
-    const renderStat = await hundredEdits('/blog/perf-draft', (i) => ({
-      'blog/perf-draft': {
-        data: {
-          title: `Edit ${i}`,
-          date: '2026-10-27',
-          author: 'ana-torres',
-          tags: ['design'],
-        },
-        body: `## Heading ${i}\n\nSome **text** with a [link](/blog).\n\n\`\`\`css\na { color: red }\n\`\`\`\n`,
-      },
-    }));
+    const renderStat = await hundredEdits('/blog/perf-draft', perfDraft);
     expect(renderStat.median).toBeLessThan(30);
     expect(renderStat.p95).toBeLessThan(50);
+  });
+
+  // Step 7c of QUALITY-TOOLING-PLAN.md. The server runs with --expose-gc, so
+  // /__dev/memory reports after a forced GC. It warms the server up itself, so
+  // it passes alone as well as in the full run. The leak check is heapUsed (live
+  // objects); RSS also moves with how much heap V8 reserves, so it only gets a
+  // loose absolute bound.
+  it('keeps memory bounded over 500 more renders', async () => {
+    const mb = (bytes: number) => bytes / 1024 / 1024;
+    const memory = async () => {
+      const res = await fetch(`${BASE}/__dev/memory`);
+      const mem = (await res.json()) as {
+        rss: number;
+        heapTotal: number;
+        heapUsed: number;
+        external: number;
+        gc: boolean;
+      };
+      expect(mem.gc).toBe(true);
+      return mem;
+    };
+    const home = readJson('src/content/landing/home-v2.json');
+    const renderHome = async (title: string) => {
+      home.blocks[0].title = title;
+      const { status } = await render('/landing/home-v2', {
+        'landing/home-v2': home,
+      });
+      expect(status).toBe(200);
+    };
+
+    for (let i = 0; i < 50; i++) {
+      await renderHome(`Warmup ${i}`);
+      const { status } = await render('/blog/perf-draft', perfDraft(i));
+      expect(status).toBe(200);
+    }
+    const before = await memory();
+    for (let i = 0; i < 500; i++) await renderHome(`Leak ${i}`);
+    const after = await memory();
+
+    const growth = mb(after.heapUsed - before.heapUsed);
+    const line = (m: Awaited<ReturnType<typeof memory>>) =>
+      `rss ${mb(m.rss).toFixed(0)}, heapTotal ${mb(m.heapTotal).toFixed(0)}, heapUsed ${mb(m.heapUsed).toFixed(0)} MB`;
+    console.log(
+      `memory after warmup:     ${line(before)}\nmemory after 500 renders: ${line(after)} (heapUsed ${growth >= 0 ? '+' : ''}${growth.toFixed(1)} MB)`,
+    );
+    expect(mb(before.rss)).toBeLessThan(400);
+    expect(growth).toBeLessThan(10);
   });
 });

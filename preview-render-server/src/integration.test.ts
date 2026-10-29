@@ -57,10 +57,10 @@ const site: ResolvedSiteConfig = {
 const posix = (p: string) => p.replaceAll('\\', '/');
 
 describe('devRoutes', () => {
-  it('adds /__dev/documents only to a build made with PREVIEW_DEV=1', () => {
+  it('adds /__dev/* only to a build made with PREVIEW_DEV=1', () => {
     expect(
       devRoutes({ PREVIEW_DEV: '1' }).map((route) => route.pattern),
-    ).toEqual(['/__dev/documents']);
+    ).toEqual(['/__dev/documents', '/__dev/memory']);
     expect(devRoutes({})).toEqual([]);
     expect(devRoutes({ PREVIEW_DEV: '0' })).toEqual([]);
     expect(devRoutes({ PREVIEW_DEV: 'true' })).toEqual([]);
@@ -721,6 +721,7 @@ describe('previewRenderServer setup', () => {
         '/__preview-media/[file]',
         '/__preview/warm',
         '/__dev/documents',
+        '/__dev/memory',
         '/__editor',
       ]);
       const dev = routes[5];

@@ -14,7 +14,7 @@ lands on its own, and leaves the typecheck and the targeted tests green.
 | 6   | Dead code                 | Knip, run on demand                                                                                          | after 4        | done     |
 | 7a  | Bridge size budget        | unit test, rolldown + gzip                                                                                   | after 2        | done     |
 | 7b  | Render time budget        | e2e `performance` test                                                                                       | after 7a       | done     |
-| 7c  | Memory budget             | e2e, dev-only memory route                                                                                   | after 7b       | todo     |
+| 7c  | Memory budget             | e2e, dev-only memory route                                                                                   | after 7b       | done     |
 | 8   | CI                        | one `check` script run on every push                                                                         | after 2 and 5  | todo     |
 | 9   | Architecture rules        | dependency-cruiser                                                                                           | once CI exists | deferred |
 
@@ -284,6 +284,51 @@ edits of `/landing/home-v2`, median and p95 logged, `median < 100 ms`.
 - Stays in `npm run test:e2e`, not in step 8's `check`.
 - **Verify:** `npm run test:e2e` passes; the done note records the RSS numbers
   and bounds.
+- Done 2026-10-28: `src/dev/memory-route.ts` (`/__dev/memory`, added to `devRoutes()`; the `devRoutes` unit test now lists both routes), `global-setup.ts` starts the server with `--expose-gc`, and a third test in the e2e `performance` block runs after the two timing tests (so the server is warm) and renders `/landing/home-v2` 500 times. First version (RSS-growth check) was reworked after review, see the fixes below.
+- **Fixes before commit (review 2026-10-28).** A measurement with the full
+  `memoryUsage()` breakdown showed three problems with the test above:
+  - *Order-dependent.* Run alone (`-t "keeps memory"`) it fails: the "before"
+    reading is a cold server (RSS 99 MB), so module and Shiki loading reads as
+    +150 MB of growth. It only passes because the timing tests warm it first.
+  - *RSS is a noisy leak signal.* In a full-suite run RSS grew +36 MB
+    (282 to 318 MB) while `heapUsed` after GC grew +2 MB (68 to 70 MB). The
+    growth is V8 reserving heap (`heapTotal` 162 to 190 MB), not retained
+    objects. +36 MB against a 50 MB bound will flake.
+  - *The done note's explanation is wrong.* Live heap is 68 MB; most of the gap
+    to the design's 218 MB is reserved-but-empty heap (`heapTotal` 162 MB vs
+    `heapUsed` 68 MB) left by the suite's render churn, not the dev routes.
+
+  Changes:
+  - The test warms up itself before the first reading: render
+    `/landing/home-v2` and the Markdown post (`/blog/perf-draft`, css fence)
+    about 50 times each, reusing the documents the timing tests use. It must
+    pass both alone (`-t "keeps memory"`) and in the full e2e run.
+  - Read the whole `/__dev/memory` body (`rss`, `heapTotal`, `heapUsed`,
+    `external`), not only `rss`.
+  - Leak check on `heapUsed` after the forced GC: growth over the 500 renders
+    `< 10 MB` (measured +2 MB). Drop the RSS-growth assertion.
+  - Keep `rss < 400 MB` as the loose absolute bound, checked after warmup.
+  - Log `rss`, `heapTotal` and `heapUsed` before and after, in MB.
+  - Rewrite the done note: numbers from three runs, both alone and in the full
+    run (RSS, heapTotal, heapUsed, heapUsed growth), the new bounds, and the
+    explanation above in place of the dev-routes guess.
+  - **Verify:** `npx vitest run --config vitest.e2e.config.ts -t "keeps memory"
+    --disableConsoleIntercept` passes, and `npm run test:e2e` passes.
+  - Fixes done 2026-10-28. The test warms up itself (50 renders each of
+    `/landing/home-v2` and `/blog/perf-draft`; the Markdown document is now the
+    shared `perfDraft(i)` helper), logs `rss`, `heapTotal` and `heapUsed` before
+    and after, and asserts `rss < 400 MB` after warmup and `heapUsed` growth
+    over 500 renders `< 10 MB`. The RSS-growth assertion is gone. Three runs
+    each, MB (after warmup, then after 500 renders):
+    - Alone: rss 240-245 then 264-267; heapTotal 123-136 then 125-132;
+      heapUsed 63 then 59-65; heapUsed growth -3.9 to +2.0.
+    - Full e2e run (40 tests pass): rss 267-297 then 273-328; heapTotal
+      144-175 then 139-196; heapUsed 69 then 64-70; heapUsed growth -4.8 to
+      +1.4.
+    - heapUsed is flat (live heap 63-70 MB); rss and heapTotal move by tens of
+      MB between runs because V8 reserves heap, which is why only heapUsed is
+      the leak check. The gap to the design's 150-250 MB figure (rss 240-330
+      here) is reserved-but-empty heap, not retained objects or the dev routes.
 
 ## 8. CI
 

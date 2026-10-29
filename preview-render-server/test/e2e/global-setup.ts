@@ -55,11 +55,16 @@ export async function setup(project: TestProject) {
   }
 
   const port = await freePort();
-  server = spawn(process.execPath, ['src/start.ts', SITE_CONFIG], {
-    cwd: SERVER_DIR,
-    env: { ...env, HOST: '127.0.0.1', PORT: String(port) },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  // --expose-gc lets /__dev/memory force a GC before it reports (step 7c).
+  server = spawn(
+    process.execPath,
+    ['--expose-gc', 'src/start.ts', SITE_CONFIG],
+    {
+      cwd: SERVER_DIR,
+      env: { ...env, HOST: '127.0.0.1', PORT: String(port) },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
   let output = '';
   server.stdout?.on('data', (chunk) => (output += chunk));
   server.stderr?.on('data', (chunk) => (output += chunk));
