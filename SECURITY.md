@@ -1,16 +1,9 @@
 # Security Policy
 
-## Supported Versions
-
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-
 ## Reporting a Vulnerability
 
 If you discover a security vulnerability, please do **not** open a public issue.
-Instead, email us privately at: `security@example.com`
+Instead, email us privately at: `support@maravostudio.com`
 
 Please include:
 
