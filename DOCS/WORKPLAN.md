@@ -932,6 +932,30 @@ author), so the preview and the build agree. Settled: leave the preview as it
 is and put the guard in the CMS app in phase 2 (section 8); D3 records it.
 A test pins the behaviour.
 
+Also done in step 1 (2026-10-30), each in its own file: D4 in
+`test/e2e/d4-references.e2e.test.ts` (reordered testimonial references over
+HTTP, two edited and two untouched, order kept; the unit tests in
+`content-api.test.ts` already covered the call shapes) and D5 in
+`test/e2e/d5-avatar.e2e.test.ts` (a drafted avatar path relative to
+`src/content/` renders; a missing file answers `422` with `avatar`).
+
+Status of the step 1 decision tests (update the row when a test is written or
+changes; last run 2026-10-30, targeted runs with `-t`, not the full suite):
+
+| Decision | Tests | File | Last run |
+|---|---|---|---|
+| D1 | 1 | `preview-server.e2e.test.ts` | pass |
+| D2 | 2 | `preview-server.e2e.test.ts` | pass |
+| D3 | 6 (5 failures and the near miss, plus the pinned deleted-author gap); the throwing refinement is in `content-api.test.ts` | `preview-server.e2e.test.ts` | pass |
+| D4 | 2 (plus the existing unit tests) | `d4-references.e2e.test.ts` | pass |
+| D5 | 2 | `d5-avatar.e2e.test.ts` | pass |
+| D8–D14, D16 | not written | | |
+
+Run one with, from `preview-render-server`: `NODE_OPTIONS=--max-old-space-size=4096
+npx vitest run --config vitest.e2e.config.ts test/e2e/<file> -t "<decision>"`.
+The full e2e run (`npm run test:e2e`, part of `npm run check -- --e2e`) is the
+gate; this table is only a record of what exists.
+
 Before writing a test from the lists below, search the existing tests for it.
 If it exists, tick it off here instead.
 
