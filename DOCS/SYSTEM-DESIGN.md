@@ -30,7 +30,7 @@ and can hold its built files.
 
 The rest of the document explains why, then specifies each part. Decisions
 taken later, after reviewing the sample site, are logged in section 11 (D1 to
-D14). Where they change a contract, the section itself is updated and points
+D16). Where they change a contract, the section itself is updated and points
 to the decision.
 
 ## 1. Vocabulary
@@ -120,8 +120,9 @@ Measured on 2026-10-26, same machine and sample site as the other numbers:
 | First render after a cold start (container creation) | ~7 ms | | |
 
 Memory doesn't depend on render granularity either. It is ~80 MB per running
-site process. For multi-tenancy, the cost driver is **how many preview nodes
-are alive**, not how big each render is.
+site process at rest, and ~200 MB once an editing session has warmed up the
+Markdown renderer (D2; WORKPLAN section 10). For multi-tenancy, the cost
+driver is **how many preview nodes are alive**, not how big each render is.
 
 ### Did we build islands just to follow Tina?
 
@@ -303,6 +304,7 @@ Use the Container API path.
     integer dimensions and a known format. The message names the part that
     failed;
   - `404`: no route matches `path`;
+  - `413`: the body is larger than the cap, checked before parsing (D16);
   - `422`: the overlay doesn't fit a schema (message names the field);
   - `500`: render error, message for the editor.
 - **`POST /__preview/validate`**, same body: parses each document with the
@@ -445,7 +447,8 @@ pulls, checks the build and pushes.
   and several hundred MB while it runs. The old preview node keeps serving
   until the new bundle is ready.
 - **Footprint at rest:** cms-server plus one preview node, roughly 80 MB each,
-  in place of AstroAdmin's ~650 MB `astro dev`.
+  in place of AstroAdmin's ~650 MB `astro dev`. While someone edits, the
+  preview node grows to ~200 MB after the Markdown warm-up (D2).
 
 ## 6. Scaling to many tenants
 
@@ -483,9 +486,13 @@ render contract, the CMS API and the bundle layout.
 - **Idle sites cost no memory.** A preview node runs only while someone edits
   that site, and stops after, say, 10 idle minutes. Bundles are ~3 MB in
   object storage (bundled variant, `sharp` shared on the host).
-- **Active sites cost ~80 MB each.** A 4 GB host, keeping ~1 GB for the OS
-  and other processes, fits about 35 concurrently edited sites. Renders take
-  ~1 ms per keystroke after a 120 ms pause, so CPU is not the limit.
+- **Active sites cost ~200 MB each.** A node that only serves static pages
+  stays at ~80 MB, but an editing session warms up the Markdown renderer and
+  Shiki (D2), which brings it to ~200 MB (measured on `sample-site`, WORKPLAN
+  section 10). A 4 GB host, keeping ~1 GB for the OS and other processes,
+  fits about 15 concurrently edited sites. WORKPLAN task 1.8 re-measures this,
+  and D2's phase 3 plugin setting is the main lever to lower it. Renders take
+  a few ms per keystroke after a 120 ms pause, so CPU is not the limit.
 - **Builds are the expensive part, and they're rare.** They happen on code
   changes and publishes, not on edits. A small queue of build workers serves
   many tenants. A build can be scaled to zero between jobs.
@@ -611,7 +618,7 @@ core.
 | Phase | Work | Done when |
 |---|---|---|
 | **0. Reset the save work** | Park the uncommitted per-island save (section 7). Write the richer sample site (section 8) | Sample site builds and runs with plain `astro dev` and `astro build` |
-| **1. Page render with overlay** | Content shim (`AsyncLocalStorage`, read log, image and reference conversion), route manifest and `getStaticPaths` handling, `POST /__preview/render`, protocol v2, bridge morph/head/priming, `documents.json` and `schema.json` from the build | Every case in section 8's table renders correctly or has a documented limit. Median render under 5 ms on the 40-block page. Unit and end-to-end tests as today |
+| **1. Page render with overlay** | Content shim (`AsyncLocalStorage`, read log, image and reference conversion), route manifest and `getStaticPaths` handling, `POST /__preview/render`, protocol v2, bridge morph/head/priming, `documents.json` and `schema.json` from the build | Every case in section 8's table renders correctly or has a documented limit. Median render on the 40-block page measured against a 5 ms goal; the budget tests of QUALITY-TOOLING.md gate regressions. Unit, end-to-end and browser tests, all inside the quality flow |
 | **2. CMS app, single tenant** | New `cms-server` package: document API, `PUT /api/changes` with revisions and validation, media staging, publish (commit, rebase, push), preview node supervision, separate origins and the preview token, editor origins as node config with `frame-ancestors`, rebuild on protocol mismatch (D14). Test editor talks to it | Edit two documents, save, reload: the preview shows saved content without a rebuild. A conflicting save answers 409. Publish creates one commit |
 | **3. Real editor** | Forms from `schema.json` (AstroAdmin's model), drafts in `localStorage`, document picker from the render's document list, click-to-focus from field paths | A non-developer can edit every case in the sample without touching JSON |
 | **4. Self-host package** | One container image (cms-server + preview node + git), env config, auth (one admin, argon2, sessions), rebuild on push webhook, bundled preview build (`--bundle`), Biome + CI | `docker run` on a small VPS edits and publishes the sample site |
@@ -667,7 +674,8 @@ unchecked until it is added. At the start of phase 2:
   of live swapping and reload the iframe.
 - **Saved content between bundles.** The overlay carries every document saved
   since the last bundle. Rebuild the bundle after each publish so it stays
-  small. Measure the overlay size on the 200-post sample.
+  small. Measure the overlay size on the 200-post sample; it sets the body
+  cap of D16 (WORKPLAN task 1.8).
 - **Git integration for multi-tenant:** a GitHub App with API commits (no
   clones, cheap) or working copies on volumes (provider-neutral, more disk).
   Decide in phase 5.
@@ -1237,3 +1245,57 @@ to the preview node, the editor, or neither.
   a separate registrable domain, as GitHub does with `githubusercontent.com`.
 - **Terminology.** "Decision 4" is the read-only preview node in the summary
   table at the top; "D4" is the `getEntry` call shapes.
+
+### D15. Clarifications from the quality-tooling round
+
+**Finding.** The mutation-testing follow-ups (2026-10-29,
+`Handoffs/HANDOFF-2026-10-29-2305.md`) fixed behaviour in tests that the log
+didn't state. None of it contradicts an earlier entry; this entry records it
+so the earlier ones stay unedited.
+
+**Decision.**
+
+- **D10, hostile keys.** Document keys, overlay keys and config keys may be
+  any string, including prototype names (`__proto__`, `constructor`). Code
+  keyed by them uses `Map`, `Object.hasOwn` and `Object.fromEntries`, never a
+  plain object lookup ([IMPLEMENTATION-RECOMMENDATIONS.md](IMPLEMENTATION-RECOMMENDATIONS.md)
+  section 1).
+- **D10, generated identifiers.** Where the build turns a JSON key into an
+  identifier (`export const <key>` in `overlay/plugins.ts`), the result must
+  be safe for any key; the list of reserved words is checked against the full
+  set, not the keys the sample happens to use.
+- **D1, content entries.** `buildTimeFields` may name content entries
+  (`authors/ana`), not only `data:` files. The flag reaches `documents.json`
+  the same way.
+- **D6, island URLs.** The resolver joins the site's base and a chunk path
+  with exactly one slash between them, whatever slashes each side carries
+  (`/x//` + `_astro/a.js` gives `/x/_astro/a.js`). Pinned in
+  `render/islands.test.ts`.
+- **D12, stopgap media route.** The tests of `media-route.ts`, including the
+  near-miss file names that must answer `404`, belong to the phase 1 stopgap.
+  In phase 2 they move with the route to `POST /api/media` instead of being
+  deleted.
+- **TBD (the user confirms after phase 1), D3, collections without a
+  loader.** Today such a collection gets a `schema.json` entry and contributes
+  no documents (no `glob` or `file` to read). That is tested for the schema
+  only. Once confirmed, add a `documents.json` test.
+
+### D16. A size cap on render and validate bodies
+
+**Finding.** `render/handlers.ts` reads the request with `request.json()` and
+nothing caps its size. Only the upload route has a cap (10 MB). Decision 4
+makes the overlay travel in every request, so its size grows with the content
+saved since the bundle (section 10), and a hostile client can send any size.
+
+**Decision.**
+
+- **`POST /__preview/render` and `POST /__preview/validate` reject a body
+  over the cap with `413`, before parsing it.** Check `Content-Length` first
+  and count bytes while reading, so a missing or false header doesn't bypass
+  the cap.
+- **The value comes from a measurement** (WORKPLAN task 1.8): the overlay when
+  every document of the 200-post sample differs from the bundle, and a full
+  draft of the 40-block page, with headroom over the larger. Until then the
+  cap is a constant next to the check, like the upload route's `MAX_BYTES`.
+- **Multi-tenant (phase 5):** the cap may become per-site runtime config, set
+  by the preview router. Keep it a single constant until a site needs more.

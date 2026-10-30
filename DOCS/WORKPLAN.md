@@ -23,7 +23,8 @@ parent folder: `../../HANDOFF.md`, `../../*-SYSTEM-OVERVIEW.md`, and the `tinacm
 | | Status |
 |---|---|
 | Preview render server: build once, render in memory, page render route, bridge v2 (1.6) | done; test editor v2 is task 1.7 |
-| TypeScript without a build step, Vitest unit tests (counts in each task's status) and end-to-end suite (38) | done |
+| TypeScript without a build step, Vitest unit tests (counts in each task's status) and end-to-end suite with budget tests on `sample-site` (`preview-render-server/test/e2e/`) | done |
+| Quality tooling: strict `tsc`, Biome, Knip, dependency-cruiser, osv-scanner, Stryker, pre-commit hook ([QUALITY-TOOLING.md](QUALITY-TOOLING.md)) | done; browser tests join it in task 1.8 |
 | System design | done, agreed by the user on 2026-10-26 |
 | Per-island save | parked and removed (0.1, 1.1) |
 | Richer sample site | `sample-site/` in the workspace with the 0.3 additions; preview-built unchanged (0.4) |
@@ -881,41 +882,175 @@ and 1.6a found.
 
 ### 1.8 Tests
 
-- Unit tests for every new source file. For the overlay, test the pure parts
-  directly (merge, filters, log, raw-to-parsed conversion). Cover the Vite
-  `transform` output with real fixture modules.
-- The end-to-end suite moves to the new sample site. One test per row of
-  SYSTEM-DESIGN.md section 8: render through HTTP with an overlay, then
-  assert on the HTML and the `documents` list.
-- One test per decision, at least:
-  - D1: `config.json` and `theme.json` come out `buildTime`, `menu.json` doesn't;
-  - D2: a Markdown draft body changes the rendered post and the blog summary;
-  - D3: a missing image, a deleted author and a wrong enum each answer
-    `422` with the field path;
-  - D12, optimizer bypass: a media entry with `url`
-    `http://169.254.169.254/x.png` renders that exact string as the image
-    source, no `/_image?href=` in the HTML points at it, and the server makes
-    no outbound request while rendering. `GET /_image?href=<that url>`
-    is refused, because the site doesn't allow that host;
-  - D12: an uploaded image resolves through the media map, and an image
-    refinement sees its width; the same upload without a map entry answers
-    "image not found"; `/__preview/validate` agrees with the render;
-  - D4: `getEntry(ref)` and `getEntries(refs)` over overlaid testimonials;
-  - D5: a testimonial avatar resolves against `src/content/`;
+Read [TESTING-RECOMMENDATIONS.md](TESTING-RECOMMENDATIONS.md) before writing
+any test here: fixtures per test, exact values, near-miss negatives,
+whole-table `it.each`, one test file per source file. Every test this task adds
+joins the quality flow in [QUALITY-TOOLING.md](QUALITY-TOOLING.md) (step 5
+below); a test that no gate runs doesn't count as done.
+
+**Order of work.** The steps below are grouped by kind, not by order. Work in
+this order:
+
+1. Ask the user to approve the browser-mode dev dependency (step 2), then run
+   the cross-origin spike of step 2. It goes first because its outcome decides
+   how the browser harness is built, and it takes under an hour.
+2. Step 1, the decision tests, and step 4, the budget.
+3. The rest of step 2, the browser scenarios, on the harness the spike chose.
+4. Step 3, the measurements. The body cap of D16 needs the overlay
+   measurement, so set its final value here (step 1 uses a provisional one).
+5. Step 5 is not a separate stage: wire each test into the quality flow as it
+   is written.
+
+**Already covered, don't redo.** Tasks 1.3 to 1.7 and the quality-tooling
+round (QUALITY-TOOLING-PLAN.md, `Handoffs/HANDOFF-2026-10-29-2305.md`) left:
+
+- the end-to-end suite running on `sample-site`
+  (`preview-render-server/test/e2e/preview-server.e2e.test.ts`): page parity,
+  hydrated chunk URLs (D6), document discovery, JSON and imported-data drafts
+  (D8), a brand-new and a removed post, an upload through the media map (D12),
+  `422` field paths, `400` envelope errors, the request guard, validate, the
+  warm-up `204` (D2) and `/__dev/documents`;
+- concurrent renders with different overlays (`overlay/content-api.test.ts`,
+  `overlay/data-proxy.test.ts`), prototype-named keys in overlays and configs,
+  and the Zod envelope (`render/envelope.ts`, including a malformed `media`);
+- budget tests: render latency (100 edits of `landing/home-v2` and of a
+  Markdown page, median under 30 ms, p95 under 50 ms), memory (`rss` under
+  400 MB, `heapUsed` growth under 10 MB over 500 renders) and the bridge size.
+
+Before writing a test from the lists below, search the existing tests for it.
+If it exists, tick it off here instead.
+
+**1. Decision tests (HTTP end-to-end unless marked).** Render through HTTP with
+an overlay, assert on the HTML, `documents` and `limits`.
+
+- D1: `config.json` and `theme.json` come out `buildTime`, `menu.json` doesn't.
+- D2: a Markdown draft body changes the rendered post and the blog summary; a
+  heading id set by the site's remark plugins appears in the draft render; a
+  fence in a language outside `code-languages.json` renders as plain text and
+  answers `code-language:<lang>` (the first real-build test of the allow-list).
+- D3: a missing image, a deleted author (`null` in the overlay), a misspelled
+  author id and a wrong enum each answer `422` with the field path. A
+  refinement that throws answers `422` with `schema-refinement` in `limits`:
+  unit test with a fixture schema, because the sample must keep a schema its
+  real build accepts.
+- D4: `getEntry(ref)` and `getEntries(refs)` over overlaid testimonials, order
+  kept.
+- D5: a testimonial avatar resolves against `src/content/`.
+- D8: a post set to `draft: true` disappears from `/blog` and its tag pages.
+- D9: an old-shape `POST /__preview/<name>` answers `404`.
+- D10: render `/blog/generated/post-001` with an overlay.
+- D11: an MDX body draft answers `limits: ["mdx-body"]`, while a frontmatter
+  draft of the same entry still shows.
+- D12, optimizer bypass: a media entry with `url`
+  `http://169.254.169.254/x.png` renders that exact string as the image
+  source, no `/_image?href=` in the HTML points at it, and the server makes
+  no outbound request while rendering. `GET /_image?href=<that url>` is
+  refused, because the site doesn't allow that host.
+- D12: an image refinement sees the width of a media-map image; the same
+  upload without a map entry answers "image not found"; a map entry for a path
+  that is in the bundle loses to the bundle's metadata; `/__preview/validate`
+  agrees with the render.
+- D13: a draft of the YAML author changes the post that references it; a draft
+  of one `stats` entry changes only that entry, and its `updated` sent as an
+  ISO string passes the plain `z.date()`; a partners draft reorders the block;
+  the authors listing mixes JSON and YAML entries.
+- D14 (unit, in `preview-protocol`): `protocolMismatch()` for an equal, a
+  different and a missing version. Bridge (unit, happy-dom): a token parameter
+  in the page URL is dropped from the `path` sent in `ready`.
+- D16, body cap: a render or validate body one byte over the cap answers `413`
+  without being parsed; one at the cap is accepted. Unit test the boundary
+  (cap and cap + 1) where the check lives, end-to-end test one `413`. Start
+  with a provisional value; step 3's overlay measurement sets the final one.
+
+**2. Browser tests (Vitest browser mode).** HTTP tests can't see hydration,
+scripts, scroll or styles after a patch. Add a small suite:
+
+- `preview-render-server/test/browser/` with `vitest.browser.config.ts`,
+  Playwright provider, Chromium headless only, one file at a time
+  (`fileParallelism: false`; memory is low). Check the provider package name
+  for Vitest 5 (`@vitest/browser-playwright` in recent versions); it's a new
+  dev dependency, so ask before adding it.
+- The test page plays the editor: it loads a preview page in an iframe from
+  the preview server (reuse `test/e2e/global-setup.ts` for the build and the
+  server) and drives it with the real protocol messages. The two origins
+  differ, as in the product, so the bundle's editor origins must list the
+  Vitest origin (build-time `editorOrigins` until D14 moves it to runtime).
+  **Spike (done first in 1.8, see "Order of work"):** check that a custom
+  browser command (`commands` in the
+  config, running in Node with Playwright's frame API) can read the
+  cross-origin iframe's DOM. If it can't, serve the harness page from the
+  preview origin instead and record why.
+- Scenarios:
+  - priming: one render on load. Settle the 1.6 question of whether
+    `astro:page-load` also fires on the first load (a second `ready` and
+    render);
   - D6: add a hydrated pricing block to `landing/home-v2` and check it
-    hydrates; change the toggle's props;
-  - D8: a post set to `draft: true` disappears from `/blog` and its tag pages;
-  - D10: render `/blog/generated/post-001` with an overlay;
-  - D11: an MDX body draft answers `limits: ["mdx-body"]`;
-  - D13: a draft of the YAML author changes the post that references it; a
-    draft of one `stats` entry changes only that entry; a partners draft
-    reorders the block; the authors listing mixes JSON and YAML entries.
-- Performance in the end-to-end suite: 100 edits on `landing/long`, median
-  render under 5 ms, and private memory recorded.
-- **D7 measurement:** generate 200 posts
-  (`node scripts/generate-posts.mjs 200` in `sample-site/`) and time
-  `getStaticPaths` on `/blog/page/2` and a tag page. Over 2 ms added to the
-  median render: build the cache from D7. Record the numbers in section 10.
+    hydrates; change the toggle's props and check Yearly stays selected; move a
+    block next to a hydrated one and check the island is untouched;
+  - inline scripts that change with the draft (`define:vars`, JSON-LD) and
+    removed `<style>`/`<link>` elements: count them after 10 edits (1.6 open
+    check). Fix a pile-up, or record it as a limit;
+  - morph on `landing/long` (40+ blocks): an untouched block keeps its DOM
+    node, and `scrollY` is unchanged;
+  - scoped styles and `:global()`: a swapped block's computed styles match the
+    prerendered page;
+  - D6 known limit: Swiper on `landing/home-v2` is morphed back to server
+    markup by priming. Assert today's behaviour and name it a known limit, so
+    a change is noticed;
+  - the FAQ accordion script after a swap: same treatment;
+  - ClientRouter: the answer to a draft sent before a navigation is dropped,
+    and the bridge announces `ready` again;
+  - origins: a message from an origin not in the list is ignored.
+
+**3. Measurements (recorded in section 10, not gates).**
+
+- **D7:** generate 200 posts (`node scripts/generate-posts.mjs 200` in
+  `sample-site/`) and time `getStaticPaths` on `/blog/page/2` and a tag page.
+  Over 2 ms added to the median render: build the cache from D7.
+- **With 200 posts:** build time, bundle size, and the preview node's memory
+  through `/__dev/memory`: idle, after warm-up, after renders.
+- **Memory per editing session:** the same three readings on the default
+  sample, plus what warm-up costs if it waits for the first Markdown render
+  instead of the session start. These replace the capacity figures in
+  SYSTEM-DESIGN.md sections 5 and 6.
+- **Overlay size:** the request body when every document differs from the
+  bundle on the 200-post sample, and for a full `landing/long` draft. Choose
+  the body cap (D16) with headroom over the larger one.
+- **40-block render:** 100 edits of `landing/long`, median recorded against the
+  5 ms goal of SYSTEM-DESIGN.md section 9.
+
+**4. Budget.** Add `landing/long` to the latency budget tests, with the same
+generous bounds as the others (they catch big regressions, not noise). The
+5 ms figure stays a measured goal, not a gate.
+
+**5. Join the quality flow.** Part of the task, not a follow-up:
+
+- **Unit tests:** next to their source file, so `npm run check` (fast set) runs
+  them and Stryker reaches them. Run Stryker incrementally on the changed
+  source files (TESTING-RECOMMENDATIONS.md section 7; on this machine
+  `NODE_OPTIONS=--max-old-space-size=4096` and `--concurrency 2`). The score
+  must stay above `thresholds.break`; raise the floor if the overall score
+  rises.
+- **End-to-end tests and budgets:** in `test/e2e/` under
+  `vitest.e2e.config.ts`, so `npm run check -- --e2e` runs them.
+- **Browser tests:**
+  - a `test:browser` script in `preview-render-server/package.json`;
+  - a `browser` gate step in the `E2E` list of `scripts/check.ts`, after the
+    e2e step (tools run one at a time);
+  - `vitest.browser.config.ts` and the custom commands as Knip entry points
+    in `knip.json`;
+  - kept out of the coverage floors and Stryker, which can't map mutants
+    through a browser;
+  - `test/browser/` falls under `no-test-in-production` already; check that
+    depcruise reports nothing new.
+- **QUALITY-TOOLING.md:** update the overview, the commands table, the
+  "Running everything" table and its times, and the budget-tests list (the
+  `landing/long` budget).
+
+**Check:** the changed unit test files; `npm run test:e2e -w
+preview-render-server`; `npm run test:browser -w preview-render-server`;
+Stryker on the changed source files. `npm run check -- --e2e` is the user's to
+run.
 
 ### 1.9 Docs
 
@@ -926,7 +1061,8 @@ and 1.6a found.
 
 ### 1.10 Retire the old sample
 
-Once the end-to-end suite runs on `sample-site`:
+The end-to-end suite already runs on `sample-site` (task 1.5), so nothing
+blocks this:
 
 - delete `sampleAstroProject/` and `sites/sampleAstroProject.config.ts`;
 - remove it from the workspaces;
@@ -940,6 +1076,26 @@ when phase 1 is done, using what it taught.
 
 Work already decided for phase 2:
 
+- **Start `cms-server` inside the guardrails.** Create the package with the
+  checklist in [QUALITY-TOOLING.md, "Adding a workspace
+  package"](QUALITY-TOOLING.md#adding-a-workspace-package), and add the import
+  rules of SYSTEM-DESIGN.md section 9, "Before phase 2": the renderer never
+  imports `cms-server`; only `cms-server` uses `child_process` and git;
+  `cms-server` imports `preview-protocol` but not the renderer's internals.
+  Parse every HTTP request with Zod.
+- **Media moves to the CMS app (D12).**
+  - `POST /api/media` stores the upload in staging, measures it once and
+    answers `{ id, url, width, height, format }`.
+  - The CMS app measures images saved since the bundle on save and caches the
+    metadata by content hash. `GET /api/overlay` returns `{ documents, media }`
+    with those entries.
+  - Before saving, the CMS app calls `POST /__preview/validate` with the media
+    map it measured itself, never the editor's.
+  - Saving writes image paths relative to the file that holds the document
+    (D5).
+  - The preview node's stopgap upload route (`media-route.ts`) goes away. Move
+    its tests, including the near-miss file names, to the new route rather
+    than deleting them (D15).
 - **Editor origins as node runtime config (D14).** Replaces
   `SiteConfig.editorOrigins` (`src/types.ts`) and the argument of
   `bridgeScript()` (`src/integration.ts`). Done with the cms-server, because
@@ -989,6 +1145,17 @@ Work already decided for phase 3:
   preview no longer imports `astro.config`. Measure it against the ~88 MB
   the import costs now. It also takes the integrations' code out of the
   preview bundle, which helps bundle portability below.
+- **Script-dependent regions (D6, TBD).** A fallback that re-renders and
+  reloads the iframe with the overlay for regions marked script-dependent
+  (Swiper and the FAQ accordion in the sample). The browser tests of task 1.8
+  pin today's behaviour.
+
+Decisions waiting for the user after phase 1:
+
+- **Restricted MDX renderer (D11).** Build it in phase 3 or not. Input: the
+  inventory in D11 and, optionally, a spike on `elements.mdx`.
+- **Collections without a loader (D15).** Confirm that they get a
+  `schema.json` entry and no documents.
 
 Known issues to carry into those phases:
 
