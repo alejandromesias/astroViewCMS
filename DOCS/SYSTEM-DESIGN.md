@@ -119,9 +119,11 @@ Measured on 2026-10-26, same machine and sample site as the other numbers:
 | Preview node cold start, until the first page is served | ~230 ms | | |
 | First render after a cold start (container creation) | ~7 ms | | |
 
-Memory doesn't depend on render granularity either. It is ~80 MB per running
-site process at rest, and ~200 MB once an editing session has warmed up the
-Markdown renderer (D2; WORKPLAN section 10). For multi-tenancy, the cost
+Memory doesn't depend on render granularity either. It is ~98 MB rss per
+running site process at rest, and ~200 MB once an editing session has warmed
+up the Markdown renderer (D2; WORKPLAN section 10). Metric history: until
+2026-10-30 the rest figure was ~80 MB of private memory; rss also counts the
+Node binary and shared libraries, so the two are not comparable. For multi-tenancy, the cost
 driver is **how many preview nodes are alive**, not how big each render is.
 
 ### Did we build islands just to follow Tina?
@@ -781,8 +783,10 @@ carry it.
   - **Warm-up:** when an editing session starts, not at boot. The editor
     calls `POST /__preview/warm` while it loads the document (answers 204).
     That builds the Markdown renderer and loads the allowed languages (measured
-    on `sample-site`: 92 MB to 196 MB, 0.26 s; a repeat call takes 12 ms).
-    Nodes that only serve static pages stay at ~80 MB.
+    on `sample-site`: 92 MB to 196 MB, 0.26 s; a repeat call takes 12 ms;
+    private memory, task 1.5. Task 1.8 measured rss, 98 MB to 201 MB, 1.7 s
+    wall including the first request). Nodes that only serve static pages stay
+    at ~98 MB rss (~80 MB private memory, the earlier figure).
   - **Fallback on failure:** if importing the config or running a plugin
     throws, render plain code blocks without plugins and add
     `markdown-plugins` to `limits`, the same pattern as D11.

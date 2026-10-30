@@ -1164,6 +1164,12 @@ startup problem.
 - **QUALITY-TOOLING.md:** update the overview, the commands table, the
   "Running everything" table and its times, and the budget-tests list (the
   `landing/long` budget).
+- **Memory metric script:** a small script (for example
+  `scripts/measure-memory.mjs`) that reads rss and private memory (private
+  working set on Windows, `Private_*` in smaps on Linux) for the same preview
+  process at idle, after warm-up and after renders, so the two series in
+  SYSTEM-DESIGN.md sections 2, 5, 6 and D2 can be compared on one basis. Record
+  both figures from then on. The metric history is noted next to the figures.
 
 **Check:** the changed unit test files; `npm run test:e2e -w
 preview-render-server`; `npm run test:browser -w preview-render-server`;
