@@ -21,5 +21,9 @@
     "skipLibCheck": true
   },
   "include": ["src", "sites", "test", "test-editor", "*.ts"],
-  "exclude": ["test/fixtures/schema-site", "test/fixtures/scan-site"]
+  "exclude": [
+    "test/fixtures/schema-site",
+    "test/fixtures/scan-site",
+    "test/fixtures/loaderless-site"
+  ]
 }

@@ -192,6 +192,15 @@ describe('GET /__preview-media/<file>', () => {
     expect((await get(name)).status).toBe(404);
   });
 
+  it.each(['x0123456789abcdef.png', '0123456789abcdef.png.bak'])(
+    'answers 404 to the near-miss name %s even when that file exists',
+    async (name) => {
+      fs.mkdirSync(mediaDir, { recursive: true });
+      fs.writeFileSync(path.join(mediaDir, name), PNG);
+      expect((await get(name)).status).toBe(404);
+    },
+  );
+
   it('refuses cross-site requests', async () => {
     expect(
       (await get('0000000000000000.png', { 'sec-fetch-site': 'cross-site' }))

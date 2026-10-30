@@ -812,6 +812,20 @@ describe('previewRenderServer setup', () => {
     ).toBe(true);
   });
 
+  it('writes schema.json for a collection that has no loader', async () => {
+    const out = outputs();
+    await runSetup({
+      ...site,
+      ...out,
+      root: path.join(fixtures, 'loaderless-site'),
+      regions: {},
+    });
+    const schema = JSON.parse(
+      fs.readFileSync(path.join(out.manifestDir, 'schema.json'), 'utf8'),
+    ) as Record<string, unknown>;
+    expect(Object.keys(schema)).toEqual(['notes']);
+  });
+
   it('writes no schema.json for a site without a content config', async () => {
     const out = outputs();
     await runSetup({ ...site, ...out });

@@ -6,20 +6,20 @@ Guidance for AI agents and human reviewers working in this repo. `claude.md` has
 
 A Tina-style in-memory preview renderer for Astro sites. Two first-party packages (`preview-render-server`, `preview-protocol`), plus two sample Astro sites used only as test inputs. See `DOCS/SYSTEM-DESIGN.md` and `DOCS/PREVIEW-RENDER-SERVER.md`.
 
-## Review these
+## Code Review Rules
 
 Our own code, in rough priority order.
 
-| Path | Why it is worth reviewing |
-| --- | --- |
-| `preview-render-server/src/` | The product. Integration, render/overlay/schema/manifest logic, routes, request guard, media route. |
-| `preview-render-server/src/client/` | Browser-side bridge and patching code that runs inside the preview iframe. Bugs here are visible to editors. |
-| `preview-protocol/src/` | The wire contract between editor and renderer. Changes ripple to both sides. |
-| `preview-render-server/test-editor/` | The test editor page that drives the bridge. Review only when the bridge or protocol changes. |
-| `preview-render-server/test/e2e/` | End-to-end and budget tests. Review for flaky or weakened assertions. |
-| `preview-render-server/sites/*.config.ts` | Per-site configuration for the sample sites. Small, but it defines what the e2e suite exercises. |
-| `scripts/check.ts` | The single quality-check runner (`npm run check`). |
-| `.githooks/` | Pre-commit hook. |
+| Path                                      | Why it is worth reviewing                                                                                    |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `preview-render-server/src/`              | The product. Integration, render/overlay/schema/manifest logic, routes, request guard, media route.          |
+| `preview-render-server/src/client/`       | Browser-side bridge and patching code that runs inside the preview iframe. Bugs here are visible to editors. |
+| `preview-protocol/src/`                   | The wire contract between editor and renderer. Changes ripple to both sides.                                 |
+| `preview-render-server/test-editor/`      | The test editor page that drives the bridge. Review only when the bridge or protocol changes.                |
+| `preview-render-server/test/e2e/`         | End-to-end and budget tests. Review for flaky or weakened assertions.                                        |
+| `preview-render-server/sites/*.config.ts` | Per-site configuration for the sample sites. Small, but it defines what the e2e suite exercises.             |
+| `scripts/check.ts`                        | The single quality-check runner (`npm run check`).                                                           |
+| `.githooks/`                              | Pre-commit hook.                                                                                             |
 
 Config that sets the quality bar (review when it changes, since a loosened rule silently weakens every other review):
 `biome.json`, `knip.json`, `.dependency-cruiser.cjs`, `stryker.config.json`, `preview-render-server/vitest.config.ts` (coverage floors), `osv-scanner.toml`, `tsconfig*.json`, `package.json` files.

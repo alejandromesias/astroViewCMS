@@ -26,6 +26,7 @@
     "dir": "preview-render-server"
   },
   "coverageAnalysis": "perTest",
+  "ignoreStatic": true,
   "concurrency": 4,
   "ignorePatterns": [
     "**/node_modules",

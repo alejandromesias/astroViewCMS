@@ -17,6 +17,9 @@ Failure Truncation: If a test fails, do not paste or read the entire stack trace
 
 Line endings: every file in this repo is LF, never CRLF. Write and edit with LF and do not convert a file's endings. `.gitattributes` and `.editorconfig` enforce this; if a diff shows a whole file changed, check for CRLF first (`git diff --ignore-cr-at-eol --stat`).
 
+Before implementing code, read `DOCS/IMPLEMENTATION-RECOMMENDATIONS.md`.
+Before writing or changing tests, read `DOCS/TESTING-RECOMMENDATIONS.md`.
+
 <!-- 4. Implementation Workflow
 
 • Step 1: State the planned implementation or fix in one concise sentence.
