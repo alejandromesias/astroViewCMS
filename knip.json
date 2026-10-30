@@ -12,7 +12,9 @@
         "src/client/bridge.ts",
         "src/overlay/{content-shim,image-service,data-proxy}.ts",
         "src/render/renderers-anchor.astro",
-        "test-editor/editor.astro"
+        "test-editor/editor.astro",
+        "test/browser/commands.ts",
+        "test/browser/site.config.ts"
       ],
       "project": ["src/**", "sites/**", "test/**", "test-editor/**"],
       "ignore": ["test/fixtures/**"]

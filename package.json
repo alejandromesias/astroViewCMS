@@ -24,6 +24,7 @@
     "lint": "biome lint",
     "format:check": "biome format",
     "graph": "node scripts/graph.ts",
+    "measure:memory": "node scripts/measure-memory.mjs",
     "deps": "depcruise preview-render-server/src preview-protocol/src --config .dependency-cruiser-graph.cjs -T text"
   }
 }

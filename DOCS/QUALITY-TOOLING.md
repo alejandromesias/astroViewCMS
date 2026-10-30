@@ -46,6 +46,8 @@ tests for it; the full unit suite is for a person running the checks.
 | dependency-cruiser | import rules: client stays browser-safe, protocol is a leaf, read-only request path, cycles, tests | `.dependency-cruiser.cjs` | gate |
 | Module graph (dependency-cruiser) | nothing: diagrams for people, an edge list for agents | `.dependency-cruiser-graph.cjs`, `scripts/graph.ts` | neither (a view) |
 | Budget tests | bridge size, render latency, memory growth | tests | gate |
+| Browser tests | the preview in a real Chromium: hydration, morphing, styles, editor origins | `preview-render-server/vitest.browser.config.ts` | gate |
+| Memory metric | rss and private memory of one preview process, idle, after warm-up, after renders | `scripts/measure-memory.mjs` | neither (a number to record) |
 | Stryker | whether the tests catch changes to the code | `stryker.config.json` | gate in `--mutation` (score floor) |
 
 "Gate" means a failure should stop a change from landing (and, once there is
@@ -94,12 +96,21 @@ CI, fail the build). "Report" means the output needs a human reading it.
     5318 B, budget 6400 B), because it ships into every preview page.
   - *Render latency* (e2e, `test/e2e/preview-server.e2e.test.ts`): after
     warmup, median render under 30 ms and p95 under 50 ms, for an HTML page and
-    for a Markdown document.
+    for a Markdown document. The `landing/long` render budget (100 consecutive
+    edits of a 44-block page) is wider: median under 60 ms and p95 under 100 ms.
+    Five runs measured the median at 8 to 33 ms, so a median near 60 ms is a
+    real regression, not noise.
   - *Memory* (same e2e file): after warmup, `rss` under 400 MB, and `heapUsed`
     grows by under 10 MB over 500 more renders. The test reads memory from a
     dev-only route (`/__dev/memory`) after a forced GC. The server is started
     with `PREVIEW_DEV=1` and `--expose-gc` for this; neither exists in
     production.
+- **Browser tests** (Vitest browser mode, Chromium through Playwright) are the
+  only checks that see what the bridge does in a page: hydration of islands,
+  morphing of a draft into the live DOM, computed styles, and the editor-origin
+  check. The harness page plays the editor and loads the preview in an iframe
+  from a real server built with `test/browser/site.config.ts`. Their
+  configuration, scope and file list are in the [browser suite](#browser-suite).
 - **Stryker** is described in its own section below.
 
 ## Commands
@@ -114,6 +125,8 @@ CI, fail the build). "Report" means the output needs a human reading it.
 | Unit tests, one file | `cd preview-render-server && ../node_modules/.bin/vitest run <file>` | seconds |
 | Unit tests, all | `cd preview-render-server && ../node_modules/.bin/vitest run` | ~5 s (993 tests) |
 | e2e and budgets | `cd preview-render-server && ../node_modules/.bin/vitest run --config vitest.e2e.config.ts` | ~22 s |
+| Browser tests | `npm run test:browser -w preview-render-server` (one file: append `-- <file>`) | ~40 s (9 files, 18 tests) |
+| Memory of one preview process (manual) | `npm run measure:memory` (see [Memory metric](#memory-metric)) | ~21 s |
 | Audit | `npm run audit` (needs `osv-scanner`, see below) | ~3 s |
 | Knip | `npm run knip` | ~2 s |
 | dependency-cruiser | `npm run depcruise` (rules: [Annex](#annex-dependency-cruiser-rules)) | ~3 s |
@@ -121,7 +134,7 @@ CI, fail the build). "Report" means the output needs a human reading it.
 | Edges of one file | `npm run -s deps -- --focus "<regex>"` or `--reaches "<regex>"` | ~3 s |
 | Skott cycles | the command below | ~7 s |
 | Stryker | `npx stryker run` | see Stryker |
-| Everything | `npm run check [-- flags]` | ~21 s fast, ~87 s with `--all` |
+| Everything | `npm run check [-- flags]` | ~21 s fast, ~95 s with `--e2e`, ~130 s with `--all` (estimate) |
 
 The e2e run builds the sample site and spawns the server, so it needs a free
 port and some memory. Add `--disableConsoleIntercept` to see its `console.log`
@@ -189,9 +202,9 @@ behaves the same on Windows and a Linux CI). Flags go after `--` and combine:
 | Flag | Runs | Time |
 | --- | --- | --- |
 | `--fast` (default) | tsc, tsc protocol, protocol tests, biome lint, biome format, unit tests, knip, depcruise, osv-scanner | ~20 s |
-| `--e2e` | the fast set, then e2e, the budget tests and the coverage floors | ~51 s |
+| `--e2e` | the fast set, then e2e and the budget tests, the browser suite, and the coverage floors | ~95 s (measured 2026-10-30: 94 s, of which e2e 26 s, browser 32 s, coverage 9 s) |
 | `--mutation` | `npx stryker run` (incremental) | ~29 s when nothing changed; see below |
-| `--all` | everything above, then the Skott cycle check | ~87 s with a warm Stryker baseline |
+| `--all` | everything above, then the Skott cycle check | ~130 s with a warm Stryker baseline |
 
 Example: `npm run check -- --e2e --mutation`. An unknown flag exits with code 2.
 
@@ -263,6 +276,12 @@ commit message.
   coarse ceiling (400 MB) because V8 reserves heap and the OS keeps freed pages,
   so RSS moves by tens of MB between runs without a leak. A live-heap rise of
   several MB across the 500 renders is the real signal of a leak.
+- **Browser tests:** a failure names the test and the assertion, and some name
+  a GAP or KNOWN LIMIT (asserted as the product does today, so they pass). A
+  run that loses its browser connection under low memory has passed on a
+  re-run; re-run once before digging, as with the budgets.
+- **Memory metric:** compare private memory across runs, not rss. Private
+  memory is what the process owns; rss also counts shared pages.
 
 ## Stryker (mutation testing)
 
@@ -319,6 +338,65 @@ that behaviour down).
   `--force` to re-run everything while still updating the file.
 - A fresh clone has no baseline, so its first run is a full run. A future CI
   would have to cache this file between runs to benefit from incremental mode.
+
+## Browser suite
+
+The browser suite runs the preview in a real Chromium, which the HTTP tests
+cannot do: hydration of islands, morphing of a draft into the live page,
+computed styles, and the editor-origin check.
+
+- **Where:** `preview-render-server/test/browser/`, nine `*.browser.test.ts`
+  files (18 tests), with `vitest.browser.config.ts`. Vitest runs in browser
+  mode through `@vitest/browser-playwright`, on Chromium headless. It needs the
+  Playwright Chromium build (`npx playwright install chromium`, once per
+  machine).
+- **How it works:** a harness page on port 5174 (`origin.ts`) plays the editor.
+  `global-setup.ts` builds `site.config.ts` (the sample site with the harness
+  origin in `editorOrigins`) and starts it on a free port. The harness loads
+  that preview in an iframe and sends it the real protocol messages.
+  `commands.ts` holds the custom commands (`previewEval`, `delayRenders`, and
+  others) that run in Node with Playwright's API, because the iframe is
+  cross-origin to the harness page.
+- **Run:** `npm run test:browser -w preview-render-server`. Files run one at a
+  time (`fileParallelism: false`; memory is low). To run one file, append it:
+  `npm run test:browser -w preview-render-server -- morph.browser.test.ts`.
+- **Gate:** the `browser` step of `npm run check -- --e2e`, after e2e and the
+  budgets.
+- **Out of the coverage floors and Stryker on purpose.** `vitest.config.ts`
+  includes only `src/**` and `test-editor/**`, so the coverage run never
+  reaches `test/browser/`. Stryker mutates only `src/` and runs through
+  `vitest.config.ts`, and a browser test cannot map a mutant to its line. Its
+  floors are unchanged by the browser suite.
+- **Not in dependency-cruiser's scope.** It scans `src/` only, so the suite is
+  not checked by it. Production code still may not import `test/`
+  (`no-test-in-production`).
+- **Knip:** `test/browser/commands.ts` and `test/browser/site.config.ts` are
+  entry points in `knip.json`: the commands are reached by name through the
+  config's `commands` object, and the site config is named by a path string in
+  `global-setup.ts`. Knip cannot follow either.
+
+## Memory metric
+
+`npm run measure:memory` (`scripts/measure-memory.mjs`) is a manual script, not
+a gate. It builds the default sample (`sites/sample-site.config.ts`), starts
+its server in its own process, and reports two numbers at three points: idle
+(listening, no request), after warm-up (`POST /__preview/warm`), and after 100
+renders of `landing/home-v2`.
+
+- **rss** is `process.memoryUsage().rss` from `/__dev/memory`, after a forced
+  GC, the same figure the memory budget and SYSTEM-DESIGN.md use.
+- **Private memory** comes from the OS: the private working set on Windows
+  (`WorkingSetPrivate`), and `Private_Clean` plus `Private_Dirty` in
+  `/proc/<pid>/smaps_rollup` on Linux. Only Windows has been run.
+- **Recorded, 2026-10-30, Windows, default sample, one server process:**
+
+  | Stage | rss | Private |
+  | --- | --- | --- |
+  | Idle | 98.8 MB | 49.0 MB |
+  | After warm-up | 202.0 MB | 150.2 MB |
+  | After 100 renders | 231.3 MB | 177.6 MB |
+
+  Record both figures and the machine's conditions next to any new reading.
 
 ## Adding a workspace package
 

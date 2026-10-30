@@ -37,6 +37,8 @@ const FAST: Step[] = [
 
 const E2E: Step[] = [
   { name: 'e2e + budgets', command: 'npm run test:e2e -w preview-render-server', kind: 'gate' },
+  // Browser suite (Vitest browser mode, Chromium): one file at a time, after e2e (tools run one at a time).
+  { name: 'browser', command: 'npm run test:browser -w preview-render-server', kind: 'gate' },
   // Fails below coverage.thresholds in vitest.config.ts (step 10c).
   { name: 'coverage floors', command: 'npm run coverage -w preview-render-server', kind: 'gate' },
 ];

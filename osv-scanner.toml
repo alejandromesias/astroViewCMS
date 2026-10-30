@@ -29,3 +29,11 @@ reason = "qs via Stryker (dev only, not shipped)"
 id = "GHSA-rj75-hqrm-r3gf"
 ignoreUntil = 2027-01-28
 reason = "postcss-selector-parser via sample-site's tailwind typography (build-time, not shipped)"
+
+# minimatch 10.2.6 <- @stryker-mutator/core (pins ~10.2.4, so 11.0.1 is out of range).
+# Dev tool only (mutation testing); the glob patterns come from our own Stryker config
+# and it does not ship. Published 2026-10-30; recheck when Stryker widens its range.
+[[IgnoredVulns]]
+id = "GHSA-g3hv-75wg-m249"
+ignoreUntil = 2026-12-15
+reason = "minimatch via Stryker (dev only, not shipped)"

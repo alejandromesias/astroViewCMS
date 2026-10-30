@@ -1176,6 +1176,27 @@ preview-render-server`; `npm run test:browser -w preview-render-server`;
 Stryker on the changed source files. `npm run check -- --e2e` is the user's to
 run.
 
+**Step 5 status (2026-10-30).** Wiring done, not committed.
+
+- `test:browser` script in `preview-render-server/package.json`; `browser` gate
+  after `e2e + budgets` in `scripts/check.ts`.
+- Knip: `test/browser/commands.ts` and `test/browser/site.config.ts` are entries
+  (the site config is loaded by path string). `vitest.browser.config.ts` needs
+  no entry: Knip's Vitest plugin already reads it, and Knip flags a second entry
+  as redundant. `npm run knip` is clean.
+- Out of the coverage floors and Stryker by config (`vitest.config.ts` includes
+  only `src/**` and `test-editor/**`; Stryker mutates only `src/`).
+  `npm run depcruise` reports no violations (it scans `src/` only).
+- `QUALITY-TOOLING.md` updated: overview, commands, "Running everything" times
+  (estimated, not re-measured), the `landing/long` budget, and new "Browser
+  suite" and "Memory metric" sections.
+- `scripts/measure-memory.mjs` (`npm run measure:memory`), manual. Default
+  sample, Windows, 2026-10-30, one server process: idle 98.8 MB rss / 49.0 MB
+  private; after warm-up 202.0 / 150.2; after 100 renders 231.3 / 177.6.
+- `test:browser`: 18 pass in 9 files (Vitest 35.9 s).
+- Not run: `npm run check`, the e2e suite and Stryker (no source or unit test
+  changed in this step).
+
 ### 1.8a Fixes and fixtures from the browser tests
 
 Found by 1.8 step 2 (2026-10-30). Small; do them before phase 1 closes, after
