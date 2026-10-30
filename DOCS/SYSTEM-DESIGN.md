@@ -1289,12 +1289,14 @@ to the preview node, the editor, or neither.
   so the page sends two `ready`s. The protocol rule: **the editor answers every
   `ready` and a render is idempotent.** An editor that answers both renders
   twice on load with the same output; that costs one extra render per load and
-  is accepted. **Gap: a draft that lands between the two `ready`s can be
-  dropped,** because the second `ready` bumps the bridge's request counter and
-  the newest-wins rule discards the earlier answer. It is not deterministic
-  and the editor does not resend, so the preview can stay stale. Task 1.8a
-  fixes it (a repeat `ready` for the same path must not discard an answer in
-  flight) and adds a deterministic test.
+  is accepted. **Gap, fixed 2026-10-30 (task 1.8a item 1): a draft that landed
+  between the two `ready`s could be dropped,** because the second `ready`
+  bumped the bridge's request counter and the newest-wins rule discarded the
+  earlier answer, so the preview could stay stale. The bridge now bumps the
+  counter only when the path differs from the one it last announced, so a
+  repeat `ready` for the same path keeps an answer in flight. A real
+  navigation still drops it. Tests: a browser case in `priming.browser.test.ts`
+  and unit cases in `bridge.test.ts`.
 - **Editor origins are node runtime config (phase 2).** `PREVIEW_EDITOR_ORIGINS`
   is set by the cms-server or the preview router. The node sends
   `frame-ancestors 'self' <origins>` on every page (needs a server in front of

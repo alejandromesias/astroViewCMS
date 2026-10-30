@@ -122,19 +122,18 @@ export function startBridge(
     void onDraft(event.data);
   };
 
+  // The path the editor was last told about.
+  let announcedPath = currentPath();
   // A ClientRouter navigation replaced the document: tell the editor where we are.
   const onNavigated = () => {
-    // An answer still in flight belongs to the old page: drop it.
-    requestCount++;
+    const path = currentPath();
+    // An answer still in flight belongs to the old page: drop it. A repeat
+    // `ready` for the same path (the second one of a first load, D14) keeps it,
+    // or a draft sent between the two readies would be lost.
+    if (path !== announcedPath) requestCount++;
+    announcedPath = path;
     patcher.reset();
-    send(
-      {
-        type: 'preview:ready',
-        path: currentPath(),
-        protocol: PROTOCOL_VERSION,
-      },
-      allowed,
-    );
+    send({ type: 'preview:ready', path, protocol: PROTOCOL_VERSION }, allowed);
   };
 
   // Start listening before announcing, so a draft sent in reply isn't missed.

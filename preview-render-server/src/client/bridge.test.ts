@@ -217,6 +217,7 @@ describe('startBridge', () => {
       new Promise((resolve) => (answer = resolve)),
     );
     bridge.post(draft({ n: 1 }));
+    (bridge.win.location as { pathname: string }).pathname = '/faq';
     document.dispatchEvent(new Event('astro:page-load'));
     bridge.parent.postMessage.mockClear();
     answer(rendered(blocks('<p>old page</p>')));
@@ -224,6 +225,19 @@ describe('startBridge', () => {
 
     expect(region().innerHTML).toBe('<p>saved</p>');
     expect(bridge.sent()).toEqual([]);
+  });
+
+  it('keeps the answer to a draft sent before a repeat ready for the same path (D14)', async () => {
+    bridge = setup();
+    let answer!: (response: Response) => void;
+    bridge.fetch.mockReturnValueOnce(
+      new Promise((resolve) => (answer = resolve)),
+    );
+    bridge.post(draft({ n: 1 }));
+    document.dispatchEvent(new Event('astro:page-load'));
+    answer(rendered(blocks('<p>draft</p>')));
+
+    await vi.waitFor(() => expect(region().innerHTML).toBe('<p>draft</p>'));
   });
 });
 

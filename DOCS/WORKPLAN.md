@@ -1202,7 +1202,7 @@ run.
 Found by 1.8 step 2 (2026-10-30). Small; do them before phase 1 closes, after
 1.8's steps 3 and 5. Each has a test that fails first.
 
-1. **Priming race (D14).** A repeat `ready` for the same path must not discard
+1. **Priming race (D14). Done 2026-10-30.** A repeat `ready` for the same path must not discard
    an answer in flight. Write the deterministic test first (editor sends a
    draft between the two `ready`s, the bridge still renders it), then fix the
    request counter in `bridge.ts`. The unit test goes in `bridge.test.ts`; keep
