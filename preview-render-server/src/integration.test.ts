@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stringify } from 'devalue';
 import type { Plugin } from 'vite';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import previewRenderServer, {
@@ -312,6 +313,43 @@ describe('previewRenderServer hooks', () => {
     expect(manifest('documents.json')).toEqual([]);
     expect(manifest('code-languages.json')).toHaveProperty('languages');
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('passes the site buildTimeFields on to documents.json', () => {
+    const cacheDir = path.join(tmp, 'build-time-cache');
+    fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(cacheDir, 'data-store.json'),
+      stringify(
+        new Map([
+          [
+            'authors',
+            new Map([
+              ['ana', { id: 'ana', filePath: 'src/content/authors/ana.json' }],
+            ]),
+          ],
+        ]),
+      ),
+    );
+    const integration = hooksOf({
+      ...hookSite,
+      buildTimeFields: { 'authors/ana': ['name'] },
+    });
+    integration['astro:config:done']!({
+      config: {
+        cacheDir: new URL(`file:///${posix(cacheDir)}/`),
+        base: '/',
+        trailingSlash: 'ignore',
+      },
+    });
+    integration['astro:build:done']!({ logger: { warn: vi.fn() } });
+    expect(manifest('documents.json')).toEqual([
+      expect.objectContaining({
+        key: 'authors/ana',
+        buildTime: true,
+        buildTimeFields: ['name'],
+      }),
+    ]);
   });
 
   it('warns instead of failing when the manifests cannot be written', () => {
