@@ -980,6 +980,16 @@ scripts, scroll or styles after a patch. Add a small suite:
   config, running in Node with Playwright's frame API) can read the
   cross-origin iframe's DOM. If it can't, serve the harness page from the
   preview origin instead and record why.
+  **Spike result (2026-10-30): it works.** With `@vitest/browser-playwright`
+  5.0.5, the test page (`localhost:<vitest port>`) loaded an iframe from
+  `127.0.0.1:<other port>`; `contentDocument` access from the page is blocked,
+  but a custom command, `commands: { name(ctx, ...args) {...} }`, ran in Node
+  and used `ctx.page.frames()` (matching by frame URL) with
+  `frame.locator(sel).textContent()` to read the iframe's DOM. So the harness
+  stays on the Vitest origin, as in the product. Chromium came from
+  `npx playwright install chromium` (the first attempt failed with a download
+  error; a retry worked). The spike's server must be closed or Vitest warns that
+  the process doesn't exit.
 - Scenarios:
   - priming: one render on load. Settle the 1.6 question of whether
     `astro:page-load` also fires on the first load (a second `ready` and
