@@ -40,3 +40,13 @@ describe('islandResolver: names of Object.prototype', () => {
       expect(resolve(specifier)).toBe(specifier);
   });
 });
+
+describe('islandResolver: base and file slashes', () => {
+  it.each([
+    ['/x//', '_astro/a.js', '/x/_astro/a.js'],
+    ['/x/', '/_astro/a.js', '/x/_astro/a.js'],
+    ['/', '/_astro/a.js', '/_astro/a.js'],
+  ])('base %s with file %s gives %s', (base, file, expected) => {
+    expect(islandResolver({ s: file }, base)('s')).toBe(expected);
+  });
+});
