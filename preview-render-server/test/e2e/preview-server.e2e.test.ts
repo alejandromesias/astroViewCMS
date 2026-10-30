@@ -632,6 +632,7 @@ describe('performance', () => {
   async function hundredEdits(
     urlPath: string,
     documents: (i: number) => Record<string, unknown>,
+    firstRenderMarker?: string,
   ) {
     const server: number[] = [];
     const wall: number[] = [];
@@ -640,6 +641,9 @@ describe('performance', () => {
       const { status, json } = await render(urlPath, documents(i));
       wall.push(performance.now() - start);
       expect(status).toBe(200);
+      if (i === 0 && firstRenderMarker !== undefined) {
+        expect((json as Rendered).html).toContain(firstRenderMarker);
+      }
       server.push((json as Rendered).renderMs);
     }
     const renderStat = stat(server);
@@ -665,6 +669,23 @@ describe('performance', () => {
     const renderStat = await hundredEdits('/blog/perf-draft', perfDraft);
     expect(renderStat.median).toBeLessThan(30);
     expect(renderStat.p95).toBeLessThan(50);
+  });
+
+  it('renders 100 consecutive edits of landing/long quickly', async () => {
+    const long = readJson('src/content/landing/long.json');
+    const firstRenderMarker = 'Landing long draft 0';
+    const renderStat = await hundredEdits(
+      '/landing/long',
+      (i) => {
+        long.blocks[0].title = `Landing long draft ${i}`;
+        return { 'landing/long': long };
+      },
+      firstRenderMarker,
+    );
+    // Wider than the other pages: five runs measured the median at 8 to 33 ms
+    // (WORKPLAN 1.8 step 4). Still catches a big regression, not noise.
+    expect(renderStat.median).toBeLessThan(60);
+    expect(renderStat.p95).toBeLessThan(100);
   });
 
   // Step 7c of QUALITY-TOOLING-PLAN.md. The server runs with --expose-gc, so
