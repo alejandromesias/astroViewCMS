@@ -5,7 +5,7 @@ import { describe, expect, inject, it } from 'vitest';
 const BASE = inject('baseUrl');
 // MAX_BODY_BYTES in src/render/handlers.ts. A literal, because importing that
 // module pulls in the site runtime; change both when the cap changes (D16).
-const MAX_BODY_BYTES = 32 * 1024 * 1024;
+const MAX_BODY_BYTES = 4 * 1024 * 1024;
 
 const post = (path: string, body: string) =>
   fetch(`${BASE}/__preview/render?path=${encodeURIComponent(path)}`, {

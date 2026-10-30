@@ -446,9 +446,11 @@ pulls, checks the build and pushes.
   (push webhook or a poll of the remote) and after each publish. About 25 s
   and several hundred MB while it runs. The old preview node keeps serving
   until the new bundle is ready.
-- **Footprint at rest:** cms-server plus one preview node, roughly 80 MB each,
-  in place of AstroAdmin's ~650 MB `astro dev`. While someone edits, the
-  preview node grows to ~200 MB after the Markdown warm-up (D2).
+- **Footprint at rest:** cms-server plus one preview node, the node about
+  100 MB (rss, measured 2026-10-30; cms-server not measured yet), in place of
+  AstroAdmin's ~650 MB `astro dev`. While someone edits, the preview node grows
+  to ~200 MB after the warm-up (D2), 210 to 235 MB after a session of renders on
+  the sample, and ~280 MB with 200 posts (WORKPLAN section 10).
 
 ## 6. Scaling to many tenants
 
@@ -486,13 +488,15 @@ render contract, the CMS API and the bundle layout.
 - **Idle sites cost no memory.** A preview node runs only while someone edits
   that site, and stops after, say, 10 idle minutes. Bundles are ~3 MB in
   object storage (bundled variant, `sharp` shared on the host).
-- **Active sites cost ~200 MB each.** A node that only serves static pages
-  stays at ~80 MB, but an editing session warms up the Markdown renderer and
-  Shiki (D2), which brings it to ~200 MB (measured on `sample-site`, WORKPLAN
-  section 10). A 4 GB host, keeping ~1 GB for the OS and other processes,
-  fits about 15 concurrently edited sites. WORKPLAN task 1.8 re-measures this,
-  and D2's phase 3 plugin setting is the main lever to lower it. Renders take
-  a few ms per keystroke after a 120 ms pause, so CPU is not the limit.
+- **Active sites cost ~210 to 280 MB each.** A node that only serves static
+  pages stays at ~100 MB, but an editing session warms up the Markdown renderer
+  and Shiki (D2): ~200 MB after the warm-up, 210 to 235 MB after renders on
+  `sample-site`, ~280 MB with 200 posts (measured, WORKPLAN section 10). A 4 GB
+  host, keeping ~1 GB for the OS and other processes, fits about 11 to 13
+  concurrently edited sites (3,072 MB / 280 MB and / 235 MB). D2's phase 3 plugin
+  setting is the main lever to lower it. Renders take 2 to 17 ms (median, one
+  page per row in section 10; the 40-block page 7 to 9 ms), after a 120 ms pause,
+  so CPU is not the limit.
 - **Builds are the expensive part, and they're rare.** They happen on code
   changes and publishes, not on edits. A small queue of build workers serves
   many tenants. A build can be scaled to zero between jobs.
@@ -975,6 +979,28 @@ all its entries.
   `virtual:astro:renderers`.
 - **Tests:** add a hydrated block to a page without one, change the toggle's
   props, and move a block next to a hydrated one.
+- **Browser findings (task 1.8 step 2, 2026-10-30, Chromium):**
+  - **Gap: a block inserted before a hydrated island replaces the island's
+    node.** It re-hydrates and its state resets (the pricing toggle goes back
+    to Monthly). A block inserted after it keeps the node and the state. The
+    morph matches the island by position, so a shift in front of it loses the
+    match. Task 1.8a tries a stable key first; if that is not cheap it stays a
+    limit of this decision until phase 3.
+  - **Known limits, now pinned by tests.** Priming morphs the three Swiper
+    carousels on `landing/home-v2` back to server markup (3 initialised to 0).
+    The FAQ accordion on `/elements` keeps its state across a swap (the React
+    island survives); its `active` class reads `undefined` because of a bug in
+    the sample's Accordion, not in the patch.
+  - **Inline scripts and elements do not pile up.** Ten props edits keep two
+    island bootstraps and one body `<style>`; ten add and remove edits leave no
+    extra `<style>`. **Not measured:** `define:vars` and JSON-LD, because the
+    sample has neither. Task 1.8a adds a fixture.
+  - **Scroll limit.** An edit above the viewport on `landing/long` moves
+    `scrollY` by 60 px (2400 to 2340) while the untouched block stays on screen
+    (+0.28 px). This looks like browser scroll anchoring, not yet confirmed.
+    The "scrollY unchanged" expectation holds for edits below the viewport.
+    Left as a limit; `overflow-anchor: none` on the preview page is the first
+    thing to try if the editor needs exact scroll.
 
 ### D7. Listing routes run `getStaticPaths` over whole collections
 
@@ -987,8 +1013,12 @@ from every post, on every render.
   all):** `getStaticPaths` takes 0.1 to 2 ms on a warm server (first call
   20 ms), against a 2 to 5 ms render: `blog/[...single]` 0.2 ms,
   `tags/[tag]/[...page]` 0.8 to 2 ms, `blog/page/[slug]` 0.1 to 0.3 ms. The
-  threshold below isn't crossed, so **no cache for now**. Task 1.8 still repeats
-  the measure with 200 posts.
+  threshold below isn't crossed, so **no cache for now**.
+- **Measured again in task 1.8 (2026-10-30), with 200 posts:** the threshold
+  **is crossed on tag pages**. `/tags/design` (74 of 200 posts) adds 3.3 ms to
+  the median `getStaticPaths` and 3.1 ms to the median render; `/blog/page/2`
+  adds 0.2 ms. The cache below is not built yet; whether to build it before
+  phase 1 closes, or leave it for a site with many posts per tag, is open.
 - **Cache only if needed:** if `getStaticPaths` adds more than 2 ms to the
   median render, memoize its result per route. The key is the overlay entries
   of the collections it read (from the read log). An empty overlay means one
@@ -1237,6 +1267,17 @@ to the preview node, the editor, or neither.
   bundle (site, code revision, bundle id), so a worker on an old version
   cannot loop. If the new bundle still mismatches, the editor shows the error.
   While it builds (about 25 s) the editor shows the saved page with a note.
+- **The bridge announces `ready` twice on a first load (browser test, task
+  1.8 step 2, 2026-10-30).** `astro:page-load` also fires on the first load,
+  so the page sends two `ready`s. The protocol rule: **the editor answers every
+  `ready` and a render is idempotent.** An editor that answers both renders
+  twice on load with the same output; that costs one extra render per load and
+  is accepted. **Gap: a draft that lands between the two `ready`s can be
+  dropped,** because the second `ready` bumps the bridge's request counter and
+  the newest-wins rule discards the earlier answer. It is not deterministic
+  and the editor does not resend, so the preview can stay stale. Task 1.8a
+  fixes it (a repeat `ready` for the same path must not discard an answer in
+  flight) and adds a deterministic test.
 - **Editor origins are node runtime config (phase 2).** `PREVIEW_EDITOR_ORIGINS`
   is set by the cms-server or the preview router. The node sends
   `frame-ancestors 'self' <origins>` on every page (needs a server in front of
@@ -1304,9 +1345,11 @@ saved since the bundle (section 10), and a hostile client can send any size.
   over the cap with `413`, before parsing it.** Check `Content-Length` first
   and count bytes while reading, so a missing or false header doesn't bypass
   the cap.
-- **The value comes from a measurement** (WORKPLAN task 1.8): the overlay when
-  every document of the 200-post sample differs from the bundle, and a full
-  draft of the 40-block page, with headroom over the larger. Until then the
-  cap is a constant next to the check, like the upload route's `MAX_BYTES`.
+- **The cap is 4 MiB (4,194,304 bytes)**, a constant next to the check
+  (`MAX_BODY_BYTES`), like the upload route's `MAX_BYTES`. Measured in task
+  1.8 (2026-10-30): the overlay with every document of the 200-post sample
+  differing from the bundle is 1,108,985 bytes (1.06 MiB, 226 documents), and
+  a full draft of `landing/long` is 33,412 bytes. 4 MiB leaves 3.8x headroom
+  over the larger, enough for about 790 posts of that size in one overlay.
 - **Multi-tenant (phase 5):** the cap may become per-site runtime config, set
   by the preview router. Keep it a single constant until a site needs more.

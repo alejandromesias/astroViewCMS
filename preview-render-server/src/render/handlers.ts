@@ -56,9 +56,10 @@ function findDraftError(error: unknown): DraftError | undefined {
 
 /**
  * The largest request body the render and validate routes read, in bytes (D16).
- * Provisional: the overlay measurement (WORKPLAN task 1.8) sets the final value.
+ * Set from the WORKPLAN 1.8 overlay measurement: every document of the
+ * 200-post sample is 1.06 MiB, so 4 MiB leaves 3.8x headroom.
  */
-export const MAX_BODY_BYTES = 32 * 1024 * 1024;
+export const MAX_BODY_BYTES = 4 * 1024 * 1024;
 
 /**
  * The body as text, or `null` when it is larger than MAX_BODY_BYTES. The

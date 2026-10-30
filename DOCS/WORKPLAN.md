@@ -654,12 +654,12 @@ a page. What that found:
   overlay) so the bridge could be exercised; task 1.7 replaced it.
 - **Navigation fix (review, 2026-10-27):** the bridge now drops the answer to a
   draft sent before a ClientRouter navigation (it would have been morphed into
-  the new page). Still to check in 1.8: whether `astro:page-load` also fires on
-  the first load (a second `ready` and render), and that inline scripts which
-  change with the draft (`define:vars`, JSON-LD) pile up in `<body>`, as do
-  removed `<style>`/`<link>` elements that stay.
-- No automated browser test: the patch is covered with happy-dom, the rest by
-  the manual check above. An automated one is a candidate for 1.8.
+  the new page). **Checked in 1.8 step 2 (2026-10-30):** `astro:page-load` does
+  fire on the first load (two `ready`s, see D14); no pile-up of scripts or
+  styles on the sample; `define:vars` and JSON-LD are not measurable on it
+  (fixture in 1.8a).
+- The patch is covered with happy-dom and, since 1.8 step 2, by the browser
+  suite in `test/browser/`.
 
 Protocol (`src/protocol.ts`, types plus runtime checks, as today):
 
@@ -1063,17 +1063,17 @@ scripts, scroll or styles after a patch. Add a small suite:
 run on its own with `timeout 170`; 18 tests, 18 pass. Not run here: the full
 e2e suite, after the `global-setup.ts` refactor (only d16 was run, by the user).
 
-| Scenario | File | Tests | Pass | Date | Notes |
-|---|---|---:|---:|---|---|
-| Priming | `priming.browser.test.ts` | 2 | 2 | 2026-10-30 | **Answer to the 1.6 question: yes.** `astro:page-load` also fires on the first load, so the page sends two `ready`s and renders only when the editor answers. An editor that answers each `ready` renders twice on load (limit: one extra render per load, same output). **Gap, race (not tested):** a draft that lands between the two `ready`s is dropped by the bridge's newest-wins rule (seen once while debugging; not deterministic, so no test). The harness waits for both `ready`s first. |
-| D6: pricing island on `landing/home-v2` | `d6-islands.browser.test.ts` | 5 | 5 | 2026-10-30 | Hydrates when in view (the `astro-island` has no box, so its child is scrolled to); a props change keeps Yearly selected; a block added after the island keeps its node and state (control). **GAP:** a block added before the island replaces its node, which re-hydrates and resets Yearly to Monthly. Asserted as today, labelled GAP. |
-| Inline scripts and removed elements (10 edits) | `inline-elements.browser.test.ts` | 2 | 2 | 2026-10-30 | No growth: 10 props edits keep 2 inline island bootstraps and 1 body `<style>`. 10 add/remove edits end with 2 bootstraps, 0 styles, 0 islands (no extra `<style>` left). **Not measurable on the sample:** `define:vars` and JSON-LD. Sample content has neither; measuring them needs a fixture (a component with `define:vars`, and a Markdown or JSON block that emits `application/ld+json`). Not added to sample-site. |
-| Morph on `landing/long` | `morph.browser.test.ts` | 2 | 2 | 2026-10-30 | Edit below the viewport: the untouched block keeps its node, `scrollY` stays exactly 2400. **GAP:** an edit above the viewport (the banner) moves `scrollY` 2400 to 2340 (60 px) while the untouched block stays on screen (top 969.25 to 969.53, +0.28 px): browser scroll anchoring. The "`scrollY` unchanged" expectation does not hold for edits above the viewport. |
-| Scoped and `:global()` styles | `styles.browser.test.ts` | 1 | 1 | 2026-10-30 | Computed styles of a swapped Highlight callout (scoped `.highlight*` and `:global()` `strong`, `a`) equal the prerendered page's. |
-| KNOWN LIMIT: Swiper on `landing/home-v2` | `swiper-known-limit.browser.test.ts` | 1 | 1 | 2026-10-30 | Priming morphs the three carousels back to server markup: 3 initialised to 0. Asserted as today. |
-| KNOWN LIMIT: FAQ accordion (`/elements`) | `accordion-known-limit.browser.test.ts` | 1 | 1 | 2026-10-30 | After a body swap the accordion stays open and toggles (React island state survives). The sample's Accordion writes `${show && "active"}`, so its class reads `undefined` in the markup (sample bug, not patch). |
-| ClientRouter | `client-router.browser.test.ts` | 2 | 2 | 2026-10-30 | A draft sent before a navigation is dropped (held render arrives after the navigation; no `preview:rendered` follows). The bridge announces `ready` for `/pricing`. A draft sent after the navigation is answered for `/pricing`. |
-| Origins | `origins.browser.test.ts` | 2 | 2 | 2026-10-30 | A draft from an origin not in `editorOrigins` is ignored: the foreign page gets no message, and the page text is unchanged. Near miss: the same draft from the listed origin is applied. |
+| Scenario | File | Tests | Pass | Date | Notes | Where it landed |
+|---|---|---:|---:|---|---|---|
+| Priming | `priming.browser.test.ts` | 2 | 2 | 2026-10-30 | **Answer to the 1.6 question: yes.** `astro:page-load` also fires on the first load, so the page sends two `ready`s and renders only when the editor answers. An editor that answers each `ready` renders twice on load (limit: one extra render per load, same output). **Gap, race (not tested):** a draft that lands between the two `ready`s is dropped by the bridge's newest-wins rule (seen once while debugging; not deterministic, so no test). The harness waits for both `ready`s first. | D14 (two `ready`s, protocol rule, race gap); WORKPLAN 1.6 check closed; task 1.8a item 1 |
+| D6: pricing island on `landing/home-v2` | `d6-islands.browser.test.ts` | 5 | 5 | 2026-10-30 | Hydrates when in view (the `astro-island` has no box, so its child is scrolled to); a props change keeps Yearly selected; a block added after the island keeps its node and state (control). **GAP:** a block added before the island replaces its node, which re-hydrates and resets Yearly to Monthly. Asserted as today, labelled GAP. | D6 (browser findings, insert-before gap); task 1.8a item 2 |
+| Inline scripts and removed elements (10 edits) | `inline-elements.browser.test.ts` | 2 | 2 | 2026-10-30 | No growth: 10 props edits keep 2 inline island bootstraps and 1 body `<style>`. 10 add/remove edits end with 2 bootstraps, 0 styles, 0 islands (no extra `<style>` left). **Not measurable on the sample:** `define:vars` and JSON-LD. Sample content has neither; measuring them needs a fixture (a component with `define:vars`, and a Markdown or JSON block that emits `application/ld+json`). Not added to sample-site. | D6 (no pile-up); task 1.8a item 3 (fixture for `define:vars`, JSON-LD) |
+| Morph on `landing/long` | `morph.browser.test.ts` | 2 | 2 | 2026-10-30 | Edit below the viewport: the untouched block keeps its node, `scrollY` stays exactly 2400. **GAP:** an edit above the viewport (the banner) moves `scrollY` 2400 to 2340 (60 px) while the untouched block stays on screen (top 969.25 to 969.53, +0.28 px): browser scroll anchoring. The "`scrollY` unchanged" expectation does not hold for edits above the viewport. | D6 (scroll limit); not scheduled |
+| Scoped and `:global()` styles | `styles.browser.test.ts` | 1 | 1 | 2026-10-30 | Computed styles of a swapped Highlight callout (scoped `.highlight*` and `:global()` `strong`, `a`) equal the prerendered page's. | No write-up needed (passes) |
+| KNOWN LIMIT: Swiper on `landing/home-v2` | `swiper-known-limit.browser.test.ts` | 1 | 1 | 2026-10-30 | Priming morphs the three carousels back to server markup: 3 initialised to 0. Asserted as today. | D6 (known limit, phase 3 fallback) |
+| KNOWN LIMIT: FAQ accordion (`/elements`) | `accordion-known-limit.browser.test.ts` | 1 | 1 | 2026-10-30 | After a body swap the accordion stays open and toggles (React island state survives). The sample's Accordion writes `${show && "active"}`, so its class reads `undefined` in the markup (sample bug, not patch). | D6 (known limit); task 1.8a item 4 (sample bug) |
+| ClientRouter | `client-router.browser.test.ts` | 2 | 2 | 2026-10-30 | A draft sent before a navigation is dropped (held render arrives after the navigation; no `preview:rendered` follows). The bridge announces `ready` for `/pricing`. A draft sent after the navigation is answered for `/pricing`. | WORKPLAN 1.6 (navigation fix confirmed) |
+| Origins | `origins.browser.test.ts` | 2 | 2 | 2026-10-30 | A draft from an origin not in `editorOrigins` is ignored: the foreign page gets no message, and the page text is unchanged. Near miss: the same draft from the listed origin is applied. | D14 (origin check confirmed) |
 
 Notes on the harness: most files block image requests (`blockImages`); an image
 transform queue on the server otherwise delays renders in the next test. Blocking
@@ -1097,6 +1097,32 @@ connection; the suite passed on re-run.
   the body cap (D16) with headroom over the larger one.
 - **40-block render:** 100 edits of `landing/long`, median recorded against the
   5 ms goal of SYSTEM-DESIGN.md section 9.
+
+Step 3 status (2026-10-30; numbers and conditions in section 10):
+
+- **D7:** `getStaticPaths` on `/blog/page/2` is 0.2 ms with 200 posts, under the
+  2 ms bar. Tag pages are over it: `/tags/design` (74 of the 200 posts) adds
+  3.3 ms to its median `getStaticPaths` and 3.1 ms to its median render. The
+  cache of D7 is needed for tag pages. Not built here, as asked.
+- **Memory:** the preview node idles at 98 MB rss, 201 MB after
+  `POST /__preview/warm`. A first Markdown draft without warm-up costs
+  296 ms of server time (507 ms with 200 posts) and takes rss to 211 MB (221 MB).
+  Warm-up moves the first draft round trip from 1,261 ms to 363 ms, but the
+  ~300 ms server-side cost stays: a first JSON draft (`landing/long`, no Markdown)
+  costs 290 ms too. So warm-up saves about 0.9 s of first-keystroke time, at
+  1.1 to 1.8 s and about 103 MB at session start.
+- **Overlay and D16:** the largest body is every document of the 200-post sample,
+  1,108,985 bytes (1.06 MiB). The cap is now `MAX_BODY_BYTES = 4 * 1024 * 1024`
+  (4,194,304 bytes), in `src/render/handlers.ts` and in the literal of
+  `test/e2e/d16-body-cap.e2e.test.ts`. Headroom: 4,194,304 / 1,108,985 = 3.8x.
+  Against the full `landing/long` draft (33,412 bytes compact, 45,811 bytes as
+  the source file), it is 125x (compact) and 92x (source file). Each generated post adds about 5.2 KB
+  ((1,108,985 - 63,559) / 200 = 5,227 bytes), so the cap holds about 790 posts
+  of that size in one overlay. The provisional 32 MiB was 30x the worst case.
+  `handlers.test.ts` (57 tests) and the D16 e2e test (2 tests) pass with the new
+  value. Not checked: how the test editor reacts to a `413`.
+- **40-block render:** three series of 100 edits each, median 7.3, 9.3 and 7.9 ms
+  (spread 2.0 ms). The 5 ms goal is not met in any series. Not a gate.
 
 **4. Budget.** Add `landing/long` to the latency budget tests, with the same
 generous bounds as the others (they catch big regressions, not noise). The
@@ -1143,6 +1169,32 @@ startup problem.
 preview-render-server`; `npm run test:browser -w preview-render-server`;
 Stryker on the changed source files. `npm run check -- --e2e` is the user's to
 run.
+
+### 1.8a Fixes and fixtures from the browser tests
+
+Found by 1.8 step 2 (2026-10-30). Small; do them before phase 1 closes, after
+1.8's steps 3 and 5. Each has a test that fails first.
+
+1. **Priming race (D14).** A repeat `ready` for the same path must not discard
+   an answer in flight. Write the deterministic test first (editor sends a
+   draft between the two `ready`s, the bridge still renders it), then fix the
+   request counter in `bridge.ts`. The unit test goes in `bridge.test.ts`; keep
+   the browser case in `priming.browser.test.ts`.
+2. **Island before an inserted block (D6).** Try a stable key for
+   `astro-island` in the morph (for example its `component-url` plus the
+   position among islands of that component) so an insert in front keeps the
+   node. The `GAP` test in `d6-islands.browser.test.ts` flips to the correct
+   expectation. If a key is not cheap, leave the test as a limit and record the
+   decision in D6 (phase 3).
+3. **Fixture for `define:vars` and JSON-LD.** A test-only page or component
+   that uses both (not in `sample-site` content), then the 10-edit count of
+   `inline-elements.browser.test.ts` for it. Fix a pile-up or record it as a
+   limit in D6.
+4. **Optional, sample site:** the Accordion's `${show && "active"}` writes
+   `undefined` as a class. A one-line fix in the sample; the known-limit test
+   in `accordion-known-limit.browser.test.ts` then asserts the class.
+5. **Not scheduled:** the 60 px scroll shift above the viewport (limit in D6);
+   Swiper and accordion script limits (phase 3 fallback, D6).
 
 ### 1.9 Docs
 
@@ -1312,11 +1364,15 @@ New sample, to fill in during tasks 0.4 and 1.8:
 
 | | Value |
 |---|---|
-| `astro build` (plain), pages | ~25 s cold, 15 pages (template as cloned). With task 0.3: 24 pages, ~6 s warm; with 100 generated posts: 249 pages, ~14 s, `dist` 8.6 MB |
-| Preview build (`npm run build:sample`, task 0.4) | ~10 s warm (fonts and images cached), 24 pages |
-| Bundle size (external / bundled) | external: server 0.6 MB (565 KB of JS), client 4.5 MB (97 files). Bundled variant: not measured (`--bundle` is a phase 4 option) |
+| `astro build` (plain), pages | ~25 s cold, 15 pages (template as cloned). With task 0.3: 24 pages, ~6 s warm; with 100 generated posts: 249 pages, ~14 s, `dist` 8.6 MB. With 200 generated posts (2026-10-30): 474 pages, 21 s first build, 16 s warm rebuild, `dist` 11.9 MiB (543 files) |
+| Preview build (`npm run build:sample`, task 0.4) | ~10 s warm (fonts and images cached), 24 pages. 2026-10-30, `build.ts --dev`: default sample 14 s; 200 posts 26 s |
+| Bundle size (external / bundled) | external: server 0.6 MB (565 KB of JS), client 4.5 MB (97 files). 2026-10-30, all files in the preview build: default server 1.37 MiB (70 files), client 4.57 MiB (106 files); 200 posts server 3.54 MiB (70 files), client 12.43 MiB (558 files). Bundled variant: not measured (`--bundle` is a phase 4 option) |
 | Idle and after-run private memory | 89 MB idle; 90 MB after fetching 8 pages (working set 96 MB). No islands, so no renders yet |
-| Render median: home, blog post, `landing/long` | |
-| Markdown body draft render, memory with Shiki | See SYSTEM-DESIGN.md D2 and the warm-up row below |
+| Render median: home, blog post, `landing/long` | Default sample, 50 renders each after warm-up, no overlay, server `renderMs` median (p95, max): `/` 3.4 ms (7.0, 181); `/blog/blog-1` 2.8 ms (5.4, 15); `landing/long` (44 blocks) 11.4 ms (16.3, 32). 200-post sample: `/` 2.1 (5.0, 117); `/blog/blog-1` 3.4 (6.0, 9); `landing/long` 16.8 (27.8, 45) |
+| Markdown body draft render, memory with Shiki | Default sample, fresh server: first draft render of `blog/perf-draft` 296 ms server (1,261 ms round trip), rss 98 to 211 MB; second render 10.5 ms. 200 posts: 507 ms server (2,291 ms round trip), rss 98 to 221 MB. With warm-up first: first render 299 ms server (363 ms round trip), rss 201 to 213 MB, second 21 ms. One run each. See SYSTEM-DESIGN.md D2 and the warm-up row below |
 | Warm-up (`POST /__preview/warm`), task 1.5, working set on `sample-site` | 95 MB idle, 200 MB after warm-up (730 ms), 206 MB after rendering a page. Working set, so higher than the private-memory figures above |
-| Overlay size with 200 generated posts | |
+| Overlay size with 200 generated posts | Every document, 200-post sample (226 documents, 205 under `blog/`): 1,108,985 bytes (1.06 MiB). `landing/long` alone: 33,412 bytes compact (source file 45,811 bytes). Default sample, every document (26): 63,559 bytes. Envelope overhead 27 bytes. Both POSTs answered 200. Basis for the D16 cap of 4 MiB (step 3 note) |
+| Memory per editing session, default sample (`/__dev/memory`, rss after forced GC) | Idle 98 MB; after warm-up 201 MB (1.7 s wall); after 150 renders (`/`, `/blog/blog-1`, `/landing/long`, 50 each) 235 MB. A second session without warm-up, 150 renders of `/blog/page/2`, `/tags/design`, `/tags/design/2`: 210 MB. Cold path: idle 98 MB, first draft render 211 MB |
+| Memory per editing session, 200 generated posts | Idle 98.5 MB; after warm-up 201 MB (1.1 s wall); after 300 renders (6 pages, 50 each) 277 MB; after the two overlay POSTs 275 MB. Cold path: first draft render 221 MB |
+| `getStaticPaths` (`Server-Timing` paths), default vs 200 posts, 50 renders each | `/blog/page/2`: 0.2 ms median both; render median 5.0 ms (default) vs 4.0 ms. `/tags/design` (74 posts): 0.3 ms vs 3.6 ms (p95 4.8); render median 3.9 vs 7.0 ms. `/tags/design/2`: 0.3 vs 3.0 ms; render 3.5 vs 6.1 ms. Tag pages cross the 2 ms bar of D7 |
+| 40-block render, 100 edits of `landing/long` (e2e perf test, default sample, server `renderMs`) | Series 1: median 7.3, p95 12.9, max 133 ms. Series 2: 9.3, 19.9, 152 ms. Series 3: 7.9, 15.9, 129 ms. Spread of medians 7.3 to 9.3 ms. Round-trip medians 12 to 15 ms. The 5 ms goal is not met. All three runs pass the test bounds (60 ms median, 100 ms p95) |
