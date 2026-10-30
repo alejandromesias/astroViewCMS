@@ -664,7 +664,7 @@ unchecked until it is added. At the start of phase 2:
   because the virtual module imports the site's `astro.config` (only for sites
   with a content config).
 - **MDX bodies** (D11): live preview only for frontmatter in phase 1. The
-  restricted renderer is the preferred later path.
+  restricted renderer is the phase 3 path (decided 2026-10-30).
 - **`experimental_AstroContainer`** and Astro's internal content modules can
   change in any release. Pin Astro per preview bundle and keep the shim small.
   Tina has the same exposure.
@@ -1047,15 +1047,15 @@ preview node.
 - **Phase 1:** MDX frontmatter previews live. A draft body renders the saved
   body, and the render answers `limits: ["mdx-body"]`. The editor shows
   "body preview after save".
-- **Preferred later path:** a restricted renderer. Parse the body with
-  `remark-mdx` without running it, render the Markdown, and render component
-  tags from an allowed list (bigspring's shortcodes: Button, Accordion,
-  Notice, Video, Youtube, Tabs, Tab) with literal props only. Expressions,
-  imports and exports show a placeholder. That's Tina's `TinaMarkdown` model.
+- **Phase 3, decided (2026-10-30): build a restricted renderer.** Parse the
+  body with `remark-mdx` without running it, render the Markdown, and render
+  component tags from an allowed list (bigspring's shortcodes: Button,
+  Accordion, Notice, Video, Youtube, Tabs, Tab) with literal props only.
+  Expressions, imports and exports show a placeholder. That's Tina's
+  `TinaMarkdown` model. The inventory below shows it covers the sample's one
+  MDX file. When it lands, a draft body renders live and `mdx-body` stays in
+  `limits` only for a body the renderer can't show (a placeholder was used).
 - **Not planned:** compiling and running arbitrary MDX at render time.
-- **TBD (the user decides after phase 1):** whether to build the restricted
-  renderer in phase 3. Input: an inventory of what the sample's MDX uses
-  (task 1.4), and optionally a spike on `elements.mdx`.
 - **Inventory (task 1.4, 2026-10-26).** `sample-site` has one MDX file,
   `src/content/pages/elements.mdx` (253 lines), and the generated posts are
   Markdown. It uses only the shortcodes that `astro.config.mjs` auto-imports,

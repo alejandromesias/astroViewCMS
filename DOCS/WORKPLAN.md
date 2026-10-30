@@ -949,7 +949,11 @@ changes; last run 2026-10-30, targeted runs with `-t`, not the full suite):
 | D3 | 6 (5 failures and the near miss, plus the pinned deleted-author gap); the throwing refinement is in `content-api.test.ts` | `preview-server.e2e.test.ts` | pass |
 | D4 | 2 (plus the existing unit tests) | `d4-references.e2e.test.ts` | pass |
 | D5 | 2 | `d5-avatar.e2e.test.ts` | pass |
-| D8–D14, D16 | not written | | |
+| D8 | 2 | `d8-drafts.e2e.test.ts` | pass (2026-10-30) |
+| D9 | 8 | `d9-old-routes.e2e.test.ts` | pass (2026-10-30) |
+| D10 | 1 | `d10-d11.e2e.test.ts` | pass (2026-10-30) |
+| D11 | 2 (phase 1 behaviour, replaced when the phase 3 restricted renderer lands; MDX draft keeps the saved body and answers `mdx-body`; a Markdown draft answers no limit) | `d10-d11.e2e.test.ts` | pass (2026-10-30) |
+| D12–D14, D16 | not written | | |
 
 Run one with, from `preview-render-server`: `NODE_OPTIONS=--max-old-space-size=4096
 npx vitest run --config vitest.e2e.config.ts test/e2e/<file> -t "<decision>"`.
@@ -1189,6 +1193,16 @@ Work already decided for phase 2:
 
 Work already decided for phase 3:
 
+- **Restricted MDX renderer (D11, decided 2026-10-30).** Parse a draft body
+  with `remark-mdx` without running it, render the Markdown, and render
+  Button, Accordion, Notice, Video, Youtube, Tabs and Tab from an allow-list
+  with literal props. Expressions, imports and exports show a placeholder.
+  The sample's `elements.mdx` is the first test; `client:load` components
+  need the hydration scripts of D6. When it lands, replace the phase 1 test
+  in `d10-d11.e2e.test.ts` (a draft body keeps the saved body and answers
+  `mdx-body`) with tests that the draft body renders, that a placeholder
+  case still answers `mdx-body`, and that no code in the body runs.
+
 - **Markdown plugins without the whole config (D2).** A per-site setting
   that names the remark and rehype plugins and the Shiki theme, so the
   preview no longer imports `astro.config`. Measure it against the ~88 MB
@@ -1206,8 +1220,6 @@ Work already decided for phase 3:
 
 Decisions waiting for the user after phase 1:
 
-- **Restricted MDX renderer (D11).** Build it in phase 3 or not. Input: the
-  inventory in D11 and, optionally, a spike on `elements.mdx`.
 - **Collections without a loader (D15).** Confirm that they get a
   `schema.json` entry and no documents.
 - **Deleting a referenced document (D3).** Block it, or warn and allow it, in
