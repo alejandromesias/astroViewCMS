@@ -44,6 +44,7 @@ tests for it; the full unit suite is for a person running the checks.
 | osv-scanner | known vulnerabilities in dependencies | `osv-scanner.toml` | gate |
 | Knip | dead code, unused exports and dependencies | `knip.json` | gate (should print nothing) |
 | dependency-cruiser | import rules: client stays browser-safe, protocol is a leaf, read-only request path, cycles, tests | `.dependency-cruiser.cjs` | gate |
+| Module graph (dependency-cruiser) | nothing: diagrams for people, an edge list for agents | `.dependency-cruiser-graph.cjs`, `scripts/graph.ts` | neither (a view) |
 | Budget tests | bridge size, render latency, memory growth | tests | gate |
 | Stryker | whether the tests catch changes to the code | `stryker.config.json` | gate in `--mutation` (score floor) |
 
@@ -116,6 +117,8 @@ CI, fail the build). "Report" means the output needs a human reading it.
 | Audit | `npm run audit` (needs `osv-scanner`, see below) | ~3 s |
 | Knip | `npm run knip` | ~2 s |
 | dependency-cruiser | `npm run depcruise` (rules: [Annex](#annex-dependency-cruiser-rules)) | ~3 s |
+| Module graph | `npm run graph` (see [Module graph](#module-graph)) | ~20 s |
+| Edges of one file | `npm run -s deps -- --focus "<regex>"` or `--reaches "<regex>"` | ~3 s |
 | Skott cycles | the command below | ~7 s |
 | Stryker | `npx stryker run` | see Stryker |
 | Everything | `npm run check [-- flags]` | ~21 s fast, ~87 s with `--all` |
@@ -155,6 +158,28 @@ source; without it Skott reads that name as an npm package and draws no edge.
 
 Add `--no-trackTypeOnlyDependencies` to see cycles that exist at runtime only
 (type-only imports vanish when the code is compiled).
+
+### Module graph
+
+`npm run graph` draws the import graph with dependency-cruiser, over the same
+scope as the Skott command (production code of `preview-render-server` and
+`preview-protocol`; tests, test helpers, Vitest configs and `.d.ts` files left
+out). It enforces nothing. It writes two files to `reports/graph/`:
+
+- **`modules.html`, for people.** Open it in a browser (it loads Mermaid from a
+  CDN, so it needs internet). Two diagrams: *Folders* (each `src/` folder
+  collapsed to one box, about 25 edges: the architecture at a glance) and
+  *Files* (every file, grouped by folder, about 75 edges). Packages are left
+  out to keep it readable.
+- **`deps.txt`, for agents.** One `from → to` line per edge, npm packages
+  collapsed to their name (`node_modules/astro`) and Node builtins kept
+  (`fs`), so `grep` answers "who imports X" and "what does X import". About
+  9 KB; the JSON reporter says the same in about 110 KB.
+
+For one question, skip the files and ask directly: `npm run -s deps -- --focus
+"render/handlers"` prints that file's imports and importers, and `--reaches
+"preview-protocol/src/index.ts"` prints everything that depends on it,
+directly or not.
 
 ### Running everything
 
@@ -313,7 +338,9 @@ unchecked. Go through this list when the package is created:
    exclusions as for the render server (glue scripts with top-level effects).
 7. **`package.json` `depcruise` script:** add `<package>/src` to the paths, and
    add rules for what the package may and may not import (see the
-   [annex](#annex-dependency-cruiser-rules)). Update the annex table.
+   [annex](#annex-dependency-cruiser-rules)). Update the annex table. Add the
+   same path to the `deps` script and to `BASE`, `INTERNAL` and `FOLDERS` in
+   `scripts/graph.ts`.
 8. **`scripts/check.ts`:** add its `typecheck` and `test` steps to `FAST`.
 9. **Skott step in `scripts/check.ts` and `tsconfig.skott.json`:** map any workspace import to
    its source, as for `preview-protocol`.

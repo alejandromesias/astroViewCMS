@@ -22,6 +22,8 @@
     "knip": "knip",
     "depcruise": "depcruise preview-render-server/src preview-protocol/src --config .dependency-cruiser.cjs",
     "lint": "biome lint",
-    "format:check": "biome format"
+    "format:check": "biome format",
+    "graph": "node scripts/graph.ts",
+    "deps": "depcruise preview-render-server/src preview-protocol/src --config .dependency-cruiser-graph.cjs -T text"
   }
 }
