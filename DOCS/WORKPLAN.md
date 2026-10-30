@@ -1058,6 +1058,29 @@ scripts, scroll or styles after a patch. Add a small suite:
     and the bridge announces `ready` again;
   - origins: a message from an origin not in the list is ignored.
 
+**Step 2 status (2026-10-30).** Browser suite in `preview-render-server/test/browser/`
+(`vitest.browser.config.ts`, Chromium headless, one file at a time). Each file was
+run on its own with `timeout 170`; 18 tests, 18 pass. Not run here: the full
+e2e suite, after the `global-setup.ts` refactor (only d16 was run, by the user).
+
+| Scenario | File | Tests | Pass | Date | Notes |
+|---|---|---:|---:|---|---|
+| Priming | `priming.browser.test.ts` | 2 | 2 | 2026-10-30 | **Answer to the 1.6 question: yes.** `astro:page-load` also fires on the first load, so the page sends two `ready`s and renders only when the editor answers. An editor that answers each `ready` renders twice on load (limit: one extra render per load, same output). **Gap, race (not tested):** a draft that lands between the two `ready`s is dropped by the bridge's newest-wins rule (seen once while debugging; not deterministic, so no test). The harness waits for both `ready`s first. |
+| D6: pricing island on `landing/home-v2` | `d6-islands.browser.test.ts` | 5 | 5 | 2026-10-30 | Hydrates when in view (the `astro-island` has no box, so its child is scrolled to); a props change keeps Yearly selected; a block added after the island keeps its node and state (control). **GAP:** a block added before the island replaces its node, which re-hydrates and resets Yearly to Monthly. Asserted as today, labelled GAP. |
+| Inline scripts and removed elements (10 edits) | `inline-elements.browser.test.ts` | 2 | 2 | 2026-10-30 | No growth: 10 props edits keep 2 inline island bootstraps and 1 body `<style>`. 10 add/remove edits end with 2 bootstraps, 0 styles, 0 islands (no extra `<style>` left). **Not measurable on the sample:** `define:vars` and JSON-LD. Sample content has neither; measuring them needs a fixture (a component with `define:vars`, and a Markdown or JSON block that emits `application/ld+json`). Not added to sample-site. |
+| Morph on `landing/long` | `morph.browser.test.ts` | 2 | 2 | 2026-10-30 | Edit below the viewport: the untouched block keeps its node, `scrollY` stays exactly 2400. **GAP:** an edit above the viewport (the banner) moves `scrollY` 2400 to 2340 (60 px) while the untouched block stays on screen (top 969.25 to 969.53, +0.28 px): browser scroll anchoring. The "`scrollY` unchanged" expectation does not hold for edits above the viewport. |
+| Scoped and `:global()` styles | `styles.browser.test.ts` | 1 | 1 | 2026-10-30 | Computed styles of a swapped Highlight callout (scoped `.highlight*` and `:global()` `strong`, `a`) equal the prerendered page's. |
+| KNOWN LIMIT: Swiper on `landing/home-v2` | `swiper-known-limit.browser.test.ts` | 1 | 1 | 2026-10-30 | Priming morphs the three carousels back to server markup: 3 initialised to 0. Asserted as today. |
+| KNOWN LIMIT: FAQ accordion (`/elements`) | `accordion-known-limit.browser.test.ts` | 1 | 1 | 2026-10-30 | After a body swap the accordion stays open and toggles (React island state survives). The sample's Accordion writes `${show && "active"}`, so its class reads `undefined` in the markup (sample bug, not patch). |
+| ClientRouter | `client-router.browser.test.ts` | 2 | 2 | 2026-10-30 | A draft sent before a navigation is dropped (held render arrives after the navigation; no `preview:rendered` follows). The bridge announces `ready` for `/pricing`. A draft sent after the navigation is answered for `/pricing`. |
+| Origins | `origins.browser.test.ts` | 2 | 2 | 2026-10-30 | A draft from an origin not in `editorOrigins` is ignored: the foreign page gets no message, and the page text is unchanged. Near miss: the same draft from the listed origin is applied. |
+
+Notes on the harness: most files block image requests (`blockImages`); an image
+transform queue on the server otherwise delays renders in the next test. Blocking
+images left the first draft on `home-v2` unanswered once, so the Swiper file does
+not block them. Under low memory (about 1.4 GB free) a run once lost its browser
+connection; the suite passed on re-run.
+
 **3. Measurements (recorded in section 10, not gates).**
 
 - **D7:** generate 200 posts (`node scripts/generate-posts.mjs 200` in
