@@ -54,13 +54,54 @@ function findDraftError(error: unknown): DraftError | undefined {
   return undefined;
 }
 
+/**
+ * The largest request body the render and validate routes read, in bytes (D16).
+ * Provisional: the overlay measurement (WORKPLAN task 1.8) sets the final value.
+ */
+export const MAX_BODY_BYTES = 32 * 1024 * 1024;
+
+/**
+ * The body as text, or `null` when it is larger than MAX_BODY_BYTES. The
+ * Content-Length header only lets an oversized request go early; the bytes are
+ * counted as they arrive, so a missing or false header can't bypass the cap.
+ */
+async function readCappedText(request: Request): Promise<string | null> {
+  const declared = request.headers.get('content-length');
+  if (declared !== null && Number(declared) > MAX_BODY_BYTES) return null;
+  if (!request.body) return '';
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_BODY_BYTES) {
+      await reader.cancel();
+      return null;
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  return text + decoder.decode();
+}
+
 /** Reads the guard, the JSON body and the `{ documents, media }` envelope. */
 async function readEnvelope(request: Request): Promise<Response | Envelope> {
   const rejection = rejectUnlessContentType(request, /application\/json/);
   if (rejection) return rejection;
+  const tooLarge = `Body must be at most ${MAX_BODY_BYTES} bytes`;
+  let text: string | null;
+  try {
+    text = await readCappedText(request);
+  } catch {
+    // The stream failed, for instance because the client went away.
+    return new Response('Body must be JSON', { status: 400 });
+  }
+  if (text === null) return new Response(tooLarge, { status: 413 });
   let body: unknown;
   try {
-    body = await request.json();
+    body = JSON.parse(text);
   } catch {
     return new Response('Body must be JSON', { status: 400 });
   }

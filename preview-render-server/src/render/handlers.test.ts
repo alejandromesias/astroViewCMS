@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { currentOverlay } from '../overlay/context.ts';
 import { DraftError } from '../overlay/errors.ts';
 import type { HandlerDeps } from './handlers.ts';
-import { handleRender, handleValidate } from './handlers.ts';
+import { handleRender, handleValidate, MAX_BODY_BYTES } from './handlers.ts';
 import { NotFoundError } from './render-page.ts';
 
 const page = {
@@ -597,6 +597,130 @@ describe('handleValidate: failures and answers', () => {
       body: '{',
     });
     const response = await handleValidate(request, makeDeps());
+    expect(response.status).toBe(400);
+    expect(await response.text()).toBe('Body must be JSON');
+  });
+});
+
+// -- Body cap (D16) ------------------------------------------------------------
+
+const CAP_ROUTES = [
+  ['render', handleRender],
+  ['validate', handleValidate],
+] as const;
+
+/** A JSON envelope of exactly `bytes` bytes (ASCII, so characters are bytes). */
+function jsonOfSize(bytes: number): string {
+  const head = '{"documents":{},"pad":"';
+  const tail = '"}';
+  return head + 'x'.repeat(bytes - head.length - tail.length) + tail;
+}
+
+/** The same text as a stream of 1 MiB chunks, so no Content-Length is implied. */
+function streamed(text: string): ReadableStream<Uint8Array> {
+  const bytes = new TextEncoder().encode(text);
+  const chunk = 1024 * 1024;
+  return new ReadableStream({
+    start(controller) {
+      for (let at = 0; at < bytes.length; at += chunk)
+        controller.enqueue(bytes.slice(at, at + chunk));
+      controller.close();
+    },
+  });
+}
+
+const capRequest = (
+  route: string,
+  body: BodyInit,
+  headers: Record<string, string> = {},
+) =>
+  new Request(`http://x/__preview/${route}?path=%2F`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...headers },
+    body,
+    duplex: 'half',
+  } as RequestInit);
+
+describe.each(CAP_ROUTES)('%s: body cap (D16)', (route, handle) => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('accepts a body of exactly MAX_BODY_BYTES', async () => {
+    const deps = makeDeps();
+    const response = await handle(
+      capRequest(route, jsonOfSize(MAX_BODY_BYTES)),
+      deps,
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it('answers 413 to one byte more, without parsing the body', async () => {
+    const deps = makeDeps();
+    const parse = vi.spyOn(JSON, 'parse');
+    const response = await handle(
+      capRequest(route, jsonOfSize(MAX_BODY_BYTES + 1)),
+      deps,
+    );
+    expect(response.status).toBe(413);
+    expect(await response.text()).toBe(
+      `Body must be at most ${MAX_BODY_BYTES} bytes`,
+    );
+    expect(parse).not.toHaveBeenCalled();
+    expect(deps.renderPage).not.toHaveBeenCalled();
+    expect(deps.validate).not.toHaveBeenCalled();
+  });
+
+  it('answers 413 from a Content-Length over the cap, before reading the body', async () => {
+    const deps = makeDeps();
+    const parse = vi.spyOn(JSON, 'parse');
+    const response = await handle(
+      capRequest(route, '{"documents":{}}', {
+        'content-length': String(MAX_BODY_BYTES + 1),
+      }),
+      deps,
+    );
+    expect(response.status).toBe(413);
+    expect(parse).not.toHaveBeenCalled();
+  });
+
+  it('counts the stream when Content-Length is false and answers 413', async () => {
+    const deps = makeDeps();
+    const response = await handle(
+      capRequest(route, streamed(jsonOfSize(MAX_BODY_BYTES + 1)), {
+        'content-length': '2',
+      }),
+      deps,
+    );
+    expect(response.status).toBe(413);
+    expect(deps.renderPage).not.toHaveBeenCalled();
+    expect(deps.validate).not.toHaveBeenCalled();
+  });
+
+  it('counts the stream when Content-Length is missing and answers 413', async () => {
+    const deps = makeDeps();
+    const response = await handle(
+      capRequest(route, streamed(jsonOfSize(MAX_BODY_BYTES + 1))),
+      deps,
+    );
+    expect(response.status).toBe(413);
+    expect(deps.renderPage).not.toHaveBeenCalled();
+    expect(deps.validate).not.toHaveBeenCalled();
+  });
+
+  it('accepts a streamed body of exactly MAX_BODY_BYTES (near miss)', async () => {
+    const response = await handle(
+      capRequest(route, streamed(jsonOfSize(MAX_BODY_BYTES))),
+      makeDeps(),
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it('says "Body must be JSON" when the body stream fails', async () => {
+    const broken = new ReadableStream({
+      start(controller) {
+        controller.error(new Error('client went away'));
+      },
+    });
+    const response = await handle(capRequest(route, broken), makeDeps());
     expect(response.status).toBe(400);
     expect(await response.text()).toBe('Body must be JSON');
   });

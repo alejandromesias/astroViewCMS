@@ -7,7 +7,7 @@ import {
 } from 'preview-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BridgeOptions } from './bridge.ts';
-import { startBridge } from './bridge.ts';
+import { pathWithoutToken, startBridge } from './bridge.ts';
 
 const ORIGIN = 'http://localhost:4400';
 const EDITOR = 'https://editor.example';
@@ -67,6 +67,41 @@ const blocks = (inner: string) =>
 let bridge: ReturnType<typeof setup>;
 afterEach(() => bridge?.stop?.());
 
+describe('pathWithoutToken', () => {
+  it.each([
+    ['/blog/blog-1?token=secret&locale=en', '/blog/blog-1?locale=en'],
+    ['/blog/blog-1?locale=en&token=secret', '/blog/blog-1?locale=en'],
+    [
+      '/blog/blog-1?locale=en&token=secret&page=2',
+      '/blog/blog-1?locale=en&page=2',
+    ],
+    ['/blog/blog-1?token=secret', '/blog/blog-1'],
+    ['/blog/blog-1?token', '/blog/blog-1'],
+    ['/blog/blog-1?token=', '/blog/blog-1'],
+    ['/blog/blog-1?token=a&locale=en&token=b', '/blog/blog-1?locale=en'],
+    ['/blog/blog-1?&token=secret&locale=en', '/blog/blog-1?locale=en'],
+    ['/blog/blog-1?token=secret&', '/blog/blog-1'],
+    ['/blog/blog-1?to%6ben=secret&locale=en', '/blog/blog-1?locale=en'],
+    ['/blog/blog-1?locale=a%20b&token=x', '/blog/blog-1?locale=a%20b'],
+    ['/blog/blog-1?%zz=1&token=secret', '/blog/blog-1?%zz=1'],
+  ])('drops the token from %s', (path, expected) => {
+    expect(pathWithoutToken(path)).toBe(expected);
+  });
+
+  it.each([
+    ['/blog/blog-1'],
+    ['/blog/blog-1?'],
+    ['/blog/blog-1?locale=en'],
+    ['/blog/blog-1?tokens=1'],
+    ['/blog/blog-1?mytoken=1'],
+    ['/blog/blog-1?token.id=1'],
+    ['/blog/blog-1?Token=1'],
+    ['/blog/blog-1?locale=en&&page=2'],
+  ])('leaves %s as it is (near miss)', (path) => {
+    expect(pathWithoutToken(path)).toBe(path);
+  });
+});
+
 describe('protocol version', () => {
   it.each([
     [
@@ -120,6 +155,43 @@ describe('startBridge', () => {
       },
       ORIGIN,
     );
+  });
+
+  it('omits the token query parameter from the ready path', () => {
+    bridge = setup(PAGE, undefined, {
+      pathname: '/blog/blog-1',
+      search: '?token=secret&locale=en',
+    });
+
+    expect(bridge.sent()).toEqual([
+      {
+        type: 'preview:ready',
+        path: '/blog/blog-1?locale=en',
+        protocol: PROTOCOL_VERSION,
+      },
+    ]);
+  });
+
+  it('sends no token in the render request or in the answer', async () => {
+    bridge = setup(PAGE, undefined, {
+      pathname: '/blog/blog-1',
+      search: '?token=secret&locale=en',
+    });
+    bridge.fetch.mockResolvedValue(rendered(blocks('<p>x</p>')));
+
+    bridge.post(draft());
+
+    await vi.waitFor(() =>
+      expect(bridge.sent().at(-1)?.type).toBe('preview:rendered'),
+    );
+    expect(bridge.fetch).toHaveBeenCalledWith(
+      '/__preview/render?path=%2Fblog%2Fblog-1%3Flocale%3Den',
+      expect.anything(),
+    );
+    expect(bridge.sent().at(-1)).toMatchObject({
+      type: 'preview:rendered',
+      path: '/blog/blog-1?locale=en',
+    });
   });
 
   it('announces to every allowed editor origin, never "*"', () => {

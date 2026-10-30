@@ -953,7 +953,10 @@ changes; last run 2026-10-30, targeted runs with `-t`, not the full suite):
 | D9 | 8 | `d9-old-routes.e2e.test.ts` | pass (2026-10-30) |
 | D10 | 1 | `d10-d11.e2e.test.ts` | pass (2026-10-30) |
 | D11 | 2 (phase 1 behaviour, replaced when the phase 3 restricted renderer lands; MDX draft keeps the saved body and answers `mdx-body`; a Markdown draft answers no limit) | `d10-d11.e2e.test.ts` | pass (2026-10-30) |
-| D12–D14, D16 | not written | | |
+| D12 | 8 (no width-refinement case e2e: the sample has no image refinement; covered in `stubs-flavor2.test.ts` and `content-api.test.ts`) | `d12-media.e2e.test.ts` | pass (2026-10-30) |
+| D13 | 9 (the authors listing is `documents.json`: the sample has no authors page) | `d13-formats.e2e.test.ts` | pass (2026-10-30) |
+| D14 | 27 (5 protocol cases; 22 bridge cases: the `ready` path, the render request and answer, 12 token drops and 8 near misses of `pathWithoutToken`) | `preview-protocol/src/index.test.ts`, `preview-render-server/src/client/bridge.test.ts` | pass (2026-10-30) |
+| D16 | 16 (14 unit cases: 7 each for render and validate, covering the cap and cap + 1, an oversized and a false or missing Content-Length, a failing stream; 2 e2e: cap + 1 answers `413`, a normal body answers `200`) | `preview-render-server/src/render/handlers.test.ts`, `preview-render-server/test/e2e/d16-body-cap.e2e.test.ts` | pass (2026-10-30) |
 
 Run one with, from `preview-render-server`: `NODE_OPTIONS=--max-old-space-size=4096
 npx vitest run --config vitest.e2e.config.ts test/e2e/<file> -t "<decision>"`.

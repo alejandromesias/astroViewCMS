@@ -125,9 +125,18 @@ describe('protocol version', () => {
     expect(isPageMessage({ type: 'preview:ready', path: '/' })).toBe(true);
   });
 
-  it('protocolMismatch is null only for the current version', () => {
+  it('accepts the current protocol version', () => {
     expect(protocolMismatch({ protocol: PROTOCOL_VERSION })).toBeNull();
-    expect(protocolMismatch({ protocol: 1 })).toContain('sent 1');
-    expect(protocolMismatch({})).toContain('sent none');
+  });
+
+  it.each([
+    ['a different version', { protocol: 1 }, '1'],
+    ['a missing version', {}, 'none'],
+    ['a non-string version', { protocol: false }, 'false'],
+    ['an empty version', { protocol: '' }, ''],
+  ])('reports %s as a mismatch', (_case, message, sent) => {
+    expect(protocolMismatch(message)).toBe(
+      `protocol mismatch: this side speaks ${PROTOCOL_VERSION}, the other sent ${sent}; rebuild the preview bundle or update the editor`,
+    );
   });
 });

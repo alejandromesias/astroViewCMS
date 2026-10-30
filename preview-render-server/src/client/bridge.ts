@@ -50,7 +50,8 @@ export function startBridge(
   let editorOrigin = win.location.origin;
   let requestCount = 0;
 
-  const currentPath = () => win.location.pathname + win.location.search;
+  const currentPath = () =>
+    pathWithoutToken(win.location.pathname + win.location.search);
   const send = (
     message: PageMessage,
     targets: Iterable<string> = [editorOrigin],
@@ -149,6 +150,34 @@ export function startBridge(
     win.removeEventListener('message', onMessage);
     doc.removeEventListener('astro:page-load', onNavigated);
   };
+}
+
+/**
+ * The path with its `token` parameters removed (D14): the token that the node
+ * exchanges for a cookie must never reach a postMessage. The other parameters
+ * keep their order and their encoding. A path without a token comes back
+ * unchanged, empty `?` and empty parts included.
+ */
+export function pathWithoutToken(path: string): string {
+  const cut = path.indexOf('?');
+  if (cut < 0) return path;
+  const parts = path.slice(cut + 1).split('&');
+  if (!parts.some((part) => queryName(part) === 'token')) return path;
+  const kept = parts.filter(
+    (part) => part !== '' && queryName(part) !== 'token',
+  );
+  return path.slice(0, cut) + (kept.length > 0 ? `?${kept.join('&')}` : '');
+}
+
+/** The decoded name of one `name=value` pair, or the raw text if it is malformed. */
+function queryName(pair: string): string {
+  const eq = pair.indexOf('=');
+  const raw = eq < 0 ? pair : pair.slice(0, eq);
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
 }
 
 /** An error answer of the render route as the editor gets it. */
