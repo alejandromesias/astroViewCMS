@@ -448,9 +448,161 @@ describe('GET /__dev/documents (built with PREVIEW_DEV=1)', () => {
     expect((await get('data:src/config/menu.json')).json.buildTime).toBe(false);
   });
 
+  it('flags config.json and theme.json as build-time and menu.json as not (D1)', async () => {
+    const flags = async (file: string) => {
+      const { json } = await get(`data:src/config/${file}`);
+      return {
+        buildTime: json.buildTime,
+        buildTimeFields: json.buildTimeFields,
+      };
+    };
+    expect(await flags('config.json')).toEqual({
+      buildTime: true,
+      buildTimeFields: [
+        'site.base_url',
+        'site.base_path',
+        'site.trailing_slash',
+      ],
+    });
+    // A flagged file without a field list counts as all build-time.
+    expect(await flags('theme.json')).toEqual({
+      buildTime: true,
+      buildTimeFields: ['*'],
+    });
+    expect(await flags('menu.json')).toEqual({
+      buildTime: false,
+      buildTimeFields: undefined,
+    });
+  });
+
   it('answers 404 for an unknown key and 400 without one', async () => {
     expect((await get('blog/not-there')).status).toBe(404);
     expect((await fetch(`${BASE}/__dev/documents`)).status).toBe(400);
+  });
+});
+
+describe('Markdown drafts (D2)', () => {
+  const blogOne = async () => {
+    const response = await fetch(
+      `${BASE}/__dev/documents?key=${encodeURIComponent('blog/blog-1')}`,
+    );
+    return (await response.json()).value as {
+      data: Record<string, unknown>;
+      body: string;
+    };
+  };
+
+  it('a draft body changes the rendered post and the blog summary', async () => {
+    const post = await blogOne();
+    const marker = 'Zebra-quartz marker sentence for the draft body.';
+    const draft = {
+      // The newest date puts the post first, where /blog prints a summary.
+      data: { ...post.data, date: '2030-01-01T00:00:00Z' },
+      body: `${marker}\n\n${post.body}`,
+    };
+    const own = await render('/blog/blog-1', { 'blog/blog-1': draft });
+    expect(own.status).toBe(200);
+    expect((own.json as Rendered).html).toContain(`<p>${marker}</p>`);
+    expect(builtPage('/blog/blog-1')).not.toContain(marker);
+
+    const list = await render('/blog', { 'blog/blog-1': draft });
+    expect((list.json as Rendered).html).toContain(marker);
+    expect(builtPage('/blog')).not.toContain(marker);
+  });
+
+  it('a fence in a language outside the allow-list renders as plain text', async () => {
+    const draft = (lang: string) => ({
+      'blog/fence': {
+        data: { title: 'Fence', date: '2026-10-27', author: 'ana-torres' },
+        body: `\`\`\`${lang}\nint x = 1;\n\`\`\`\n`,
+      },
+    });
+    const plain = await render('/blog/fence', draft('cpp'));
+    const html = (plain.json as Rendered).html;
+    expect(html).toContain('int x = 1;');
+    expect(html).not.toMatch(/<pre[^>]*>[\s\S]*<span style=[\s\S]*<\/pre>/);
+    expect((plain.json as Rendered).limits).toEqual(['code-language:cpp']);
+
+    // Near miss: css is in the allow-list, so it is highlighted, no limit.
+    const css = await render('/blog/fence', draft('css'));
+    expect((css.json as Rendered).html).toMatch(
+      /<pre[^>]*>[\s\S]*<span style=/,
+    );
+    expect((css.json as Rendered).limits).toEqual([]);
+  });
+});
+
+describe('drafts that break a schema (D3)', () => {
+  const failures = (json: { errors: Array<{ key: string; path: string[] }> }) =>
+    json.errors.map((e) => `${e.key}:${e.path.join('.')}`);
+
+  it('a missing image answers 422 with the field path', async () => {
+    const author = readJson('src/content/authors/ana-torres.json');
+    const { status, json } = await render('/blog/blog-1', {
+      'authors/ana-torres': {
+        ...author,
+        avatar: '../../assets/authors/not-there.png',
+      },
+    });
+    expect(status).toBe(422);
+    expect(failures(json)).toEqual(['authors/ana-torres:avatar']);
+  });
+
+  it('a deleted author answers 422 on a drafted post that references it', async () => {
+    const post = await (
+      await fetch(`${BASE}/__dev/documents?key=blog%2Fblog-1`)
+    ).json();
+    const { status, json } = await render('/blog/blog-1', {
+      'blog/blog-1': post.value,
+      'authors/ana-torres': null,
+    });
+    expect(status).toBe(422);
+    expect(failures(json)).toEqual(['blog/blog-1:author']);
+  });
+
+  it('a misspelled author id answers 422 with the field path', async () => {
+    const { status, json } = await render('/blog/blog-1', {
+      'blog/blog-1': {
+        data: { title: 'Typo', author: 'ana-torez' },
+        body: '',
+      },
+    });
+    expect(status).toBe(422);
+    expect(failures(json)).toEqual(['blog/blog-1:author']);
+  });
+
+  it('a wrong enum value answers 422 with the field path', async () => {
+    const home = readJson('src/content/landing/home-v2.json');
+    home.blocks[0].type = 'bannr';
+    const { status, json } = await render('/landing/home-v2', {
+      'landing/home-v2': home,
+    });
+    expect(status).toBe(422);
+    expect(failures(json)).toEqual(['landing/home-v2:blocks.0.type']);
+  });
+
+  // Known gap, pinned on purpose (D3): validation covers only the overlay, so
+  // deleting an author alone is not caught. A real build of the same content
+  // logs an error and still publishes the post without the author.
+  it('a deleted author alone answers 200 and the post loses its author', async () => {
+    const { status, json } = await render('/blog/blog-1', {
+      'authors/ana-torres': null,
+    });
+    expect(status).toBe(200);
+    expect((json as Rendered).html).not.toContain('Ana Torres');
+    expect(builtPage('/blog/blog-1')).toContain('Ana Torres');
+  });
+
+  // Near miss: the same edits, fixed, render.
+  it('the unbroken versions of those drafts render', async () => {
+    const author = readJson('src/content/authors/ana-torres.json');
+    expect(
+      (
+        await render('/blog/blog-1', {
+          'authors/ana-torres': { ...author, name: 'Ana T.' },
+        })
+      ).status,
+    ).toBe(200);
   });
 });
 

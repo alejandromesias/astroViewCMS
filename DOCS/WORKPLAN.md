@@ -917,6 +917,21 @@ round (QUALITY-TOOLING-PLAN.md, `Handoffs/HANDOFF-2026-10-29-2305.md`) left:
   Markdown page, median under 30 ms, p95 under 50 ms), memory (`rss` under
   400 MB, `heapUsed` growth under 10 MB over 500 renders) and the bridge size.
 
+Done in 1.8 step 1 (2026-10-30), in `preview-server.e2e.test.ts`: D1 (config,
+theme and menu flags), D2 (draft body in the post and the blog summary, plain
+text for a fence outside the allow-list, a css near miss; the heading id is in
+the brand-new-post test) and D3 (missing image, deleted author, misspelled
+author, wrong enum, an unbroken near miss; the throwing refinement is in
+`content-api.test.ts`). **Finding:** deleting an author alone (the post is not
+in the overlay) renders `200` and the post's reference quietly resolves to
+nothing, because `validate` parses only the documents in the overlay. The 422
+for a deleted author happens only when the referencing post is in the overlay
+too. A real build of `sample-site` with that author removed also succeeds
+(exit 0, `ERROR Invalid content reference` logged, posts published without an
+author), so the preview and the build agree. Settled: leave the preview as it
+is and put the guard in the CMS app in phase 2 (section 8); D3 records it.
+A test pins the behaviour.
+
 Before writing a test from the lists below, search the existing tests for it.
 If it exists, tick it off here instead.
 
@@ -1155,6 +1170,11 @@ Work already decided for phase 3:
   preview no longer imports `astro.config`. Measure it against the ~88 MB
   the import costs now. It also takes the integrations' code out of the
   preview bundle, which helps bundle portability below.
+- **Guard deletes of referenced documents (D3).** The CMS app refuses, or
+  warns on, deleting a document that another one references (a post's
+  `author`, a block's testimonials). It knows every document, so it can do
+  what the preview node, which only sees the overlay, cannot. Without it a
+  real build still succeeds but publishes the posts without the author.
 - **Script-dependent regions (D6, TBD).** A fallback that re-renders and
   reloads the iframe with the overlay for regions marked script-dependent
   (Swiper and the FAQ accordion in the sample). The browser tests of task 1.8
@@ -1166,6 +1186,9 @@ Decisions waiting for the user after phase 1:
   inventory in D11 and, optionally, a spike on `elements.mdx`.
 - **Collections without a loader (D15).** Confirm that they get a
   `schema.json` entry and no documents.
+- **Deleting a referenced document (D3).** Block it, or warn and allow it, in
+  the CMS app. Blocking is safer; warning lets an editor delete an author and
+  fix the posts afterwards.
 
 Known issues to carry into those phases:
 

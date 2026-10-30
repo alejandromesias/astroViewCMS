@@ -840,8 +840,19 @@ carry it.
   final check for those.
 - **References are checked for existence in flavor 2.** A draft pointing at
   a deleted or misspelled author fails with `422` naming the field, as
-  Astro's build would reject it. `null` in the overlay counts as deleted.
+  Astro's build would flag it. `null` in the overlay counts as deleted.
   Flavor 1, the JSON Schema, can only check that the value is a string.
+  - **The check covers only the documents in the overlay.** Deleting an
+    author alone, without drafting the posts that reference it, answers `200`
+    and the post renders without its author.
+  - **A real build does not fail on this** (checked 2026-10-30 on
+    `sample-site` with `ana-torres.json` removed). Astro logs `ERROR Invalid
+    content reference` for each post and `WARN Entry authors → ana-torres was
+    not found` for each page, exits 0, and publishes the pages without the
+    author. So the preview and the build agree on the HTML; the preview just
+    hides the error lines. Phase 2 puts the guard in the CMS app, which
+    refuses or warns on deleting a document that others reference
+    (WORKPLAN.md section 8).
 - **The real Astro schema never runs on drafts.** Astro's `image()` resolves
   files during content sync, which doesn't exist at render time.
 - **Authoritative validation runs on the preview node,**
