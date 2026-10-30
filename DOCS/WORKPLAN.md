@@ -1199,7 +1199,15 @@ Found by 1.8 step 2 (2026-10-30). Small; do them before phase 1 closes, after
 4. **Optional, sample site:** the Accordion's `${show && "active"}` writes
    `undefined` as a class. A one-line fix in the sample; the known-limit test
    in `accordion-known-limit.browser.test.ts` then asserts the class.
-5. **Not scheduled:** the 60 px scroll shift above the viewport (limit in D6);
+5. **Tripwire for the D7 cache decision.** Time `getStaticPaths` inside the
+   render and report it in the `renderMs` breakdown (dev only, not in the
+   protocol), and add a script, `scripts/measure-listing-routes.mjs`, that
+   generates 200 posts in a copy of `sample-site` (outside the repo, as step 3
+   did), then prints the median render of `/blog/page/2` and `/tags/design`.
+   It flags a tag or listing page over 15 ms. Not a gate: run it by hand
+   before phase 3 and whenever a site's posts per tag grow. D7 records the
+   triggers.
+6. **Not scheduled:** the 60 px scroll shift above the viewport (limit in D6);
    Swiper and accordion script limits (phase 3 fallback, D6).
 
 ### 1.9 Docs

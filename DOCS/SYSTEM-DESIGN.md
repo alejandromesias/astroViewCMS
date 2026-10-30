@@ -1021,8 +1021,21 @@ from every post, on every render.
 - **Measured again in task 1.8 (2026-10-30), with 200 posts:** the threshold
   **is crossed on tag pages**. `/tags/design` (74 of 200 posts) adds 3.3 ms to
   the median `getStaticPaths` and 3.1 ms to the median render; `/blog/page/2`
-  adds 0.2 ms. The cache below is not built yet; whether to build it before
-  phase 1 closes, or leave it for a site with many posts per tag, is open.
+  adds 0.2 ms.
+- **Decision (2026-10-30): not built in phase 1.** The 3.1 ms is on the worst
+  page of the 200-post sample (a tag with 74 posts); that render still takes
+  about 6 ms, far under the 30 ms budget, and the editor renders once per
+  debounced edit. The cache's key is the overlay entries the route read, so a
+  mistake shows a stale listing in the preview, which costs more than the
+  milliseconds it saves. The rule below changes to: cache when
+  `getStaticPaths` adds more than 2 ms to the median render **and** the page
+  matters in absolute terms, which is any of:
+  - a listing page whose median render goes over about 15 ms;
+  - a real site with a tag of several hundred posts (the cost grows with
+    posts per tag);
+  - visible lag on a listing page in the phase 3 editor;
+  - phase 5, if CPU time per render limits concurrent sites.
+  Task 1.8a (item 5) adds a tripwire. Review at the start of phase 3.
 - **Cache only if needed:** if `getStaticPaths` adds more than 2 ms to the
   median render, memoize its result per route. The key is the overlay entries
   of the collections it read (from the read log). An empty overlay means one
