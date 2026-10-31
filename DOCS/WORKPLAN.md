@@ -1252,6 +1252,34 @@ Found by 1.8 step 2 (2026-10-30). Small; do them before phase 1 closes, after
    e2e test. `define-vars.browser.test.ts` still passes. The page stays in the
    build, so the step 3 figures do not change.
 
+**Loose ends after 1.8a (2026-10-31).** Untested or unmeasured items, each
+with the moment to test it:
+
+| Item | Logged in | When to test |
+|---|---|---|
+| How the test editor reacts to a `413` | WORKPLAN (step 4 notes) | Phase 2, when the real editor's save and render path exists. The server side is tested (D16). |
+| `measure:memory` on Linux (`/proc/<pid>/smaps_rollup`) | QUALITY-TOOLING | Phase 4, the first Linux run (container or CI). |
+| `npm run check -- --all` time (~130 s is an estimate) | QUALITY-TOOLING | The first time `--all` runs; record the figure. |
+| FLAG branch of `measure:listing` (page over 15 ms) | D7 | When `POSTS` becomes a parameter: run it with a size that trips 15 ms. |
+| Memory of the bundled variant (`--bundle`) | D7, SYSTEM-DESIGN | Phase 4, when the bundle is the deployed form. |
+| Memory of `cms-server` | SYSTEM-DESIGN (footprint) | End of phase 2; the package does not exist yet. |
+| Cause of the 60 px scroll shift (scroll anchoring?) | D6 | Phase 3, with the real editor; one check of `overflow-anchor`. |
+| D7 follow-up: `POSTS` as a parameter | D7 | Before the phase 3 run of `measure:listing`. |
+| `osv-scanner.toml` ignore for GHSA-g3hv-75wg-m249 (minimatch via Stryker) | `osv-scanner.toml` | Expires 2026-12-15: renew or drop it before then. |
+
+### 1.8b Remove Skott (unscheduled request, 2026-10-31)
+
+dependency-cruiser covers what Skott gave us (cycles, boundaries, the module
+graph), so Skott is removed. Uninstall the package and delete everything that
+refers to it: `tsconfig.skott.json`, its gate in `scripts/check.ts`, scripts
+in `package.json`, `.dependency-cruiser-graph.cjs` references if any, and the
+mentions in QUALITY-TOOLING.md, MODULE-GRAPH.md and QUALITY-TOOLING-PLAN.md.
+Handoff files are history and stay as they are. Afterwards, rerun every check
+mode (`npm run check`, `-- --e2e`, `-- --all`) to confirm the gates and the
+measured times (`--all` has no measured time yet).
+
+**Status: done 2026-10-31.** Skott was not in `package.json` or the lockfile (`npx` fetched it), so there was no package to uninstall. Removed: its `check.ts` step, `preview-render-server/tsconfig.skott.json`, and every mention in the code and in QUALITY-TOOLING, MODULE-GRAPH and QUALITY-TOOLING-PLAN. Module graph is `npm run graph` (dependency-cruiser). Not run here: the full check modes, which the owner still needs to run.
+
 ### 1.9 Docs
 
 - Rewrite PREVIEW-RENDER-SERVER.md for the page-render model. Keep its build,

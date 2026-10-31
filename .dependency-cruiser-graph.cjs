@@ -1,6 +1,6 @@
 // Module-graph views (`npm run graph`, `npm run deps`), not rules: those live in
 // .dependency-cruiser.cjs, whose resolve options this reuses so both see the same
-// edges. Production code only, the same scope as the Skott command: tests, test
+// edges. Production code only, the same scope as the depcruise rules: tests, test
 // helpers, Vitest configs and ambient .d.ts files are left out.
 const base = require('./.dependency-cruiser.cjs');
 

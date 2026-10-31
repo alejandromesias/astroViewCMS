@@ -40,7 +40,6 @@ tests for it; the full unit suite is for a person running the checks.
 | Strict `tsc` flags | type holes | `preview-render-server/tsconfig.json` | gate |
 | Biome | code style and common mistakes | `biome.json` | gate |
 | Zod at the boundaries | untrusted input | code pattern | gate (tested at runtime) |
-| Skott | circular imports | none (CLI flags) | report (read the printed cycles) |
 | osv-scanner | known vulnerabilities in dependencies | `osv-scanner.toml` | gate |
 | Knip | dead code, unused exports and dependencies | `knip.json` | gate (should print nothing) |
 | dependency-cruiser | import rules: client stays browser-safe, protocol is a leaf, read-only request path, cycles, tests | `.dependency-cruiser.cjs` | gate |
@@ -75,12 +74,13 @@ CI, fail the build). "Report" means the output needs a human reading it.
   *contents* are not checked here; that is a separate schema pass later. This
   one is a code pattern, so there is no command: its protection is the unit
   tests of those files.
-- **Skott** builds the import graph of the production code and finds cycles
-  (file A imports B imports A), which make code hard to test and to move. It
-  also backs the architecture notes in [MODULE-GRAPH.md](MODULE-GRAPH.md),
-  including the rules that the bridge (`client/`) imports no Node or server
-  module and that no production file imports a test fixture. It is not a
-  project dependency; it runs through `npx` at a pinned version.
+- **dependency-cruiser** builds the import graph of the production code and
+  enforces the import rules. It includes cycles (`no-circular`: file A imports B
+  imports A, which make code hard to test and to move; runtime imports only, as
+  `import type` vanishes at compile time). The architecture notes in
+  [MODULE-GRAPH.md](MODULE-GRAPH.md) come from the same graph. The rules also
+  keep the bridge (`client/`) free of Node and server modules and keep test
+  fixtures out of production code.
 - **osv-scanner** (Google's open-source scanner) checks every package in
   `package-lock.json` against the OSV vulnerability database. Advisories we
   have judged harmless (dev-only tools such as Stryker's dependencies) are
@@ -132,7 +132,6 @@ CI, fail the build). "Report" means the output needs a human reading it.
 | dependency-cruiser | `npm run depcruise` (rules: [Annex](#annex-dependency-cruiser-rules)) | ~3 s |
 | Module graph | `npm run graph` (see [Module graph](#module-graph)) | ~20 s |
 | Edges of one file | `npm run -s deps -- --focus "<regex>"` or `--reaches "<regex>"` | ~3 s |
-| Skott cycles | the command below | ~7 s |
 | Stryker | `npx stryker run` | see Stryker |
 | Everything | `npm run check [-- flags]` | ~21 s fast, ~95 s with `--e2e`, ~130 s with `--all` (estimate) |
 
@@ -144,40 +143,17 @@ output (the memory test prints its readings that way).
 `winget install -e --id Google.OSVScanner --version 2.7.0` (open a new shell
 afterwards so it is on PATH).
 
-Skott cycle check (from the repo root; it exits 0 whether or not it finds
-cycles, so read what it prints). The block below is bash (Git Bash, Linux, CI);
-the PowerShell one-liner follows it. `npm run check -- --all` runs it for you
-in either shell.
-
-```sh
-npx skott@0.35.12 --fileExtensions=.ts --displayMode=file-tree \
-  --showCircularDependencies --exitCodeOnCircularDependencies=0 \
-  -ts preview-render-server/tsconfig.skott.json \
-  -ig 'sample-site/**' -ig 'sampleAstroProject/**' -ig 'reports/**' \
-  -ig '**/node_modules/**' -ig 'DOCS/**' -ig '**/*.test.ts' -ig '**/test/**' \
-  -ig '**/vitest*.config.ts' -ig 'scripts/**'
-```
-
-PowerShell (no `\` continuations, double quotes):
-
-```powershell
-npx skott@0.35.12 --fileExtensions=.ts --displayMode=file-tree --showCircularDependencies --exitCodeOnCircularDependencies=0 -ts preview-render-server/tsconfig.skott.json -ig "sample-site/**" -ig "sampleAstroProject/**" -ig "reports/**" -ig "**/node_modules/**" -ig "DOCS/**" -ig "**/*.test.ts" -ig "**/test/**" -ig "**/vitest*.config.ts" -ig "scripts/**"
-```
-
-The graph covers production code only: tests, test helpers, the Vitest configs
-and `scripts/` are ignored, since only a runner loads them. The extra
-`tsconfig.skott.json` maps the workspace import `preview-protocol` to its
-source; without it Skott reads that name as an npm package and draws no edge.
-
-Add `--no-trackTypeOnlyDependencies` to see cycles that exist at runtime only
-(type-only imports vanish when the code is compiled).
+Cycles are checked by the `no-circular` rule in the `depcruise` step. It counts
+type-only imports too (`tsPreCompilationDeps`), as Skott did, so a cycle made of
+`import type` alone also fails. Run `npm run depcruise` to see them. The
+"missing-tsc-transpiler" notice it prints is expected: the swc parser does the
+work, because dependency-cruiser does not support TypeScript 7 yet.
 
 ### Module graph
 
-`npm run graph` draws the import graph with dependency-cruiser, over the same
-scope as the Skott command (production code of `preview-render-server` and
-`preview-protocol`; tests, test helpers, Vitest configs and `.d.ts` files left
-out). It enforces nothing. It writes two files to `reports/graph/`:
+`npm run graph` draws the import graph with dependency-cruiser, over the
+production code of `preview-render-server` and `preview-protocol` (tests, test
+helpers, Vitest configs and `.d.ts` files left out). It enforces nothing. It writes two files to `reports/graph/`:
 
 - **`modules.html`, for people.** Open it in a browser (it loads Mermaid from a
   CDN, so it needs internet). Two diagrams: *Folders* (each `src/` folder
@@ -204,7 +180,7 @@ behaves the same on Windows and a Linux CI). Flags go after `--` and combine:
 | `--fast` (default) | tsc, tsc protocol, protocol tests, biome lint, biome format, unit tests, knip, depcruise, osv-scanner | ~20 s |
 | `--e2e` | the fast set, then e2e and the budget tests, the browser suite, and the coverage floors | ~95 s (measured 2026-10-30: 94 s, of which e2e 26 s, browser 32 s, coverage 9 s) |
 | `--mutation` | `npx stryker run` (incremental) | ~29 s when nothing changed; see below |
-| `--all` | everything above, then the Skott cycle check | ~130 s with a warm Stryker baseline |
+| `--all` | everything above | ~130 s with a warm Stryker baseline |
 
 Example: `npm run check -- --e2e --mutation`. An unknown flag exits with code 2.
 
@@ -214,12 +190,10 @@ The `depcruise` step enforces the import rules listed in the [annex](#annex-depe
 - A failure does not stop the run; the closing summary table lists every tool
   with `pass`, `fail`, `report` or `skipped`, and its duration. The exit code
   is non-zero if any gate failed.
-- Skott is a report: it shows `report`, never fails the run on cycles (only a
-  crash of the tool itself counts as `fail`). Stryker also shows `report`, but
-  fails the run when its score is under `thresholds.break`.
+- Stryker shows `report`, but fails the run when its score is under
+  `thresholds.break`.
 - If `osv-scanner` is not on PATH, that step is `skipped` with the install
   command, and the run does not fail. CI will install it.
-- Skott runs only with `--all`, because `npx` fetches it over the network.
 - **Who runs it:** the "targeted tests only" rule in `CLAUDE.md` applies to
   agent sessions. This script is where the full unit suite runs, started by a
   person. Agents do not run `npm run check` unless asked.
@@ -261,13 +235,12 @@ commit message.
   it) or a file used in a way Knip cannot see (declare it in `knip.json`).
   Knip's output is easy to over-trust: check a flagged item before deleting it.
 - **dependency-cruiser:** a violation names the rule (see the [annex](#annex-dependency-cruiser-rules)) and the `from → to` edge. Fix the import, not the config. The one legitimate config edit is an `fs` allowlist entry (`request-path-fs-allowlist`), which needs a comment giving the reason the file only reads. Orphan warnings print but never fail the run.
-- **Skott:** it follows only `import` statements, so a file loaded by a path
-  string shows as an orphan. `src/dev/memory-route.ts` and `src/client/bridge.ts`
-  (both loaded through `new URL(...)` in `integration.ts`) are expected to look
-  unused; they are not dead code. A reported cycle is a real cycle, so fix the import structure
-  (move the shared piece to a third file). The CLI prints the cycle verdict but
-  not the edge list; to see all edges, use Skott's API as described in
-  [MODULE-GRAPH.md](MODULE-GRAPH.md).
+- **Cycles:** a `no-circular` violation is a real runtime cycle, so fix the import
+  structure (move the shared piece to a third file). To see its edges, run
+  `npm run -s deps -- --reaches "<regex>"`.
+- **Files loaded by path:** the graph follows only `import` statements, so
+  `src/dev/memory-route.ts` and `src/client/bridge.ts` (both loaded through
+  `new URL(...)` in `integration.ts`) show as orphans. They are not dead code.
 - **Budget failures:** the assertion prints the measured value next to its
   bound, for example `bridge is 5318 bytes gzipped, budget 6400`. Latency and
   memory numbers can be noisy on a busy machine, so re-run once before
@@ -420,9 +393,7 @@ unchecked. Go through this list when the package is created:
    same path to the `deps` script and to `BASE`, `INTERNAL` and `FOLDERS` in
    `scripts/graph.ts`.
 8. **`scripts/check.ts`:** add its `typecheck` and `test` steps to `FAST`.
-9. **Skott step in `scripts/check.ts` and `tsconfig.skott.json`:** map any workspace import to
-   its source, as for `preview-protocol`.
-10. **This manual:** update the overview and command tables.
+9. **This manual:** update the overview and command tables.
 
 Skipping a line does not fail anything; the package is just unchecked. That
 is the reason for the list.

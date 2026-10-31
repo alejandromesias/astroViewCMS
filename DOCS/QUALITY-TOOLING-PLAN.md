@@ -9,7 +9,7 @@ lands on its own, and leaves the typecheck and the targeted tests green.
 | 1   | Stricter TypeScript flags | `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, `noFallthroughCasesInSwitch` | now            | done     |
 | 2   | Lint and format           | Biome                                                                                                        | now            | done     |
 | 3   | Boundary validation       | Zod from `astro/zod` (already a dependency)                                                                  | after 2        | done     |
-| 4   | Architecture map          | Skott (graph, cycles)                                                                                        | after 3        | done     |
+| 4   | Architecture map          | graph and cycles (first run; later replaced by dependency-cruiser, step 9 and 1.8b)                         | after 3        | done     |
 | 5   | Vulnerable dependencies   | osv-scanner (Dependabot once there is a remote)                                                              | after 2        | done     |
 | 6   | Dead code                 | Knip, run on demand                                                                                          | after 4        | done     |
 | 7a  | Bridge size budget        | unit test, rolldown + gzip                                                                                   | after 2        | done     |
@@ -99,52 +99,22 @@ lands on its own, and leaves the typecheck and the targeted tests green.
   and `src/render/handlers.test.ts` (plus the `site-config` tests if done),
   with no test edits except new cases.
 
-## 4. Skott
+## 4. Architecture map
 
-- Generate the module graph and the list of cycles for `preview-render-server`
-  and `preview-protocol`. The point is to see the real shape first.
-- Output: a short section in this folder with the graph and any cycles found.
-  No rule enforcement yet.
-- **One run from the `astroViewCMS` root**, so both packages land in one graph.
-  Ignore `sample-site/**`, `sampleAstroProject/**`, `reports/**` and
-  `node_modules/**`; `--fileExtensions=.ts`. There is no root tsconfig and no
-  path aliases, so none is needed; if Skott insists, point it at
-  `preview-render-server/tsconfig.json`.
-- **Run it with `npx skott@<version>`, pinned**, not as a dependency: this step
-  only looks, and step 9's dependency-cruiser takes over the rules. Record the
-  version and the exact command in the output so it can be re-run.
-- **Incremental mode is on by default** and writes `.skott/cache.json`: turn it
-  off, or add `.skott/` to `.gitignore`.
-- **Production graph first:** ignore `**/*.test.ts` and `**/test/fixtures/**`
-  (tests are about half of `src/` and bury the shape). Then one run with tests
-  included, read for a single thing: no production file imports a fixture (a
-  step 9 rule).
-- **Cycles, two lists.** Skott follows `import type` by default; a type-only
-  cycle does nothing at runtime. Run with type-only tracking on and off and
-  record both.
-- **Check `client/` by hand** with builtin tracking on: `bridge.ts` and
-  `patch.ts` must not reach `node:*` or server modules (a step 9 rule, and the
-  bridge size of D14 depends on it).
-- **Known blind spots, to write down, not fix:**
-  - route files look isolated but aren't dead: `render-route.ts`,
-    `validate-route.ts`, `media-route.ts`, the warmup route and
-    `dev/documents-route.ts` are wired by URL strings in `injectRoute`
-    (`src/integration.ts`), not imports;
-  - `virtual:preview-site` and `virtual:astro:*` don't resolve;
-  - `preview-protocol` is imported by package name, so the edge between the two
-    packages only shows with third-party tracking on (or if Skott follows the
-    workspace link); confirm which and say so.
-- **Output file:** `DOCS/MODULE-GRAPH.md`, using the text modes (file-tree or
-  raw). The webapp view is interactive and can't be stored.
-- Done 2026-10-28 with Skott 0.35.12; see `DOCS/MODULE-GRAPH.md`. No cycles
-  (types followed or not), no production file imports a fixture, and `client/`
-  reaches no `node:*` or server module. Two deviations: the CLI's raw and
-  file-tree modes print no edges, so the edge list came from Skott's API in a
-  scratch folder (the cycle check works from the CLI); incremental mode is off
-  by default in this version, so no `.skott/` ignore was needed. Review
-  corrections: `preview-protocol` is imported by `bridge.ts` and (types only)
-  `render/handlers.ts`, though Skott shows only the first; `.astro` files are
-  outside the graph (two `injectRoute` entry points).
+- Goal: see the real shape of `preview-render-server` and `preview-protocol`
+  (graph, cycles) before writing rules. Output: `DOCS/MODULE-GRAPH.md`.
+- Scope: one run from the `astroViewCMS` root, so both packages land in one
+  graph; production code first, then tests and fixtures, to check that no
+  production file imports a fixture.
+- Known blind spots, to write down and not fix: route files wired by URL strings
+  in `injectRoute` (`src/integration.ts`) look isolated; `virtual:` imports do
+  not resolve; `.astro` files are outside the graph.
+- Done 2026-10-28: no cycles (types followed or not), no production file imports
+  a fixture, and `client/` reaches no `node:*` or server module. See
+  `DOCS/MODULE-GRAPH.md`.
+- Superseded by step 9 (dependency-cruiser) and task 1.8b (2026-10-31): the
+  graph and cycle check now run from `npm run graph`, `npm run deps` and the
+  `no-circular` rule.
 
 ## 5. osv-scanner
 
@@ -200,7 +170,7 @@ lands on its own, and leaves the typecheck and the targeted tests green.
   Grep `new URL(` in `integration.ts` to be sure nothing else is loaded that
   way.
 - **Install and scope.** Knip is a pinned root devDependency, run with
-  `npx knip` from the root (like Skott, step 4). A `knip.json` at the root with
+  `npx knip` from the root. A `knip.json` at the root with
   `workspaces` for `preview-render-server` and `preview-protocol` only.
   `sample-site` (third-party template) and `sampleAstroProject` (test site) are
   left out. Record the version and the command here.
@@ -347,7 +317,7 @@ reference you use day to day, and it replaces this plan as the entry point.
 - **Overview:** one short section per tool covering what it guards in this
   project, where its config lives, and whether it gates (fails the run) or only
   reports. Tools: the strict `tsc` flags, Biome, Zod at the boundaries (a code
-  pattern, not a command), Skott, osv-scanner, Knip, the budget tests (7a to
+  pattern, not a command), dependency-cruiser, osv-scanner, Knip, the budget tests (7a to
   7c), and Stryker.
 - **Guide:** for each tool that runs as a command, give the exact command, its
   rough runtime, and how to read its output here. For example:
@@ -357,8 +327,7 @@ reference you use day to day, and it replaces this plan as the entry point.
     missing entry in `knip.json`;
   - a budget failure prints the measured value next to its bound;
   - the memory test checks heapUsed growth, not RSS (see 7c);
-  - a Skott cycle means a real cycle, and its edge list needs the API
-    workaround from step 4.
+  - a `no-circular` violation is a real runtime cycle.
 - **Stryker section:**
   - what the score means and the 60/80 thresholds in `stryker.config.json`;
   - that `break` was `null` here (a report); step 10c later set it to 85;
@@ -377,7 +346,7 @@ reference you use day to day, and it replaces this plan as the entry point.
 - Keep the manual concise: a reference, not a history. Link this plan for the
   reasoning behind each tool.
 
-- Done 2026-10-28: `DOCS/QUALITY-TOOLING.md` written (overview table, command table with runtimes, "how to read failures", Stryker and incremental sections). Measured runtimes: tsc, biome lint, biome format, knip and osv-scanner about 1-2 s each, the bridge test about 1.7 s; the e2e run, Skott and a full Stryker run are given as rough figures and 8b should measure them. Skott is listed as a report, not a gate, because the documented command passes `--exitCodeOnCircularDependencies=0`. The last full Stryker run is dated 2026-10-28 from the report files' timestamps (MUTATION-WEAK-SPOTS.md itself carries no date).
+- Done 2026-10-28: `DOCS/QUALITY-TOOLING.md` written (overview table, command table with runtimes, "how to read failures", Stryker and incremental sections). Measured runtimes: tsc, biome lint, biome format, knip and osv-scanner about 1-2 s each, the bridge test about 1.7 s; the e2e run and a full Stryker run are given as rough figures and 8b should measure them. The last full Stryker run is dated 2026-10-28 from the report files' timestamps (MUTATION-WEAK-SPOTS.md itself carries no date).
 
 ### 8b. A root `check` script
 
@@ -395,7 +364,7 @@ job.
   | `--fast` (default) | `tsc`, `biome lint`, `biome format`, unit tests (`vitest run`), `knip`, `npm run audit` | about 1 min |
   | `--e2e` | the fast set, then `npm run test:e2e` (builds and spawns the server; includes the 7b and 7c budgets) | a few min |
   | `--mutation` | `npx stryker run` (incremental) | depends on what changed |
-  | `--all` | all of the above, then the Skott cycle check | long |
+  | `--all` | all of the above | long |
 
   Flags combine, for example `--fast --mutation`. The builder measures the
   times and records them in the manual.
@@ -407,8 +376,6 @@ job.
   - Stryker and Knip's output never fail the run in `--mutation` on their own;
     Stryker's score is a report (step 10c later added a `break` floor);
   - stream each tool's output as it runs, without capturing and replaying it.
-- **Skott:** use the pinned `npx skott@0.35.12` cycle check from step 4, and
-  only in `--all`, because `npx` fetches it over the network.
 - **osv-scanner** is a winget install, not an npm package. If it isn't on PATH,
   report "skipped" with the install command and don't fail the run. CI will
   install it.
@@ -433,7 +400,7 @@ job.
 
 ## 9. dependency-cruiser
 
-Skott (step 4) showed the shape of the graph; dependency-cruiser enforces it.
+The step 4 architecture map showed the shape of the graph; dependency-cruiser enforces it.
 Step 4 checked these rules once, by hand. This step turns them into rules that
 fail the run when broken. It no longer waits for CI: it runs locally through
 `npm run check`, and CI picks it up from there.
@@ -458,9 +425,8 @@ fail the run when broken. It no longer waits for CI: it runs locally through
     (`manifest/**`, `schema/**`, `build.ts`, `integration.ts`) writes files and
     is out of scope for this rule. `dev/**` is `PREVIEW_DEV` only and is also
     out of scope.
-  - `no-circular`, as an error. Skott found no cycles, so this starts green.
-    Use `dependencyTypesNot: ["type-only"]` so the rule matches Skott's
-    runtime list. If the parser can't tell type-only imports apart (see the
+  - `no-circular`, as an error. The step 4 map found no cycles, so this starts green.
+    Use `dependencyTypesNot: ["type-only"]` so the rule checks runtime cycles only. If the parser can't tell type-only imports apart (see the
     parser bullet), gate on every cycle and say so.
   - No production file imports `**/test/**` or `*.test.ts`. That is the
     fixture rule from step 4, now gated.
@@ -513,7 +479,7 @@ fail the run when broken. It no longer waits for CI: it runs locally through
 - **Resolution.** `preview-protocol`'s `exports` point at `./src/index.ts`, and
   `node_modules/preview-protocol` is a workspace symlink. dependency-cruiser
   follows symlinks to the real path, so the cross-package edge should resolve
-  without `tsconfig.skott.json`. Confirm that the
+  without a tsconfig mapping. Confirm that the
   `client/bridge.ts → preview-protocol/src/index.ts` edge appears. Don't
   point `options.tsConfig` at a tsconfig unless it is needed: reading one may
   also need the TS API.
@@ -533,16 +499,10 @@ fail the run when broken. It no longer waits for CI: it runs locally through
   `"depcruise": "depcruise preview-render-server/src preview-protocol/src --config .dependency-cruiser.cjs"`.
   Add it to the `--fast` set in `scripts/check.ts` as a **gate**. Errors exit
   non-zero; warnings (orphans) print but don't fail the run.
-- **Skott is under evaluation against dependency-cruiser.** dependency-cruiser
-  can do both jobs: rule enforcement and visualization (`--output-type dot`,
-  `mermaid`, `archi`, `ddot`, `html`). `no-circular` is now the cycle gate.
-  While the comparison runs, Skott stays in `--all` as a report only. Compare:
-  the graph readability, what each tool misses (URL-loaded routes, `virtual:`
-  imports, `preview-protocol`), install weight, and run time. Then pick one.
-  If dependency-cruiser wins, remove Skott from `scripts/check.ts`,
-  `tsconfig.skott.json` and the manual, and keep the module-graph output
-  under `reports/` (gitignored). Record the decision in the done note. Until
-  then, say in the Skott comment in `check.ts` that it is being evaluated.
+- **One graph tool (decided 2026-10-31, task 1.8b).** The step 4 architecture-map
+  tool was removed. dependency-cruiser does its jobs: rule enforcement, cycles
+  (`no-circular`), and visualization (`--output-type dot`, `mermaid`, `archi`,
+  `ddot`, `html`). The module-graph output stays under `reports/` (gitignored).
 - **Prove each rule bites.** For each rule, add a throwaway violation and see
   the run fail with the rule name. Then revert it. The violations:
   - `import 'node:fs'` in `client/patch.ts`;
@@ -572,7 +532,7 @@ fail the run when broken. It no longer waits for CI: it runs locally through
   note records the dependency-cruiser and swc versions, the parser that was
   used, the type-only finding, and the runtime.
 
-- Done 2026-10-29: `.dependency-cruiser.cjs`, root `depcruise` script, and a `depcruise` gate in the `--fast` set of `scripts/check.ts`. Versions: `dependency-cruiser@18.7.0` (stable) and `@swc/core@1.16.20`, both pinned. Parser: route 2 (`options.parser: "swc"`). Route 1 failed: `18.8.0-beta-1` needs TypeScript >=7.1, and only `7.1.0-dev.*` builds exist (`depcruise --info` reports typescript unsupported with 7.0.2). Needed `options.enhancedResolveOptions` (`exportsFields: ["exports"]`, `conditionNames: [import, require, node, default, types]`) or every package import (`astro`, `preview-protocol`) was unresolvable. The `client/bridge.ts → preview-protocol/src/index.ts` edge resolves without a tsconfig. Type-only finding: swc marks `import type` as `type-only` (`render/handlers.ts → preview-protocol` is `type-only`), so `no-circular` uses `dependencyTypesNot: ["type-only"]`. Result: 97 modules, 214 dependencies, 0 errors, 0 warnings (no orphans), about 2-3 s. Five deliberate violations each failed with its rule: `import 'node:fs'` in `client/patch.ts` (`client-stays-browser-safe` plus `request-path-fs-allowlist`); `preview-protocol` importing the render server (`protocol-is-a-leaf`); `node:child_process` in `render/handlers.ts` (`request-path-no-process-or-git`) and a new `node:fs` in `overlay/context.ts` (`request-path-fs-allowlist`); a production file importing `test/helpers.ts` (`no-test-in-production`); a two-file cycle (`no-circular`). All reverted. `@swc/core` is in `knip.json` `ignoreDependencies` (loaded by depcruise, not imported). `npm run lint`, `format:check`, `knip`, `audit` clean; `npm run check` all gates pass. The Skott comparison is not done: Skott stays in `--all` as a report, marked "under evaluation" in `check.ts`; no winner picked yet.
+- Done 2026-10-29: `.dependency-cruiser.cjs`, root `depcruise` script, and a `depcruise` gate in the `--fast` set of `scripts/check.ts`. Versions: `dependency-cruiser@18.7.0` (stable) and `@swc/core@1.16.20`, both pinned. Parser: route 2 (`options.parser: "swc"`). Route 1 failed: `18.8.0-beta-1` needs TypeScript >=7.1, and only `7.1.0-dev.*` builds exist (`depcruise --info` reports typescript unsupported with 7.0.2). Needed `options.enhancedResolveOptions` (`exportsFields: ["exports"]`, `conditionNames: [import, require, node, default, types]`) or every package import (`astro`, `preview-protocol`) was unresolvable. The `client/bridge.ts → preview-protocol/src/index.ts` edge resolves without a tsconfig. Type-only finding: swc marks `import type` as `type-only` (`render/handlers.ts → preview-protocol` is `type-only`), so `no-circular` used `dependencyTypesNot: ["type-only"]` (changed 2026-10-31, task 1.8b: it now counts type-only imports too, with `tsPreCompilationDeps: true`, to keep what Skott reported; a deliberate type-only cycle fails the rule). Result: 97 modules, 214 dependencies, 0 errors, 0 warnings (no orphans), about 2-3 s. Five deliberate violations each failed with its rule: `import 'node:fs'` in `client/patch.ts` (`client-stays-browser-safe` plus `request-path-fs-allowlist`); `preview-protocol` importing the render server (`protocol-is-a-leaf`); `node:child_process` in `render/handlers.ts` (`request-path-no-process-or-git`) and a new `node:fs` in `overlay/context.ts` (`request-path-fs-allowlist`); a production file importing `test/helpers.ts` (`no-test-in-production`); a two-file cycle (`no-circular`). All reverted. `@swc/core` is in `knip.json` `ignoreDependencies` (loaded by depcruise, not imported). `npm run lint`, `format:check`, `knip`, `audit` clean; `npm run check` all gates pass. The comparison with the step 4 tool was closed on 2026-10-31 (task 1.8b): that tool was removed, and dependency-cruiser covers cycles, boundaries and the graph.
 
 ## 10. Guardrail gaps before the functional work
 

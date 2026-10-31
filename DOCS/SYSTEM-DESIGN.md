@@ -449,7 +449,8 @@ pulls, checks the build and pushes.
   and several hundred MB while it runs. The old preview node keeps serving
   until the new bundle is ready.
 - **Footprint at rest:** cms-server plus one preview node, the node about
-  100 MB (rss, measured 2026-10-30; cms-server not measured yet), in place of
+  100 MB (rss, measured 2026-10-30; `cms-server` does not exist yet, so measure
+  it at the end of phase 2), in place of
   AstroAdmin's ~650 MB `astro dev`. While someone edits, the preview node grows
   to ~200 MB after the warm-up (D2), 210 to 235 MB after a session of renders on
   the sample, and ~280 MB with 200 posts (WORKPLAN section 10).

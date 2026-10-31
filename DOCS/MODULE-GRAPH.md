@@ -1,102 +1,121 @@
 # Module graph of `preview-render-server` and `preview-protocol`
 
-Quality plan step 4. Generated 2026-10-28 with Skott 0.35.12 from the
-`astroViewCMS` root. The hand checks below are now rules in
-`.dependency-cruiser.cjs` (step 9), run by `npm run depcruise`.
+Quality plan step 4. Snapshot first taken 2026-10-28 with Skott; re-run
+2026-10-31 with dependency-cruiser, which is now the only graph tool (Skott was
+removed in task 1.8b). The checks below are rules in `.dependency-cruiser.cjs`
+(step 9), run by `npm run depcruise`. Type-only imports count as edges
+(`tsPreCompilationDeps`), so a cycle made of types alone fails the rule.
 
 ## Result
 
+Run 2026-10-31 over `preview-render-server/src` and `preview-protocol/src`.
+
 | Run | Files | Edges | Cycles |
 |---|---|---|---|
-| Production, type-only imports followed | 53 | 76 | none |
-| Production, type-only imports ignored | 53 | 53 | none |
-| Production + tests + fixtures, types followed | 93 | 132 | none |
-| Production + tests + fixtures, types ignored | 93 | 101 | none |
+| Production, type-only imports followed | 47 | 75 | none |
+| Production, type-only imports ignored | 47 | 54 | none |
+| Production + tests in `src`, types followed | 83 | 128 | none |
+| Production + tests in `src`, types ignored | 83 | 100 | none |
 
-- **No cycles**, with or without `import type`. Both lists are empty.
-- 23 of the 76 production edges are type-only (`import type`).
-- **No production file imports a fixture.** The tests-included run has 4 fixture
-  files and none is reached from a non-test file (the `no-test-in-production` rule in step 9 now gates this).
-- **`client/` is clean.** With builtin and third-party tracking on,
-  `client/bridge.ts` imports only `client/patch.ts` (plus the package
-  `preview-protocol`), and `client/patch.ts` imports nothing local (plus the
-  package `idiomorph`). Neither reaches a `node:*` builtin or a server module.
+- **No cycles**, with or without `import type`. A deliberate two-file
+  type-only cycle was reported as an error by `no-circular`, then removed.
+- 21 of the 75 production edges are type-only (`import type`).
+- The scope differs from 2026-10-28 (53 and 93 files, 76 and 132 edges), which
+  Skott read from a wider tsconfig including `sites/`, `test/` and the test
+  editor. The tests-included run now covers only the test files inside `src`.
+- **`client/` is clean.** `client/bridge.ts` imports only `client/patch.ts` and
+  the package `preview-protocol`; `client/patch.ts` imports nothing local.
+  Rule `client-stays-browser-safe` gates this.
+- **No production file imports a test file** (rule `no-test-in-production`).
 
 ## How to re-run
 
-The CLI's `raw` and `file-tree` modes print only the file list and the cycle
-verdict, not the edges. The cycle check works from the CLI:
+From `astroViewCMS/`:
 
 ```sh
-# from astroViewCMS/; add --no-trackTypeOnlyDependencies for the second list
-npx skott@0.35.12 --fileExtensions=.ts --displayMode=file-tree \
-  --showCircularDependencies --exitCodeOnCircularDependencies=0 \
-  -ts preview-render-server/tsconfig.json \
-  -ig 'sample-site/**' -ig 'sampleAstroProject/**' -ig 'reports/**' \
-  -ig '**/node_modules/**' -ig 'DOCS/**' -ig '**/*.test.ts' -ig '**/test/fixtures/**'
+npm run graph                                                # diagrams and edge list in reports/graph/
+npm run -s deps -- --focus "render/handlers"                 # one file's imports and importers
+npm run -s deps -- --reaches "preview-protocol/src/index.ts" # everything that depends on it
+npm run depcruise                                            # the rules, including cycles
 ```
 
-The edges below came from Skott's API (`skott@0.35.12`, installed in a scratch
-folder outside the repo) with the same ignore list, `fileExtensions: ['.ts']`,
-`dependencyTracking: { typeOnly, builtin, thirdParty }`, and
-`useGraph().findCircularDependencies()`. Incremental mode is off by default in
-this version, so there is no `.skott/` cache and nothing to ignore in git.
+The listing below was generated on 2026-10-31 from `npm run deps`.
 
 ## Production graph (type-only imports followed)
 
 `->` lists what a file imports. Paths are relative to
-`preview-render-server/src/` unless marked.
+`preview-render-server/src/`; `preview-protocol` is `preview-protocol/src/index.ts`.
+Generated 2026-10-31.
 
 ```
-build.ts           -> integration.ts, site-config.ts
-start.ts           -> site-config.ts
-site-config.ts     -> types.ts
-integration.ts     -> manifest/{documents,import-scan,languages,routes}.ts,
-                      overlay/{image-service,plugins}.ts,
-                      schema/{config-bundle,json-schema}.ts, types.ts
+build.ts -> integration.ts, site-config.ts
+integration.ts -> manifest/documents.ts, manifest/import-scan.ts,
+                  manifest/languages.ts, manifest/routes.ts,
+                  overlay/image-service.ts, overlay/plugins.ts,
+                  schema/config-bundle.ts, schema/json-schema.ts, types.ts
+languages.ts -> (nothing local)
+media-route.ts -> request-guard.ts
+render-route.ts -> render/handlers.ts, render/runtime.ts, request-guard.ts
+request-guard.ts -> (nothing local)
+site-config.ts -> types.ts
+start.ts -> site-config.ts
+types.ts -> (nothing local)
+validate-route.ts -> render/handlers.ts, render/runtime.ts, request-guard.ts
+warmup-route.ts -> overlay/markdown-instance.ts, request-guard.ts
 
-render-route.ts    -> render/{handlers,runtime}.ts, request-guard.ts
-validate-route.ts  -> render/{handlers,runtime}.ts, request-guard.ts
-media-route.ts     -> request-guard.ts
-warmup-route.ts    -> overlay/markdown-instance.ts, request-guard.ts
-dev/documents-route.ts -> render/runtime.ts, dev/documents.ts
-dev/documents.ts   -> manifest/types.ts, request-guard.ts
+dev/documents-route.ts -> dev/documents.ts, render/runtime.ts
+dev/documents.ts -> manifest/types.ts, request-guard.ts
+dev/memory-route.ts -> (nothing local)
 
-render/runtime.ts  -> manifest/types.ts, overlay/content-shim.ts,
-                      render/{handlers,islands,render-page}.ts
-render/handlers.ts -> manifest/types.ts, overlay/{content-api,context,errors}.ts,
-                      render/{discover,envelope,head,render-page}.ts, request-guard.ts
-render/render-page.ts -> manifest/types.ts, render/{match-route,paginate}.ts
-render/paginate.ts -> manifest/types.ts, render/match-route.ts
+render/discover.ts -> manifest/types.ts
 render/envelope.ts -> overlay/context.ts
-render/{discover,match-route}.ts -> manifest/types.ts
-render/{head,islands}.ts -> (nothing)
+render/handlers.ts -> manifest/types.ts, overlay/content-api.ts,
+                      overlay/context.ts, overlay/errors.ts, preview-protocol,
+                      render/discover.ts, render/envelope.ts, render/head.ts,
+                      render/render-page.ts, request-guard.ts
+render/head.ts -> (nothing local)
+render/islands.ts -> (nothing local)
+render/match-route.ts -> manifest/types.ts
+render/paginate.ts -> manifest/types.ts, render/match-route.ts
+render/render-page.ts -> manifest/types.ts, render/match-route.ts,
+                         render/paginate.ts
+render/runtime.ts -> manifest/types.ts, overlay/content-shim.ts,
+                     render/handlers.ts, render/islands.ts,
+                     render/render-page.ts
 
-overlay/content-shim.ts -> schema/stubs-flavor2.ts, overlay/{content-api,markdown-instance}.ts
-overlay/content-api.ts  -> schema/stubs-flavor2.ts,
-                           overlay/{context,dates,errors,keys,media}.ts
-overlay/markdown-instance.ts -> manifest/languages.ts, overlay/markdown.ts
-overlay/markdown.ts     -> languages.ts, overlay/context.ts
-overlay/{data-proxy,media}.ts -> overlay/context.ts
+overlay/content-api.ts -> overlay/context.ts, overlay/dates.ts,
+                          overlay/errors.ts, overlay/keys.ts, overlay/media.ts,
+                          schema/stubs-flavor2.ts
+overlay/content-shim.ts -> overlay/content-api.ts, overlay/markdown-instance.ts,
+                           schema/stubs-flavor2.ts
+overlay/context.ts -> (nothing local)
+overlay/data-proxy.ts -> overlay/context.ts
+overlay/dates.ts -> (nothing local)
+overlay/errors.ts -> (nothing local)
 overlay/image-service.ts -> overlay/media.ts
-overlay/plugins.ts      -> overlay/keys.ts
-overlay/{context,dates,errors,keys}.ts -> (nothing)
+overlay/keys.ts -> (nothing local)
+overlay/markdown-instance.ts -> manifest/languages.ts, overlay/markdown.ts
+overlay/markdown.ts -> languages.ts, overlay/context.ts
+overlay/media.ts -> overlay/context.ts
+overlay/plugins.ts -> overlay/keys.ts
 
-manifest/documents.ts -> manifest/{import-scan,types}.ts
+manifest/documents.ts -> manifest/import-scan.ts, manifest/types.ts
+manifest/import-scan.ts -> (nothing local)
 manifest/languages.ts -> languages.ts, manifest/documents.ts
-manifest/routes.ts    -> manifest/types.ts
-manifest/{import-scan,types}.ts, languages.ts -> (nothing)
+manifest/routes.ts -> manifest/types.ts
+manifest/types.ts -> (nothing local)
 
-schema/config-bundle.ts, schema/json-schema.ts -> schema/stubs-flavor1.ts
-schema/stubs-flavor{1,2}.ts -> (nothing)
+schema/config-bundle.ts -> schema/stubs-flavor1.ts
+schema/json-schema.ts -> schema/stubs-flavor1.ts
+schema/stubs-flavor1.ts -> (nothing local)
+schema/stubs-flavor2.ts -> (nothing local)
 
-client/bridge.ts -> client/patch.ts
-client/patch.ts  -> (nothing local)
-
-sites/*.config.ts (both) -> types.ts   (preview-render-server/sites/)
+client/bridge.ts -> client/patch.ts, preview-protocol
+client/patch.ts -> (nothing local)
 ```
 
-`preview-protocol/src/index.ts` is a single file with no local imports.
+`sites/*.config.ts` (in `preview-render-server/sites/`) import `types.ts` but sit
+outside the crawled folders. `preview-protocol/src/index.ts` has no local imports.
 
 ## Shape worth knowing
 
@@ -108,8 +127,10 @@ sites/*.config.ts (both) -> types.ts   (preview-render-server/sites/)
 - `overlay/markdown-instance.ts -> manifest/languages.ts` is the only
   `overlay -> manifest` edge, so the "overlay never imports manifest" direction
   has one exception, and no step 9 rule covers this direction.
-- `render/handlers.ts` and `integration.ts` are the busiest files (9 local
-  imports each).
+- `render/handlers.ts` (10 imports, one of them `preview-protocol`) and
+  `integration.ts` (9) are the busiest files, then `overlay/content-api.ts` (6).
+- `dev/documents-route.ts -> render/runtime.ts` and `overlay/* -> schema/stubs-flavor2.ts`
+  are the other edges that cross folders without going through `manifest/types.ts`.
 
 ## Known blind spots (written down, not fixed)
 
@@ -131,14 +152,11 @@ sites/*.config.ts (both) -> types.ts   (preview-render-server/sites/)
   Knip (step 6) needs these as entry points.
 - `virtual:preview-site` and `virtual:astro:*` are not resolved, so they add no
   edges.
-- **`.astro` files are not in the graph** (`--fileExtensions=.ts`). Two are
+- **`.astro` files are not in the graph** (only `.ts` is read). Two are
   `injectRoute` entry points: `render/renderers-anchor.astro` and
   `test-editor/editor.astro` (which imports `test-editor/editor.ts`).
-- **The edge between the two packages does not appear as a graph edge.**
-  `preview-protocol` is imported by package name from `client/bridge.ts` and
-  `render/handlers.ts` (types only: `Limit`, `RenderResponse`,
-  `ValidationResponse`). Skott records it only as a third-party dependency of
-  `client/bridge.ts` (visible with third-party tracking on); the type-only import
-  in `handlers.ts` does not appear, so check this boundary by hand.
-  `preview-protocol/src/index.ts` shows no importers in any run. The step 9 rule
-  on that boundary has to match the package name.
+- **The edge between the two packages appears.** `preview-protocol` is imported
+  by package name from `client/bridge.ts` and, for types only (`Limit`,
+  `RenderResponse`, `ValidationResponse`), from `render/handlers.ts`. The
+  dependency-cruiser graph resolves both to `preview-protocol/src/index.ts`. The
+  step 9 rule on that boundary (`protocol-is-a-leaf`) matches the package name.

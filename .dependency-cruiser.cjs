@@ -59,9 +59,9 @@ module.exports = {
     {
       name: 'no-circular',
       severity: 'error',
-      comment: 'Runtime import cycles. Type-only imports are ignored.',
+      comment: 'Import cycles, type-only imports included (tsPreCompilationDeps), as Skott reported them.',
       from: {},
-      to: { circular: true, dependencyTypesNot: ['type-only'] },
+      to: { circular: true },
     },
     {
       name: 'no-test-in-production',
@@ -105,6 +105,8 @@ module.exports = {
       path: ['(^|/)node_modules/', '^sample-site/', '^sampleAstroProject/', '^reports/', 'test/fixtures'],
     },
     parser: 'swc',
+    // Count `import type` as an edge, so a cycle made of types alone is reported.
+    tsPreCompilationDeps: true,
     enhancedResolveOptions: {
       exportsFields: ['exports'],
       conditionNames: ['import', 'require', 'node', 'default', 'types'],

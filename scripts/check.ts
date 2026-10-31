@@ -48,22 +48,6 @@ const MUTATION: Step[] = [
   { name: 'stryker', command: 'npx stryker run', kind: 'report' },
 ];
 
-// Under evaluation against dependency-cruiser (its no-circular rule is now the cycle gate);
-// see QUALITY-TOOLING-PLAN.md step 9. Same flags as DOCS/MODULE-GRAPH.md. Exit code 0 on cycles: the cycles are printed, not gated.
-const SKOTT: Step[] = [
-  {
-    name: 'skott cycles',
-    command:
-      'npx skott@0.35.12 --fileExtensions=.ts --displayMode=file-tree ' +
-      '--showCircularDependencies --exitCodeOnCircularDependencies=0 ' +
-      '-ts preview-render-server/tsconfig.skott.json ' +
-      '-ig "sample-site/**" -ig "sampleAstroProject/**" -ig "reports/**" ' +
-      '-ig "**/node_modules/**" -ig "DOCS/**" -ig "**/*.test.ts" -ig "**/test/**" ' +
-      '-ig "**/vitest*.config.ts" -ig "scripts/**"',
-    kind: 'report',
-  },
-];
-
 const FLAGS = ['--fast', '--e2e', '--mutation', '--all'];
 const args = process.argv.slice(2);
 const unknown = args.filter((a) => !FLAGS.includes(a));
@@ -81,7 +65,6 @@ const steps: Step[] = [
   ...(wantFast ? FAST : []),
   ...(wantE2e ? E2E : []),
   ...(wantMutation ? MUTATION : []),
-  ...(all ? SKOTT : []),
 ];
 
 interface Result {
