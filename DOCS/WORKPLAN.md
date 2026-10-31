@@ -1259,7 +1259,7 @@ with the moment to test it:
 |---|---|---|
 | How the test editor reacts to a `413` | WORKPLAN (step 4 notes) | Phase 2, when the real editor's save and render path exists. The server side is tested (D16). |
 | `measure:memory` on Linux (`/proc/<pid>/smaps_rollup`) | QUALITY-TOOLING | Phase 4, the first Linux run (container or CI). |
-| `npm run check -- --all` time (~130 s is an estimate) | QUALITY-TOOLING | The first time `--all` runs; record the figure. |
+| `npm run check -- --all` time | QUALITY-TOOLING | Measured 2026-10-31: 325 s wall (Stryker 161 s). Done. |
 | FLAG branch of `measure:listing` (page over 15 ms) | D7 | When `POSTS` becomes a parameter: run it with a size that trips 15 ms. |
 | Memory of the bundled variant (`--bundle`) | D7, SYSTEM-DESIGN | Phase 4, when the bundle is the deployed form. |
 | Memory of `cms-server` | SYSTEM-DESIGN (footprint) | End of phase 2; the package does not exist yet. |

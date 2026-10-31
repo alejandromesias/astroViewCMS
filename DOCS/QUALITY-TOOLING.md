@@ -133,7 +133,7 @@ CI, fail the build). "Report" means the output needs a human reading it.
 | Module graph | `npm run graph` (see [Module graph](#module-graph)) | ~20 s |
 | Edges of one file | `npm run -s deps -- --focus "<regex>"` or `--reaches "<regex>"` | ~3 s |
 | Stryker | `npx stryker run` | see Stryker |
-| Everything | `npm run check [-- flags]` | ~21 s fast, ~95 s with `--e2e`, ~130 s with `--all` (estimate) |
+| Everything | `npm run check [-- flags]` | ~35 to 55 s fast, ~170 s with `--e2e`, ~325 s with `--all` (measured 2026-10-31) |
 
 The e2e run builds the sample site and spawns the server, so it needs a free
 port and some memory. Add `--disableConsoleIntercept` to see its `console.log`
@@ -177,10 +177,10 @@ behaves the same on Windows and a Linux CI). Flags go after `--` and combine:
 
 | Flag | Runs | Time |
 | --- | --- | --- |
-| `--fast` (default) | tsc, tsc protocol, protocol tests, biome lint, biome format, unit tests, knip, depcruise, osv-scanner | ~20 s |
-| `--e2e` | the fast set, then e2e and the budget tests, the browser suite, and the coverage floors | ~95 s (measured 2026-10-30: 94 s, of which e2e 26 s, browser 32 s, coverage 9 s) |
+| `--fast` (default) | tsc, tsc protocol, protocol tests, biome lint, biome format, unit tests, knip, depcruise, osv-scanner | ~35 to 55 s (measured 2026-10-31: 53 s wall on the first run, about 40 s warm) |
+| `--e2e` | the fast set, then e2e and the budget tests, the browser suite, and the coverage floors | ~170 s (measured 2026-10-31: sum of steps 165 s, of which e2e 52 s, browser 59 s, coverage 15 s; on 2026-10-30 it took 94 s, with 25 browser tests now and a busier machine) |
 | `--mutation` | `npx stryker run` (incremental) | ~29 s when nothing changed; see below |
-| `--all` | everything above | ~130 s with a warm Stryker baseline |
+| `--all` | everything above | ~325 s wall (measured 2026-10-31: Stryker 161 s after source changes, the other steps 164 s) |
 
 Example: `npm run check -- --e2e --mutation`. An unknown flag exits with code 2.
 
