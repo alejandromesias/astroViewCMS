@@ -273,7 +273,7 @@ that behaviour down).
 - **Score:** (killed + timeout) / (killed + timeout + survived + no coverage).
   Errored mutants are not counted. Thresholds in `stryker.config.json`: `high`
   80, `low` 60. Above 80 is healthy; below 60 needs attention.
-- **Floor:** `break` is 85 (baseline 91.83 on 2026-10-29), so a score below 85
+- **Floor:** `break` is 90 (raised from 85 on 2026-10-31; baseline 91.74), so a score below 90
   fails the run. It is a ratchet: raise it when the score rises; lower it only
   with a reason in the commit.
 - **Report:** open `reports/mutation/mutation.html` in a browser. Filter by
@@ -297,7 +297,7 @@ that behaviour down).
   77.55% on the first run). The latest incremental run (2684 mutants, 970
   tests) scored 91.83%. **Latest run: 2026-10-31** (`npm run check -- --all`, 161 s
   after source changes): 91.74% over 2781 mutants (2525 killed, 18 timeout, 211
-  survived, 18 no coverage, 7 runtime errors), above the 85 floor.
+  survived, 18 no coverage, 7 runtime errors), above the 90 floor.
 
 ### Incremental mode
 

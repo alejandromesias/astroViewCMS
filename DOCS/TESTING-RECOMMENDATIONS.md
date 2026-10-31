@@ -57,7 +57,7 @@ A file can score well only through other files' tests and still have no direct t
 - The result that counts is the Stryker re-run, not the green test run.
 - Read the surviving mutants from `reports/stryker-incremental.json`.
 - Mutants in module-level constants ("static" mutants) often survive under the Vitest runner, because modules are not reloaded for each mutant. Check them by hand and treat them as noise.
-- Floors: coverage is 97% for lines, functions, statements and branches. Stryker breaks below 85%.
+- Floors: coverage is 97% for lines, functions, statements and branches. Stryker breaks below 90%.
 
 ## 8. Agent and shell notes
 
