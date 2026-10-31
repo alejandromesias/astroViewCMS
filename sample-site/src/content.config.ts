@@ -327,8 +327,20 @@ const pagesCollection = defineCollection({
   }),
 });
 
+// Test-only (browser suite, task 1.8a item 3): one entry rendered at
+// /fixtures/define-vars. Not sample content.
+const fixturesCollection = defineCollection({
+  loader: glob({ pattern: "**/*.json", base: "src/content/fixtures" }),
+  schema: z.object({
+    title: z.string(),
+    label: z.string(),
+    name: z.string(),
+  }),
+});
+
 // Export collections
 export const collections = {
+  fixtures: fixturesCollection,
   homepage: homepageCollection,
   authors: authorsCollection,
   testimonials: testimonialsCollection,

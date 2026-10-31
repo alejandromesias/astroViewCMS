@@ -1003,8 +1003,29 @@ all its entries.
     the sample's Accordion, not in the patch.
   - **Inline scripts and elements do not pile up.** Ten props edits keep two
     island bootstraps and one body `<style>`; ten add and remove edits leave no
-    extra `<style>`. **Not measured:** `define:vars` and JSON-LD, because the
-    sample has neither. Task 1.8a adds a fixture.
+    extra `<style>`.
+  - **`define:vars` and JSON-LD (task 1.8a item 3, 2026-10-30, Chromium).** The
+    fixture is a test-only page, `/fixtures/define-vars` (`sample-site`
+    `src/pages/fixtures`, entry in a `fixtures` collection, not sample content):
+    a `<script define:vars>` and a JSON-LD block. A draft that changes the
+    define:vars value updates it in the live page. **Limit:** each change runs
+    the new script once, but the old script element stays (the morph keeps
+    `SCRIPT`), so ten value edits leave eleven define:vars scripts; an edit with
+    the same values adds none. **Limit:** a JSON-LD edit appends a second block
+    and keeps the stale one, so ten edits leave eleven blocks, the first one
+    stale. Both are pinned by `define-vars.browser.test.ts` and not fixed here.
+    **Consequence:** the live preview DOM drifts from the built page during a
+    long session (stale JSON-LD first, extra scripts). Authors see nothing, a
+    crawler-style check of the preview would. **Fix (phase 3):** in `patch.ts`,
+    replace JSON-LD and `define:vars` scripts by content or position instead
+    of keeping them; real sites put JSON-LD in their SEO head, so it grows with
+    every title or description edit. **Side effect:** the fixture's `fixtures`
+    collection is in the sample build and `documents.json` lists
+    `fixtures/define-vars` as an editable document (checked 2026-10-30, 37
+    documents), so the phase 3 editor would show it. See 1.8a item 7.
+    A `<style define:vars>` was tried and dropped: it added a `<style>` to the
+    landing page's head, which broke the inline-elements census, so styles are
+    not measured.
   - **Scroll limit.** An edit above the viewport on `landing/long` moves
     `scrollY` by 60 px (2400 to 2340) while the untouched block stays on screen
     (+0.28 px). This looks like browser scroll anchoring, not yet confirmed.

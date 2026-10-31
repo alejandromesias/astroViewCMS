@@ -1213,10 +1213,12 @@ Found by 1.8 step 2 (2026-10-30). Small; do them before phase 1 closes, after
    node. The `GAP` test in `d6-islands.browser.test.ts` flips to the correct
    expectation. If a key is not cheap, leave the test as a limit and record the
    decision in D6 (phase 3).
-3. **Fixture for `define:vars` and JSON-LD.** A test-only page or component
-   that uses both (not in `sample-site` content), then the 10-edit count of
-   `inline-elements.browser.test.ts` for it. Fix a pile-up or record it as a
-   limit in D6.
+3. **Fixture for `define:vars` and JSON-LD. Done 2026-10-30, recorded as limits in D6.**
+   Test-only page `/fixtures/define-vars` (`sample-site` `src/pages/fixtures`,
+   `fixtures` collection) with a `define:vars` script and a JSON-LD block. The
+   values update; the define:vars scripts and the JSON-LD blocks pile up (ten
+   edits: eleven of each, the stale one kept). Pinned by
+   `define-vars.browser.test.ts`; no product source changed.
 4. **Optional, sample site:** the Accordion's `${show && "active"}` writes
    `undefined` as a class. A one-line fix in the sample; the known-limit test
    in `accordion-known-limit.browser.test.ts` then asserts the class.
@@ -1229,7 +1231,15 @@ Found by 1.8 step 2 (2026-10-30). Small; do them before phase 1 closes, after
    before phase 3 and whenever a site's posts per tag grow. D7 records the
    triggers.
 6. **Not scheduled:** the 60 px scroll shift above the viewport (limit in D6);
-   Swiper and accordion script limits (phase 3 fallback, D6).
+   Swiper and accordion script limits (phase 3 fallback, D6); `define:vars`
+   scripts and JSON-LD blocks piling up in the morph (fix in `patch.ts`, phase
+   3, D6).
+7. **Keep the test fixture out of the editor's document list.** The
+   `fixtures` collection (item 3) is listed in `documents.json` as editable,
+   so the phase 3 editor would show `fixtures/define-vars`. Before phase 2,
+   either mark the `fixtures/` documents `editable: false` in the manifest or
+   move the fixture out of the sample's content; the step 3 build and bundle
+   figures were taken without it (one route fewer).
 
 ### 1.9 Docs
 

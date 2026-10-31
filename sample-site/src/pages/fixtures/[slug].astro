@@ -1,0 +1,20 @@
+---
+import DefineVars from "@/components/fixtures/DefineVars.astro";
+import Base from "@/layouts/Base.astro";
+import { getCollection } from "astro:content";
+
+// Test-only (browser suite, task 1.8a item 3): one page per fixture entry.
+export async function getStaticPaths() {
+  const entries = await getCollection("fixtures");
+  return entries.map((entry) => ({
+    params: { slug: entry.id },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props;
+---
+
+<Base title={entry.data.title}>
+  <DefineVars entry={entry} />
+</Base>

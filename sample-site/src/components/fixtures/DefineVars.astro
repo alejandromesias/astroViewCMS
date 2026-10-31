@@ -1,0 +1,26 @@
+---
+// Test-only (browser suite, task 1.8a item 3): an inline define:vars script and
+// a JSON-LD block, from one fixture entry. (A define:vars <style> was tried: the
+// landing page's head then had one more <style>, which broke inline-elements.)
+import type { CollectionEntry } from "astro:content";
+
+interface Props {
+  entry: CollectionEntry<"fixtures">;
+}
+
+const { entry } = Astro.props;
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Product",
+  name: entry.data.name,
+};
+---
+
+<section class="fixture">
+  <p id="fixture-name" class="fixture-name">{entry.data.name}</p>
+  <p id="fixture-label">{entry.data.label}</p>
+</section>
+<script define:vars={{ label: entry.data.label }}>
+  window.fixtureLabel = label;
+</script>
+<script is:inline type="application/ld+json" set:html={JSON.stringify(jsonLd)}></script>
