@@ -25,6 +25,7 @@
     "format:check": "biome format",
     "graph": "node scripts/graph.ts",
     "measure:memory": "node scripts/measure-memory.mjs",
+    "measure:listing": "node scripts/measure-listing-routes.mjs",
     "deps": "depcruise preview-render-server/src preview-protocol/src --config .dependency-cruiser-graph.cjs -T text"
   }
 }

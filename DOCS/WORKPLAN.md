@@ -1230,6 +1230,11 @@ Found by 1.8 step 2 (2026-10-30). Small; do them before phase 1 closes, after
    It flags a tag or listing page over 15 ms. Not a gate: run it by hand
    before phase 3 and whenever a site's posts per tag grow. D7 records the
    triggers.
+   **Status (2026-10-30): done.** `npm run measure:listing` runs the script.
+   The `getStaticPaths` time was already measured (`pathsMs`, sent as the
+   `Server-Timing` `paths` value, outside the protocol body), so no code
+   changed. The first run: `/blog/page/2` render median 6.3 ms, paths 0.3 ms
+   (5%); `/tags/design` 7.7 ms, paths 3.6 ms (47%); no page flagged.
 6. **Not scheduled:** the 60 px scroll shift above the viewport (limit in D6);
    Swiper and accordion script limits (phase 3 fallback, D6); `define:vars`
    scripts and JSON-LD blocks piling up in the morph (fix in `patch.ts`, phase
