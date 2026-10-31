@@ -11,8 +11,8 @@ Read in this order:
 2. **This file:** where the code stands, how to work on it, and the tasks for
    phases 0 and 1.
 3. **[PREVIEW-RENDER-SERVER.md](PREVIEW-RENDER-SERVER.md):** how the current
-   code works. It describes the island model that phase 1 replaces. Its
-   build, image, bundling and performance sections stay valid.
+   code works: page render with a content overlay, the bridge, the routes,
+   build, images, bundling and performance (rewritten in task 1.9).
 
 The research that led here (Tina, AstroAdmin, Sveltia, Sitepins) is in the
 parent folder: `../../HANDOFF.md`, `../../*-SYSTEM-OVERVIEW.md`, and the `tinacms/`,
@@ -22,17 +22,18 @@ parent folder: `../../HANDOFF.md`, `../../*-SYSTEM-OVERVIEW.md`, and the `tinacm
 
 | | Status |
 |---|---|
-| Preview render server: build once, render in memory, page render route, bridge v2 (1.6) | done; test editor v2 is task 1.7 |
+| Preview render server: build once, render in memory, page render route, bridge v2 (1.6), test editor v2 (1.7) | done |
 | TypeScript without a build step, Vitest unit tests (counts in each task's status) and end-to-end suite with budget tests on `sample-site` (`preview-render-server/test/e2e/`) | done |
-| Quality tooling: strict `tsc`, Biome, Knip, dependency-cruiser, osv-scanner, Stryker, pre-commit hook ([QUALITY-TOOLING.md](QUALITY-TOOLING.md)) | done; browser tests join it in task 1.8 |
+| Quality tooling: strict `tsc`, Biome, Knip, dependency-cruiser, osv-scanner, Stryker, pre-commit hook ([QUALITY-TOOLING.md](QUALITY-TOOLING.md)) | done; browser tests are part of it (1.8); Skott replaced by dependency-cruiser (1.8b) |
 | System design | done, agreed by the user on 2026-10-26 |
 | Per-island save | parked and removed (0.1, 1.1) |
 | Richer sample site | `sample-site/` in the workspace with the 0.3 additions; preview-built unchanged (0.4) |
-| Page render with content overlay | done (1.4, 1.5); `.build/spike/` is still to delete (0.6) |
+| Page render with content overlay | done (1.4, 1.5) |
+| Tests: unit, end-to-end with budgets, browser (Chromium) | done (1.8, 1.8a): 1039 unit, 87 end-to-end and 25 browser tests on 2026-10-31 |
 | Protocol package and version (`preview-protocol/`) | done, task 1.6a (D14) |
 | CMS app, saving, publishing, real editor, auth | not started (phases 2 to 4) |
 
-Folder layout of `astroViewCMS/` (git repo on `master`, no remote):
+Folder layout of `astroViewCMS/` (git repo, `main` pushed to `origin` on GitHub):
 
 ```text
 astroViewCMS/
@@ -43,7 +44,7 @@ astroViewCMS/
 ├─ preview-protocol/        postMessage contract + version, no dependencies (task 1.6a)
 ├─ sampleAstroProject/      old sample: one page, one island; removed in task 1.10
 ├─ sample-site/             the new sample (bigspring template plus additions)
-└─ dante-astro-theme/       cloned template, evaluated and rejected; task 0.6 deletes it
+└─ scripts/                 check.ts (all quality gates), graph.ts, measure-*.mjs
 ```
 
 ## 2. Working rules
@@ -286,6 +287,8 @@ the "scripts and hydration" case.
 Delete `dante-astro-theme/` (it can be cloned again) and the
 `preview-render-server/.build/spike/` scripts once task 1.4 has its own
 code. Neither is tracked by git.
+
+**Status: done** (checked 2026-10-31: neither exists on disk).
 
 ## 7. Phase 1: page render with overlay
 
@@ -1289,6 +1292,23 @@ measured times (`--all` has no measured time yet).
 - Update the README, this plan (status table, section 10) and the design's
   "Open questions" with what phase 1 learned.
 
+**Status: done 2026-10-31.**
+
+- `PREVIEW-RENDER-SERVER.md` is rewritten for the page-render model: overlay,
+  render and validate routes, protocol v2, patch step, manifests, request
+  contract, images, build, bundling, performance on `sample-site`, tests and
+  known limits. The old-sample findings that still hold (bundling, `astro dev`
+  and runtime comparisons) are kept and marked as measured on the old sample.
+- `preview-render-server/README.md` was already current from tasks 1.3 to 1.8;
+  it got the test counts, the browser suite and the module-graph pointer.
+- This plan: status table, folder layout, section 9 (commands) and section 10
+  (the old-sample baseline is labelled; the new-sample table is filled in).
+- `SYSTEM-DESIGN.md`: the status line, section 7 (marked as the review that
+  drove phase 1, with what was done) and section 10 (open questions with what
+  phase 1 answered and what is still open).
+- Still stale until task 1.10: `npm run build` and `npm start` target
+  `sampleAstroProject`; the docs say so where it matters.
+
 ### 1.10 Retire the old sample
 
 The end-to-end suite already runs on `sample-site` (task 1.5), so nothing
@@ -1421,13 +1441,21 @@ Known issues to carry into those phases:
 ```sh
 cd astroViewCMS && npm install      # once: workspace install
 cd preview-render-server
-npm run build       # preview build of the sample (~25 s, only after code changes)
-npm start           # http://localhost:4400, test editor at /__editor
+npm run build:sample   # preview build of sample-site, with the editor's data route (~10 s warm)
+npm run start:sample   # http://localhost:4401, test editor at /__editor
 npm run typecheck
-npm test            # unit tests, ~2 s
-npm run coverage    # unit tests + coverage report (reported only)
-npm run test:e2e    # builds into .build/e2e-*, real server, HTTP checks (~7 s)
+npm test               # unit tests (1039 on 2026-10-31)
+npm run coverage       # unit tests + coverage report, with floors
+npm run test:e2e       # builds into .build/e2e-*, real server, HTTP checks and budgets
+npm run test:browser   # Chromium browser tests (the iframe, the bridge, hydration)
 ```
+
+From the repo root, `npm run check` runs every quality gate (`-- --e2e` adds
+the end-to-end and browser suites, `-- --all` adds Stryker; timings in
+[QUALITY-TOOLING.md](QUALITY-TOOLING.md)). `npm run graph` draws the module
+graph, `npm run measure:memory` and `npm run measure:listing -- --posts=N`
+repeat the measurements of section 10. `npm run build` and `npm start` in
+`preview-render-server` still target `sampleAstroProject` until task 1.10.
 
 From an agent, prefix build and test commands with the `env -u …` line from
 section 3.
@@ -1446,7 +1474,8 @@ spike:
 | Cold start to first page | ~230 ms; first render ~7 ms |
 | Preview build | ~25 s |
 
-New sample, to fill in during tasks 0.4 and 1.8:
+New sample (`sample-site`), measured in tasks 0.4 to 1.8a (the budget tests
+and `npm run measure:memory` / `measure:listing` repeat the key rows):
 
 | | Value |
 |---|---|

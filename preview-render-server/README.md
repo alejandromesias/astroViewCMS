@@ -1,15 +1,16 @@
 # Preview render server
 
-Builds an Astro site once, then re-renders its components in memory with
-draft content: no Vite, no compiler, no `astro dev`. A bridge script in the
-previewed page swaps the new HTML in as the editor types. The pattern is
-Tina's island route and bridge, without Tina. Full write-up, with diagrams
-and measurements:
+Builds an Astro site once, then re-renders a whole page in memory with draft
+documents laid over the saved content: no Vite, no compiler, no `astro dev`. A
+bridge script in the previewed page sends the drafts and patches the new HTML
+in as the editor types. The pattern is Tina's route and bridge, without Tina.
+Full write-up, with diagrams and measurements:
 [DOCS/PREVIEW-RENDER-SERVER.md](../DOCS/PREVIEW-RENDER-SERVER.md).
 
 ```text
-editor ──postMessage draft──▶ bridge (in the iframe) ──POST /__preview/blocks──▶ node process
-       ◀──── rendered ───────  swaps the HTML       ◀──── HTML fragment ──────  Container API render
+editor ──postMessage draft──▶ bridge (in the iframe) ──POST /__preview/render?path=──▶ node process
+       ◀──── rendered ───────  patches regions, head,  ◀──── { html, head, documents } ──  page render
+                               body (morph)                                               with the overlay
 ```
 
 ## How it works
@@ -61,12 +62,15 @@ editor ──postMessage draft──▶ bridge (in the iframe) ──POST /__pre
 - `test/`: test fixtures and helpers for the unit tests, and the end-to-end
   suite (`test/e2e/`). Unit tests sit next to each source file.
 
-The full annotated tree, with where each file runs, is in
-[the docs](../DOCS/PREVIEW-RENDER-SERVER.md#the-pieces).
+The full annotated tree is in
+[the docs](../DOCS/PREVIEW-RENDER-SERVER.md#the-pieces), and the module graph
+(`npm run graph` at the repo root) is summarized in
+[MODULE-GRAPH.md](../DOCS/MODULE-GRAPH.md).
 
-Rebuild when code changes (markup, CSS, schemas, new block types). Content
-changes never need a rebuild. Drafts live only in the editor tab; nothing is
-written to the site yet.
+Rebuild when code changes (markup, CSS, schemas, new components) or when build
+code reads a changed data file (`buildTimeFields`). Other content changes never
+need a rebuild. Drafts live only in the editor tab; the node never writes to
+the site.
 
 ## Run
 
@@ -74,13 +78,18 @@ written to the site yet.
 of `astro`. Run `npm install` there first.
 
 ```sh
-npm run build      # preview build of sampleAstroProject
-npm start          # http://localhost:4400, editor at /__editor
-npm run typecheck  # tsc, no emit
-npm test           # unit tests (Vitest); npm run test:watch while developing
-npm run coverage   # unit tests + coverage report in coverage/
-npm run test:e2e   # builds into .build/e2e-*, starts the server on a free port, checks it over HTTP
+npm run build:sample   # preview build of sample-site (--dev: adds the editor's data route)
+npm run start:sample   # http://localhost:4401, editor at /__editor
+npm run typecheck      # tsc, no emit
+npm test               # unit tests (Vitest); npm run test:watch while developing
+npm run coverage       # unit tests + coverage report in coverage/
+npm run test:e2e       # builds into .build/e2e-*, starts the server on a free port, checks it over HTTP
+npm run test:browser   # Chromium browser tests: the iframe, the bridge, hydration
 ```
+
+`npm run build` and `npm start` still target the old `sampleAstroProject` until
+task 1.10 of the work plan makes `sample-site` the default. `npm run check` at
+the repo root runs every quality gate.
 
 Each source file has a `*.test.ts` next to it. The tests render real `.astro`
 fixtures (`test/fixtures/`) through Astro's own Vite config. Browser code

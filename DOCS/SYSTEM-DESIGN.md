@@ -1,11 +1,12 @@
 # astroViewCMS system design proposal
 
-Written 2026-10-26. Status: **agreed** by the user on 2026-10-26. It gives the
+Written 2026-10-26. Status: **agreed** by the user on 2026-10-26; phase 1
+(page render with overlay) was built and tested by 2026-10-31. It gives the
 rules future sessions should follow; the tasks that implement it are in
 [WORKPLAN.md](WORKPLAN.md). How the
-current preview server works is in
-[PREVIEW-RENDER-SERVER.md](PREVIEW-RENDER-SERVER.md); this document says where
-it should go and what to change on the way.
+preview server works today is in
+[PREVIEW-RENDER-SERVER.md](PREVIEW-RENDER-SERVER.md); this document says why,
+and where it should go next (phases 2 to 5).
 
 Product goals, in the user's order:
 
@@ -50,8 +51,9 @@ came from "island" meaning four things at once.
 | **Preview node** | A running preview bundle: one Node process per active site | `node entry.mjs` on :4400 |
 | **CMS app** | Editor UI plus API: auth, documents, drafts, saving, publishing, tenants | not built yet |
 
-"Island" stays only as a historical name in the current code. When the config
-changes shape (section 7), rename `islands` to `regions`.
+"Island" survives only as Astro's own term (`astro-island`, hydrated
+components) and in this document's history. The code renamed `islands` to
+`regions` in task 1.2.
 
 ## 2. Islands: what they solve, for Tina and for us
 
@@ -248,8 +250,8 @@ D8 and D10 in section 11.
   and takes no props. Astro resolves `astro:content` before plugins'
   `resolveId`, so the working approach is a `transform` hook
   (`enforce: 'post'`) that rewrites the import in modules under the site's
-  `src/`. The throwaway code is in `preview-render-server/.build/spike/`
-  (gitignored).
+  `src/`. The throwaway spike code has been deleted; the real shim is
+  `preview-render-server/src/overlay/`.
 
 **Raw draft vs parsed data.** `getEntry` normally returns data parsed by the
 collection's Zod schema: defaults applied, `image()` turned into
@@ -542,7 +544,11 @@ integrations, components) and in every render.
 ## 7. What to change in the current code
 
 Review of `preview-render-server/` on 2026-10-26, including the uncommitted
-save work.
+save work. **Historical:** this table drove phase 1, which is done. The save
+work was parked and removed (tasks 0.1, 1.1), the "Change" column was built in
+tasks 1.2 to 1.7, and two rows still wait for phase 2: saved content and media
+staging move to the CMS app (`GET /api/documents`, media upload). The
+"Current" and "Problem" columns describe the code before phase 1, not today's.
 
 | Current | Problem | Change |
 |---|---|---|
@@ -675,14 +681,27 @@ unchecked until it is added. At the start of phase 2:
 - **`experimental_AstroContainer`** and Astro's internal content modules can
   change in any release. Pin Astro per preview bundle and keep the shim small.
   Tina has the same exposure.
-- **Scripts and hydration after a swap.** Morph keeps more nodes than today's
-  `innerHTML`, but swapped elements still don't re-run component scripts.
-  Possible answers: re-run scripts of swapped regions, or let regions opt out
-  of live swapping and reload the iframe.
+- **Scripts and hydration after a swap.** Settled in phase 1 by D6 and proven
+  in the browser suite: morph keeps unchanged nodes, hydrated components keep
+  their state, inline scripts are not duplicated. Still open and logged as a
+  known limit: component scripts don't re-run on swapped HTML (the FAQ
+  accordion stays as it was until a reload). Possible answers: re-run scripts
+  of swapped regions, or let regions opt out of live swapping and reload the
+  iframe.
 - **Saved content between bundles.** The overlay carries every document saved
   since the last bundle. Rebuild the bundle after each publish so it stays
-  small. Measure the overlay size on the 200-post sample; it sets the body
-  cap of D16 (WORKPLAN task 1.8).
+  small. Measured on the 200-post sample: every document is 1.06 MiB, which
+  set the 4 MiB body cap of D16.
+- **Listing routes** (`getStaticPaths` over whole collections, D7): fast enough
+  at 200 posts; not cached. Re-measure with `npm run measure:listing -- --posts=N`
+  before phase 3 and whenever the sample grows.
+- **Memory per editing session** is about 200 to 280 MB once Markdown and
+  Shiki are loaded (WORKPLAN section 10). The multi-tenant memory budget
+  (phase 5) depends on it; `cms-server` does not exist yet, so its share is
+  unmeasured, to be done at the end of phase 2.
+- **Waiting for the user:** whether deleting a document that other documents
+  reference should block or only warn (D3), and whether collections without a
+  loader should keep contributing no documents (D15, confirm after phase 1).
 - **Git integration for multi-tenant:** a GitHub App with API commits (no
   clones, cheap) or working copies on volumes (provider-neutral, more disk).
   Decide in phase 5.

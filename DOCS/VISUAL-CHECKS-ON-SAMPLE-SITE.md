@@ -1,5 +1,10 @@
 # Task 0.3: how to check each addition visually (draft)
 
+> **Historical (task 0.3, 2026-10-27).** Kept as a manual checklist for the
+> sample's additions. The automated checks that replaced most of it are the
+> end-to-end and browser suites of task 1.8 (see
+> [WORKPLAN.md](WORKPLAN.md) and [QUALITY-TOOLING.md](QUALITY-TOOLING.md)).
+
 Working notes, written while doing WORKPLAN.md task 0.3. Every addition was smoke-tested with
 `astro build` in `sample-site/` (page count noted per step).
 

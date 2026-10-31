@@ -1,394 +1,430 @@
 # How the preview render server works (system view)
 
-> **Note (2026-10-26):** this describes the island model. Phase 1 of
-> [WORKPLAN.md](WORKPLAN.md) replaces it with page rendering plus a content
-> overlay ([SYSTEM-DESIGN.md](SYSTEM-DESIGN.md)). The build, bundling, image
-> and performance sections stay valid.
+Covers `preview-render-server/` and `preview-protocol/` as of the end of phase 1
+(2026-10-31). It describes the page-render model: the whole page is rendered
+in memory with a content overlay, and the bridge patches the result into the
+live page. The decisions behind it are in [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md)
+(sections 3 and 11, D1 to D16); the tasks that built it are in
+[WORKPLAN.md](WORKPLAN.md). The first version, which rendered one component per
+island, is gone; its build, bundling, image and performance findings are kept
+below and marked where they were measured on the old sample.
 
-Covers `preview-render-server/` as of 2026-10-25: step 1 (in-memory render
-route) and step 2 (live preview in the browser) of the plan in
-`../../HANDOFF.md`. All numbers were measured on the development machine:
-Windows 11, Node 26, Astro 7.4.2, 16 GB RAM. They come from the sample site
-(one page, three blocks, one image).
+Numbers come from the development machine (Windows 11, Node 26, Astro 7,
+16 GB RAM), on `sample-site` (the bigspring template plus additions) unless a
+row says otherwise. The measurement table is in WORKPLAN.md section 10.
 
 ## In one sentence
 
-Build the site once, keeping its components as compiled functions, then run
-a plain Node process that re-renders them in memory with draft content. A
-small script inside the previewed page swaps the new HTML in as the editor
-types: no Vite, no compiler, no file watcher and no page reload.
+Build the site once, keeping its pages and components as compiled code, then
+run a plain Node process that re-renders a whole page in memory with draft
+documents laid over the saved content. A small script inside the previewed page
+sends the editor's drafts to it and patches the new HTML into the page: no
+Vite, no compiler, no file watcher and no reload.
 
 ## Why not `astro dev`
 
-`astro dev` already renders drafts, because it re-renders on every file
-change. But it carries the whole toolchain for every editor: Vite, the Astro
-compiler, Tailwind, the file watcher, HMR and the dependency optimizer. Most
-of that only matters when **code** changes. For content edits, the compiled
-components are enough.
+`astro dev` already renders drafts, because it re-renders on every file change.
+But it carries the whole toolchain for every editor: Vite, the Astro compiler,
+Tailwind, the file watcher, HMR and the dependency optimizer. Most of that only
+matters when **code** changes. For content edits, the compiled pages are enough.
 
 So we split the two jobs:
 
-- **Build** (rarely: when code changes): full toolchain, ~25 s.
-- **Render** (on every edit): compiled functions only, < 1 ms.
+- **Build** (rarely: when code changes): full toolchain, ~10 s warm on
+  `sample-site`.
+- **Render** (on every edit): compiled code only, a few milliseconds for a
+  typical page (table in "Performance").
 
-This is the same pattern as Tina's live preview (`@tinacms/astro` island
-route and `@tinacms/bridge`, Apache-2.0): a server-rendered route that calls
-Astro's Container API, plus a bridge script that swaps the result into the
-page. Without Tina Cloud, we don't fetch saved content and overlay the draft.
-The editor always sends the complete data.
+The pattern is Tina's live preview (a server-rendered route that calls Astro's
+Container API, plus a bridge script that swaps the result into the page),
+without Tina Cloud: the editor sends the draft, nothing is fetched. AstroAdmin,
+the other local editor we studied, saves the file, waits for `astro dev` to
+notice, polls until the page's HTML changes (up to 2.5 s) and reloads the
+iframe. We skip all of that.
 
-AstroAdmin, the other local editor we studied, saves the file, waits for
-`astro dev` to notice, polls until the page's HTML changes (up to 2.5 s) and
-reloads the iframe. We skip all of that.
+## Vocabulary
+
+- **Document:** one content entry (`pages/home`, `blog/blog-1`) or a JSON data
+  file that components import (`data:src/config/menu.json`). The unit of
+  editing, drafting and validation (D1).
+- **Overlay:** the drafts of some documents, sent with each render request. The
+  page reads them instead of the saved ones.
+- **Region:** an optional `data-preview-region` wrapper around a component. A
+  patch hint only: it says where HTML can be swapped, and carries no data (D1).
+- **Bundle:** the preview build, in `.build/<site>/`.
+- **Manifests:** `schema.json`, `routes.json` and `documents.json`, written next
+  to the bundle at build time.
 
 ## The two phases
 
 ```text
- BUILD (npm run build): once per code change, ~25 s
+ BUILD (npm run build:sample): once per code change, ~10 s warm
  ─────────────────────────────────────────────────────────────────────────
-  sampleAstroProject/                 preview-render-server/
-  ├─ astro.config.mjs ─────┐          ├─ sites/sampleAstroProject.config.ts
-  ├─ src/components/*.astro│          │    (where the site is; for each
-  ├─ src/content/*.json    │          │     island: component, content file)
-  └─ src/**/*.png          │          └─ src/build.ts
-                           ▼                     │
-                ┌──────────────────────────────────────────────┐
-                │ astro build()                                │
-                │   site's own config                          │
-                │ + @astrojs/node adapter (standalone)         │
-                │ + preview integration (src/integration.ts):  │
-                │     · routes /__preview/[island],            │
-                │       /__preview-media/[file], /__editor     │
-                │     · wraps each island component in         │
-                │       <div data-preview-island> (import      │
-                │       redirect; site source untouched)       │
-                │     · adds the bridge script to every page   │
-                │     · virtual module: island components,     │
-                │       every image under src/, media folder   │
-                └──────────────────────────────────────────────┘
+  sample-site/                          preview-render-server/
+  ├─ astro.config.mjs ─────┐            ├─ sites/sample-site.config.ts
+  ├─ src/content.config.ts │            │    (where the site is, regions,
+  ├─ src/pages, layouts,   │            │     buildTimeFields, port,
+  │  components            │            │     editorOrigins)
+  ├─ src/content/**        │            └─ src/build.ts
+  └─ src/**/*.png          │                      │
+                           ▼                      │
+              ┌────────────────────────────────────────────────────┐
+              │ astro build()                                      │
+              │   site's own config                                │
+              │ + @astrojs/node adapter (standalone)               │
+              │ + preview integration (src/integration.ts):        │
+              │     · routes /__preview/render, /__preview/validate│
+              │       /__preview/warm, /__preview-media/[file],    │
+              │       /__editor                                    │
+              │     · rewrites `astro:content` imports to the      │
+              │       overlay shim (site source untouched)         │
+              │     · wraps region components in                   │
+              │       <div data-preview-region>                    │
+              │     · adds the bridge script to every page         │
+              │     · virtual module: pages, every image under     │
+              │       src/, the CMS schemas, the site's config     │
+              │     · scans the site for data files that build     │
+              │       code reads (D1)                              │
+              │     · writes the manifests                         │
+              └────────────────────────────────────────────────────┘
                                    │ writes (site's dist/ untouched)
                                    ▼
-                preview-render-server/.build/
-                ├─ sampleAstroProject/          client/ + server/entry.mjs
-                ├─ sampleAstroProject-islands/  generated wrappers
-                ├─ sampleAstroProject-media/    uploaded draft images
-                └─ e2e-*/                       temporary, during npm run test:e2e
+              preview-render-server/.build/
+              ├─ sample-site/            client/ + server/entry.mjs
+              ├─ sample-site-manifest/   schema.json, routes.json, documents.json
+              ├─ sample-site-regions/    generated wrappers
+              ├─ sample-site-media/      uploaded draft images (stopgap)
+              └─ e2e-*, browser-*/       temporary, during the test suites
 
 
- RUN (npm start): long-lived, ~80 MB
+ RUN (npm run start:sample): long-lived
  ─────────────────────────────────────────────────────────────────────────
-                ┌───────────────────────────────────────────────────┐
-  browser ────▶ │ node .build/<site>/server/entry.mjs        :4400  │
-                │   GET  /                  prerendered pages       │
-                │   GET  /_astro/*          CSS, JS, images         │
-                │   GET  /_image?…          resize on demand        │
-                │   GET  /__editor          test editor             │
-                │   GET  /__preview/<i>     saved props (JSON)      │
-                │   POST /__preview/<i>     in-memory render (HTML) │
-                │   POST /__preview-media/new    upload draft image │
-                │   GET  /__preview-media/<f>    serve draft image  │
-                └───────────────────────────────────────────────────┘
-                no Vite · no compiler · no watcher
+              ┌─────────────────────────────────────────────────────┐
+  browser ──▶ │ node .build/<site>/server/entry.mjs         :4401   │
+              │   GET  /                    prerendered pages       │
+              │   GET  /_astro/*            CSS, JS, images         │
+              │   GET  /_image?…            resize on demand        │
+              │   POST /__preview/render?path=   render with overlay│
+              │   POST /__preview/validate       check the overlay  │
+              │   POST /__preview/warm           load Markdown + Shiki
+              │   POST /__preview-media/new      upload draft image │
+              │   GET  /__preview-media/<f>      serve draft image  │
+              │   GET  /__editor                 test editor        │
+              │   GET  /__dev/documents?key=     (--dev builds only)│
+              └─────────────────────────────────────────────────────┘
+              no Vite · no compiler · no watcher
 ```
+
+The preview node never writes to the site and keeps no drafts (D4). Only the
+media upload route writes (to `.build/<site>-media/`), a stopgap until the CMS
+app stages media in phase 2.
 
 ## The live preview loop
 
-Three parts, each of which knows only its neighbor:
-
 ```text
- EDITOR (/__editor)            PAGE IN IFRAME (/)               SERVER
- parent window                 site HTML + bridge               same origin
- startEditor() (editor.ts)     startBridge() (bridge.ts)        preview-route.ts
- ────────────────────          ─────────────────────────        ──────────────────
+ EDITOR (/__editor, or any editor)   PAGE IN IFRAME             PREVIEW NODE
+ parent window                       site HTML + bridge
+ ────────────────────────────        ───────────────────        ──────────────────
+ sets iframe.src = path ───────────▶ page loads, bridge starts
+                                     (only inside an iframe)
+            ◀── preview:ready { path, protocol }
+ sends preview:draft ──────────────▶ POST /__preview/render?path= ──▶ match route,
+ { documents, media }                 body = { documents, media }      run the page
+ (even an empty one: primes the       ◀───────── { html, head,         with the overlay
+  page, which may be older than        documents, limits, renderMs }
+  the saved content)                  patch regions, head, body
+            ◀── preview:rendered { path, documents, limits, renderMs }
+ the editor learns which documents
+ this page reads, and shows their forms
 
- sets iframe.src = "/" ──────▶ page loads, bridge starts
-                               (only inside an iframe)
-             ◀──── postMessage { preview:ready,
-                               islands: ["blocks"] }
-
- GET /__preview/blocks ──────────────────────────────────────▶  read home.json
- textbox ← saved props ◀─────────────────────────────────────── { blocks: [...] }
-
- user types; 120 ms after
- the last keystroke,
- JSON.parse:
-   invalid → red error,
-   nothing sent
-   valid ──── postMessage ───▶ bridge: newest request wins
-              { preview:draft,
-                island, props }
-                               POST /__preview/blocks ──────▶  render BlockList
-                               (JSON body = props)              ~0.3 ms
-                               ◀───────────────────────────── HTML fragment
-                               wrapper.innerHTML = fragment
-                               finish entrance animations
-             ◀──── postMessage { preview:rendered,
-                               island, renderMs }
- status: "Rendered in 0.3 ms"
-
- (on error: preview:error { island, status, message } → shown in red)
+ (on error: preview:error { path, status, message, errors? })
 ```
 
-- **Message checks in both directions:** the bridge accepts messages only from
-  `window.parent`, from the same origin. The editor accepts them only from the
-  iframe, from the same origin. Both send with an explicit target origin, never
-  `'*'`. AstroAdmin's iframe script sends to `'*'` and checks nothing.
-- **The bridge does the fetch, not the editor.** It runs on the site's
-  origin, so no CORS is needed. That's why any editor (this test page, a
-  Sveltia preview template, our own editor later) can drive it with
-  `postMessage` alone.
-- **Newest edit wins:** each draft gets a request id. A slow answer to an older
-  draft is dropped, so the page never steps back. Renders take ~1 ms, so
-  there's no need for Tina's 300 ms debounce. The editor only waits 120 ms
-  after the last keystroke.
-- **A reload resends the draft:** if the iframe reloads (for example, you
-  click a link), the bridge sends `preview:ready` again. The editor then
-  resends the drafts it holds, so the page shows them again.
-- **Animations:** swapped-in HTML carries the site's entrance animation
-  classes, which would replay on every edit. After a swap, the bridge calls
-  `finish()` on the island's animations. The first page load still animates.
+- **Message checks in both directions.** The bridge accepts messages only from
+  `window.parent` and only from the page's own origin or the configured
+  `editorOrigins` (never `'*'`). The editor accepts them only from the iframe.
+  Both send with an explicit target origin. Each side ignores any message that
+  fails its runtime check.
+- **The bridge does the fetch, not the editor.** It runs on the preview's
+  origin, so no CORS is needed. Any editor can drive it with `postMessage`
+  alone.
+- **Newest edit wins.** Each draft gets a request id. A slow answer to an older
+  draft is dropped, so the page never steps back.
+- **A reload or navigation announces itself.** After the iframe reloads, or a
+  `ClientRouter` navigation, the bridge sends `preview:ready` with the new path
+  and the editor answers with the drafts it holds.
+- **Protocol version.** `preview:ready` and `preview:draft` carry
+  `PROTOCOL_VERSION` (2). On a mismatch the bridge reports an error instead of
+  guessing (D14).
+- **Editor origins are runtime config.** The integration passes the site's
+  `editorOrigins` to an inline script that starts the bridge. In the product
+  they are node config, not part of the site build.
+
+### The patch step (`src/client/patch.ts`)
+
+```text
+ response html ──▶ parse (DOMParser)
+   for each [data-preview-region] in the new page:
+     same innerHTML as the live one?   yes → leave it
+                                       no  → morph it into the live region
+   head: set document.title, update changed <meta>
+   outside regions: hash <body> with regions blanked out;
+     changed → morph the whole <body>
+   finish entrance animations
+```
+
+- **Morph, not `innerHTML`.** idiomorph keeps unchanged nodes, which gives
+  block-level stability without block regions: focus, scroll and hydrated
+  widgets survive where the markup is unchanged.
+- **Hydrated components and inline scripts** follow the rules in D6. Component
+  scripts do not run again on swapped HTML (see "Known limits").
 
 ### Message protocol
 
-Defined once in the `preview-protocol/` workspace package (task 1.6a, D14), as
-TypeScript types (`DraftMessage`,
-`PageMessage`) plus runtime checks (`isDraftMessage`, `isPageMessage`). The
-bridge and the editor both import it. Each side ignores any message that
-fails its check, so a malformed or foreign message does nothing.
+Defined once in the `preview-protocol/` workspace package (D14), as TypeScript
+types plus runtime checks (`isDraftMessage`, `isPageMessage`). The bridge, the
+editor and the render route's answers all use it.
 
 | Direction | Message |
 |---|---|
-| page → editor | `{ type: 'preview:ready', islands: string[] }` |
-| editor → page | `{ type: 'preview:draft', island, props }` |
-| page → editor | `{ type: 'preview:rendered', island, renderMs }` |
-| page → editor | `{ type: 'preview:error', island, status, message }` |
+| page → editor | `{ type: 'preview:ready', path, protocol }` |
+| editor → page | `{ type: 'preview:draft', protocol, documents, media }` |
+| page → editor | `{ type: 'preview:rendered', path, documents, limits, renderMs }` |
+| page → editor | `{ type: 'preview:error', path, status, message, errors? }` |
+
+`documents` maps a document key to its raw value (`null` means deleted in the
+draft). `media` holds the metadata of images that aren't in the bundle (D12).
+`limits` lists what a render could not show: `mdx-body`, `schema-refinement`,
+`markdown-plugins`, `code-language:<name>`.
 
 ## Where the draft lives
 
 ```text
-  EDITOR TAB (browser memory)      SERVER (stateless for content)      SITE FILES
-  ───────────────────────────      ──────────────────────────────      ──────────
-  textbox = the draft  ─────────▶  renders it, keeps nothing           home.json
-  lost on tab close/reload         .build/<site>-media/                (never
-                                   └─ uploaded images (kept)            written)
-
-  another tab, or the editor ─── GET /__preview/blocks ───▶ reads home.json
-  after a reload                                             → saved content
+  EDITOR TAB (browser memory)     PREVIEW NODE (stateless for content)   SITE FILES
+  ───────────────────────────     ────────────────────────────────────   ──────────
+  the overlay (all drafts) ─────▶ renders the page with it, keeps nothing  (never
+  lost on tab close/reload        .build/<site>-media/                      written)
+                                  └─ uploaded images (kept, stopgap)
 ```
 
-- **The draft only exists in the editor tab's textbox.** The server renders
-  whatever it's sent and forgets it. That's why another tab shows the
-  original site, and why reloading the editor starts from `home.json` again.
-- **Uploaded images are the only thing the server keeps,** in
-  `.build/<site>-media/`. A draft that never gets saved leaves them behind.
-- **Nothing writes to the site yet.** Saving is a later step.
+- **Drafts exist only in the editor tab.** The node renders what it is sent and
+  forgets it, so another tab shows the saved site.
+- **Saved content comes from elsewhere.** The node has no route that returns
+  saved content. In phase 2 the CMS app serves and saves documents; the test
+  editor reads them from `GET /__dev/documents?key=`, a stopgap that exists
+  only in a build made with `PREVIEW_DEV=1` (`npm run build:sample` sets it).
+- **Content saved since the last build** travels in the overlay too, so the
+  editor sends every document that differs from the bundle.
 
-This is deliberate: a stateless render server is simpler, scales by just
-running more copies, and has nothing to lose or clean up. Saving belongs to
-the editor side:
-
-| Later need | Where it would go |
-|---|---|
-| Keep a draft across editor reloads | editor: `localStorage` |
-| Save | a save step that writes `home.json` (then git commit/push, AstroAdmin-style), and moves uploads into `src/content/assets/images/` |
-| Share an unsaved preview, or several editors | a draft store (server or database), keyed by draft id |
+A stateless node is simpler, scales by running more copies, and has nothing to
+lose or clean up. Saving, publishing and drafts across reloads belong to the
+CMS app and the editor (SYSTEM-DESIGN.md section 4).
 
 ## One preview render (inside the server)
 
 ```text
- POST /__preview/blocks    1. request-guard
- content-type: json  ────▶    · must be application/json      else 404
- { "blocks": [ … ] }          · Sec-Fetch-Site ≠ cross-site   else 403
-                           2. look up island "blocks"        else 404
-                              → BlockList.astro (compiled, unwrapped)
-                           3. resolveImages(props)
-                              "../assets/images/Andre2.png"
-                              + contentDir "src/content/pages"
-                              → ImageMetadata (imported at build time)
-                              "/__preview-media/<hash>.png" → left as a URL
-                           4. AstroContainer.renderToString(BlockList, props)
-                              ~0.3 ms
-                           5. strip <script src="….astro?astro&type=script">
-                              tags (dev-only references, see below)
- HTML fragment  ◀────────
- <section data-block-index="0">…</section>
- <section …>…</section>    headers: Server-Timing: render;dur=0.3
-                                    Cache-Control: no-store
+ POST /__preview/render?path=/blog/blog-1
+ content-type: json         1. request guard
+ { documents, media }          · application/json only          else 404
+                               · Sec-Fetch-Site ≠ cross-site    else 403
+                               · body under the size cap        else 413 (D16)
+                            2. parse the envelope               else 400
+                            3. match `path` against routes.json
+                               (static, dynamic, rest routes)   else 404
+                            4. open the overlay (AsyncLocalStorage, per request)
+                               · parse each draft with the CMS schema
+                                 (defaults, coercion, references)   else 422
+                               · resolve images (bundle or media map)
+                            5. dynamic route: run getStaticPaths with the
+                               overlay, pick the entry whose params match
+                               (listing routes: paginate over whole collections)
+                            6. container.renderToString(page, { params, props })
+                               the shim records every document the page reads
+                            7. strip dev-only <script> references, collect
+                               head data
+ { html, head, documents,   ◀───
+   limits, renderMs }          headers: Server-Timing: render;dur=…
+                                        Cache-Control: no-store
 ```
+
+### The content overlay
+
+In the preview build only, a Vite plugin rewrites the site's
+`import … from "astro:content"` (in every module under `src/` that Vite
+compiles, except `content.config.*`) to a shim. The shim re-exports everything
+and wraps the read functions:
+
+- `getEntry` and `getEntries`: the draft for a key if the overlay has one, the
+  built entry otherwise;
+- `getCollection`: built entries with overlay entries replaced, added or
+  removed, then the caller's filter;
+- `render(entry)`: renders a Markdown body at run time with the site's remark
+  and rehype plugins and Shiki limited to the languages the site uses (D2).
+
+Data files that components import directly (`src/config/*.json`) are overlaid
+the same way, under `data:<path>` keys (D10). Because the overlay lives in
+`AsyncLocalStorage`, concurrent renders never see each other's drafts. The read
+log is how the editor learns which documents a page uses.
+
+A draft is the file's raw JSON, so the shim does what Astro's loader would have
+done: it parses the draft with the **CMS schema** (a copy of the collection's
+Zod schema with stubbed `image()` and `reference()`, built once at build time,
+D3), then turns images into `ImageMetadata` and references into
+`{ collection, id }`. `POST /__preview/validate` runs only that parse and is
+what the CMS app will call before saving.
+
+### Request contract
+
+- **`POST /__preview/render?path=<url path>`**, body `{ documents, media }`.
+  - `200`: `{ html, head, documents, limits, renderMs }`;
+  - `400`: the body isn't the envelope (the message names the part);
+  - `403`: a cross-site request;
+  - `404`: not a JSON request, or no route matches `path`;
+  - `413`: the body is over the cap (4 MiB, D16), checked before parsing;
+  - `422`: the overlay doesn't fit a schema (field paths in `errors`);
+  - `500`: a render error, with the message for the editor.
+- **`POST /__preview/validate`**: the same body, no render. `200` or `422`.
+- **`POST /__preview/warm`**: loads the Markdown pipeline and the code
+  languages ahead of the first draft render (about 700 ms, +100 MB).
+- **`POST /__preview-media/new`**: the image bytes, `Content-Type`
+  `image/png|jpeg|webp|avif|gif`, up to 10 MB. `201` with
+  `{ url, width, height, format }` (the editor puts it in `media`); `415` for
+  other types (no SVG, it can carry scripts) or bytes that aren't a readable
+  image; `413` if empty or too big.
+- **`GET /__preview-media/<file>`**: only names that match `<16 hex>.<ext>`.
+- **Any other method** gets `405`. There are no routes that write the site or
+  return saved content.
+- **Why cross-site requests can't get in:** another origin can't send a JSON or
+  image body without a CORS preflight, and these routes never answer one. The
+  `Sec-Fetch-Site` check refuses the rest.
+- **Preview builds only:** the site's normal `npm run build` is plain static,
+  with no routes, no wrappers, no shim and no bridge.
 
 ## The pieces
 
-Each source file has its unit test next to it (`*.test.ts`, not shown). The
-right-hand column says where the code runs.
+Each source file has its unit test next to it (`*.test.ts`, not shown).
 
 ```text
 preview-render-server/
-├─ sites/
-│  └─ sampleAstroProject.config.ts  one site: folder, port, islands     loaded by Node
+├─ sites/                  one config per site: folder, regions, buildTimeFields,
+│                          readOnlyCollections, editorOrigins, port
 ├─ src/
-│  ├─ build.ts          astro build() + Node adapter + integration      Node (npm run build)
-│  ├─ start.ts          sets HOST/PORT, imports the built entry.mjs     Node (npm start)
-│  ├─ site-config.ts    loads a site config, resolves .build/ paths     Node
-│  ├─ integration.ts    routes, island wrappers, bridge script,         Node, during the build
-│  │                    virtual:preview-islands
-│  ├─ preview-route.ts  GET saved props · POST render                   built server
-│  ├─ media-route.ts    draft image upload + serving                    built server
-│  ├─ request-guard.ts  content-type / cross-site / method checks       built server
-│  ├─ types.ts          site config types                               (types only)
-│  ├─ virtual.d.ts      types of the generated virtual module           (types only)
-│  └─ client/
-│     ├─ bridge.ts        startBridge(win, fetch); the integration adds it to every page   browser, in the iframe
-│     └─ patch.ts         createPatcher(win): morphs a render into the live page          browser, in the iframe
-├─ test-editor/         a separate piece, served here for convenience
-│  ├─ editor.astro      /__editor markup and styles                     prerendered page
-│  └─ editor.ts         startEditor(win, fetch)                         browser, parent window
-├─ test/
-│  ├─ fixtures/         Greeting.astro, Broken.astro, and the
-│  │                    virtual-preview-islands.ts double (unit tests)
-│  ├─ e2e/              global-setup.ts (build + start on a free port)
-│  │                    and preview-server.e2e.test.ts
-│  ├─ helpers.ts        callRoute(), jsonRequest() for route tests
-│  └─ astro-modules.d.ts  lets tsc type .astro imports in tests
-├─ vitest.config.ts     unit tests: Astro's Vite config, happy-dom, coverage
-├─ vitest.e2e.config.ts end-to-end tests
-├─ tsconfig.json        typecheck only (no emit, erasable syntax)
-└─ .build/              gitignored: build output, wrappers, uploads, e2e-*
+│  ├─ build.ts             astro build() + Node adapter + integration     (npm run build)
+│  ├─ start.ts             imports the built entry.mjs                    (npm start)
+│  ├─ site-config.ts       loads a site config, resolves .build/ paths
+│  ├─ integration.ts       routes, shim, wrappers, bridge, virtual module, manifests
+│  ├─ types.ts, virtual.d.ts
+│  ├─ render-route.ts      POST /__preview/render
+│  ├─ validate-route.ts    POST /__preview/validate
+│  ├─ warmup-route.ts      POST /__preview/warm
+│  ├─ media-route.ts       draft image upload and serving (stopgap)
+│  ├─ request-guard.ts     content-type, cross-site and method checks
+│  ├─ languages.ts         the code languages Shiki loads
+│  ├─ render/              route matching, getStaticPaths and paginate,
+│  │                       document discovery, handlers, envelope parsing, head data
+│  ├─ overlay/             the astro:content shim: context (AsyncLocalStorage),
+│  │                       content API, data proxy, Markdown, media, image service,
+│  │                       the Vite plugins that rewrite imports
+│  ├─ manifest/            pure parts of the manifests: import scan, routes.json,
+│  │                       documents.json, languages
+│  ├─ schema/              the CMS schema pass: the site's content config compiled
+│  │                       with stubs (flavor 1 → schema.json, flavor 2 → bundle)
+│  ├─ dev/                 --dev builds only: /__dev/documents, /__dev/memory
+│  └─ client/              bridge.ts and patch.ts, which run in the previewed page
+├─ test-editor/            /__editor: a form per document the page reads next to
+│                          the site in an iframe. A dev tool, not the product editor
+├─ test/                   fixtures, helpers, e2e/ (HTTP, budgets) and browser/
+│                          (Vitest browser mode, the real iframe and protocol)
+└─ .build/                 gitignored: bundle, manifests, uploads, test builds
+preview-protocol/          message types, runtime checks, PROTOCOL_VERSION
+scripts/                   check.ts (all quality gates), graph.ts, measure-*.mjs
 ```
 
-`build.ts` and `start.ts` are thin glue with top-level side
-effects, so they're tested end-to-end rather than unit-tested.
+`build.ts` and `start.ts` are thin glue with top-level side effects, so they
+are tested end to end rather than unit-tested. The module graph is in
+[MODULE-GRAPH.md](MODULE-GRAPH.md).
 
 ### TypeScript without a build step
 
-All source is TypeScript, but nothing is compiled ahead of time:
-
 - **Node 26 runs** `build.ts`, `start.ts`, `site-config.ts` and
   `integration.ts` **directly**, by stripping the types.
-- **Vite compiles** the routes, the bridge and the editor as part of
+- **Vite compiles** the routes, the shim, the bridge and the editor as part of
   `astro build`.
-- `tsconfig.json` is only for checking (`npm run typecheck`, `noEmit`). It
-  sets `erasableSyntaxOnly`, so only syntax Node can strip is allowed: no
-  `enum`s or `namespace`s. Imports use `.ts` extensions.
+- `tsconfig.json` is only for checking (`npm run typecheck`, `noEmit`). It sets
+  `erasableSyntaxOnly`, so no `enum`s or `namespace`s, and imports use `.ts`
+  extensions.
 
-### How the island wrapper is added without touching the site
+### How regions are added without touching the site
 
-- **The goal:** the bridge needs a marker around each island
-  (`<div data-preview-island="blocks">`). We don't want it in the site's
-  source or its production HTML.
-- **At build time,** the integration writes one wrapper per island to
-  `.build/<site>-islands/<name>.astro`:
+Regions are optional; a page with none still previews (the bridge falls back
+to morphing the body). When a site config lists one, the integration writes a
+wrapper per region to `.build/<site>-regions/<name>.astro`:
 
-  ```astro
-  ---
-  import Island from "<site>/src/components/BlockList.astro";
-  ---
-  <div style="display: contents" data-preview-island="blocks"><Island {...Astro.props} /></div>
-  ```
+```astro
+---
+import Region from "<site>/src/components/BlockList.astro";
+---
+<div style="display: contents" data-preview-region="blocks"><Region {...Astro.props} /></div>
+```
 
-- **A Vite plugin redirects imports.** When the site's pages import
-  `BlockList.astro`, the plugin points them at the wrapper instead. Two
-  imports keep the bare component:
-  - the wrapper's own;
-  - the render route's (through the virtual module), so fragments come
-    without the wrapper and the bridge replaces only its contents.
-- `display: contents` keeps the wrapper out of the layout, so the page renders
-  exactly as before.
-
-The one change in the site was moving the block loop into
-`src/components/BlockList.astro` (step 1). An island has to be a component,
-because the server can't render half a page.
-
-## Request contract
-
-- **`POST /__preview/<island>`**, JSON body. **The body is the component's
-  props**: for `blocks`, that's `{ "blocks": [...] }`, the same shape as
-  `pages/home.json`.
-  - `200`: an HTML fragment;
-  - `400`: the body isn't JSON;
-  - `404`: unknown island, or not a JSON request;
-  - `403`: a cross-site request;
-  - `500`: a render error. The message goes back to the editor and is logged
-    on the server.
-- **`GET /__preview/<island>`** returns the saved props as JSON, read from the
-  content file on each request. Saved content changes need no rebuild.
-- **`POST /__preview-media/new`**, the image bytes as the body,
-  `Content-Type` `image/png|jpeg|webp|avif|gif`, up to 10 MB.
-  - `201` with `{ "url": "/__preview-media/<hash16>.<ext>" }`;
-  - `415` for other image types (no SVG, because it can carry scripts);
-  - `413` if the image is empty or too big.
-- **`GET /__preview-media/<file>`** serves an upload. Only names matching
-  `<16 hex>.<ext>` are accepted, so no path tricks.
-- **Any other method** gets `405`.
-- **Why cross-site requests can't get in:** a page on another origin can't
-  send a JSON or image body without a CORS preflight, and these routes never
-  answer one. The `Sec-Fetch-Site` check refuses the rest. It's the same idea
-  as Tina's `rejectIfUnsafe`.
-- **Preview builds only:** the site's normal `npm run build` is plain static,
-  with no routes, no wrappers and no bridge.
+A Vite plugin redirects the pages' imports of the component to the wrapper
+(the wrapper's own import stays bare). `display: contents` keeps the wrapper
+out of the layout, so the page renders as before. `sample-site` currently
+lists no regions: the morph handles everything it needs.
 
 ## Images
 
-- **Images already in the build:** on the real site, `image()` fields turn
-  `"../assets/images/x.png"` into `ImageMetadata` at build time. A draft is
-  plain JSON, so the route does that conversion itself.
-  - At build time, the integration imports every image under `src/`, keyed by
-    its path in the project.
-  - At render time, `resolveImages` joins each image-like string with the
-    island's `contentDir` and looks it up.
-  - `<Image>` then outputs `/_image?href=…&w=480&h=480&f=webp`, which the
-    server resizes with `sharp`.
-- **Uploaded draft images:** `/__preview-media/<hash>.png` isn't in that list,
-  so it reaches `<Image>` as a plain string. Width and height are already set,
-  so Astro accepts it and outputs `src="/__preview-media/<hash>.png"`, not
-  resized. That's fine for a preview.
-- **Not handled:** a relative path to an image that isn't in the build (e.g. a
-  typo) fails with "Local images must be imported" (500), and the editor shows
-  the message.
+- **Images in the bundle.** The integration imports every image under `src/`.
+  A draft's `"../assets/x.png"` is resolved against the folder of the file that
+  holds the document (D5), looked up in that list and turned into
+  `ImageMetadata`; `<Image>` then outputs `/_image?href=…` and the server
+  resizes with `sharp`.
+- **Images that aren't in the bundle** (uploads, and images saved since the
+  build): the editor sends their `{ url, width, height, format }` in
+  `media` (D12), and the render uses the URL as is, not resized.
+- **Unknown paths:** a path in neither place fails the render with
+  "image not found" (500), and the editor shows it.
 
-## Scripts in fragments
+## Scripts and hydration after a swap
 
 The Container API doesn't know about the build's bundled scripts, so for
-components with a `<script>` it writes a dev-server reference:
-`<script type="module" src="C:/…/HeroBlock.astro?astro&type=script…">`.
-That would 404 in the browser and leak a local path, so the route removes
-these tags. The page already ran the real bundled scripts once, on load.
+components with a `<script>` it writes a dev-server reference
+(`…/Hero.astro?astro&type=script…`) that would 404 and leak a local path. The
+render strips these tags. The page already ran the real bundled scripts once.
 
-**Limit:** component scripts don't run again on swapped-in HTML. For example,
-`HeroBlock`'s `animationend` listener stays attached to the old element.
+**Limit:** component scripts don't run again on swapped HTML, and a component
+that hydrates (Swiper, the FAQ accordion) keeps what it did on load. Morph keeps
+unchanged nodes, so this only shows where the markup changed. D6 lists the
+rules and the cases covered by browser tests.
 
 ## What needs a rebuild
 
 | Change | Rebuild? |
 |---|---|
-| Text, block order, adding/removing blocks of existing types | no |
-| Pointing to another image that's already in `src/` | no |
-| A newly uploaded image | no (`/__preview-media/`) |
-| Saved content changing on disk | no (`GET` reads the file each time) |
-| Markup, CSS/Tailwind classes, a new block type, schema changes | **yes** (~25 s) |
+| Text, order, adding or removing entries of existing collections | no (overlay) |
+| Pointing to another image that's in `src/` | no |
+| A new upload or an image saved since the build | no (media map) |
+| Content saved since the build | no (overlay) |
+| Data read by build code (`theme.json`, the `site` fields of `config.json`) | **yes** (D1, `buildTimeFields`) |
+| Markup, CSS and Tailwind classes, new components or pages, schema changes | **yes** (~10 s warm) |
 
-Tailwind classes only exist in the CSS if they appear in source files at
-build time. A class built at runtime from content won't be styled. Tina has
-the same limit.
+Tailwind classes only exist in the CSS if they appear in source files at build
+time. A class built at runtime from content won't be styled. Tina has the same
+limit.
 
 ## One shared copy of Astro
 
-`astroViewCMS/` is an npm workspace (`package.json` lists
-`sampleAstroProject` and `preview-render-server`). npm installs one copy of
-`astro` in `astroViewCMS/node_modules`:
+`astroViewCMS/` is an npm workspace (`sampleAstroProject`, `preview-protocol`,
+`preview-render-server`, `sample-site`). npm installs one `astro` in the root
+`node_modules`. `build.ts`, the site's components and the built server all use
+it, so there is never a second instance. Per-site copies and isolation
+(Docker) are left for phase 4.
 
-- `build.ts` imports `astro` and `@astrojs/node` from there;
-- the site's components import the same copy;
-- at runtime, the built server finds the same copy by walking up from
-  `.build/`.
+## Bundling (tested on the old sample, not yet a build option)
 
-So there's never a second Astro instance. Giving each site its own copy and
-isolation (e.g. Docker) is left for later.
-
-## Bundling (tested, not yet a build option)
-
-By default, the server build keeps npm packages **external**: `entry.mjs`
-imports `astro/...` and others from `node_modules` at runtime. We also tested
-a fully bundled variant (step 1 code):
+By default the server build keeps npm packages **external**: `entry.mjs`
+imports `astro/...` and others from `node_modules` at runtime. We also tested a
+fully bundled variant on the first version of the server:
 
 ```js
 // in build.ts, passed to build():
@@ -401,120 +437,125 @@ vite: { ssr: { noExternal: true, external: ['sharp'] } }
 | Bundled | 1.07 MB (255 KB gzipped) | Node built-ins + `sharp` (20 MB, image resizing only) |
 
 The bundled server, copied to a folder with no `node_modules`, passed every
-check except image resizing, which failed only because `sharp` wasn't there.
-For comparison, wrangler reports Tina's Worker bundle at 1.2 MB.
+check except image resizing. **Not re-measured on `sample-site`**; `--bundle` is
+a phase 4 option (SYSTEM-DESIGN.md section 9). Today's external server on
+`sample-site` is 1.37 MiB in 70 files.
 
 **Gotchas we hit:**
 
 - **Prerendering runs from the output folder.** Astro prerenders pages from a
   temporary bundle in `<outDir>/server/.prerender`, which still uses
-  `node_modules`. So build inside the workspace, then copy `client/` and
-  `server/` (without `.prerender`) to wherever the server will run.
-- **A relative `outDir` resolves against the site root,** not against the
-  render server. Use absolute paths (`site-config.ts` already does).
-
-So the toolchain is needed once, at build time. Each running preview only
-needs Node plus about 3 MB (bundle + static files), plus `sharp` if images
-should be resized.
+  `node_modules`. Build inside the workspace, then copy `client/` and `server/`
+  (without `.prerender`) to wherever the server will run.
+- **A relative `outDir` resolves against the site root,** not the render
+  server. Use absolute paths (`site-config.ts` already does).
 
 ## Performance
 
-How we measured:
+How we measure:
 
-- **Memory** is the process's **private memory** (Windows `PrivateMemorySize`).
-  Working set is unreliable on Windows, because the OS trims it. Both are
-  listed.
-- **Render time** comes from the route's `Server-Timing` header. **Round
-  trip** is measured by the test client.
-- The end-to-end suite (`npm run test:e2e`) makes 100 edits in a row. Step 2
-  and the TypeScript rewrite added no measurable overhead: the median render
-  is still 0.3 ms, and the round trip is ~1.8 ms.
+- **Memory** is process **private memory** (`PrivateMemorySize` on Windows,
+  RSS on Linux; working set is unreliable on Windows). `GET /__dev/memory` in
+  a `--dev` build reports RSS after a forced GC, and `npm run measure:memory`
+  drives a session.
+- **Render time** is the route's `Server-Timing` header; the round trip is
+  measured by the client.
+- **Budgets** are tests, not prose: the end-to-end suite fails when the
+  render time, bundle size or memory pass a bound (QUALITY-TOOLING.md).
+  `npm run measure:listing` is the tripwire for D7 (listing routes), with
+  `--posts=N` to change the post count.
 
-### Against `astro dev` (same site, same machine)
+### Against `astro dev` (first version, old sample, same machine)
 
 | | `astro dev` | Preview render server |
 |---|---|---|
-| Private memory | **640–690 MB** | **78–94 MB** (~8× less) |
-| Working set | 200–230 MB | 63–100 MB |
-| JavaScript heap (V8) | — | 17 MB |
-| Startup | ~4 s to "ready" | starts from a prebuilt bundle |
-| Showing a content change | write the file → watcher → re-render; the editor reloads the iframe (AstroAdmin polls up to 2.5 s) | **0.3 ms** render, ~2 ms round trip, HTML swapped in place, scroll kept |
+| Private memory | **640–690 MB** | **78–94 MB** idle (~8× less) |
+| Showing a content change | write the file → watcher → re-render; the editor reloads the iframe (AstroAdmin polls up to 2.5 s) | render in place, HTML patched, scroll kept |
 | Needs at runtime | full `node_modules` (155 MB) | bundled: ~1 MB + `sharp` 20 MB |
-| When code changes | instant (HMR) | rebuild, ~25 s |
+| When code changes | instant (HMR) | rebuild |
 
-Baseline: an empty Node HTTP server uses **25 MB** private memory. So our app
-adds ~55 MB on top of Node: the Astro runtime, the compiled components, and
-`sharp`/libvips once an image has been resized. The bundled variant used
-70 MB idle and 82 MB after a full test run.
+### On `sample-site` (page render with overlay)
 
-### Other runtimes we tried
+| | Value |
+|---|---|
+| Idle private memory | 89 MB (98 MB RSS in a `--dev` build) |
+| First draft render of a Markdown body, cold | ~300 ms server, +113 MB (Shiki and the Markdown pipeline) |
+| After `POST /__preview/warm` | ~200 MB RSS in ~0.7 to 1.7 s; first render then 10 to 21 ms |
+| Memory after 150 renders (default sample) | 235 MB; 277 MB after 300 renders on the 200-post sample |
+| Render median: home / blog post / 44-block `landing/long` | 3.4 ms / 2.8 ms / 11.4 ms (200 posts: 2.1 / 3.4 / 16.8 ms) |
+| 40-block page, 100 edits | median 7 to 9 ms, p95 13 to 20 ms; the 5 ms goal is not met, the budget test bounds (60 / 100 ms) are |
+| Listing routes (`/tags/design`, 200 posts) | `getStaticPaths` 3.6 ms, render 7.0 ms; D7 chose not to build a cache |
+| Whole overlay, 200-post sample (226 documents) | 1.06 MiB, under the 4 MiB cap (D16) |
+| Preview build | ~10 s warm (14 s default, 26 s with 200 posts) |
+
+Full rows, with the method for each, are in WORKPLAN.md section 10.
+
+### Other runtimes we tried (first version)
 
 | Runtime | Result | Verdict |
 |---|---|---|
-| **Bun 1.4.4** (same build, unchanged) | 9/9 checks pass, render 0.7 ms. Working set 89 MB; private memory **342 MB** (Bun's allocator reserves memory up front on Windows). | No memory gain; dropped for now. Switching back is a one-command change, if Linux numbers ever look better. |
-| **workerd** (Tina's Worker, run with `wrangler dev`) | workerd with an empty Worker: 98 MB; with Tina's Worker: 122 MB. So about **24 MB per site** on top of the runtime. Caveat: Tina's render returned empty, because Tina Cloud gave no data locally. | Heavier for one site. Only pays off when many sites share one process (~10 sites: ~350 MB vs ~750 MB on Node). It also costs `sharp`, filesystem access and some npm packages. Revisit only if we need many previews running at once. |
+| **Bun 1.4.4** (same build) | all checks pass, render 0.7 ms; private memory **342 MB** (its allocator reserves up front on Windows) | No gain; dropped. Linux numbers are untested |
+| **workerd** (Tina's Worker via `wrangler dev`) | ~24 MB per site on top of the runtime (98 MB empty) | Only pays off with many sites in one process (~10 sites: ~350 MB vs ~750 MB on Node). Revisit for phase 5 |
 
 ## Testing
 
 | Suite | Command | What it covers |
 |---|---|---|
-| Unit tests (Vitest) | `npm test` (`npm run test:watch` while developing) | one `*.test.ts` next to each source file |
-| Coverage | `npm run coverage` | V8 coverage, text plus an HTML report in `coverage/`. Reported only, no threshold |
+| Unit (Vitest) | `npm test` | 1039 tests, one `*.test.ts` next to each source file |
+| Coverage | `npm run coverage` | V8 coverage with floors |
 | Typecheck | `npm run typecheck` | `tsc` over source and tests |
-| End-to-end | `npm run test:e2e` | builds the sample site into `.build/e2e-*` (`PREVIEW_BUILD_DIR`), starts the real server on a free port, checks the built page, every route and the timings over HTTP, then cleans up. ~7 s in total on the dev machine, build included |
+| End-to-end | `npm run test:e2e` | 87 tests: builds `sample-site` into `.build/e2e-*`, starts the real server on a free port, checks every route, the decisions D1 to D16, and the budgets |
+| Browser | `npm run test:browser` | 25 tests in Vitest browser mode (Chromium): the test pages play the editor and drive the real bridge in an iframe |
+| Everything | `npm run check` from the repo root | every gate, with `-- --e2e` and `-- --all` for the longer ones |
 
-How the unit tests are set up:
+The gates, thresholds and how to read them are in
+[QUALITY-TOOLING.md](QUALITY-TOOLING.md). How the unit tests are set up:
 
-- **Real Astro rendering.** `vitest.config.ts` uses Astro's own Vite config
-  (`getViteConfig`), so tests compile real `.astro` components. The route
-  tests render `test/fixtures/Greeting.astro` (props, `<Image>`, a component
-  script) and `Broken.astro` (throws) through the actual Container API. There
-  is no mocked renderer.
-- **The virtual module is a test double.** `virtual:preview-islands` is
-  aliased to `test/fixtures/virtual-preview-islands.ts`, which exports empty
-  `islands` and `images` for each test file to fill in, and a temporary
-  `mediaDir`.
+- **Real Astro rendering.** `vitest.config.ts` uses Astro's own Vite config, so
+  tests compile real `.astro` fixtures and render them through the actual
+  Container API. There is no mocked renderer.
 - **Dependencies are passed in, not mocked.** `startBridge(win, fetch)` and
-  `startEditor(win, fetch)` take the window and `fetch` as parameters. Tests
-  pass a fake parent window and a `vi.fn()` fetch, with no module mocking.
-- **Browser code runs in happy-dom,** chosen per file
-  (`// @vitest-environment happy-dom`). The editor tests reuse the real markup
-  from `editor.astro`, with the iframe replaced by a plain element.
-- **Left to end-to-end tests:** `build.ts` and `start.ts`
-  are glue with top-level side effects. They're excluded from unit coverage,
-  and the end-to-end suite runs them for real.
-
-At the time of writing: 115 unit tests in ~2 s, plus 15 end-to-end tests.
-Unit coverage is 100% of lines and functions, and 91.5% of branches.
+  `startEditor(win, fetch)` take the window and `fetch` as parameters.
+- **Browser code runs in happy-dom** in unit tests (`// @vitest-environment
+  happy-dom`), and in real Chromium in the browser suite, which sees what
+  happy-dom can't: hydration, scroll, focus and animations.
+- **Left to end-to-end tests:** `build.ts` and `start.ts`.
 
 ## Known limits and next steps
 
-- **Drafts aren't persisted.** They live only in the editor tab (see "Where the
-  draft lives").
-- **Component scripts** don't run on swapped HTML.
-- **Uploads accumulate** in `.build/<site>-media/`, with no cleanup.
-- **`experimental_AstroContainer`** can change in any Astro release.
-  Tina has the same exposure.
-- **Next:**
-  - a save step (write `home.json`, move uploads into the site), probably
-    followed by git commit/push;
-  - forms generated from the Zod schemas instead of the JSON textbox
-    (AstroAdmin converts them to JSON Schema);
-  - click-to-focus using the blocks' `data-block-index`, AstroAdmin's
-    `focusBlock` idea;
-  - more islands (the navbar), a `--bundle` option, per-site isolation.
+Logged with the follow-ups in WORKPLAN.md, task 1.8a (loose ends table).
+
+- **Drafts aren't persisted.** They live only in the editor tab.
+- **Component scripts** don't run on swapped HTML (D6).
+- **MDX bodies** show the saved body in a draft; the `mdx-body` limit says so
+  (D11). A restricted renderer is the phase 3 path.
+- **Code fences in other languages** render as plain text until publish
+  (`code-language:<name>`, D2).
+- **Uploads accumulate** in `.build/<site>-media/` until the CMS app takes over
+  media staging (phase 2).
+- **Listing routes** run `getStaticPaths` over whole collections on every
+  render (D7). Fine at 200 posts; `npm run measure:listing` trips at 15 ms.
+- **`experimental_AstroContainer`** and Astro's internal content modules can
+  change in any release. Pin Astro per bundle and keep the shim small.
+- **Untested:** the 60 px scroll shift cause, 413 handling in the test editor,
+  Linux memory, the bundled variant and `cms-server` memory.
+- **Next (phase 2 and later):** the `cms-server` package (documents API, save
+  with revisions, publish), then forms from `schema.json`, then the
+  self-host package.
 
 ## Running it
 
 ```sh
 cd astroViewCMS && npm install      # once: workspace install
 cd preview-render-server
-npm run build                       # preview build of sampleAstroProject
-npm start                           # http://localhost:4400
-                                    # editor: http://localhost:4400/__editor
+npm run build:sample                # preview build of sample-site (--dev: editor data route)
+npm run start:sample                # http://localhost:4401, editor at /__editor
 npm test                            # unit tests
 npm run test:e2e                    # build + real server + HTTP checks
+npm run test:browser                # Chromium browser tests
 ```
 
-From an AI agent, unset Astro's agent-detection variables for the build (see
-the environment notes in [WORKPLAN.md](WORKPLAN.md)).
+`npm run build` and `npm start` still target the old `sampleAstroProject` until
+task 1.10 makes `sample-site` the default. From an AI agent, unset Astro's
+agent-detection variables for the build (see the environment notes in
+[WORKPLAN.md](WORKPLAN.md)).

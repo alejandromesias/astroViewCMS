@@ -123,9 +123,9 @@ CI, fail the build). "Report" means the output needs a human reading it.
 | Lint | `node_modules/.bin/biome lint` | ~2 s |
 | Format check | `node_modules/.bin/biome format` (fix with `--write`) | ~2 s |
 | Unit tests, one file | `cd preview-render-server && ../node_modules/.bin/vitest run <file>` | seconds |
-| Unit tests, all | `cd preview-render-server && ../node_modules/.bin/vitest run` | ~5 s (993 tests) |
-| e2e and budgets | `cd preview-render-server && ../node_modules/.bin/vitest run --config vitest.e2e.config.ts` | ~22 s |
-| Browser tests | `npm run test:browser -w preview-render-server` (one file: append `-- <file>`) | ~40 s (9 files, 18 tests) |
+| Unit tests, all | `cd preview-render-server && ../node_modules/.bin/vitest run` | ~5 s (1039 tests, 35 files) |
+| e2e and budgets | `cd preview-render-server && ../node_modules/.bin/vitest run --config vitest.e2e.config.ts` | ~52 s (87 tests, 9 files) |
+| Browser tests | `npm run test:browser -w preview-render-server` (one file: append `-- <file>`) | ~60 s (10 files, 25 tests) |
 | Memory of one preview process (manual) | `npm run measure:memory` (see [Memory metric](#memory-metric)) | ~21 s |
 | Audit | `npm run audit` (needs `osv-scanner`, see below) | ~3 s |
 | Knip | `npm run knip` | ~2 s |
@@ -295,7 +295,9 @@ that behaviour down).
   time (tens of minutes). With the baseline below, later runs are quick.
 - **Last full run:** 2026-10-28, 90.74% overall (34 files, 992 tests; was
   77.55% on the first run). The latest incremental run (2684 mutants, 970
-  tests) scored 91.83%.
+  tests) scored 91.83%. **Latest run: 2026-10-31** (`npm run check -- --all`, 161 s
+  after source changes): 91.74% over 2781 mutants (2525 killed, 18 timeout, 211
+  survived, 18 no coverage, 7 runtime errors), above the 85 floor.
 
 ### Incremental mode
 
@@ -318,8 +320,8 @@ The browser suite runs the preview in a real Chromium, which the HTTP tests
 cannot do: hydration of islands, morphing of a draft into the live page,
 computed styles, and the editor-origin check.
 
-- **Where:** `preview-render-server/test/browser/`, nine `*.browser.test.ts`
-  files (18 tests), with `vitest.browser.config.ts`. Vitest runs in browser
+- **Where:** `preview-render-server/test/browser/`, ten `*.browser.test.ts`
+  files (25 tests), with `vitest.browser.config.ts`. Vitest runs in browser
   mode through `@vitest/browser-playwright`, on Chromium headless. It needs the
   Playwright Chromium build (`npx playwright install chromium`, once per
   machine).
