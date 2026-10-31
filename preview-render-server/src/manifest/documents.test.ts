@@ -109,6 +109,45 @@ describe('shapeDocuments: content entries', () => {
     ]);
   });
 
+  it('a read-only collection is not editable, whatever its format; a near-miss name is (site config)', () => {
+    const shaped = shapeDocuments({
+      store: new Map([
+        [
+          'fixtures',
+          new Map([
+            [
+              'define-vars',
+              {
+                id: 'define-vars',
+                filePath: 'src/content/fixtures/define-vars.json',
+              },
+            ],
+          ]),
+        ],
+        [
+          'fixtures-notes',
+          new Map([
+            ['n', { id: 'n', filePath: 'src/content/fixtures-notes/n.json' }],
+          ]),
+        ],
+        [
+          'fixturesx',
+          new Map([
+            ['m', { id: 'm', filePath: 'src/content/fixturesx/m.yaml' }],
+          ]),
+        ],
+      ]),
+      loaderKinds: {},
+      scan: { buildTimeFiles: [], dataModules: [] },
+      readOnlyCollections: ['fixtures'],
+    });
+    expect(shaped.map((d) => [d.key, d.editable])).toEqual([
+      ['fixtures/define-vars', false],
+      ['fixtures-notes/n', undefined],
+      ['fixturesx/m', undefined],
+    ]);
+  });
+
   it('keeps entries from loaders that read no file, without a file', () => {
     expect(byKey('custom/x')).toEqual({
       key: 'custom/x',

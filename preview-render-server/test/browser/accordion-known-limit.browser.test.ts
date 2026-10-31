@@ -37,9 +37,10 @@ describe('KNOWN LIMIT: FAQ accordion', () => {
     await page.eval(`${header}.click()`);
     const closed = await page.eval<string>(classOf);
 
-    // The sample's Accordion writes `${show && "active"}`, so a closed one reads "false".
-    expect(openBefore).toBe('accordion active undefined');
-    expect(openAfter).toBe('accordion active undefined');
-    expect(closed).toBe('accordion false undefined');
+    // The sample's Accordion writes `${show ? "active" : ""}` and `${className ?? ""}`,
+    // so no class reads "undefined" and an open one has `active`. The spaces stay.
+    expect(openBefore).toBe('accordion active ');
+    expect(openAfter).toBe('accordion active ');
+    expect(closed).toBe('accordion  ');
   });
 });

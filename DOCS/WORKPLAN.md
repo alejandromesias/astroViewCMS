@@ -1071,7 +1071,7 @@ e2e suite, after the `global-setup.ts` refactor (only d16 was run, by the user).
 | Morph on `landing/long` | `morph.browser.test.ts` | 2 | 2 | 2026-10-30 | Edit below the viewport: the untouched block keeps its node, `scrollY` stays exactly 2400. **GAP:** an edit above the viewport (the banner) moves `scrollY` 2400 to 2340 (60 px) while the untouched block stays on screen (top 969.25 to 969.53, +0.28 px): browser scroll anchoring. The "`scrollY` unchanged" expectation does not hold for edits above the viewport. | D6 (scroll limit); not scheduled |
 | Scoped and `:global()` styles | `styles.browser.test.ts` | 1 | 1 | 2026-10-30 | Computed styles of a swapped Highlight callout (scoped `.highlight*` and `:global()` `strong`, `a`) equal the prerendered page's. | No write-up needed (passes) |
 | KNOWN LIMIT: Swiper on `landing/home-v2` | `swiper-known-limit.browser.test.ts` | 1 | 1 | 2026-10-30 | Priming morphs the three carousels back to server markup: 3 initialised to 0. Asserted as today. | D6 (known limit, phase 3 fallback) |
-| KNOWN LIMIT: FAQ accordion (`/elements`) | `accordion-known-limit.browser.test.ts` | 1 | 1 | 2026-10-30 | After a body swap the accordion stays open and toggles (React island state survives). The sample's Accordion writes `${show && "active"}`, so its class reads `undefined` in the markup (sample bug, not patch). | D6 (known limit); task 1.8a item 4 (sample bug) |
+| KNOWN LIMIT: FAQ accordion (`/elements`) | `accordion-known-limit.browser.test.ts` | 1 | 1 | 2026-10-30 | After a body swap the accordion stays open and toggles (React island state survives). The sample's Accordion class read `undefined` (sample bug, not patch); fixed 2026-10-30 (task 1.8a item 4). | D6 (known limit); task 1.8a item 4 (done) |
 | ClientRouter | `client-router.browser.test.ts` | 2 | 2 | 2026-10-30 | A draft sent before a navigation is dropped (held render arrives after the navigation; no `preview:rendered` follows). The bridge announces `ready` for `/pricing`. A draft sent after the navigation is answered for `/pricing`. | WORKPLAN 1.6 (navigation fix confirmed) |
 | Origins | `origins.browser.test.ts` | 2 | 2 | 2026-10-30 | A draft from an origin not in `editorOrigins` is ignored: the foreign page gets no message, and the page text is unchanged. Near miss: the same draft from the listed origin is applied. | D14 (origin check confirmed) |
 
@@ -1219,9 +1219,11 @@ Found by 1.8 step 2 (2026-10-30). Small; do them before phase 1 closes, after
    values update; the define:vars scripts and the JSON-LD blocks pile up (ten
    edits: eleven of each, the stale one kept). Pinned by
    `define-vars.browser.test.ts`; no product source changed.
-4. **Optional, sample site:** the Accordion's `${show && "active"}` writes
-   `undefined` as a class. A one-line fix in the sample; the known-limit test
-   in `accordion-known-limit.browser.test.ts` then asserts the class.
+4. **Optional, sample site. Done 2026-10-30.** The Accordion's `${show && "active"}`
+   wrote `undefined` as a class, and `${className}` did too when no class was
+   passed. Both now default to `""` (`${show ? "active" : ""}`, `${className ?? ""}`).
+   `accordion-known-limit.browser.test.ts` asserts the new classes (`accordion
+   active ` open, `accordion  ` closed); its stay-open and toggle checks are unchanged.
 5. **Tripwire for the D7 cache decision.** Time `getStaticPaths` inside the
    render and report it in the `renderMs` breakdown (dev only, not in the
    protocol), and add a script, `scripts/measure-listing-routes.mjs`, that
@@ -1239,12 +1241,16 @@ Found by 1.8 step 2 (2026-10-30). Small; do them before phase 1 closes, after
    Swiper and accordion script limits (phase 3 fallback, D6); `define:vars`
    scripts and JSON-LD blocks piling up in the morph (fix in `patch.ts`, phase
    3, D6).
-7. **Keep the test fixture out of the editor's document list.** The
-   `fixtures` collection (item 3) is listed in `documents.json` as editable,
-   so the phase 3 editor would show `fixtures/define-vars`. Before phase 2,
-   either mark the `fixtures/` documents `editable: false` in the manifest or
-   move the fixture out of the sample's content; the step 3 build and bundle
-   figures were taken without it (one route fewer).
+7. **Keep the test fixture out of the editor's document list. Done 2026-10-30.**
+   Moving the fixture would not help: it is a JSON file that the page imports
+   and the collection reads, so it would still be a document. Instead the site
+   config lists `readOnlyCollections: ['fixtures']` (`sites/sample-site.config.ts`),
+   and `shapeDocuments` marks those documents `editable: false`, whatever their
+   format. `fixtures/define-vars` is now not editable; no other document
+   changes. Pinned by `documents.test.ts` (a near-miss name stays editable),
+   `integration.test.ts` (the option reaches `documents.json`) and the D13
+   e2e test. `define-vars.browser.test.ts` still passes. The page stays in the
+   build, so the step 3 figures do not change.
 
 ### 1.9 Docs
 

@@ -20,5 +20,9 @@ export default {
     'data:src/config/theme.json': ['*'],
   },
 
+  // The test-only fixtures collection (task 1.8a item 3) is not sample content,
+  // so the editor must not list it (item 7).
+  readOnlyCollections: ['fixtures'],
+
   port: 4401,
 } satisfies SiteConfig;

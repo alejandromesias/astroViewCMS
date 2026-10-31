@@ -14,6 +14,9 @@ export interface SiteConfig {
    *  paths, `['*']` for the whole file. Adds to what the import scan finds and
    *  covers files read with `fs` or dynamic imports, which it can't see. */
   buildTimeFields?: Record<string, string[]>;
+  /** Content collections the CMS must not edit, such as a test-only fixture
+   *  collection: their documents get `editable: false` in documents.json. */
+  readOnlyCollections?: string[];
   /** Code languages Markdown drafts may highlight beyond those the built
    *  content already uses (D2), for a site that expects authors to add one. */
   extraLanguages?: string[];

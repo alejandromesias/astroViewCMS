@@ -191,6 +191,9 @@ export default function previewRenderServer(
             ...(site.buildTimeFields === undefined
               ? {}
               : { buildTimeFields: site.buildTimeFields }),
+            ...(site.readOnlyCollections === undefined
+              ? {}
+              : { readOnlyCollections: site.readOnlyCollections }),
           });
           writeManifest(site, 'documents.json', documents);
           writeManifest(site, LANGUAGES_FILE, {

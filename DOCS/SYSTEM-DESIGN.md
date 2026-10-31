@@ -999,8 +999,10 @@ all its entries.
   - **Known limits, now pinned by tests.** Priming morphs the three Swiper
     carousels on `landing/home-v2` back to server markup (3 initialised to 0).
     The FAQ accordion on `/elements` keeps its state across a swap (the React
-    island survives); its `active` class reads `undefined` because of a bug in
-    the sample's Accordion, not in the patch.
+    island survives). Its class used to read `undefined` because of a bug in
+    the sample's Accordion, not in the patch. Fixed in the sample 2026-10-30
+    (task 1.8a item 4): the class is `accordion active ` open and `accordion  `
+    closed, and the test pins it.
   - **Inline scripts and elements do not pile up.** Ten props edits keep two
     island bootstraps and one body `<style>`; ten add and remove edits leave no
     extra `<style>`.
@@ -1020,9 +1022,10 @@ all its entries.
     replace JSON-LD and `define:vars` scripts by content or position instead
     of keeping them; real sites put JSON-LD in their SEO head, so it grows with
     every title or description edit. **Side effect:** the fixture's `fixtures`
-    collection is in the sample build and `documents.json` lists
-    `fixtures/define-vars` as an editable document (checked 2026-10-30, 37
-    documents), so the phase 3 editor would show it. See 1.8a item 7.
+    collection is in the sample build. Until 1.8a item 7 `documents.json`
+    listed `fixtures/define-vars` as editable; it is now `editable: false`
+    (`readOnlyCollections` in the sample config, D13), so the phase 3 editor
+    does not show it.
     A `<style define:vars>` was tried and dropped: it added a `<style>` to the
     landing page's head, which broke the inline-elements census, so styles are
     not measured.
@@ -1245,6 +1248,10 @@ file by extension (checked 2026-10-26):
   plugin, so imported settings files stay JSON. `documents.json` still lists
   such documents, with their format and `editable: false`. The preview shows
   them as built, and the build logs a warning.
+- **Read-only collections (task 1.8a item 7, 2026-10-30).** A site config
+  can list collections the CMS must not edit (`readOnlyCollections`). Their
+  documents get `editable: false` whatever their format. The sample lists
+  `fixtures`, the collection of the test-only page `/fixtures/define-vars`.
 - **The preview node is format-agnostic.** A YAML document's value is a plain
   object, like a JSON document's. Markdown and MDX values are
   `{ data, body }` (D2). Nothing else in the preview depends on the format.

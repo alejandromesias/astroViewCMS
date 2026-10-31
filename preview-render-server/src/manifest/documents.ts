@@ -42,12 +42,15 @@ export function shapeDocuments({
   loaderKinds,
   scan,
   buildTimeFields = {},
+  readOnlyCollections = [],
 }: {
   store: DataStore;
   loaderKinds: LoaderKinds;
   scan: ProjectScan;
   buildTimeFields?: BuildTimeFields;
+  readOnlyCollections?: string[];
 }): DocumentRecord[] {
+  const readOnly = new Set(readOnlyCollections);
   const documents: DocumentRecord[] = [];
   const buildTime = (
     key: string,
@@ -73,6 +76,7 @@ export function shapeDocuments({
         ...(entry.filePath ? { file: toPosix(entry.filePath) } : {}),
         format: formatOf(entry.filePath),
         ...(loaderKinds[collection] === 'file' ? { entryKey: entry.id } : {}),
+        ...(readOnly.has(collection) ? { editable: false as const } : {}),
         ...buildTime(key, false),
       });
     }

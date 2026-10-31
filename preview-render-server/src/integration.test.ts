@@ -352,6 +352,39 @@ describe('previewRenderServer hooks', () => {
     ]);
   });
 
+  it('passes the site readOnlyCollections on to documents.json', () => {
+    const cacheDir = path.join(tmp, 'read-only-cache');
+    fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(cacheDir, 'data-store.json'),
+      stringify(
+        new Map([
+          [
+            'authors',
+            new Map([
+              ['ana', { id: 'ana', filePath: 'src/content/authors/ana.json' }],
+            ]),
+          ],
+        ]),
+      ),
+    );
+    const integration = hooksOf({
+      ...hookSite,
+      readOnlyCollections: ['authors'],
+    });
+    integration['astro:config:done']!({
+      config: {
+        cacheDir: new URL(`file:///${posix(cacheDir)}/`),
+        base: '/',
+        trailingSlash: 'ignore',
+      },
+    });
+    integration['astro:build:done']!({ logger: { warn: vi.fn() } });
+    expect(manifest('documents.json')).toEqual([
+      expect.objectContaining({ key: 'authors/ana', editable: false }),
+    ]);
+  });
+
   it('warns instead of failing when the manifests cannot be written', () => {
     const warn = vi.fn();
     const blocked = path.join(tmp, 'blocked');

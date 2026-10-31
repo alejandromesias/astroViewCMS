@@ -170,6 +170,19 @@ describe('D13: the authors listing mixes JSON and YAML entries', () => {
     ]);
   });
 
+  it('the test-only fixtures collection is listed as not editable', () => {
+    const documents = JSON.parse(
+      fs.readFileSync(
+        path.join(inject('buildDir'), 'sample-site-manifest', 'documents.json'),
+        'utf8',
+      ),
+    ) as { key: string; format: string; editable?: false }[];
+    const fixtures = documents
+      .filter((doc) => doc.key.startsWith('fixtures/'))
+      .map((doc) => [doc.key, doc.format, doc.editable ?? true]);
+    expect(fixtures).toEqual([['fixtures/define-vars', 'json', false]]);
+  });
+
   it('a JSON author and a YAML author both render from the same collection', async () => {
     const json = await render('/blog/blog-1', {});
     expect(json.json.documents).toContain('authors/ana-torres');
