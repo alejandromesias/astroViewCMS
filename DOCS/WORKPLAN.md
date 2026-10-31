@@ -1237,6 +1237,8 @@ Found by 1.8 step 2 (2026-10-30). Small; do them before phase 1 closes, after
    `Server-Timing` `paths` value, outside the protocol body), so no code
    changed. The first run: `/blog/page/2` render median 6.3 ms, paths 0.3 ms
    (5%); `/tags/design` 7.7 ms, paths 3.6 ms (47%); no page flagged.
+   **D7 follow-up done 2026-10-31:** `npm run measure:listing -- --posts=N` sets
+   the post count (default 200); the output prints the count used.
 6. **Not scheduled:** the 60 px scroll shift above the viewport (limit in D6);
    Swiper and accordion script limits (phase 3 fallback, D6); `define:vars`
    scripts and JSON-LD blocks piling up in the morph (fix in `patch.ts`, phase
@@ -1260,11 +1262,11 @@ with the moment to test it:
 | How the test editor reacts to a `413` | WORKPLAN (step 4 notes) | Phase 2, when the real editor's save and render path exists. The server side is tested (D16). |
 | `measure:memory` on Linux (`/proc/<pid>/smaps_rollup`) | QUALITY-TOOLING | Phase 4, the first Linux run (container or CI). |
 | `npm run check -- --all` time | QUALITY-TOOLING | Measured 2026-10-31: 325 s wall (Stryker 161 s). Done. |
-| FLAG branch of `measure:listing` (page over 15 ms) | D7 | When `POSTS` becomes a parameter: run it with a size that trips 15 ms. |
+| FLAG branch of `measure:listing` (page over 15 ms) | D7 | Open. `--posts=N` now allows it: run it with a size that trips 15 ms. |
 | Memory of the bundled variant (`--bundle`) | D7, SYSTEM-DESIGN | Phase 4, when the bundle is the deployed form. |
 | Memory of `cms-server` | SYSTEM-DESIGN (footprint) | End of phase 2; the package does not exist yet. |
 | Cause of the 60 px scroll shift (scroll anchoring?) | D6 | Phase 3, with the real editor; one check of `overflow-anchor`. |
-| D7 follow-up: `POSTS` as a parameter | D7 | Before the phase 3 run of `measure:listing`. |
+| D7 follow-up: `POSTS` as a parameter | D7 | Done 2026-10-31: `npm run measure:listing -- --posts=N`. |
 | `osv-scanner.toml` ignore for GHSA-g3hv-75wg-m249 (minimatch via Stryker) | `osv-scanner.toml` | Expires 2026-12-15: renew or drop it before then. |
 
 ### 1.8b Remove Skott (unscheduled request, 2026-10-31)

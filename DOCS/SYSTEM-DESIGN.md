@@ -1068,7 +1068,8 @@ from every post, on every render.
   - phase 5, if CPU time per render limits concurrent sites.
   Task 1.8a (item 5) adds a tripwire. Review at the start of phase 3.
   The tripwire exists (2026-10-30): `npm run measure:listing` copies
-  `sample-site` to a temp folder, generates 200 posts there, and prints the
+  `sample-site` to a temp folder, generates 200 posts there (`-- --posts=N` for
+  another count), and prints the
   median render and `getStaticPaths` share of `/blog/page/2` and `/tags/design`,
   flagging any page over 15 ms. It is a manual tool, not a gate.
   Run it at the start of phase 3, before changes to the listing render path
@@ -1076,9 +1077,10 @@ from every post, on every render.
   and when a listing or tag page feels slow. Read the `/tags/design` row: a
   page over 15 ms is the cue to revisit this decision. Measured 2026-10-30:
   `/blog/page/2` 6.3 ms (`getStaticPaths` 0.3), `/tags/design` 7.7 ms (3.6,
-  47%). **Follow-up before the phase 3 run:** the 200-post size is a constant
-  in the script (`POSTS`); make it a parameter so a tag with 1,000 posts can be
-  measured.
+  47%). **Follow-up, done 2026-10-31:** the 200-post size was a constant in the
+  script; it is now the `--posts=N` flag (default 200), so a tag with 1,000 posts
+  can be measured: `npm run measure:listing -- --posts=1000`. The output prints
+  the post count used.
 - **Cache only if needed:** if `getStaticPaths` adds more than 2 ms to the
   median render, memoize its result per route. The key is the overlay entries
   of the collections it read (from the read log). An empty overlay means one

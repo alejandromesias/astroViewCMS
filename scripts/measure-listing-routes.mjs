@@ -1,8 +1,8 @@
 // Listing-route tripwire for the D7 cache decision (WORKPLAN task 1.8a item 5).
 // Not a gate: run it by hand before phase 3 and whenever posts per tag grow.
-// Copies sample-site to a temporary folder outside the repo, writes 200 generated
-// posts there, builds and starts the preview server on the copy, then renders
-// /blog/page/2 and /tags/design after warm-up. Prints the median render (the
+// Copies sample-site to a temporary folder outside the repo, writes generated
+// posts there (`--posts=N`, default 200), builds and starts the preview server
+// on the copy, then renders /blog/page/2 and /tags/design after warm-up. Prints the median render (the
 // JSON renderMs) and the share of it spent in getStaticPaths (the Server-Timing
 // `paths` value). Flags a page whose median render is over 15 ms. The temporary
 // folder is deleted at the end; the repo's sample-site is not touched.
@@ -17,10 +17,25 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SERVER_DIR = path.join(ROOT, 'preview-render-server');
 const SAMPLE_DIR = path.join(ROOT, 'sample-site');
-const POSTS = 200;
+const DEFAULT_POSTS = 200;
 const RENDERS = 50;
 const PAGES = ['/blog/page/2', '/tags/design'];
 const FLAG_MS = 15;
+
+// `--posts=N` sets the generated post count; any other argument is a usage error.
+function postsFromArgs(args) {
+  let posts = DEFAULT_POSTS;
+  for (const arg of args) {
+    const match = /^--posts=(\d+)$/.exec(arg);
+    if (!match || Number(match[1]) < 1) {
+      console.error(`Unknown argument "${arg}". Usage: npm run measure:listing -- [--posts=N] (N >= 1, default ${DEFAULT_POSTS}).`);
+      process.exit(2);
+    }
+    posts = Number(match[1]);
+  }
+  return posts;
+}
+const POSTS = postsFromArgs(process.argv.slice(2));
 // Astro sends `astro` commands to the background when it detects an AI agent;
 // clear those markers for the child processes (as measure-memory.mjs does).
 const AGENT_VARS = [
