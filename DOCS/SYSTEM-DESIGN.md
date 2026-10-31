@@ -988,8 +988,14 @@ all its entries.
     node.** It re-hydrates and its state resets (the pricing toggle goes back
     to Monthly). A block inserted after it keeps the node and the state. The
     morph matches the island by position, so a shift in front of it loses the
-    match. Task 1.8a tries a stable key first; if that is not cheap it stays a
-    limit of this decision until phase 3.
+    match. Task 1.8a tried a stable key (2026-10-30): an `id` of
+    `island:<component-url>#<index>` on live and rendered islands fixed the
+    browser case, but it writes our `id` onto the page's islands and replaces
+    a node whose `component-url` changed, which broke three `patch.test.ts`
+    cases (in-place attribute update, only-differing writes, ssr restore).
+    Decision: **a limit of phase 1, pinned by the `GAP` test.** Phase 3 solves
+    it with the editor, which knows which block moved. The attempt is not kept
+    in the repo.
   - **Known limits, now pinned by tests.** Priming morphs the three Swiper
     carousels on `landing/home-v2` back to server markup (3 initialised to 0).
     The FAQ accordion on `/elements` keeps its state across a swap (the React

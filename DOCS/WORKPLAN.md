@@ -1207,7 +1207,7 @@ Found by 1.8 step 2 (2026-10-30). Small; do them before phase 1 closes, after
    draft between the two `ready`s, the bridge still renders it), then fix the
    request counter in `bridge.ts`. The unit test goes in `bridge.test.ts`; keep
    the browser case in `priming.browser.test.ts`.
-2. **Island before an inserted block (D6).** Try a stable key for
+2. **Island before an inserted block (D6). Closed as a limit 2026-10-30.** The key was tried and broke three `patch.test.ts` cases; the `GAP` test stays and D6 records the decision for phase 3. Original plan: try a stable key for
    `astro-island` in the morph (for example its `component-url` plus the
    position among islands of that component) so an insert in front keeps the
    node. The `GAP` test in `d6-islands.browser.test.ts` flips to the correct
