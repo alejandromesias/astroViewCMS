@@ -87,9 +87,8 @@ npm run test:e2e       # builds into .build/e2e-*, starts the server on a free p
 npm run test:browser   # Chromium browser tests: the iframe, the bridge, hydration
 ```
 
-`npm run build` and `npm start` still target the old `sampleAstroProject` until
-task 1.10 of the work plan makes `sample-site` the default. `npm run check` at
-the repo root runs every quality gate.
+`npm run build` and `npm start` build and serve `sample-site` (since task 1.10
+of the work plan). `npm run check` at the repo root runs every quality gate.
 
 Each source file has a `*.test.ts` next to it. The tests render real `.astro`
 fixtures (`test/fixtures/`) through Astro's own Vite config. Browser code

@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6.43.0/schema.json",
-  "ignoreWorkspaces": ["sample-site", "sampleAstroProject"],
+  "ignoreWorkspaces": ["sample-site"],
   "ignoreBinaries": ["osv-scanner", "tsc", "vitest"],
   "workspaces": {
     ".": { "ignoreDependencies": ["@swc/core"] },

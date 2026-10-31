@@ -42,31 +42,25 @@ describe('resolveSiteConfig', () => {
 describe('loadSiteConfig', () => {
   it('loads a config file and resolves it', async () => {
     const site = await loadSiteConfig(
-      path.resolve(
-        import.meta.dirname,
-        '../sites/sampleAstroProject.config.ts',
-      ),
+      path.resolve(import.meta.dirname, '../sites/sample-site.config.ts'),
     );
     expect(site.root).toBe(
-      path.resolve(import.meta.dirname, '../../sampleAstroProject'),
+      path.resolve(import.meta.dirname, '../../sample-site'),
     );
     expect(site.outDir).toBe(
-      path.resolve(import.meta.dirname, '../.build/sampleAstroProject'),
+      path.resolve(import.meta.dirname, '../.build/sample-site'),
     );
-    expect(Object.keys(site.regions)).toEqual(['blocks']);
+    expect(Object.keys(site.regions)).toEqual([]);
   });
 
   it('builds into another folder when given one (PREVIEW_BUILD_DIR)', async () => {
     const buildDir = path.resolve('/tmp/preview-e2e');
     const site = await loadSiteConfig(
-      path.resolve(
-        import.meta.dirname,
-        '../sites/sampleAstroProject.config.ts',
-      ),
+      path.resolve(import.meta.dirname, '../sites/sample-site.config.ts'),
       buildDir,
     );
-    expect(site.outDir).toBe(path.join(buildDir, 'sampleAstroProject'));
-    expect(site.mediaDir).toBe(path.join(buildDir, 'sampleAstroProject-media'));
+    expect(site.outDir).toBe(path.join(buildDir, 'sample-site'));
+    expect(site.mediaDir).toBe(path.join(buildDir, 'sample-site-media'));
   });
 
   it('explains the usage when no file is given', async () => {

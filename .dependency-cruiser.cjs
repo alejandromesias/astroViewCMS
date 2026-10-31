@@ -102,7 +102,7 @@ module.exports = {
   options: {
     doNotFollow: { path: 'node_modules' },
     exclude: {
-      path: ['(^|/)node_modules/', '^sample-site/', '^sampleAstroProject/', '^reports/', 'test/fixtures'],
+      path: ['(^|/)node_modules/', '^sample-site/', '^reports/', 'test/fixtures'],
     },
     parser: 'swc',
     // Count `import type` as an edge, so a cycle made of types alone is reported.

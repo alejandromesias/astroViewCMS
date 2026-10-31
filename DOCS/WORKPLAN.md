@@ -37,13 +37,12 @@ Folder layout of `astroViewCMS/` (git repo, `main` pushed to `origin` on GitHub)
 
 ```text
 astroViewCMS/
-├─ package.json             npm workspace: sampleAstroProject, preview-render-server, sample-site
-│                           (+ preview-protocol, from task 1.6a)
+├─ package.json             npm workspace: preview-protocol, preview-render-server, sample-site
+│                           (preview-protocol from task 1.6a)
 ├─ DOCS/                    SYSTEM-DESIGN.md, WORKPLAN.md, PREVIEW-RENDER-SERVER.md
 ├─ preview-render-server/   the renderer (see PREVIEW-RENDER-SERVER.md)
 ├─ preview-protocol/        postMessage contract + version, no dependencies (task 1.6a)
-├─ sampleAstroProject/      old sample: one page, one island; removed in task 1.10
-├─ sample-site/             the new sample (bigspring template plus additions)
+├─ sample-site/             the sample (bigspring template plus additions)
 └─ scripts/                 check.ts (all quality gates), graph.ts, measure-*.mjs
 ```
 
@@ -300,7 +299,7 @@ median render on the 40-block page must be under 5 ms. Unit and end-to-end
 tests pass.
 
 Order matters: 1.1 removes code, 1.2 renames, then the new pieces come in.
-The old sample keeps the suite green until 1.10.
+The old sample kept the suite green until 1.10, which removed it.
 
 ### 1.1 Remove what the design rules out
 
@@ -1306,9 +1305,6 @@ measured times (`--all` has no measured time yet).
 - `SYSTEM-DESIGN.md`: the status line, section 7 (marked as the review that
   drove phase 1, with what was done) and section 10 (open questions with what
   phase 1 answered and what is still open).
-- Still stale until task 1.10: `npm run build` and `npm start` target
-  `sampleAstroProject`; the docs say so where it matters.
-
 ### 1.10 Retire the old sample
 
 The end-to-end suite already runs on `sample-site` (task 1.5), so nothing
@@ -1317,6 +1313,13 @@ blocks this:
 - delete `sampleAstroProject/` and `sites/sampleAstroProject.config.ts`;
 - remove it from the workspaces;
 - make `sample-site` the default in `npm run build` and `npm start`.
+
+**Status: done 2026-10-31.** Deleted both, removed the workspace (lockfile
+updated by `npm install`, 20 lines dropped, no new packages), and pointed
+`build` and `start` at `sites/sample-site.config.ts`. The config, knip,
+Stryker, dependency-cruiser and the Claude permissions no longer name the old
+sample; the site-config tests load `sample-site`. Historical docs keep their
+old mentions.
 
 ## 8. After phase 1
 
@@ -1455,7 +1458,7 @@ the end-to-end and browser suites, `-- --all` adds Stryker; timings in
 [QUALITY-TOOLING.md](QUALITY-TOOLING.md)). `npm run graph` draws the module
 graph, `npm run measure:memory` and `npm run measure:listing -- --posts=N`
 repeat the measurements of section 10. `npm run build` and `npm start` in
-`preview-render-server` still target `sampleAstroProject` until task 1.10.
+`preview-render-server` build and serve `sample-site` (since task 1.10).
 
 From an agent, prefix build and test commands with the `env -u …` line from
 section 3.

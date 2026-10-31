@@ -4,8 +4,8 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "build": "node src/build.ts sites/sampleAstroProject.config.ts",
-    "start": "node src/start.ts sites/sampleAstroProject.config.ts",
+    "build": "node src/build.ts sites/sample-site.config.ts",
+    "start": "node src/start.ts sites/sample-site.config.ts",
     "typecheck": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",

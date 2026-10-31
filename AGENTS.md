@@ -36,7 +36,6 @@ Unit tests sit beside their source as `*.test.ts`. Review them with the code the
 
 - `node_modules/` (root and every workspace)
 - `sample-site/`: an upstream Astro theme (has its own LICENSE and README). Only its use as a test input matters, not its code.
-- `sampleAstroProject/`: a stock Astro starter, same treatment. It has its own `AGENTS.md` and `CLAUDE.md` for that sample; they do not apply to this repo.
 
 ### Generated or build output
 

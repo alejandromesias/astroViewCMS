@@ -35,7 +35,6 @@
     "**/coverage",
     "**/.stryker-tmp",
     "sample-site",
-    "sampleAstroProject",
     "DOCS",
     "reports"
   ],

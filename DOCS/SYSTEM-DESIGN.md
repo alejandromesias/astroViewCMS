@@ -47,8 +47,8 @@ came from "island" meaning four things at once.
 | **Page** | One route of the site, rendered as a whole | `/`, `/blog/hola` |
 | **Region** | A marked part of a rendered page that the bridge can swap by itself | header, main content, footer |
 | **Overlay** | The documents sent with a render request, which replace the built content while that request renders | `{ "pages/home": {…draft…} }` |
-| **Preview bundle** | The preview build of a site at one code revision: server, client assets, manifest | `.build/sampleAstroProject/` |
-| **Preview node** | A running preview bundle: one Node process per active site | `node entry.mjs` on :4400 |
+| **Preview bundle** | The preview build of a site at one code revision: server, client assets, manifest | `.build/sample-site/` |
+| **Preview node** | A running preview bundle: one Node process per active site | `node entry.mjs` on :4401 (sample-site) |
 | **CMS app** | Editor UI plus API: auth, documents, drafts, saving, publishing, tenants | not built yet |
 
 "Island" survives only as Astro's own term (`astro-island`, hydrated

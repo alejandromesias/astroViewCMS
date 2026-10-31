@@ -414,7 +414,7 @@ limit.
 
 ## One shared copy of Astro
 
-`astroViewCMS/` is an npm workspace (`sampleAstroProject`, `preview-protocol`,
+`astroViewCMS/` is an npm workspace (`preview-protocol`,
 `preview-render-server`, `sample-site`). npm installs one `astro` in the root
 `node_modules`. `build.ts`, the site's components and the built server all use
 it, so there is never a second instance. Per-site copies and isolation
@@ -555,7 +555,7 @@ npm run test:e2e                    # build + real server + HTTP checks
 npm run test:browser                # Chromium browser tests
 ```
 
-`npm run build` and `npm start` still target the old `sampleAstroProject` until
-task 1.10 makes `sample-site` the default. From an AI agent, unset Astro's
+`npm run build` and `npm start` build and serve `sample-site` without the
+editor's data route (`--dev` adds it, as `build:sample` does). From an AI agent, unset Astro's
 agent-detection variables for the build (see the environment notes in
 [WORKPLAN.md](WORKPLAN.md)).

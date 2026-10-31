@@ -17,7 +17,7 @@ page and patches the DOM as drafts change. The code is a set of npm workspaces:
 | --- | --- | --- |
 | `preview-render-server` | The server, the Astro integration, the overlay that swaps in draft content, and the bridge (`src/client/`). All the production logic. | yes |
 | `preview-protocol` | Shared types for the messages between editor, server and bridge. | yes |
-| `sample-site`, `sampleAstroProject` | Sample Astro sites the server renders in tests and demos. | no (fixtures, not our code) |
+| `sample-site` | Sample Astro site the server renders in tests and demos. | no (fixtures, not our code) |
 
 Because the server will later handle many sites and untrusted editor input, the
 tooling aims at four risks: type holes, bad input at the edges, dead or tangled
