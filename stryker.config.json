@@ -5,6 +5,8 @@
   "mutate": [
     "preview-contract/src/**/*.ts",
     "!preview-contract/src/**/*.test.ts",
+    "preview-protocol/src/**/*.ts",
+    "!preview-protocol/src/**/*.test.ts",
     "preview-render-server/src/**/*.ts",
     "!preview-render-server/src/**/*.test.ts",
     "!preview-render-server/src/**/*.d.ts",
@@ -25,7 +27,8 @@
   "testRunner_comment": "Take a look at https://stryker-mutator.io/docs/stryker-js/vitest-runner for information about the vitest plugin.",
   "vitest": {
     "configFile": "vitest.mutation.config.ts",
-    "dir": "."
+    "dir": ".",
+    "related": true
   },
   "coverageAnalysis": "perTest",
   "ignoreStatic": true,

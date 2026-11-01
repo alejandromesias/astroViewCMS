@@ -160,10 +160,11 @@ done. Item 6 of the design (the front server) is step 2.8.
     `test.projects` (the renderer's config plus an inline `preview-contract`
     project); `stryker.config.json` points at it; `knip.json` lists it as an
     entry. A one-file run (`--mutate preview-contract/src/json.ts`) killed
-    14 of 14 mutants. Open: single-file runs need `vitest.related: true`
-    (no CLI flag exists; it was set for the check and reverted); the
-    renderer's mutation score was not re-run through the new root config;
-    `preview-protocol` is still outside Stryker's `mutate` list.
+    14 of 14 mutants. Closed 2026-11-01: `vitest.related: true` is kept in
+    `stryker.config.json` and documented in QUALITY-TOOLING.md;
+    `preview-protocol` is in `mutate` with its own project; a forced full run
+    through the root config scored 92.83% (renderer 92.98%, protocol 97.22%,
+    contract 83.10%). See the remark on 2.13c.
   - Two comments that named the old `.build/<site>-manifest/` folder were
     updated after 2.0d.
 
@@ -988,6 +989,19 @@ Design 5.8. This is still a test tool, not the phase 3 editor.
 - Set the coverage floors and the Stryker threshold for `cms-server` from
   the first full run (not guessed), as for the renderer. Per-file Stryker
   floors only if the user wants them.
+- **Remark (2026-11-01, from the full Stryker run after 2.0a):**
+  `preview-contract` is the weakest package at 83.10% (9 survivors, 3 with
+  no coverage), against 92.98% for the renderer and 97.22% for
+  `preview-protocol`. The single global `break: 90` hides it: the packages
+  are pooled, so a weak package passes while the others carry it. By this
+  task `preview-contract` will have grown (2.0b, 2.0c, 2.8c add the bundle
+  schema, `revisionOf`, `canonicalEntryText` and the token functions, all
+  security- or identity-critical). Before setting `cms-server`'s floor:
+  triage the `preview-contract` survivors, and decide whether to keep one
+  pooled threshold or add per-package floors (Stryker has no per-package
+  `break`; it would need a script reading `reports/mutation/mutation.json`).
+  Mutation runs are slow (a forced full run took ~29 min), so run it once
+  here, not per task.
 - **Done when:** `npm run check -- --all` passes with the new floors.
 
 ## 5. Done-when map

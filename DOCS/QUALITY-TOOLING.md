@@ -268,7 +268,13 @@ empty). Each change is a *mutant*. It then re-runs the tests: if one fails the
 mutant is *killed* (good); if none fails it *survived* (the tests do not pin
 that behaviour down).
 
-- **Where it runs:** on `preview-render-server/src`, excluding test files, type
+- **Packages covered:** `preview-render-server`, `preview-contract` and
+  `preview-protocol` (`mutate` in `stryker.config.json`). Their tests run through
+  `vitest.mutation.config.ts`, which lists each package as a Vitest project;
+  a new package needs a project entry there as well as `mutate` globs.
+  `vitest.related: true` is set so a single-file run (`--mutate <file>`) runs only
+  the tests that import that file.
+- **Where it runs (renderer):** on `preview-render-server/src`, excluding test files, type
   files and the entry scripts and routes that unit tests cannot reach (the
   exclusions mirror the coverage exclusions in `vitest.config.ts`). Tests run
   through Vitest with `coverageAnalysis: perTest`, so each mutant runs only the
@@ -301,6 +307,10 @@ that behaviour down).
   tests) scored 91.83%. **Latest run: 2026-10-31** (`npm run check -- --all`, 161 s
   after source changes): 91.74% over 2781 mutants (2525 killed, 18 timeout, 211
   survived, 18 no coverage, 7 runtime errors), above the 90 floor.
+  **Forced full run, 2026-11-01** (new root config, `preview-protocol` added, ~29 min):
+  92.83% over 2735 mutants. By package: preview-render-server 92.98%,
+  preview-protocol 97.22%, preview-contract 83.10% (above the `high` line of 80,
+  but the weakest; 9 survivors).
 
 ### Incremental mode
 

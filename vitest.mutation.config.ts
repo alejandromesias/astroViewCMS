@@ -15,6 +15,13 @@ export default defineConfig({
           include: ['src/**/*.test.ts'],
         },
       },
+      {
+        test: {
+          name: 'preview-protocol',
+          root: 'preview-protocol',
+          include: ['src/**/*.test.ts'],
+        },
+      },
     ],
   },
 });
