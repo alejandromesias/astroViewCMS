@@ -227,6 +227,8 @@ built on the sample site, renders correctly or has a documented limit. The
 median render on the 40-block page must be under 5 ms. Unit and end-to-end
 tests pass.
 
+Measured in [section 10](#10-measurements) (40-block render rows): the 5 ms goal was not met, with a 7 to 9 ms median on `landing/long`. It was accepted under the end-to-end budgets of 60 ms median and 100 ms p95.
+
 Order matters: 1.1 removes code, 1.2 renames, then the new pieces come in.
 The old sample kept the suite green until 1.10, which removed it.
 

@@ -27,8 +27,8 @@ editor ──postMessage draft──▶ bridge (in the iframe) ──POST /__pre
   - the bridge script;
   - a virtual module with the region components, every image under `src/`,
     the manifest folder and the site's CMS schemas;
-  - the build manifests in `.build/<site>-manifest/`: `schema.json`,
-    `routes.json`, `documents.json`.
+  - the build manifests in `.build/<site>/manifest/` (inside the bundle):
+    `schema.json`, `routes.json`, `documents.json`.
 - `src/manifest/`: the pure parts of the manifests: the static import scan
   (which JSON files build code reads), `documents.json` and `routes.json`
   shaping.
@@ -59,6 +59,14 @@ editor ──postMessage draft──▶ bridge (in the iframe) ──POST /__pre
   which exists only in a build made with `PREVIEW_DEV=1` (`npm run build:sample`
   does that).
 - `src/start.ts`: runs `.build/<site>/server/entry.mjs`.
+- `src/cli-options.ts`: the flags of `build.ts` and `start.ts`. `--root <dir>`
+  replaces the site config's `root` (resolved against the current folder),
+  `--out <dir>` replaces the output folder, `--port <n>` (start only) replaces
+  the port ahead of `PORT`. Two builds with different `--out` folders never share
+  a wrapper folder, and two nodes need different ports.
+- `src/bundle-folder.ts`: finds the manifest and upload folders from the
+  server's own location, so a bundle copied elsewhere in the workspace still
+  works.
 - `test/`: test fixtures and helpers for the unit tests, and the end-to-end
   suite (`test/e2e/`). Unit tests sit next to each source file.
 
@@ -103,7 +111,7 @@ unset (see the environment notes in ../DOCS/README.md).
 
 ## Known limits
 
-- Drafts aren't saved or persisted; uploads pile up in `.build/<site>-media/`.
+- Drafts aren't saved or persisted; uploads pile up in `.build/<site>/media/`.
 - Component `<script>`s aren't re-sent with fragments. The page ran them once
   on load, so they don't run on swapped-in HTML.
 - `experimental_AstroContainer` can change in any Astro release.

@@ -3,7 +3,7 @@
   "ignoreWorkspaces": ["sample-site"],
   "ignoreBinaries": ["osv-scanner", "tsc", "vitest"],
   "workspaces": {
-    ".": { "ignoreDependencies": ["@swc/core"] },
+    ".": { "entry": ["vitest.mutation.config.ts"], "ignoreDependencies": ["@swc/core"] },
     "preview-render-server": {
       "entry": [
         "sites/*.config.ts",
@@ -21,6 +21,10 @@
     },
     "preview-protocol": {
       "entry": ["src/index.test.ts"],
+      "project": ["src/**"]
+    },
+    "preview-contract": {
+      "entry": ["src/*.test.ts"],
       "project": ["src/**"]
     }
   }

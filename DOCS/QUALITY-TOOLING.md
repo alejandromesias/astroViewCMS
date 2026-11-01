@@ -17,6 +17,7 @@ page and patches the DOM as drafts change. The code is a set of npm workspaces:
 | --- | --- | --- |
 | `preview-render-server` | The server, the Astro integration, the overlay that swaps in draft content, and the bridge (`src/client/`). All the production logic. | yes |
 | `preview-protocol` | Shared types for the messages between editor, server and bridge. | yes |
+| `preview-contract` | The contract between the renderer and `cms-server`: manifest shapes, `schema.json`, the render request body, with Zod schemas. Depends only on `preview-protocol` and Zod. | yes |
 | `sample-site` | Sample Astro site the server renders in tests and demos. | no (fixtures, not our code) |
 
 Because the server will later handle many sites and untrusted editor input, the
@@ -60,7 +61,7 @@ CI, fail the build). "Report" means the output needs a human reading it.
   `exactOptionalPropertyTypes` (`{ a?: string }` does not accept an explicit
   `undefined`), `noImplicitOverride` and `noFallthroughCasesInSwitch`. When one
   fails, fix the code rather than relaxing the flag.
-- **Biome** lints and formats `preview-render-server` and `preview-protocol`
+- **Biome** lints and formats `preview-render-server`, `preview-protocol` and `preview-contract`
   (test fixtures are excluded). Rules are the recommended set plus three
   stricter ones: unused imports are errors, a promise nobody awaits is an error
   (`noFloatingPromises`), and `any` is an error. Test files may use `any` and
@@ -120,6 +121,8 @@ CI, fail the build). "Report" means the output needs a human reading it.
 | Typecheck | `cd preview-render-server && ../node_modules/.bin/tsc` | seconds |
 | Typecheck, protocol | `npm run typecheck -w preview-protocol` | seconds |
 | Unit tests, protocol | `npm run test -w preview-protocol` | seconds |
+| Typecheck, contract | `npm run typecheck -w preview-contract` | seconds |
+| Unit tests, contract | `npm run test -w preview-contract` | seconds |
 | Lint | `node_modules/.bin/biome lint` | ~2 s |
 | Format check | `node_modules/.bin/biome format` (fix with `--write`) | ~2 s |
 | Unit tests, one file | `cd preview-render-server && ../node_modules/.bin/vitest run <file>` | seconds |
@@ -152,7 +155,7 @@ work, because dependency-cruiser does not support TypeScript 7 yet.
 ### Module graph
 
 `npm run graph` draws the import graph with dependency-cruiser, over the
-production code of `preview-render-server` and `preview-protocol` (tests, test
+production code of `preview-render-server`, `preview-protocol` and `preview-contract` (tests, test
 helpers, Vitest configs and `.d.ts` files left out). It enforces nothing. It writes two files to `reports/graph/`:
 
 - **`modules.html`, for people.** Open it in a browser (it loads Mermaid from a
@@ -402,8 +405,8 @@ is the reason for the list.
 
 ## Annex: dependency-cruiser rules
 
-`npm run depcruise` checks every import under `preview-render-server/src` and
-`preview-protocol/src` against `.dependency-cruiser.cjs`. A rule is an
+`npm run depcruise` checks every import under `preview-render-server/src`,
+`preview-protocol/src` and `preview-contract/src` against `.dependency-cruiser.cjs`. A rule is an
 "allowed to import" question; a violation prints the rule name below.
 "Request path" means the files that serve a preview request: `render/`,
 `overlay/`, `client/`, `*-route.ts` and `request-guard.ts`.
@@ -412,6 +415,7 @@ is the reason for the list.
 | --- | --- | --- | --- |
 | `client-stays-browser-safe` | `client/` imports no `node:*` builtin and no server module outside `client/` | the bridge runs in the browser and has a size budget | error |
 | `protocol-is-a-leaf` | `preview-protocol` never imports `preview-render-server` | it is the shared contract; the CMS app imports it too | error |
+| `contract-is-a-leaf` | `preview-contract` imports no workspace package except `preview-protocol` (Zod is external and allowed) | it is shared with `cms-server`; it must not pull in the renderer or the sample site | error |
 | `request-path-no-process-or-git` | the request path imports no `child_process`, git library or store/write module | the preview node is read-only (decision 4) | error |
 | `request-path-fs-allowlist` | only `render/runtime.ts`, `overlay/plugins.ts` and `media-route.ts` import `fs` | the tool sees imports, not calls, so each `fs` user is reviewed once | error |
 | `no-circular` | no runtime import cycles (`import type` is ignored) | cycles break load order and make code hard to test | error |

@@ -91,9 +91,9 @@ iframe. We skip all of that.
                                    ▼
               preview-render-server/.build/
               ├─ sample-site/            client/ + server/entry.mjs
-              ├─ sample-site-manifest/   schema.json, routes.json, documents.json
+              │    ├─ manifest/          schema.json, routes.json, documents.json
+              │    └─ media/             uploaded draft images (stopgap)
               ├─ sample-site-regions/    generated wrappers
-              ├─ sample-site-media/      uploaded draft images (stopgap)
               └─ e2e-*, browser-*/       temporary, during the test suites
 
 
@@ -116,7 +116,7 @@ iframe. We skip all of that.
 ```
 
 The preview node never writes to the site and keeps no drafts (D4). Only the
-media upload route writes (to `.build/<site>-media/`), a stopgap until the CMS
+media upload route writes (to `.build/<site>/media/`), a stopgap until the CMS
 app stages media in phase 2.
 
 ## The live preview loop
@@ -203,7 +203,7 @@ draft). `media` holds the metadata of images that aren't in the bundle (D12).
   EDITOR TAB (browser memory)     PREVIEW NODE (stateless for content)   SITE FILES
   ───────────────────────────     ────────────────────────────────────   ──────────
   the overlay (all drafts) ─────▶ renders the page with it, keeps nothing  (never
-  lost on tab close/reload        .build/<site>-media/                      written)
+  lost on tab close/reload        .build/<site>/media/                      written)
                                   └─ uploaded images (kept, stopgap)
 ```
 
@@ -531,7 +531,7 @@ Logged with the follow-ups in WORKPLAN-PHASE-0-1.md, task 1.8a (loose ends table
   (D11). A restricted renderer is the phase 3 path.
 - **Code fences in other languages** render as plain text until publish
   (`code-language:<name>`, D2).
-- **Uploads accumulate** in `.build/<site>-media/` until the CMS app takes over
+- **Uploads accumulate** in `.build/<site>/media/` until the CMS app takes over
   media staging (phase 2).
 - **Listing routes** run `getStaticPaths` over whole collections on every
   render (D7). Fine at 200 posts; `npm run measure:listing` trips at 15 ms.

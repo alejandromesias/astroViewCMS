@@ -28,6 +28,14 @@ module.exports = {
       to: { path: ['preview-render-server'] },
     },
     {
+      name: 'contract-is-a-leaf',
+      comment:
+        'preview-contract (manifests, schema.json, render request) imports no other workspace package but preview-protocol. Zod is the only external dependency.',
+      severity: 'error',
+      from: { path: '^preview-contract/src/', pathNot: TESTS },
+      to: { path: ['^preview-render-server/', '^sample-site/'] },
+    },
+    {
       name: 'request-path-no-process-or-git',
       comment: 'The preview node is read-only (decision 4): no child processes, no git, no store/write modules.',
       severity: 'error',
@@ -67,7 +75,7 @@ module.exports = {
       name: 'no-test-in-production',
       comment: 'Production code must not import tests, helpers or fixtures.',
       severity: 'error',
-      from: { path: '^(preview-render-server|preview-protocol)/', pathNot: [TESTS, '^preview-render-server/(test|test-editor)/'] },
+      from: { path: '^(preview-render-server|preview-protocol|preview-contract)/', pathNot: [TESTS, '^preview-render-server/(test|test-editor)/'] },
       to: { path: TESTS },
     },
     {

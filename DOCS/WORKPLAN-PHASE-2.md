@@ -25,7 +25,7 @@ before writing tests, [TESTING-RECOMMENDATIONS.md](TESTING-RECOMMENDATIONS.md).
 |---|---|
 | Phase 2 design | approved by the user, 2026-10-31 |
 | Decisions D17 to D22 | logged in SYSTEM-DESIGN section 11 |
-| Steps 2.0 to 2.13 | not started |
+| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0g, 2.0i done 2026-11-01; the rest not started |
 
 **Done when:** every row of PHASE-2-DESIGN.md section 1 passes. Section 5
 below maps each row to the test that proves it.
@@ -113,7 +113,7 @@ Rules for running tasks in parallel:
 Design 5.1. Nothing in `cms-server` reads a bundle before 2.0b to 2.0d are
 done. Item 6 of the design (the front server) is step 2.8.
 
-#### 2.0a Contract package `preview-contract` — start now
+#### 2.0a Contract package `preview-contract` — start now · DONE 2026-11-01
 
 - A new leaf workspace package, with the full QUALITY-TOOLING checklist
   ("Adding a workspace package"). It depends on `zod` (same major as the
@@ -134,9 +134,38 @@ done. Item 6 of the design (the front server) is step 2.8.
   its own check for now; the point is that two readers can't drift.
 - Add the rule `contract-is-a-leaf` (it imports only `preview-protocol`)
   to `.dependency-cruiser.cjs`.
+- **Brief (2026-11-01):** derive `schemaJsonSchema` from what the renderer
+  actually writes (`src/schema/`), don't invent a shape. Look up which Zod
+  major `astro/zod` ships in the workspace and match it. No Astro builds in
+  this task (unit tests and `npm run check` only).
 - **Done when:** `npm run check` is green with the new package listed in
   every tool; the renderer's manifest types come from the contract; targeted
   tests of `manifest/` and `render/envelope` pass.
+
+- **Result (2026-11-01):** `preview-contract/` exists with
+  `manifest.ts`, `schema.ts`, `envelope.ts`, `json.ts` (`objectOf` helper) and
+  tests; the renderer's `manifest/types.ts` re-exports the types. Zod 4
+  (astro 7.4.2 declares `^4.6.6`). `npm run check` green.
+  - `DocumentRecord` has no `satisfies` check against its Zod schema
+    (`exactOptionalPropertyTypes` makes the optional output not match); its
+    shape is covered by tests. `RouteRecord` has the check.
+  - `schemaJsonSchema` is not `z.record`: that silently dropped a `__proto__`
+    collection. It validates each entry and builds the result with
+    `Object.fromEntries`; entries use `z.strictObject`, so writer drift fails
+    loudly.
+  - The parity test copies the renderer's `envelope.test.ts` cases instead of
+    importing them (importing the renderer would break `contract-is-a-leaf`).
+    The renderer keeps its own envelope check, as planned.
+  - **Stryker follow-up done:** new root `vitest.mutation.config.ts` with
+    `test.projects` (the renderer's config plus an inline `preview-contract`
+    project); `stryker.config.json` points at it; `knip.json` lists it as an
+    entry. A one-file run (`--mutate preview-contract/src/json.ts`) killed
+    14 of 14 mutants. Open: single-file runs need `vitest.related: true`
+    (no CLI flag exists; it was set for the check and reverted); the
+    renderer's mutation score was not re-run through the new root config;
+    `preview-protocol` is still outside Stryker's `mutate` list.
+  - Two comments that named the old `.build/<site>-manifest/` folder were
+    updated after 2.0d.
 
 #### 2.0b Bundle identity — after 2.0a
 
@@ -167,7 +196,7 @@ done. Item 6 of the design (the front server) is step 2.8.
   entries have different revisions, and editing one entry's formatting in
   the shared file changes no other entry's revision (unit test). [build]
 
-#### 2.0d Manifests inside `outDir`, relative paths — start now
+#### 2.0d Manifests inside `outDir`, relative paths — start now · DONE 2026-11-01
 
 - The manifests move from `.build/<site>-manifest/` into the bundle folder
   (`<outDir>/manifest/`). `manifestDir` and `mediaDir` leave the virtual
@@ -176,19 +205,72 @@ done. Item 6 of the design (the front server) is step 2.8.
 - `mediaDir` stays only for the stopgap upload route until 2.12a removes
   it; it resolves relative to the bundle too.
 - Copy the whole bundle folder to another path and start it: it must work
-  (the portability check of SYSTEM-DESIGN section 12).
+  (the portability check of SYSTEM-DESIGN section 12). **The other path is
+  inside the workspace** (bundles resolve packages from
+  `astroViewCMS/node_modules`); outside it is out of scope until phase 4.
+- **Brief (2026-11-01):** the old names appear in `integration.ts`,
+  `site-config.ts`, `types.ts`, `virtual.d.ts`, `media-route.ts`,
+  `render/runtime.ts`, `overlay/markdown-instance.ts`, `manifest/languages.ts`
+  and the tests `integration.test.ts`, `media-route.test.ts`,
+  `site-config.test.ts`. Grep for the old `.build/<site>-manifest/` path in
+  scripts (`measure:memory`, e2e setup, browser harness) and fix every user.
+  Runs after 2.0e (shared `build.ts`, `start.ts`, `site-config.ts`).
 - **Done when:** a unit test and an end-to-end test start a copied bundle
   from a different directory and the render, validate and warm routes
   answer. [build]
 
-#### 2.0e Overrides in `build.ts` and `start.ts` — start now
+- **Result (2026-11-01):** the manifests live in
+  `<outDir>/manifest/`, media in `<outDir>/media/`. The virtual module emits
+  `bundleFolder('manifest'|'media', import.meta.url)` (new
+  `src/bundle-folder.ts`, which walks up to the nearest folder holding
+  `server/entry.mjs`). A new e2e test (`bundle-copy.e2e.test.ts`) copies a
+  built `sample-site` bundle to `.build/bundle-copy-*/` and the render,
+  validate and warm routes answer. Targeted e2e: 70 of 70.
+  - **Bigger than briefed:** Astro empties `outDir` at build start, which
+    would wipe the manifests now inside it. The integration turns off Astro's
+    `emptyOutDir` and an `astro:build:start` hook (`clearBundle()`) clears
+    `outDir` except `media/`, so stopgap uploads still survive rebuilds
+    (checked by unit tests, not by hand). `schema.json` and `routes.json` are
+    written in `astro:build:done`. `content-config.flavor1.mjs` now sits in
+    `manifest/` and is cleared at build start.
+  - The bundle-folder lookup assumes server code under `<bundle>/server/`
+    (true for the Astro node adapter layout; the e2e test confirms it).
+  - The copy test targets a folder inside the workspace. A bundle outside
+    the workspace is untested and stays phase 4.
+  - Old-path users in the e2e tests (`preview-server`, `d13-formats`),
+    `preview-render-server/README.md` and `PREVIEW-RENDER-SERVER.md` were
+    updated.
+  - `regionsDir` stays a sibling of `outDir`.
+
+#### 2.0e Overrides in `build.ts` and `start.ts` — start now · DONE 2026-11-01
 
 - `--root`, `--out`, `--port` (and `--bundle-id` from 2.0b) as arguments,
   with the site config as the default. `start.ts` also takes `--out` and
   `PORT`. Everything stays made absolute in `site-config.ts` (the relative
   `outDir` gotcha).
+- **Brief (2026-11-01):** `build.ts` and `start.ts` take the site config
+  path as `argv[2]`, and `build.ts` reads `--dev`; the new flags coexist with
+  both. `start.ts` already honors `PORT` (`??=`), so `--port` and `--out` are
+  the new parts. Leave `--bundle-id` to 2.0b. State in the code what `--root`
+  overrides in the site config. Runs before 2.0d.
 - **Done when:** two builds of the same site into different folders, and
   two nodes on different ports, run side by side in a test. [build]
+
+- **Result (2026-11-01):** new `src/cli-options.ts`
+  (`parseCliOptions`, `parsePort`, `choosePort`); `build.ts` and `start.ts`
+  take `--root`, `--out`, `--port` (and `--dev`); `loadSiteConfig` and
+  `resolveSiteConfig` take a `SiteOverrides` argument. A new e2e test
+  (`side-by-side.e2e.test.ts`) builds into two folders and runs two nodes on
+  two ports. Unit tests 46 of 46.
+  - `--root` overrides only the site config's `root`; it and `--out` resolve
+    against the current folder, not the config's folder. The default output
+    name follows the overridden root's folder name. `--port` applies to
+    `start.ts`; `build.ts` accepts and ignores it.
+  - Port precedence: `--port`, then `PORT`, then the config port.
+  - Unknown flags, missing values and a second file argument throw, so
+    `--bundle-id` reports "Unknown option" until 2.0b adds it.
+  - `test/support/preview-server.ts` now exports `SERVER_DIR`, `childEnv`,
+    `freePort` and `waitForServer` for reuse.
 
 #### 2.0f Security review — start now · [user]
 
@@ -199,13 +281,19 @@ done. Item 6 of the design (the front server) is step 2.8.
 - **Done when:** `npm run audit` passes with no unexplained ignore; the user
   approves the remaining ones. Gate for 2.1a (design 5.1 item 7).
 
-#### 2.0g Record the 5 ms render goal — start now
+#### 2.0g Record the 5 ms render goal — DONE 2026-11-01
 
 - WORKPLAN-PHASE-0-1.md section 10 and SYSTEM-DESIGN section 9 (phase 1
   row): the goal was measured and not met (7 to 9 ms median on
   `landing/long`), and accepted under the end-to-end budgets (60 ms median,
   100 ms p95).
 - **Done when:** both documents say so, with the measurement rows linked.
+- **Result (2026-11-01):** `WORKPLAN-PHASE-0-1.md` lines 229 to 231 and the
+  phase 1 row of `SYSTEM-DESIGN.md` section 9 now say the goal was not met
+  (7 to 9 ms median on `landing/long`) and was accepted under the 60 ms /
+  100 ms budgets, linking to section 10. Remark: `WORKPLAN-PHASE-0-1.md`
+  line 1294 calls the same page "44 blocks" (11.4 ms, 50 renders, no overlay)
+  while the goal rows say "40-block"; different conditions, left as is.
 
 #### 2.0h Validate tells real errors from refinements that threw — start now
 
@@ -218,11 +306,17 @@ done. Item 6 of the design (the front server) is step 2.8.
   that throws, one that returns false, and a legacy response; the end-to-end
   D3 tests still pass. [build]
 
-#### 2.0i Pin D15 — start now
+#### 2.0i Pin D15 — DONE 2026-11-01
 
 - A `documents.json` test: a collection without a loader has a schema
   entry and contributes no documents (design 4.5).
 - **Done when:** the test exists and passes (`manifest/documents.test.ts`).
+- **Result (2026-11-01):** `D15: a collection without a loader contributes
+  no documents` at `documents.test.ts:160` (`loaderKinds` holds the
+  collection as `undefined`, as `integration.ts` produces). The schema half
+  was already covered by `integration.test.ts` ('writes schema.json for a
+  collection that has no loader'). A temporary `notes/ghost` document made
+  the test fail, then was reverted. Production code unchanged.
 
 ### 2.1 Package scaffold and guardrails — after 2.0a, 2.0f
 

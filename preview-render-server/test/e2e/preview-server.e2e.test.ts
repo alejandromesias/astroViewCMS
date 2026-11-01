@@ -84,8 +84,8 @@ describe('the built site', () => {
     expect(await editor.text()).toMatch(/<iframe id="preview"/);
   });
 
-  it('writes the manifests next to the bundle', () => {
-    const manifest = path.join(inject('buildDir'), 'sample-site-manifest');
+  it('writes the manifests inside the bundle', () => {
+    const manifest = path.join(inject('buildDir'), 'sample-site', 'manifest');
     for (const name of [
       'routes.json',
       'documents.json',

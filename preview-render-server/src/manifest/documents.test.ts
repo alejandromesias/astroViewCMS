@@ -156,6 +156,27 @@ describe('shapeDocuments: content entries', () => {
       buildTime: false,
     });
   });
+
+  it('D15: a collection without a loader contributes no documents', () => {
+    // `notes` has no loader, so loaderKinds holds it as undefined (see
+    // integration.ts) and Astro writes no store entries for it.
+    const shaped = shapeDocuments({
+      store,
+      loaderKinds: { ...loaderKinds, notes: undefined },
+      scan,
+    });
+    expect(shaped.map((d) => d.key)).toEqual([
+      'authors/ana',
+      'blog/generated/post-001',
+      'blog/hello',
+      'custom/x',
+      'testimonials/t-ana',
+      'testimonials/t-kofi',
+      'data:src/config/config.json',
+      'data:src/config/menu.json',
+      'data:src/config/theme.json',
+    ]);
+  });
 });
 
 describe('shapeDocuments: data modules and build-time flags (D1)', () => {

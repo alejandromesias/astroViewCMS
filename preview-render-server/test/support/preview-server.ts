@@ -7,7 +7,8 @@ import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 
-const SERVER_DIR = path.resolve(import.meta.dirname, '../..');
+/** The preview-render-server folder: the working folder of every child process. */
+export const SERVER_DIR = path.resolve(import.meta.dirname, '../..');
 // Astro 7 sends `astro` commands to the background when it detects an AI
 // agent (see HANDOFF environment notes); clear those markers for children.
 const AGENT_VARS = [
@@ -24,6 +25,14 @@ export interface PreviewServer {
   stop(): Promise<void>;
 }
 
+/** The environment for a child build or server: this process's variables plus
+ *  `extra`, without the agent markers. */
+export function childEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, ...extra };
+  for (const name of AGENT_VARS) delete env[name];
+  return env;
+}
+
 /** `siteConfig` is relative to the preview-render-server folder. */
 export async function startPreviewServer(
   siteConfig: string,
@@ -32,12 +41,7 @@ export async function startPreviewServer(
   // packages from node_modules, during prerendering and at runtime.
   fs.mkdirSync(path.join(SERVER_DIR, '.build'), { recursive: true });
   const buildDir = fs.mkdtempSync(path.join(SERVER_DIR, '.build', 'e2e-'));
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    PREVIEW_BUILD_DIR: buildDir,
-    PREVIEW_DEV: '1',
-  };
-  for (const name of AGENT_VARS) delete env[name];
+  const env = childEnv({ PREVIEW_BUILD_DIR: buildDir, PREVIEW_DEV: '1' });
 
   const build = spawnSync(process.execPath, ['src/build.ts', siteConfig], {
     cwd: SERVER_DIR,
@@ -79,7 +83,8 @@ export async function startPreviewServer(
   };
 }
 
-function freePort(): Promise<number> {
+/** Asks the OS for a port that is free right now on 127.0.0.1. */
+export function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const probe = net.createServer();
     probe.once('error', reject);
@@ -90,7 +95,9 @@ function freePort(): Promise<number> {
   });
 }
 
-async function waitForServer(
+/** Polls `baseUrl` until it answers. Throws when the child exits first or the
+ *  timeout passes, with the child's output in the message. */
+export async function waitForServer(
   baseUrl: string,
   server: ChildProcess,
   output: () => string,

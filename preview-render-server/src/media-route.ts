@@ -3,7 +3,7 @@
 //                               -> { "url": "/__preview-media/<hash>.<ext>",
 //                                    "width", "height", "format" }  (D12)
 //   GET  /__preview-media/<file> serves it
-// Files are named by content hash and kept in .build/<site>-media/. Nothing
+// Files are named by content hash and kept in <bundle>/media/. Nothing
 // is written into the site; saving them there is a later step.
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';

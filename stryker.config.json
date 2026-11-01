@@ -3,6 +3,8 @@
   "_comment": "Docs: https://stryker-mutator.io/docs/stryker-js/configuration/. The exclusions mirror coverage.exclude in preview-render-server/vitest.config.ts.",
   "packageManager": "npm",
   "mutate": [
+    "preview-contract/src/**/*.ts",
+    "!preview-contract/src/**/*.test.ts",
     "preview-render-server/src/**/*.ts",
     "!preview-render-server/src/**/*.test.ts",
     "!preview-render-server/src/**/*.d.ts",
@@ -22,8 +24,8 @@
   "testRunner": "vitest",
   "testRunner_comment": "Take a look at https://stryker-mutator.io/docs/stryker-js/vitest-runner for information about the vitest plugin.",
   "vitest": {
-    "configFile": "preview-render-server/vitest.config.ts",
-    "dir": "preview-render-server"
+    "configFile": "vitest.mutation.config.ts",
+    "dir": "."
   },
   "coverageAnalysis": "perTest",
   "ignoreStatic": true,

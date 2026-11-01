@@ -9,9 +9,9 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 
 const OUT = 'reports/graph';
 const BASE =
-  'npx depcruise preview-render-server/src preview-protocol/src --config .dependency-cruiser-graph.cjs';
-const INTERNAL = `-I "^(preview-render-server|preview-protocol)/src"`;
-const FOLDERS = `-S "^(preview-render-server|preview-protocol)/src/[^/]+"`;
+  'npx depcruise preview-render-server/src preview-protocol/src preview-contract/src --config .dependency-cruiser-graph.cjs';
+const INTERNAL = `-I "^(preview-render-server|preview-protocol|preview-contract)/src"`;
+const FOLDERS = `-S "^(preview-render-server|preview-protocol|preview-contract)/src/[^/]+"`;
 const PACKAGES = `-S "^node_modules/(@[^/]+/[^/]+|[^/]+)"`;
 
 function cruise(args: string): string {

@@ -9,6 +9,7 @@ import previewRenderServer, {
   bridgeScript,
   devRoutes,
   findAstroConfig,
+  clearBundle,
   findImages,
   normalizeId,
   RESOLVED_ID,
@@ -163,15 +164,23 @@ describe('siteModule (virtual:preview-site)', () => {
     expect(source).not.toContain('notes.txt');
   });
 
-  it('exports the media folder', () => {
+  it('exports the media folder, found relative to the bundle (no build-machine path)', () => {
     expect(source).toContain(
-      `export const mediaDir = "${posix(site.mediaDir)}";`,
+      "export const mediaDir = bundleFolder('media', import.meta.url);",
     );
+    expect(source).not.toContain(posix(site.mediaDir));
   });
 
-  it('exports the manifest folder, for routes to read the manifests from', () => {
+  it('exports the manifest folder, found relative to the bundle', () => {
     expect(source).toContain(
-      `export const manifestDir = "${posix(site.manifestDir)}";`,
+      "export const manifestDir = bundleFolder('manifest', import.meta.url);",
+    );
+    expect(source).not.toContain(posix(site.manifestDir));
+  });
+
+  it('imports the bundle folder helper from its own file', () => {
+    expect(source).toContain(
+      `import { bundleFolder } from "${posix(path.join(import.meta.dirname, 'bundle-folder.ts'))}";`,
     );
   });
 
@@ -294,8 +303,11 @@ describe('previewRenderServer hooks', () => {
       fs.readFileSync(path.join(hookSite.manifestDir, name), 'utf8'),
     ) as unknown;
 
-  it('writes routes.json from the routes Astro resolved', () => {
-    hooksOf(hookSite)['astro:routes:resolved']!({ routes: [] });
+  it('writes routes.json from the routes Astro resolved, once the build is done', () => {
+    // Same integration instance for both hooks: the routes are kept in it.
+    const integration = hooksOf(hookSite);
+    integration['astro:routes:resolved']!({ routes: [] });
+    integration['astro:build:done']!({ logger: { warn: vi.fn() } });
     expect(manifest('routes.json')).toEqual([]);
   });
 
@@ -395,6 +407,36 @@ describe('previewRenderServer hooks', () => {
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining('documents.json not written'),
     );
+  });
+});
+
+describe('clearBundle', () => {
+  it('removes everything in the folder except the kept entries', () => {
+    const dir = path.join(tmp, `clear-${extraCount++}`);
+    fs.mkdirSync(path.join(dir, 'server', 'chunks'), { recursive: true });
+    fs.mkdirSync(path.join(dir, 'media'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'server', 'chunks', 'a.mjs'), 'a');
+    fs.writeFileSync(path.join(dir, 'media', 'pic.png'), 'bytes');
+    fs.writeFileSync(path.join(dir, 'old.txt'), 'old');
+    clearBundle(dir, ['media']);
+    expect(fs.readdirSync(dir)).toEqual(['media']);
+    expect(fs.readFileSync(path.join(dir, 'media', 'pic.png'), 'utf8')).toBe(
+      'bytes',
+    );
+  });
+
+  it('empties the folder when nothing is kept', () => {
+    const dir = path.join(tmp, `clear-${extraCount++}`);
+    fs.mkdirSync(path.join(dir, 'client'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'client', 'index.html'), '');
+    clearBundle(dir, []);
+    expect(fs.readdirSync(dir)).toEqual([]);
+  });
+
+  it('leaves a missing folder alone', () => {
+    const dir = path.join(tmp, `clear-${extraCount++}`);
+    clearBundle(dir, []);
+    expect(fs.existsSync(dir)).toBe(false);
   });
 });
 
@@ -648,11 +690,7 @@ describe('siteModule details', () => {
   const miniRoot = path.join(tmp, 'mini');
   fs.mkdirSync(path.join(miniRoot, 'src'), { recursive: true });
   fs.writeFileSync(path.join(miniRoot, 'src/a.png'), '');
-  const mini = {
-    root: miniRoot,
-    mediaDir: path.join(tmp, 'mini-media'),
-    manifestDir: path.join(tmp, 'mini-manifest'),
-  };
+  const mini = { root: miniRoot };
   const quoted = (p: string) => JSON.stringify(posix(p));
   const load = (
     ...args: Parameters<typeof siteModule> extends [infer _, ...infer R]
@@ -663,13 +701,14 @@ describe('siteModule details', () => {
       hook(siteModule(mini, ...args), 'load').call({}, RESOLVED_ID) as string
     ).split('\n');
   const common = [
-    `export const mediaDir = ${quoted(mini.mediaDir)};`,
+    "export const mediaDir = bundleFolder('media', import.meta.url);",
     `export const siteRoot = ${quoted(miniRoot)};`,
-    `export const manifestDir = ${quoted(mini.manifestDir)};`,
+    "export const manifestDir = bundleFolder('manifest', import.meta.url);",
     "export const pages = import.meta.glob('/src/pages/**/*.{astro,md,mdx,html}');",
     'export const urlRules = {"base":"/","trailingSlash":"ignore"};',
   ];
   const head = [
+    `import { bundleFolder } from ${quoted(path.join(import.meta.dirname, 'bundle-folder.ts'))};`,
     `import image0 from ${quoted(path.join(miniRoot, 'src/a.png'))};`,
     'export const images = { "src/a.png": image0 };',
   ];
@@ -860,7 +899,7 @@ describe('previewRenderServer setup', () => {
   it('adds the schema plugin, in its place, and writes schema.json when the site has a content config', async () => {
     const schemaRoot = path.join(fixtures, 'schema-site');
     const out = outputs();
-    const { plugins } = await runSetup({
+    const { plugins, hooks } = await runSetup({
       ...site,
       ...out,
       root: schemaRoot,
@@ -874,6 +913,7 @@ describe('previewRenderServer setup', () => {
       'preview-render-server:image-service',
       'preview-render-server:data-modules',
     ]);
+    hooks['astro:build:done']!({ logger: { warn: vi.fn() } });
     const schema = JSON.parse(
       fs.readFileSync(path.join(out.manifestDir, 'schema.json'), 'utf8'),
     ) as Record<string, unknown>;
@@ -885,12 +925,13 @@ describe('previewRenderServer setup', () => {
 
   it('writes schema.json for a collection that has no loader', async () => {
     const out = outputs();
-    await runSetup({
+    const { hooks } = await runSetup({
       ...site,
       ...out,
       root: path.join(fixtures, 'loaderless-site'),
       regions: {},
     });
+    hooks['astro:build:done']!({ logger: { warn: vi.fn() } });
     const schema = JSON.parse(
       fs.readFileSync(path.join(out.manifestDir, 'schema.json'), 'utf8'),
     ) as Record<string, unknown>;
@@ -938,6 +979,7 @@ describe('previewRenderServer build hooks', () => {
         },
       ],
     });
+    hooks['astro:build:done']!({ logger: { warn: vi.fn() } });
     const routes = JSON.parse(
       fs.readFileSync(path.join(out.manifestDir, 'routes.json'), 'utf8'),
     ) as Array<{ pattern: string; component: string }>;
@@ -950,6 +992,28 @@ describe('previewRenderServer build hooks', () => {
     expect(
       fs.readFileSync(path.join(out.manifestDir, 'routes.json'), 'utf8'),
     ).toContain('\n  {\n    "');
+  });
+
+  it('clears the previous build at build:start and keeps the uploads inside outDir', async () => {
+    const base = path.join(tmp, `clear-hook-${extraCount++}`);
+    const outDir = path.join(base, 'site');
+    const mediaDir = path.join(outDir, 'media');
+    const { hooks } = await runSetup({
+      ...site,
+      outDir,
+      regionsDir: path.join(base, 'regions'),
+      mediaDir,
+      manifestDir: path.join(outDir, 'manifest'),
+    });
+    fs.mkdirSync(path.join(outDir, 'server'), { recursive: true });
+    fs.writeFileSync(path.join(outDir, 'server', 'old.mjs'), 'old');
+    fs.mkdirSync(mediaDir, { recursive: true });
+    fs.writeFileSync(path.join(mediaDir, 'kept.png'), 'bytes');
+    hooks['astro:build:start']!({});
+    expect(fs.readdirSync(outDir)).toEqual(['media']);
+    expect(fs.readFileSync(path.join(mediaDir, 'kept.png'), 'utf8')).toBe(
+      'bytes',
+    );
   });
 
   it('writes the languages from extraLanguages, and says why a manifest was not written', async () => {

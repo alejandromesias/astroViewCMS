@@ -53,6 +53,10 @@ export default function previewRenderServer(
   // Filled in by astro:config:setup, used when the build is done.
   let scan: ProjectScan = { buildTimeFiles: [], dataModules: [] };
   let loaderKinds: Record<string, 'glob' | 'file' | undefined> = {};
+  // schema.json and routes.json are computed early but written at build:done,
+  // after the build has cleared outDir (see clearBundle).
+  let schemaManifest: ReturnType<typeof shapeSchemas> | undefined;
+  let routesManifest: ReturnType<typeof shapeRoutes> | undefined;
   // Where the build keeps its content data store.
   let cacheDir = path.join(site.root, 'node_modules', '.astro');
   let urlRules = { base: '/', trailingSlash: 'ignore' };
@@ -121,6 +125,9 @@ export default function previewRenderServer(
         const srcDir = path.join(site.root, 'src');
         updateConfig({
           vite: {
+            // Astro's own clean-up would also delete the uploads in outDir, so it
+            // is switched off and clearBundle (build:start) does the clean-up.
+            build: { emptyOutDir: false },
             plugins: [
               siteModule(
                 site,
@@ -170,18 +177,29 @@ export default function previewRenderServer(
               c.loader?.kind,
             ]),
           );
-          writeManifest(site, 'schema.json', shapeSchemas(collections));
+          schemaManifest = shapeSchemas(collections);
         }
+      },
+      // Clears the output of the previous build, but keeps the uploads.
+      'astro:build:start': () => {
+        clearBundle(site.outDir, [path.relative(site.outDir, site.mediaDir)]);
       },
       'astro:config:done': ({ config }) => {
         cacheDir = fileURLToPath(config.cacheDir);
         urlRules = { base: config.base, trailingSlash: config.trailingSlash };
       },
       'astro:routes:resolved': ({ routes }) => {
-        writeManifest(site, 'routes.json', shapeRoutes(routes, site.root));
+        routesManifest = shapeRoutes(routes, site.root);
       },
-      // The content data store is complete once the build is done.
+      // The content data store is complete once the build is done, and so is
+      // the outDir clean-up, so the manifests are written from here on.
       'astro:build:done': ({ logger }) => {
+        if (schemaManifest !== undefined) {
+          writeManifest(site, 'schema.json', schemaManifest);
+        }
+        if (routesManifest !== undefined) {
+          writeManifest(site, 'routes.json', routesManifest);
+        }
         try {
           const store = readDataStore(cacheDir);
           const documents = shapeDocuments({
@@ -236,6 +254,18 @@ export function bridgeScript(
   return `import { startBridge } from ${JSON.stringify(bridgeFile)}; startBridge(window, window.fetch.bind(window), { editorOrigins: ${JSON.stringify(editorOrigins)} });`;
 }
 
+/** Removes everything directly inside `outDir` except the names in `keep`, so
+ *  a new build starts from an empty bundle that still holds the uploads. A
+ *  missing `outDir` is left alone. */
+export function clearBundle(outDir: string, keep: readonly string[]): void {
+  if (!fs.existsSync(outDir)) return;
+  for (const name of fs.readdirSync(outDir)) {
+    if (keep.includes(name)) continue;
+    fs.rmSync(path.join(outDir, name), { recursive: true, force: true });
+  }
+}
+
+/** Writes one build manifest, as JSON, into the manifest folder. */
 function writeManifest(
   { manifestDir }: Pick<ResolvedSiteConfig, 'manifestDir'>,
   name: string,
@@ -316,14 +346,12 @@ export function regionWrappers(wrappers: Map<string, string>): Plugin {
 /** Vite plugin that generates the `virtual:preview-site` module (typed in
  *  virtual.d.ts): the region components with their image folder, every
  *  image under the site's `src/` (so draft paths can become ImageMetadata),
- *  and the folder for uploads. The routes import it; it exists only during a
+ *  and the folders for uploads and manifests. Those two folders are found at
+ *  run time, relative to the bundle (bundle-folder.ts), so the bundle still
+ *  works after it is copied. The routes import it; it exists only during a
  *  build. */
 export function siteModule(
-  {
-    root,
-    mediaDir,
-    manifestDir,
-  }: Pick<ResolvedSiteConfig, 'root' | 'mediaDir' | 'manifestDir'>,
+  { root }: Pick<ResolvedSiteConfig, 'root'>,
   contentConfig?: string,
   astroConfigFile?: string,
   /** The site's `base` and `trailingSlash`, known once Astro has resolved its config. */
@@ -342,6 +370,14 @@ export function siteModule(
 
       // `lines` collects the import statements; the exports below use them.
       const lines: string[] = [];
+      // The helper that finds the bundle folder from this module's own URL.
+      const bundleFolderFile = path.join(
+        import.meta.dirname,
+        'bundle-folder.ts',
+      );
+      lines.push(
+        `import { bundleFolder } from ${importPath(root, bundleFolderFile)};`,
+      );
       // Importing an image makes Vite emit it and gives back its ImageMetadata.
       const imageEntries = findImages(path.join(root, 'src')).map((file, i) => {
         lines.push(`import image${i} from ${importPath(root, file)};`);
@@ -351,9 +387,10 @@ export function siteModule(
       return [
         ...lines,
         `export const images = { ${imageEntries.join(', ')} };`,
-        `export const mediaDir = ${JSON.stringify(toPosix(mediaDir))};`,
+        // Relative to the bundle, not absolute paths from the build machine.
+        "export const mediaDir = bundleFolder('media', import.meta.url);",
         `export const siteRoot = ${JSON.stringify(toPosix(root))};`,
-        `export const manifestDir = ${JSON.stringify(toPosix(manifestDir))};`,
+        "export const manifestDir = bundleFolder('manifest', import.meta.url);",
         // The site's pages, loaded on demand by the render route.
         "export const pages = import.meta.glob('/src/pages/**/*.{astro,md,mdx,html}');",
         `export const urlRules = ${JSON.stringify(urlRules())};`,

@@ -9,6 +9,7 @@
     "includes": [
       "preview-render-server/**",
       "preview-protocol/**",
+      "preview-contract/**",
       "!**/dist",
       "!**/node_modules",
       "!**/test/fixtures"
