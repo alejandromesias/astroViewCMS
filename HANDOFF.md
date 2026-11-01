@@ -1,9 +1,9 @@
-# Deprecated: read DOCS/WORKPLAN.md
+# Deprecated: read DOCS/README.md
 
 This handoff was deprecated on 2026-10-26. Don't add to it.
 
-- **Current state, working rules, environment notes and next tasks:**
-  [DOCS/WORKPLAN.md](DOCS/WORKPLAN.md).
+- **Map of the docs, working rules, environment notes, current plan:**
+  [DOCS/README.md](DOCS/README.md).
 - **Architecture and the reasons behind it:**
   [DOCS/SYSTEM-DESIGN.md](DOCS/SYSTEM-DESIGN.md).
 - **How the current preview server works:**

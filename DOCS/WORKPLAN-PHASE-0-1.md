@@ -1,22 +1,15 @@
-# astroViewCMS work plan
+# Work plan, phases 0 and 1 (closed)
 
-Written 2026-10-26. This replaces `../HANDOFF.md`, which is deprecated.
+Written 2026-10-26, closed 2026-10-31. **This is the record of phases 0 and 1;
+don't add tasks to it.** The current plan is
+[WORKPLAN-PHASE-2.md](WORKPLAN-PHASE-2.md), and the map of all documents is
+[README.md](README.md). It was named `WORKPLAN.md` until 2026-10-31, so older
+code comments and handoffs say "WORKPLAN task 1.x": they mean this file.
 
-Read in this order:
-
-1. **[SYSTEM-DESIGN.md](SYSTEM-DESIGN.md):** what we're building and why.
-   Documents, pages, regions, changesets, the read-only preview node, the
-   roadmap. It's the authority: if this plan and the design disagree, fix
-   this plan.
-2. **This file:** where the code stands, how to work on it, and the tasks for
-   phases 0 and 1.
-3. **[PREVIEW-RENDER-SERVER.md](PREVIEW-RENDER-SERVER.md):** how the current
-   code works: page render with a content overlay, the bridge, the routes,
-   build, images, bundling and performance (rewritten in task 1.9).
-
-The research that led here (Tina, AstroAdmin, Sveltia, Sitepins) is in the
-parent folder: `../../HANDOFF.md`, `../../*-SYSTEM-OVERVIEW.md`, and the `tinacms/`,
-`astroadmin/` and `sveltia-cms/` checkouts, which are reference only.
+[SYSTEM-DESIGN.md](SYSTEM-DESIGN.md) is the authority. Sections 2, 3, 4 and 9
+moved to [README.md](README.md), and section 8 to SYSTEM-DESIGN.md section 12
+and [PHASE-2-DESIGN.md](PHASE-2-DESIGN.md). Their headings stay here, so
+references by section number still land.
 
 ## 1. Where we are
 
@@ -31,7 +24,7 @@ parent folder: `../../HANDOFF.md`, `../../*-SYSTEM-OVERVIEW.md`, and the `tinacm
 | Page render with content overlay | done (1.4, 1.5) |
 | Tests: unit, end-to-end with budgets, browser (Chromium) | done (1.8, 1.8a): 1039 unit, 87 end-to-end and 25 browser tests on 2026-10-31 |
 | Protocol package and version (`preview-protocol/`) | done, task 1.6a (D14) |
-| CMS app, saving, publishing, real editor, auth | not started (phases 2 to 4) |
+| CMS app, saving, publishing, real editor, auth | phase 2 onwards: [WORKPLAN-PHASE-2.md](WORKPLAN-PHASE-2.md) |
 
 Folder layout of `astroViewCMS/` (git repo, `main` pushed to `origin` on GitHub):
 
@@ -39,7 +32,7 @@ Folder layout of `astroViewCMS/` (git repo, `main` pushed to `origin` on GitHub)
 astroViewCMS/
 ├─ package.json             npm workspace: preview-protocol, preview-render-server, sample-site
 │                           (preview-protocol from task 1.6a)
-├─ DOCS/                    SYSTEM-DESIGN.md, WORKPLAN.md, PREVIEW-RENDER-SERVER.md
+├─ DOCS/                    map in DOCS/README.md
 ├─ preview-render-server/   the renderer (see PREVIEW-RENDER-SERVER.md)
 ├─ preview-protocol/        postMessage contract + version, no dependencies (task 1.6a)
 ├─ sample-site/             the sample (bigspring template plus additions)
@@ -48,79 +41,15 @@ astroViewCMS/
 
 ## 2. Working rules
 
-- **Ask before committing.** Finish, summarize, ask. The user reviews changes
-  before they land in history.
-- **Follow the design's units.** If a function outside rendering or DOM
-  swapping is keyed by a region (or "island"), it's in the wrong place. See
-  "When to think in regions, and when not" in SYSTEM-DESIGN.md.
-- **The preview node never writes to the site** and holds no credentials.
-- **TypeScript, no build step:** Node runs `.ts` by stripping types
-  (`erasableSyntaxOnly`: no `enum`, no `namespace`; imports use `.ts`).
-  Vite compiles what goes into the build. `tsc` only type-checks.
-- **One test file per source file** (`*.test.ts` next to it), Vitest. Glue
-  with top-level side effects (`build.ts`, `start.ts`) is
-  covered end-to-end. Coverage is **reported, not gated**.
-- **Real Astro in tests:** render real `.astro` fixtures through the Container
-  API (`getViteConfig`), no mocked renderer. Pass dependencies in (`win`,
-  `fetch`) instead of module mocking.
-- **Comments:** brief but thorough, on every function and route.
-- **Docs:** plain-text diagrams, concise system-level explanations. The user
-  prefers step-by-step "how it works" overviews.
-- **Keep the sample site free of CMS config.** Everything CMS-specific lives
-  in `preview-render-server/sites/<site>.config.ts`.
-- **The sample site is a stand-in for real customer sites.** Prefer adding
-  complexity to it over simplifying it. If the CMS can't handle something the
-  template does, fix the CMS, not the template.
+Moved to [README.md section 2](README.md#2-working-rules) on 2026-10-31.
 
-## 3. Environment notes (Windows 11, Node 26, 16 GB RAM)
+## 3. Environment notes
 
-- **Astro 7 detects AI agents** and backgrounds `astro` commands. From an
-  agent, unset the markers:
-
-  ```sh
-  env -u AI_AGENT -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_AGENT_SDK_VERSION <cmd>
-  ```
-
-  The end-to-end setup already does this for its child processes. A person
-  in a terminal doesn't need it.
-- **Memory is tight,** often under 1 GB free. Measure **private memory**,
-  not working set, because Windows trims the latter. Avoid parallel installs
-  and builds.
-- **npm installs are slow here:** bigspring took 8.5 minutes and 564 MB of
-  `node_modules` standalone.
-- **npm 11 blocks install scripts** unless approved
-  (`npm install-scripts approve <pkg>`). No Corepack; for pnpm use
-  `npx --yes pnpm@<version>`.
-- **`localhost` resolves to IPv6** for servers started without
-  `HOST=127.0.0.1`. Use matching hosts when polling.
-- **Python 3.12 is installed** as `py` and `python` (`C:\Python312`).
-  `python3` is the Microsoft Store placeholder and fails, so don't use it.
-  Prefer Node for project scripts, since the project is Node-only.
-- **Heredocs in the agent's Bash tool can lose backslashes.** Write files
-  that contain them with the file-writing tool.
-- **Chrome DevTools automation has hung before.** Ask the user to check UIs
-  in their own browser.
+Moved to [README.md section 3](README.md#3-environment-notes-windows-11-node-26-16-gb-ram).
 
 ## 4. Gotchas already hit
 
-- **The build folder must be inside the workspace.** Prerendering and the
-  built server resolve packages from `node_modules`. A build in the OS temp
-  folder fails.
-- **A relative `outDir` resolves against the site root,** not the render
-  server. `site-config.ts` makes every path absolute.
-- **The virtual module exists only during a build.** Unit tests alias it to a
-  fillable double (`test/fixtures/virtual-preview-islands.ts`).
-- **Swapped-in HTML doesn't re-run component `<script>`s,** and the container
-  writes dev-only script references that the route strips.
-- **Under happy-dom, `URL` is the DOM's,** which `node:fs` rejects. Use paths.
-- **`experimental_AstroContainer` can change in any Astro release.** Tina has
-  the same exposure.
-- **`resolveId` never sees `astro:content`** (Astro resolves it first). The
-  overlay spike works with a `transform` hook, `enforce: 'post'`, that
-  rewrites the import in modules under the site's `src/`.
-- **Bigspring's `astro-auto-import@0.5.1`** declares peers only up to Astro 6.
-  pnpm ignores that; npm needs `--legacy-peer-deps`. It works with Astro 7 in
-  practice (the template builds).
+Moved to [README.md section 4](README.md#4-gotchas-already-hit).
 
 ## 5. The new sample site
 
@@ -1323,145 +1252,21 @@ old mentions.
 
 ## 8. After phase 1
 
-Phases 2 to 5 are in SYSTEM-DESIGN.md section 9: CMS app with saving and
-publishing, real editor, self-host package, multi-tenant. Flesh them out here
-when phase 1 is done, using what it taught.
+Moved on 2026-10-31:
 
-Work already decided for phase 2:
-
-- **Start `cms-server` inside the guardrails.** Create the package with the
-  checklist in [QUALITY-TOOLING.md, "Adding a workspace
-  package"](QUALITY-TOOLING.md#adding-a-workspace-package), and add the import
-  rules of SYSTEM-DESIGN.md section 9, "Before phase 2": the renderer never
-  imports `cms-server`; only `cms-server` uses `child_process` and git;
-  `cms-server` imports `preview-protocol` but not the renderer's internals.
-  Parse every HTTP request with Zod.
-- **Media moves to the CMS app (D12).**
-  - `POST /api/media` stores the upload in staging, measures it once and
-    answers `{ id, url, width, height, format }`.
-  - The CMS app measures images saved since the bundle on save and caches the
-    metadata by content hash. `GET /api/overlay` returns `{ documents, media }`
-    with those entries.
-  - Before saving, the CMS app calls `POST /__preview/validate` with the media
-    map it measured itself, never the editor's.
-  - Saving writes image paths relative to the file that holds the document
-    (D5).
-  - The preview node's stopgap upload route (`media-route.ts`) goes away. Move
-    its tests, including the near-miss file names, to the new route rather
-    than deleting them (D15).
-- **Editor origins as node runtime config (D14).** Replaces
-  `SiteConfig.editorOrigins` (`src/types.ts`) and the argument of
-  `bridgeScript()` (`src/integration.ts`). Done with the cms-server, because
-  the header needs a server in front of the static pages:
-  - the node reads `PREVIEW_EDITOR_ORIGINS`, set by the cms-server (by the
-    preview router with many tenants);
-  - every page response carries `Content-Security-Policy: frame-ancestors
-    'self' <origins>`. Astro middleware never sees prerendered pages, so run
-    the node adapter in middleware mode behind a small Node wrapper (the
-    cms-server's supervision needs one anyway), or use the adapter's
-    static-headers option if it covers this. Check that first;
-  - `GET /__preview/config` is an injected route like the others and answers
-    `{ editorOrigins }` from the variable at run time. It needs no wrapper.
-    The bridge fetches it before announcing `ready`, so `ready` goes to the
-    right origins (one extra request per page load, only inside the iframe);
-  - the bridge keeps accepting messages only from `event.source ===
-    window.parent` with an origin in the list, and keeps its "never `'*'`"
-    rule and test. Only an e2e test that proves the header on static pages
-    may relax that, and D14 must say so;
-  - the token in the iframe URL is exchanged for the preview cookie, then the
-    node redirects to the same URL without it; the bridge also drops a token
-    parameter from the `path` it sends;
-  - both the CMS session cookie and the preview cookie use the `__Host-`
-    prefix (check the two-port local setup);
-  - changing the CMS domain then needs a node restart, not a rebuild.
-- **`GET /api/documents` returns the build-time flags too.** The test editor's
-  stopgap route (1.7) answers `buildTime` and `buildTimeFields` next to the
-  value, because the editor marks those fields "applies after rebuild" (D1).
-  The CMS app's route must do the same, from `documents.json`.
-- **Protocol mismatch triggers one rebuild (D14).** When the CMS app sees a
-  `protocol` mismatch, it starts a preview build, at most once per bundle
-  (site, code revision, bundle id), and shows the saved page with a note while
-  it runs (about 25 s). If the new bundle still mismatches, show the error.
-
-- **Format codecs (D13):** JSON, YAML, and Markdown and MDX frontmatter plus
-  body, each parsing to a value and writing back into the original text.
-  Round-trip tests on the sample's files: comments kept (including the one
-  inside a list), key order kept, the body untouched when only frontmatter
-  changed, one `stats` entry rewritten while the others stay byte for byte,
-  no format converted, and new entries created in the collection's default
-  format.
-
-Work already decided for phase 3:
-
-- **Restricted MDX renderer (D11, decided 2026-10-30).** Parse a draft body
-  with `remark-mdx` without running it, render the Markdown, and render
-  Button, Accordion, Notice, Video, Youtube, Tabs and Tab from an allow-list
-  with literal props. Expressions, imports and exports show a placeholder.
-  The sample's `elements.mdx` is the first test; `client:load` components
-  need the hydration scripts of D6. When it lands, replace the phase 1 test
-  in `d10-d11.e2e.test.ts` (a draft body keeps the saved body and answers
-  `mdx-body`) with tests that the draft body renders, that a placeholder
-  case still answers `mdx-body`, and that no code in the body runs.
-
-- **Markdown plugins without the whole config (D2).** A per-site setting
-  that names the remark and rehype plugins and the Shiki theme, so the
-  preview no longer imports `astro.config`. Measure it against the ~88 MB
-  the import costs now. It also takes the integrations' code out of the
-  preview bundle, which helps bundle portability below.
-- **Guard deletes of referenced documents (D3).** The CMS app refuses, or
-  warns on, deleting a document that another one references (a post's
-  `author`, a block's testimonials). It knows every document, so it can do
-  what the preview node, which only sees the overlay, cannot. Without it a
-  real build still succeeds but publishes the posts without the author.
-- **Script-dependent regions (D6, TBD).** A fallback that re-renders and
-  reloads the iframe with the overlay for regions marked script-dependent
-  (Swiper and the FAQ accordion in the sample). The browser tests of task 1.8
-  pin today's behaviour.
-
-Decisions waiting for the user after phase 1:
-
-- **Collections without a loader (D15).** Confirm that they get a
-  `schema.json` entry and no documents.
-- **Deleting a referenced document (D3).** Block it, or warn and allow it, in
-  the CMS app. Blocking is safer; warning lets an editor delete an author and
-  fix the posts afterwards.
-
-Known issues to carry into those phases:
-
-- **Bundle portability (before `--bundle` in phase 4, and before bundles go
-  to object storage in phase 5).** `manifestDir` and `mediaDir` are absolute
-  build-machine paths baked into the virtual module, and the manifests live
-  in `.build/<site>-manifest/`, outside `outDir`. A bundle copied elsewhere
-  loses them. Move the manifests into `outDir` and resolve both folders
-  relative to the server entry or from an environment variable.
-- **`tsconfig.json` `extends`.** The import scan reads `paths` from the
-  site's own `tsconfig.json` only. Astro's base configs define no `paths`,
-  so this is fine for typical sites. Follow `extends` if a real site needs
-  it.
+- "Work already decided for phase 2" is part of
+  [PHASE-2-DESIGN.md](PHASE-2-DESIGN.md) (media, editor origins, build-time
+  flags, protocol mismatch, codecs, the guardrails).
+- "Work already decided for phase 3" and "Known issues to carry" are in
+  [SYSTEM-DESIGN.md section 12](SYSTEM-DESIGN.md#12-annex-later-phases-decided-work-and-known-issues).
+- "Decisions waiting for the user" were settled on 2026-10-31: deleting a
+  referenced document is blocked unless the same save fixes the referrers
+  (PHASE-2-DESIGN.md 4.3, moved from phase 3 to phase 2), and collections
+  without a loader keep contributing no documents (4.5).
 
 ## 9. Running things
 
-```sh
-cd astroViewCMS && npm install      # once: workspace install
-cd preview-render-server
-npm run build:sample   # preview build of sample-site, with the editor's data route (~10 s warm)
-npm run start:sample   # http://localhost:4401, test editor at /__editor
-npm run typecheck
-npm test               # unit tests (1039 on 2026-10-31)
-npm run coverage       # unit tests + coverage report, with floors
-npm run test:e2e       # builds into .build/e2e-*, real server, HTTP checks and budgets
-npm run test:browser   # Chromium browser tests (the iframe, the bridge, hydration)
-```
-
-From the repo root, `npm run check` runs every quality gate (`-- --e2e` adds
-the end-to-end and browser suites, `-- --all` adds Stryker; timings in
-[QUALITY-TOOLING.md](QUALITY-TOOLING.md)). `npm run graph` draws the module
-graph, `npm run measure:memory` and `npm run measure:listing -- --posts=N`
-repeat the measurements of section 10. `npm run build` and `npm start` in
-`preview-render-server` build and serve `sample-site` (since task 1.10).
-
-From an agent, prefix build and test commands with the `env -u …` line from
-section 3.
+Moved to [README.md section 5](README.md#5-running-things).
 
 ## 10. Measurements
 

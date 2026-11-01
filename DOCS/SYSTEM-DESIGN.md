@@ -2,11 +2,11 @@
 
 Written 2026-10-26. Status: **agreed** by the user on 2026-10-26; phase 1
 (page render with overlay) was built and tested by 2026-10-31. It gives the
-rules future sessions should follow; the tasks that implement it are in
-[WORKPLAN.md](WORKPLAN.md). How the
-preview server works today is in
-[PREVIEW-RENDER-SERVER.md](PREVIEW-RENDER-SERVER.md); this document says why,
-and where it should go next (phases 2 to 5).
+rules future sessions should follow, for every phase. Each phase's design
+and tasks are linked from the roadmap (section 9), and the map of all
+documents is [README.md](README.md). How the preview server works today is
+in [PREVIEW-RENDER-SERVER.md](PREVIEW-RENDER-SERVER.md); this document says
+why, and where it should go next (phases 2 to 5).
 
 Product goals, in the user's order:
 
@@ -123,7 +123,7 @@ Measured on 2026-10-26, same machine and sample site as the other numbers:
 
 Memory doesn't depend on render granularity either. It is ~98 MB rss per
 running site process at rest, and ~200 MB once an editing session has warmed
-up the Markdown renderer (D2; WORKPLAN section 10). Metric history: until
+up the Markdown renderer (D2; WORKPLAN-PHASE-0-1.md section 10). Metric history: until
 2026-10-30 the rest figure was ~80 MB of private memory; rss also counts the
 Node binary and shared libraries, so the two are not comparable. For multi-tenancy, the cost
 driver is **how many preview nodes are alive**, not how big each render is.
@@ -455,7 +455,7 @@ pulls, checks the build and pushes.
   it at the end of phase 2), in place of
   AstroAdmin's ~650 MB `astro dev`. While someone edits, the preview node grows
   to ~200 MB after the warm-up (D2), 210 to 235 MB after a session of renders on
-  the sample, and ~280 MB with 200 posts (WORKPLAN section 10).
+  the sample, and ~280 MB with 200 posts (WORKPLAN-PHASE-0-1.md section 10).
 
 ## 6. Scaling to many tenants
 
@@ -496,7 +496,7 @@ render contract, the CMS API and the bundle layout.
 - **Active sites cost ~210 to 280 MB each.** A node that only serves static
   pages stays at ~100 MB, but an editing session warms up the Markdown renderer
   and Shiki (D2): ~200 MB after the warm-up, 210 to 235 MB after renders on
-  `sample-site`, ~280 MB with 200 posts (measured, WORKPLAN section 10). A 4 GB
+  `sample-site`, ~280 MB with 200 posts (measured, WORKPLAN-PHASE-0-1.md section 10). A 4 GB
   host, keeping ~1 GB for the OS and other processes, fits about 11 to 13
   concurrently edited sites (3,072 MB / 280 MB and / 235 MB). D2's phase 3 plugin
   setting is the main lever to lower it. Renders take 2 to 17 ms (median, one
@@ -573,7 +573,7 @@ test setup and the one-shared-Astro workspace.
 The current sample has one page, one region and two block types. It can't
 show where the design breaks. On 2026-10-26 the user chose the
 `themefisher/bigspring-light-astro` template as the base, with additions on
-top. WORKPLAN.md sections 5 and 6 (task 0.3) have the evaluation and the
+top. WORKPLAN-PHASE-0-1.md sections 5 and 6 (task 0.3) have the evaluation and the
 exact additions. The tree below is the original target list; the template
 covers most of it with its own names. A sample that does should have:
 
@@ -637,25 +637,24 @@ core.
 | **4. Self-host package** | One container image (cms-server + preview node + git), env config, auth (one admin, argon2, sessions), rebuild on push webhook, bundled preview build (`--bundle`), Biome + CI | `docker run` on a small VPS edits and publishes the sample site |
 | **5. Multi-tenant** | Tenants, sites, users, roles in Postgres; preview router with on-demand start and idle stop; build queue with sandboxed workers; bundles and media in object storage; GitHub App for commits; server-side drafts | Two tenants edit two sites at once, isolated. Idle sites use no memory. Measured: memory per active site, cold start, build cost |
 
-### Before phase 2: preparing for a third package
+### Phase documents
 
-Phase 2 adds `cms-server`. It holds saving, validation, git credentials and
-publishing, which makes it the riskiest code in the system. Quality-tooling
-review (2026-10-29, [QUALITY-TOOLING-PLAN.md](QUALITY-TOOLING-PLAN.md) step
-10) found that the guardrails list their scope by path, so a new package is
-unchecked until it is added. At the start of phase 2:
+The table above is the summary. Each phase gets a work plan when it starts,
+and a design of its own when it needs decisions this document doesn't make.
 
-- Create the package with the checklist in [QUALITY-TOOLING.md, "Adding a
-  workspace package"](QUALITY-TOOLING.md#adding-a-workspace-package), so it
-  has the strict flags, Biome, Knip, Stryker and depcruise from its first commit.
-- Add the import rules the design already implies, mirroring decision 4:
-  - the preview renderer never imports `cms-server`;
-  - only `cms-server` may use `child_process` and git (the mirror of the
-    renderer's read-only request-path rule);
-  - `cms-server` may import `preview-protocol`, but not the renderer's
-    internals; anything they share belongs in `preview-protocol`.
-- Keep `cms-server`'s HTTP boundary on the same pattern as the render envelope:
-  parse every request with Zod; never cast.
+| Phase | Design | Work plan | Status |
+|---|---|---|---|
+| 0 and 1 | this document | [WORKPLAN-PHASE-0-1.md](WORKPLAN-PHASE-0-1.md) | closed 2026-10-31 |
+| 2 | [PHASE-2-DESIGN.md](PHASE-2-DESIGN.md) | [WORKPLAN-PHASE-2.md](WORKPLAN-PHASE-2.md) | design approved 2026-10-31; plan written (D17 to D22); not started |
+| 3 to 5 | not yet; decided work in section 12 | not yet | |
+
+**Phase 2 refines the row above** (PHASE-2-DESIGN.md section 4). Publish
+re-applies the saved documents onto the latest remote instead of
+`pull --rebase`, and the CMS change wins a same-document conflict. The delete
+guard for referenced documents moved here from phase 3. The preparation for a
+third package that used to sit here ("Before phase 2", 2026-10-29: the
+quality checklist, the import rules mirroring decision 4, Zod at the HTTP
+boundary) is part of PHASE-2-DESIGN.md sections 3 and 5.11.
 
 ## 10. Open questions and risks
 
@@ -696,12 +695,12 @@ unchecked until it is added. At the start of phase 2:
   at 200 posts; not cached. Re-measure with `npm run measure:listing -- --posts=N`
   before phase 3 and whenever the sample grows.
 - **Memory per editing session** is about 200 to 280 MB once Markdown and
-  Shiki are loaded (WORKPLAN section 10). The multi-tenant memory budget
+  Shiki are loaded (WORKPLAN-PHASE-0-1.md section 10). The multi-tenant memory budget
   (phase 5) depends on it; `cms-server` does not exist yet, so its share is
   unmeasured, to be done at the end of phase 2.
-- **Waiting for the user:** whether deleting a document that other documents
-  reference should block or only warn (D3), and whether collections without a
-  loader should keep contributing no documents (D15, confirm after phase 1).
+- **Settled with the user on 2026-10-31** (logged as D19 and D21): deleting a referenced document is blocked
+  unless the same save fixes the referrers (D3; PHASE-2-DESIGN.md 4.3), and
+  collections without a loader keep contributing no documents (D15; 4.5).
 - **Git integration for multi-tenant:** a GitHub App with API commits (no
   clones, cheap) or working copies on volumes (provider-neutral, more disk).
   Decide in phase 5.
@@ -712,7 +711,7 @@ unchecked until it is added. At the start of phase 2:
 ## 11. Decision log
 
 Decisions taken after the design was agreed, from the review of the sample
-site (WORKPLAN.md task 0.5, 2026-10-26). Each one says what to do, or marks a
+site (WORKPLAN-PHASE-0-1.md task 0.5, 2026-10-26). Each one says what to do, or marks a
 **TBD** with who settles it and when. Sessions must follow these. To change
 one, ask the user and add a new entry instead of editing the old one.
 
@@ -813,7 +812,7 @@ carry it.
   - **Later (phase 3):** a per-site setting that names only the Markdown
     plugins, so the preview doesn't import the whole config. It saves most
     of the ~88 MB and takes the integrations' code out of the preview
-    bundle, which helps bundle portability. See WORKPLAN section 8.
+    bundle, which helps bundle portability. See section 12.
 - **`render(entry)` on an MDX draft:** see D11.
 
 ### D3. Collection schemas: one stubbed CMS schema, two uses
@@ -880,7 +879,7 @@ carry it.
     author. So the preview and the build agree on the HTML; the preview just
     hides the error lines. Phase 2 puts the guard in the CMS app, which
     refuses or warns on deleting a document that others reference
-    (WORKPLAN.md section 8).
+    (decided 2026-10-31: [PHASE-2-DESIGN.md](PHASE-2-DESIGN.md) 4.3).
 - **The real Astro schema never runs on drafts.** Astro's `image()` resolves
   files during content sync, which doesn't exist at render time.
 - **Authoritative validation runs on the preview node,**
@@ -1278,7 +1277,7 @@ file by extension (checked 2026-10-26):
   object, like a JSON document's. Markdown and MDX values are
   `{ data, body }` (D2). Nothing else in the preview depends on the format.
   **One stated exception:** the test editor's dev-only route
-  `GET /__dev/documents` (WORKPLAN task 1.7, only with `PREVIEW_DEV=1`) parses
+  `GET /__dev/documents` (WORKPLAN-PHASE-0-1.md task 1.7, only with `PREVIEW_DEV=1`) parses
   the site's files, because the data store holds schema-parsed values, not the
   raw ones the overlay needs. It goes away with the CMS app's
   `GET /api/documents` (phase 2), where the codecs live.
@@ -1311,7 +1310,7 @@ file by extension (checked 2026-10-26):
   Covered by unit tests; the `stats` collection of task 1.3a doesn't exist
   yet, so it isn't tested against YAML itself.
 - **Sample coverage:** a YAML-only collection, a YAML `file()` collection,
-  and one collection mixing JSON and YAML (WORKPLAN task 1.3a).
+  and one collection mixing JSON and YAML (WORKPLAN-PHASE-0-1.md task 1.3a).
 
 ### D14. The bridge ships in the bundle; the protocol is its own package
 
@@ -1341,7 +1340,7 @@ to the preview node, the editor, or neither.
   an option for phase 3 or later, only if bundles pile up across protocol
   versions.
 - **The protocol is its own package, `preview-protocol/`,** no dependencies,
-  shared by the bridge, the render handlers and every editor (WORKPLAN task
+  shared by the bridge, the render handlers and every editor (WORKPLAN-PHASE-0-1.md task
   1.6a). It has `PROTOCOL_VERSION`. `preview:ready` and `preview:draft` carry
   it. The guards check shape only; a separate `protocolMismatch()` treats a
   missing field like a different value, so a bundle that predates the version
@@ -1440,3 +1439,110 @@ saved since the bundle (section 10), and a hostile client can send any size.
   over the larger, enough for about 790 posts of that size in one overlay.
 - **Multi-tenant (phase 5):** the cap may become per-site runtime config, set
   by the preview router. Keep it a single constant until a site needs more.
+
+### D17. The CMS server is Hono plus plain modules
+
+**Decision** (user, 2026-10-31; PHASE-2-DESIGN.md 4.1). `cms-server` uses Hono
+for routing only. Every route parses its input with Zod, calls a module and
+maps the result; the modules don't import Hono. No database or auth in
+phase 2. Astro server mode, SvelteKit, React Router 7, tRPC and Expo Router
+were considered and rejected for now; the editor's UI framework is chosen at
+the start of phase 3.
+
+### D18. Git: the remote is the truth, the CMS change wins
+
+**Decision** (user, 2026-10-31; PHASE-2-DESIGN.md 4.2). The remote is the
+source of truth. A save is a local commit on `cms/work`. Sync and publish
+re-apply the saved documents onto the latest remote per document, not with
+`git rebase`. Publish is one squashed commit pushed without force. On a
+same-document conflict the CMS version reaches the site, and the commit
+message names what it overwrote; the developer waits, fixes and retries. A
+developer's code that doesn't build doesn't hold the CMS change back.
+
+### D19. Deleting a referenced document is blocked, resolvably (closes D3's TBD)
+
+**Decision** (user, 2026-10-31; PHASE-2-DESIGN.md 4.3). `cms-server` keeps a
+reference index built from `schema.json`. A delete answers `409
+referenced-by` unless the same save changes or deletes every referrer. A
+read-only referrer needs a developer. Moved from phase 3 to phase 2.
+
+### D20. Builds and the optional build check
+
+**Decision** (user, 2026-10-31; PHASE-2-DESIGN.md 4.4). The preview build
+runs on a first start, on code changes, on build-time fields (D1), on a
+protocol mismatch (D14, once per bundle) and after a publish. Before a push,
+`publish.buildCheck` is `always`, `never` or `auto` (the default, which builds
+only when the preview can't vouch for the changeset). The candidate commit is
+the one pushed. Builds run on a git worktree with a scrubbed environment.
+
+### D21. Collections without a loader stay as they are (closes D15's TBD)
+
+**Decision** (2026-10-31; PHASE-2-DESIGN.md 4.5). They get a `schema.json`
+entry and contribute no documents.
+
+### D22. Plain-string image fields are text fields in phase 2
+
+**Decision** (user, 2026-10-31; PHASE-2-DESIGN.md 5.5). Uploads go only into
+`image()` fields. A string field that holds a `public/` path can be edited as
+text, and a save warns without blocking when the file isn't there. The
+sample site is a stand-in, not the spec (README.md section 2).
+
+## 12. Annex: later phases, decided work and known issues
+
+Work already decided for a phase that has no plan yet, and issues to carry
+into it. Moved here on 2026-10-31 from the phase 0 and 1 work plan (its
+section 8). When a phase starts, its items move into that phase's design or
+plan, and a one-line pointer stays here.
+
+### Moved to phase 2
+
+- Media in the CMS app (D12), editor origins as node runtime config (D14),
+  build-time flags in `GET /api/documents` (D1), one rebuild on protocol
+  mismatch (D14), format codecs (D13): [PHASE-2-DESIGN.md](PHASE-2-DESIGN.md)
+  sections 5.3 to 5.7.
+- **Guard deletes of referenced documents (D3):** moved from phase 3,
+  PHASE-2-DESIGN.md 4.3.
+- **Bundle portability** (manifests inside `outDir`, no absolute
+  build-machine paths): brought forward from phase 4, PHASE-2-DESIGN.md 5.1
+  item 4.
+
+### Phase 3: real editor
+
+- **Restricted MDX renderer (D11, decided 2026-10-30).** Parse a draft body
+  with `remark-mdx` without running it, render the Markdown, and render
+  Button, Accordion, Notice, Video, Youtube, Tabs and Tab from an allow-list
+  with literal props. Expressions, imports and exports show a placeholder.
+  The sample's `elements.mdx` is the first test; `client:load` components
+  need the hydration scripts of D6. When it lands, replace the phase 1 test
+  in `d10-d11.e2e.test.ts` (a draft body keeps the saved body and answers
+  `mdx-body`) with tests that the draft body renders, that a placeholder
+  case still answers `mdx-body`, and that no code in the body runs.
+- **Markdown plugins without the whole config (D2).** A per-site setting
+  that names the remark and rehype plugins and the Shiki theme, so the
+  preview no longer imports `astro.config`. Measure it against the ~88 MB
+  the import costs now. It also takes the integrations' code out of the
+  preview bundle, which helps bundle portability.
+- **Script-dependent regions (D6, TBD).** A fallback that re-renders and
+  reloads the iframe with the overlay for regions marked script-dependent
+  (Swiper and the FAQ accordion in the sample). The browser tests of task 1.8
+  pin today's behaviour.
+- **Patch limits from the browser tests (D6):** the island before an
+  inserted block, piling `define:vars` and JSON-LD scripts, the 60 px scroll
+  shift.
+- **The bridge's debug log** goes behind a flag before a real editor embeds
+  the preview (WORKPLAN-PHASE-0-1.md task 1.6a).
+- **Listing-route cache (D7):** run `npm run measure:listing` at the start
+  of phase 3 and decide.
+- **Uploads into plain-string `public/` image fields,** with a picker of the
+  site's existing images, if real use asks for them (PHASE-2-DESIGN.md 5.5).
+- **Delete dialog** that offers to replace or clear references (the phase 2
+  API already supports it, PHASE-2-DESIGN.md 4.3).
+
+### Known issues to carry
+
+- **`tsconfig.json` `extends`.** The import scan reads `paths` from the
+  site's own `tsconfig.json` only. Astro's base configs define no `paths`,
+  so this is fine for typical sites. Follow `extends` if a real site needs
+  it.
+- **Per-file Stryker floor:** not set up. Weakest files on 2026-10-31 are in
+  `Handoffs/HANDOFF-2026-10-31-1302.md`.

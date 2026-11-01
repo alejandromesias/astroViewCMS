@@ -24,7 +24,7 @@ Our own code, in rough priority order.
 Config that sets the quality bar (review when it changes, since a loosened rule silently weakens every other review):
 `biome.json`, `knip.json`, `.dependency-cruiser.cjs`, `stryker.config.json`, `preview-render-server/vitest.config.ts` (coverage floors), `osv-scanner.toml`, `tsconfig*.json`, `package.json` files.
 
-Docs worth a read when behaviour changes: `DOCS/*.md` (`SYSTEM-DESIGN.md`, `PREVIEW-RENDER-SERVER.md`, `QUALITY-TOOLING.md`). Check the doc and the code still agree.
+Docs worth a read when behaviour changes: `DOCS/*.md` (map in `DOCS/README.md`; `SYSTEM-DESIGN.md`, `PREVIEW-RENDER-SERVER.md`, `QUALITY-TOOLING.md`). Check the doc and the code still agree.
 
 ### Test files
 

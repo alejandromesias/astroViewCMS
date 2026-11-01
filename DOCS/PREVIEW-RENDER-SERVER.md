@@ -5,13 +5,13 @@ Covers `preview-render-server/` and `preview-protocol/` as of the end of phase 1
 in memory with a content overlay, and the bridge patches the result into the
 live page. The decisions behind it are in [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md)
 (sections 3 and 11, D1 to D16); the tasks that built it are in
-[WORKPLAN.md](WORKPLAN.md). The first version, which rendered one component per
+[WORKPLAN-PHASE-0-1.md](WORKPLAN-PHASE-0-1.md). The first version, which rendered one component per
 island, is gone; its build, bundling, image and performance findings are kept
 below and marked where they were measured on the old sample.
 
 Numbers come from the development machine (Windows 11, Node 26, Astro 7,
 16 GB RAM), on `sample-site` (the bigspring template plus additions) unless a
-row says otherwise. The measurement table is in WORKPLAN.md section 10.
+row says otherwise. The measurement table is in WORKPLAN-PHASE-0-1.md section 10.
 
 ## In one sentence
 
@@ -488,7 +488,7 @@ How we measure:
 | Whole overlay, 200-post sample (226 documents) | 1.06 MiB, under the 4 MiB cap (D16) |
 | Preview build | ~10 s warm (14 s default, 26 s with 200 posts) |
 
-Full rows, with the method for each, are in WORKPLAN.md section 10.
+Full rows, with the method for each, are in WORKPLAN-PHASE-0-1.md section 10.
 
 ### Other runtimes we tried (first version)
 
@@ -523,7 +523,7 @@ The gates, thresholds and how to read them are in
 
 ## Known limits and next steps
 
-Logged with the follow-ups in WORKPLAN.md, task 1.8a (loose ends table).
+Logged with the follow-ups in WORKPLAN-PHASE-0-1.md, task 1.8a (loose ends table).
 
 - **Drafts aren't persisted.** They live only in the editor tab.
 - **Component scripts** don't run on swapped HTML (D6).
@@ -558,4 +558,4 @@ npm run test:browser                # Chromium browser tests
 `npm run build` and `npm start` build and serve `sample-site` without the
 editor's data route (`--dev` adds it, as `build:sample` does). From an AI agent, unset Astro's
 agent-detection variables for the build (see the environment notes in
-[WORKPLAN.md](WORKPLAN.md)).
+[README.md](README.md#3-environment-notes-windows-11-node-26-16-gb-ram)).
