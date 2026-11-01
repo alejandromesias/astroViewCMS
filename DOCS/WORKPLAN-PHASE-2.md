@@ -25,7 +25,7 @@ before writing tests, [TESTING-RECOMMENDATIONS.md](TESTING-RECOMMENDATIONS.md).
 |---|---|
 | Phase 2 design | approved by the user, 2026-10-31 |
 | Decisions D17 to D22 | logged in SYSTEM-DESIGN section 11 |
-| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0g, 2.0i done 2026-11-01; the rest not started |
+| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01 ; the rest not started |
 
 **Done when:** every row of PHASE-2-DESIGN.md section 1 passes. Section 5
 below maps each row to the test that proves it.
@@ -272,7 +272,7 @@ done. Item 6 of the design (the front server) is step 2.8.
   - `test/support/preview-server.ts` now exports `SERVER_DIR`, `childEnv`,
     `freePort` and `waitForServer` for reuse.
 
-#### 2.0f Security review — start now · [user]
+#### 2.0f Security review — DONE 2026-11-01, remaining ignore approved · [user]
 
 - Look at the 6 moderate advisories from `npm install` and the osv-scanner
   ignores nobody reviewed (`postcss-selector-parser`, the four `qs`
@@ -280,6 +280,14 @@ done. Item 6 of the design (the front server) is step 2.8.
   reason and an expiry date in `osv-scanner.toml`.
 - **Done when:** `npm run audit` passes with no unexplained ignore; the user
   approves the remaining ones. Gate for 2.1a (design 5.1 item 7).
+- **Result (2026-11-01):** root `overrides` in `package.json`
+  pin `qs ~6.16.2` and `postcss-selector-parser ~6.1.5` (both minor bumps; the
+  parents Stryker and `@tailwindcss/typography` pin the old versions
+  exactly, and no newer parent exists). Five ignores removed. Remaining:
+  `GHSA-g3hv-75wg-m249` (minimatch via Stryker 10.1.1, fix is major 11.0.1),
+  until 2026-12-15, **approved by the user 2026-11-01**. Remarks: remove the overrides
+  when Stryker and typography widen their pins; sample-site builds fine with
+  the new parser (end-to-end suites pass); `npm run check` passes.
 
 #### 2.0g Record the 5 ms render goal — DONE 2026-11-01
 
@@ -295,7 +303,7 @@ done. Item 6 of the design (the front server) is step 2.8.
   line 1294 calls the same page "44 blocks" (11.4 ms, 50 renders, no overlay)
   while the goal rows say "40-block"; different conditions, left as is.
 
-#### 2.0h Validate tells real errors from refinements that threw — start now
+#### 2.0h Validate tells real errors from refinements that threw — DONE 2026-11-01
 
 - Each error in `ValidationResponse` (`preview-protocol`) gets
   `kind: 'invalid' | 'refinement-threw'`. `handleValidate` sets it; the
@@ -305,6 +313,14 @@ done. Item 6 of the design (the front server) is step 2.8.
 - **Done when:** unit tests in `render/handlers.test.ts` cover a refinement
   that throws, one that returns false, and a legacy response; the end-to-end
   D3 tests still pass. [build]
+- **Result (2026-11-01):** `FieldError.kind?` is optional on
+  the wire (`FieldErrorKind` in `preview-protocol`); `FieldIssue.kind` is
+  required server-side (`overlay/errors.ts`). `content-api.ts` sets
+  `refinement-threw` in the thrown-refinement catch and `invalid` elsewhere;
+  `bridge.ts` reads a missing kind as `invalid`. `handlers.ts`, `editor.ts`
+  (carries the field, never branches on it) and `preview-contract` (no copy
+  of the shape) needed no change. Four new tests in `handlers.test.ts`, one
+  in `bridge.test.ts`; `d12-media.e2e` expectations gained `kind: 'invalid'`.
 
 #### 2.0i Pin D15 — DONE 2026-11-01
 
@@ -615,7 +631,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
 Design 5.7, D14. All of it lives in `preview-render-server`, and its
 request-path rules apply (no `child_process`, no `fs` except the allowlist).
 
-#### 2.8a Cookie and origin spike — start now · [build]
+#### 2.8a Cookie and origin spike — DONE 2026-11-01, cookie decided: CHIPS · [build]
 
 - A throwaway Chromium test (Playwright is in the repo): a parent page on
   `cms.localhost` embeds an iframe on `preview.localhost`. Check that:
@@ -630,6 +646,16 @@ request-path rules apply (no `child_process`, no `fs` except the allowlist).
   2.1c and 2.8c settle the origins.
 - **Done when:** the outcome is written into PHASE-2-DESIGN.md 5.7 (what
   works, with the exact cookie flags); the spike is deleted.
+- **Result (2026-11-01):** design 5.7 has the outcome. The
+  `SameSite=Lax` gate cookie is dropped in an iframe on another host
+  (`cms.localhost` and `preview.localhost` are cross-site); mkcert would not
+  fix that. Decision (user, 2026-11-01): `__Host-preview; HttpOnly; Secure;
+  SameSite=None; Partitioned; Path=/`. A second spike confirmed in Chromium
+  156 that it is stored with the CMS as partition key, sent on the iframe's
+  navigation and `fetch`, and absent top-level and under another embedder.
+  Design 5.7 is updated; Safari and Firefox are a phase 4 item in
+  SYSTEM-DESIGN.md section 12, with one shared site as the fallback. 2.8b
+  and 2.8c are unblocked.
 
 #### 2.8b Front server — after 2.0d, 2.0e
 

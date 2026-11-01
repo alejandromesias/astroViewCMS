@@ -192,12 +192,22 @@ describe('handleRender', () => {
 
   it('422 lists every failing field when a draft does not fit its schema, also when Astro wraps the error', async () => {
     const draft = new DraftError('blog/a', [
-      { path: ['title'], message: 'required' },
+      { path: ['title'], message: 'required', kind: 'invalid' },
     ]);
     const wrapped = Object.assign(new Error('render failed'), { cause: draft });
     const all = [
-      { key: 'blog/a', path: ['title'], message: 'required' },
-      { key: 'authors/b', path: ['name'], message: 'bad' },
+      {
+        key: 'blog/a',
+        path: ['title'],
+        message: 'required',
+        kind: 'invalid' as const,
+      },
+      {
+        key: 'authors/b',
+        path: ['name'],
+        message: 'bad',
+        kind: 'invalid' as const,
+      },
     ];
     const deps = makeDeps({
       renderPage: async () => Promise.reject(wrapped),
@@ -210,13 +220,20 @@ describe('handleRender', () => {
 
   it('422 falls back to the error the render hit when validation finds nothing', async () => {
     const draft = new DraftError('blog/a', [
-      { path: ['title'], message: 'required' },
+      { path: ['title'], message: 'required', kind: 'invalid' },
     ]);
     const deps = makeDeps({ renderPage: async () => Promise.reject(draft) });
     const response = await handleRender(post({ documents: {} }), deps);
     expect(response.status).toBe(422);
     expect(await response.json()).toEqual({
-      errors: [{ key: 'blog/a', path: ['title'], message: 'required' }],
+      errors: [
+        {
+          key: 'blog/a',
+          path: ['title'],
+          message: 'required',
+          kind: 'invalid',
+        },
+      ],
     });
   });
 
@@ -252,7 +269,14 @@ describe('handleValidate', () => {
   });
 
   it('422 with the errors', async () => {
-    const errors = [{ key: 'blog/a', path: ['title'], message: 'required' }];
+    const errors = [
+      {
+        key: 'blog/a',
+        path: ['title'],
+        message: 'required',
+        kind: 'invalid' as const,
+      },
+    ];
     const deps = makeDeps({ validate: async () => errors });
     const response = await handleValidate(
       validateRequest({ documents: { 'blog/a': {} } }),
@@ -272,7 +296,9 @@ describe('handleValidate', () => {
 // -- Failure paths and details -------------------------------------------------
 
 const draftError = () =>
-  new DraftError('blog/a', [{ path: ['title'], message: 'required' }]);
+  new DraftError('blog/a', [
+    { path: ['title'], message: 'required', kind: 'invalid' },
+  ]);
 /** An error whose `cause` chain holds `inner` after `depth` wrappers. */
 const wrapped = (inner: unknown, depth: number) => {
   let error = inner;
@@ -320,7 +346,14 @@ describe('handleRender: the failure answers', () => {
     const response = await handleRender(post({ documents: {} }), deps);
     expect(response.status).toBe(422);
     expect(await response.json()).toEqual({
-      errors: [{ key: 'blog/a', path: ['title'], message: 'required' }],
+      errors: [
+        {
+          key: 'blog/a',
+          path: ['title'],
+          message: 'required',
+          kind: 'invalid',
+        },
+      ],
     });
   });
 
@@ -584,7 +617,9 @@ describe('handleValidate: failures and answers', () => {
     const bad = await handleValidate(
       validateRequest({ documents: {} }),
       makeDeps({
-        validate: async () => [{ key: 'a', path: [], message: 'm' }],
+        validate: async () => [
+          { key: 'a', path: [], message: 'm', kind: 'invalid' },
+        ],
       }),
     );
     expect(bad.headers.get('content-type')).toBe('application/json');
@@ -723,5 +758,92 @@ describe.each(CAP_ROUTES)('%s: body cap (D16)', (route, handle) => {
     const response = await handle(capRequest(route, broken), makeDeps());
     expect(response.status).toBe(400);
     expect(await response.text()).toBe('Body must be JSON');
+  });
+});
+
+// -- The kind of each 422 error (D3, WORKPLAN 2.0h) -----------------------------
+
+describe('the kind of each 422 error', () => {
+  const validateRequest = (body: unknown) =>
+    new Request('http://x/__preview/validate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  it('a refinement that threw is kind refinement-threw on the validate route, 422', async () => {
+    const errors = [
+      {
+        key: 'blog/a',
+        path: [],
+        message: 'refinement blew up',
+        kind: 'refinement-threw' as const,
+      },
+    ];
+    const response = await handleValidate(
+      validateRequest({ documents: { 'blog/a': {} } }),
+      makeDeps({ validate: async () => errors }),
+    );
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({ errors });
+  });
+
+  it('a refinement that threw is kind refinement-threw on the render route, 422', async () => {
+    const draft = new DraftError('blog/a', [
+      { path: [], message: 'refinement blew up', kind: 'refinement-threw' },
+    ]);
+    const response = await handleRender(
+      post({ documents: {} }),
+      failingRender(draft),
+    );
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({
+      errors: [
+        {
+          key: 'blog/a',
+          path: [],
+          message: 'refinement blew up',
+          kind: 'refinement-threw',
+        },
+      ],
+    });
+  });
+
+  it('a schema that rejects the value is kind invalid on the render route, 422', async () => {
+    const draft = new DraftError('blog/a', [
+      { path: ['title'], message: 'Required', kind: 'invalid' },
+    ]);
+    const response = await handleRender(
+      post({ documents: {} }),
+      failingRender(draft),
+    );
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({
+      errors: [
+        {
+          key: 'blog/a',
+          path: ['title'],
+          message: 'Required',
+          kind: 'invalid',
+        },
+      ],
+    });
+  });
+
+  it('a schema that rejects the value is kind invalid on the validate route, 422', async () => {
+    const errors = [
+      {
+        key: 'blog/a',
+        path: ['title'],
+        message: 'Required',
+        kind: 'invalid' as const,
+      },
+    ];
+    const response = await handleValidate(
+      validateRequest({ documents: { 'blog/a': {} } }),
+      makeDeps({ validate: async () => errors }),
+    );
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({ errors });
   });
 });

@@ -32,11 +32,19 @@ export interface RenderResponse {
   renderMs: number;
 }
 
-/** One failing field, in the 422 answers of POST /__preview/render and /__preview/validate. */
+/** Why a field failed (D3). `invalid`: the schema rejected the value.
+ *  `refinement-threw`: a refinement or transform threw instead of returning
+ *  false, so the schema never judged the value (the site's code is at fault). */
+export type FieldErrorKind = 'invalid' | 'refinement-threw';
+
+/** One failing field, in the 422 answers of POST /__preview/render and /__preview/validate.
+ *  `kind` is optional: bundles built before it existed send none, and a missing
+ *  `kind` must be read as `invalid`. */
 export interface FieldError {
   key: string;
   path: (string | number)[];
   message: string;
+  kind?: FieldErrorKind;
 }
 
 /** 422 answer of POST /__preview/render and /__preview/validate. */

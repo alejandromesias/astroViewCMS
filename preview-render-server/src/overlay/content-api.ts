@@ -174,6 +174,7 @@ export function createContentApi(deps: ContentApiDeps) {
               typeof part === 'symbol' ? String(part) : part,
             ),
             message: issue.message,
+            kind: 'invalid',
           }));
           throw new DraftError(key, issues);
         }
@@ -183,7 +184,11 @@ export function createContentApi(deps: ContentApiDeps) {
         // A refinement or transform that throws instead of returning false (D3).
         context.limits.add('schema-refinement');
         throw new DraftError(key, [
-          { path: [], message: (error as Error).message },
+          {
+            path: [],
+            message: (error as Error).message,
+            kind: 'refinement-threw',
+          },
         ]);
       } finally {
         parsingFile = '';
@@ -312,12 +317,14 @@ export function createContentApi(deps: ContentApiDeps) {
           path: [],
           message:
             'Not a document key (expected "collection/id" or "data:<path>")',
+          kind: 'invalid',
         });
       } else if (collections && !collections[split.collection]) {
         errors.push({
           key,
           path: [],
           message: `Unknown collection "${split.collection}"`,
+          kind: 'invalid',
         });
       } else {
         try {

@@ -358,10 +358,48 @@ describe('on a draft', () => {
         path: '/blog/blog-1',
         status: 422,
         message: 'A draft does not fit its schema',
-        errors,
+        errors: [{ ...errors[0], kind: 'invalid' }],
       }),
     );
     expect(region().innerHTML).toBe('<p>saved</p>');
+  });
+
+  it('a 422 from a bundle without kind reads every field as invalid, and keeps a kind it was sent', async () => {
+    const legacy = [
+      { key: 'blog/blog-1', path: ['title'], message: 'Required' },
+      {
+        key: 'blog/blog-1',
+        path: [],
+        message: 'boom',
+        kind: 'refinement-threw',
+      },
+    ];
+    bridge.fetch.mockResolvedValue(
+      Response.json({ errors: legacy }, { status: 422 }),
+    );
+    bridge.post(draft());
+    await vi.waitFor(() =>
+      expect(bridge.sent().at(-1)).toEqual({
+        type: 'preview:error',
+        path: '/blog/blog-1',
+        status: 422,
+        message: 'A draft does not fit its schema',
+        errors: [
+          {
+            key: 'blog/blog-1',
+            path: ['title'],
+            message: 'Required',
+            kind: 'invalid',
+          },
+          {
+            key: 'blog/blog-1',
+            path: [],
+            message: 'boom',
+            kind: 'refinement-threw',
+          },
+        ],
+      }),
+    );
   });
 
   it('a 404 (no page for this path in the draft) is reported', async () => {

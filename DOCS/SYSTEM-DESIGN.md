@@ -1538,6 +1538,23 @@ plan, and a one-line pointer stays here.
 - **Delete dialog** that offers to replace or clear references (the phase 2
   API already supports it, PHASE-2-DESIGN.md 4.3).
 
+### Phase 4: hosting and auth
+
+- **Verify the preview gate cookie in Safari and Firefox (decided
+  2026-11-01).** `__Host-preview; HttpOnly; Secure; SameSite=None;
+  Partitioned; Path=/` was checked only in Chromium 156
+  ([PHASE-2-DESIGN.md](PHASE-2-DESIGN.md) section 5.7). Fallback if Safari
+  breaks it: one registrable site for the CMS and preview origins with
+  `SameSite=Lax`, which makes tenant site code same-site with the CMS.
+  Smoke test, 2026-11-01, Playwright WebKit 27.2 on Windows (not Safari; a
+  different network layer): `*.localhost` resolves, but a `Set-Cookie` from
+  the cross-site iframe is dropped in every variant (`Partitioned`, not
+  partitioned, `Lax; Partitioned`), while a top-level `Set-Cookie` and
+  `addCookies` work. So WebKit blocks third-party cookies by default and
+  does not accept this cookie in an iframe. Plan on option B (one shared
+  site) for Safari unless a macOS WebKit run or a real Safari shows
+  `Partitioned` working. The script was thrown away.
+
 ### Known issues to carry
 
 - **`tsconfig.json` `extends`.** The import scan reads `paths` from the

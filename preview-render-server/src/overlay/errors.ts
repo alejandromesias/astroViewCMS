@@ -1,7 +1,11 @@
+import type { FieldErrorKind } from 'preview-protocol';
+
 export interface FieldIssue {
   /** Path of the field inside the document, e.g. `['blocks', 2, 'title']`. */
   path: (string | number)[];
   message: string;
+  /** `invalid` for a schema failure, `refinement-threw` for a refinement that threw (D3). */
+  kind: FieldErrorKind;
 }
 
 /** A draft that the site's schema rejects. The render route answers it with

@@ -98,6 +98,7 @@ describe('D12: a media-map entry is rendered as its own URL', () => {
         key: 'authors/ana-torres',
         path: ['avatar'],
         message: `image not found: ${avatar}`,
+        kind: 'invalid',
       },
     ]);
   });
@@ -152,6 +153,7 @@ describe('D12: a media-map entry is rendered as its own URL', () => {
         key: 'authors/ana-torres',
         path: ['avatar'],
         message: 'image not found: uploads/evil.png',
+        kind: 'invalid',
       },
     ]);
   });
@@ -168,6 +170,7 @@ describe('D12: resolution order in flavor 2', () => {
         key: 'authors/ana-torres',
         path: ['avatar'],
         message: 'image not found: uploads/new-avatar.png',
+        kind: 'invalid',
       },
     ]);
   });

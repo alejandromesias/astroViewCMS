@@ -656,7 +656,12 @@ describe('validate', () => {
       'blog/x': { data: { title: 'T', max: 3 }, body: '' },
     });
     expect(errors).toEqual([
-      { key: 'blog/x', path: [], message: 'refinement blew up' },
+      {
+        key: 'blog/x',
+        path: [],
+        message: 'refinement blew up',
+        kind: 'refinement-threw',
+      },
     ]);
   });
 });
@@ -856,7 +861,7 @@ describe('schema issues', () => {
       tags: ['a', 5],
     });
     expect(error.issues).toEqual([
-      { path: ['tags', 1], message: expect.any(String) },
+      { path: ['tags', 1], message: expect.any(String), kind: 'invalid' },
     ]);
     const symbol = Symbol('s');
     const custom = await failure(
@@ -867,7 +872,9 @@ describe('schema issues', () => {
         ),
       {},
     );
-    expect(custom.issues).toEqual([{ path: ['Symbol(s)'], message: 'm' }]);
+    expect(custom.issues).toEqual([
+      { path: ['Symbol(s)'], message: 'm', kind: 'invalid' },
+    ]);
   });
 
   it('does not report the schema-refinement limit for an ordinary failure', async () => {
@@ -886,7 +893,9 @@ describe('schema issues', () => {
       }),
       {},
     );
-    expect(error.issues).toEqual([{ path: [], message: 'boom' }]);
+    expect(error.issues).toEqual([
+      { path: [], message: 'boom', kind: 'refinement-threw' },
+    ]);
   });
 
   it('fails a reference to a collection the site does not have', async () => {
@@ -1060,6 +1069,7 @@ describe('validate details', () => {
         path: [],
         message:
           'Not a document key (expected "collection/id" or "data:<path>")',
+        kind: 'invalid',
       },
     ]);
     expect(await validateWith(api, { '/lead': {} })).toHaveLength(1);
@@ -1067,7 +1077,12 @@ describe('validate details', () => {
 
   it('describes unknown collections', async () => {
     expect(await validateWith(api, { 'nowhere/x': {} })).toEqual([
-      { key: 'nowhere/x', path: [], message: 'Unknown collection "nowhere"' },
+      {
+        key: 'nowhere/x',
+        path: [],
+        message: 'Unknown collection "nowhere"',
+        kind: 'invalid',
+      },
     ]);
   });
 

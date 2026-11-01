@@ -8,6 +8,7 @@
 // Pattern from Tina's bridge (@tinacms/bridge region-refresh.ts, Apache-2.0).
 import {
   type DraftMessage,
+  type FieldError,
   isDraftMessage,
   type PageMessage,
   PROTOCOL_VERSION,
@@ -179,6 +180,12 @@ function queryName(pair: string): string {
   }
 }
 
+/** A field error with its kind filled in: a bundle built before `kind`
+ *  existed sends none, and that reads as `invalid` (conservative). */
+function withKind(error: FieldError): FieldError {
+  return { ...error, kind: error.kind ?? 'invalid' };
+}
+
 /** An error answer of the render route as the editor gets it. */
 function failure(path: string, status: number, body: string): PageMessage {
   if (status === 422) {
@@ -189,7 +196,7 @@ function failure(path: string, status: number, body: string): PageMessage {
         path,
         status,
         message: 'A draft does not fit its schema',
-        errors,
+        ...(Array.isArray(errors) ? { errors: errors.map(withKind) } : {}),
       };
     } catch {
       // Not the usual JSON: fall through to the plain message.

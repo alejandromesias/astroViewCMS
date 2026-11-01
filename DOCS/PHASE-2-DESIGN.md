@@ -495,8 +495,8 @@ runtime `frame-ancestors`. So the preview build switches the adapter to
 fronts it:
 
 1. **Token exchange:** a request with `?preview_token=` checks the token,
-   sets `__Host-preview` (HttpOnly, Secure, SameSite=Lax, `Path=/`, about
-   12 h) and redirects to the same URL without the token.
+   sets `__Host-preview` (`HttpOnly; Secure; SameSite=None; Partitioned;
+   Path=/`, about 12 h) and redirects to the same URL without the token.
 2. **Gate:** every other request needs the cookie or the internal bearer
    header, or it gets `401`.
 3. **Header:** every response carries `Content-Security-Policy:
@@ -512,13 +512,54 @@ fronts it:
 - The bridge drops a `preview_token` parameter from the `path` it sends,
   keeps its `event.source === window.parent` check and its "never `'*'`"
   rule (D14).
-- **Local origins** **(call, to verify first):** cookies ignore the port,
-  so `localhost:4400` and `localhost:4401` share a cookie jar, and a site
-  script on the preview port could set cookies the CMS receives. `__Host-`
-  doesn't separate ports. Use hostnames instead: `cms.localhost` and
-  `preview.localhost` (browsers resolve `*.localhost` to the loopback
-  address). Verify in Chromium that `Secure` cookies work on plain HTTP
-  there, as they do on `localhost`. If not, use local TLS (mkcert).
+- **Local origins** **(call):** cookies ignore the port, so
+  `localhost:4400` and `localhost:4401` share a cookie jar, and a site
+  script on the preview port could set cookies the CMS receives. Use
+  hostnames instead: `cms.localhost` and `preview.localhost`. Checked
+  2026-11-01 in headless Chromium 156.0.8078.4 (throwaway spike, not kept):
+  1. Fails in the iframe flow. A `Secure` `__Host-preview` set by a `/set`
+     iframe embedded by `cms.localhost` is dropped (`SameSite=Lax`). Set
+     as a top-level navigation on `preview.localhost` it is stored (`HttpOnly;
+     Secure; SameSite=Lax; Path=/; Max-Age=43200`, 12 h) and sent.
+  2. Fails. The iframe's navigation and its `fetch('/whoami')` never send it.
+  3. Passes. `__Host-cms` never reaches `preview.localhost`, and
+     `__Host-preview` never reaches `cms.localhost`.
+  4. Passes. `*.localhost` reaches loopback with no hosts entry.
+  5. Not same-site: the iframe sends `Sec-Fetch-Site: cross-site`.
+     `SameSite=None; Secure` is stored and sent in that iframe over plain
+     HTTP. `frame-ancestors 'self' http://cms.localhost:<port>` lets the
+     embed render, and `frame-ancestors 'none'` blocks it.
+  Consequence: `SameSite=Lax` does not work for an iframe on another host,
+  and mkcert would not change that, because HTTPS keeps `cms.localhost` and
+  `preview.localhost` cross-site.
+
+  **Decision (2026-11-01):** keep the cookie and make it a CHIPS cookie:
+  `__Host-preview=<value>; HttpOnly; Secure; SameSite=None; Partitioned;
+  Path=/; Max-Age=43200`. It is set inside the iframe by the token exchange
+  and only has to work there, under the CMS as the top-level site. Second
+  spike, same Chromium 156.0.8078.4, plain HTTP:
+  1. Set in the iframe under `cms.localhost`, it is stored with
+     `partitionKey` `http://cms.localhost`.
+  2. It is sent on the iframe's navigation and on `fetch('/whoami')` from
+     inside the iframe.
+  3. It is absent when `preview.localhost` is opened top-level, and when the
+     same preview is embedded by another site (`other.localhost`).
+  4. Controls: without `Partitioned` it is sent everywhere (no isolation,
+     and Chromium logs a third-party phase-out warning); `SameSite=Lax;
+     Partitioned` is rejected at set time.
+  5. `__Host-` with `Partitioned` is accepted, with no cookie console
+     messages.
+
+  The gate only hides drafts and unreleased builds, and the preview holds no
+  credentials, so `SameSite=None` is acceptable: other sites cannot read
+  responses or change anything. Firefox is untested. A WebKit smoke test (Playwright on Windows, not
+  Safari) dropped the cookie in every variant, so Safari is likely to need the
+  fallback (phase 4 item in SYSTEM-DESIGN.md section 12). **Fallback if Safari breaks it:** one
+  registrable site for both origins (`cms.example.com`,
+  `preview.example.com`) with `SameSite=Lax`. Rejected as the default: tenant
+  site code would become same-site with the CMS, which removes `SameSite` as
+  a defence for `cms-server`. A token in the URL path was rejected (leaks
+  through referrers, history and logs; every link and asset URL changes).
 
 ### 5.8 The test editor on the CMS origin
 
