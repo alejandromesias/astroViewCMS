@@ -1,4 +1,5 @@
 import { z } from 'astro/zod';
+import { errorMessage } from '../error-message.ts';
 import type { CollectionInfo, LoaderInfo } from './stubs-flavor1.ts';
 
 /** One collection in schema.json. `schema` is absent when the collection has
@@ -25,7 +26,7 @@ export function shapeSchemas(
             unrepresentable: 'any',
           });
         } catch (error) {
-          out.error = (error as Error).message;
+          out.error = errorMessage(error);
         }
       }
       return [name, out];

@@ -6,6 +6,7 @@
 // dates are Dates, `data:` files aren't in it). Local dev only: it is injected
 // when the build runs with PREVIEW_DEV=1. Remove it with the stopgap.
 import { parse } from 'yaml';
+import { errorMessage } from '../error-message.ts';
 import type { DocumentRecord } from '../manifest/types.ts';
 import { methodNotAllowed, rejectCrossSite } from '../request-guard.ts';
 
@@ -128,9 +129,8 @@ export function handleDocument(
   try {
     return Response.json({ ...answer, value: parseDocument(text, record) });
   } catch (error) {
-    return new Response(
-      `Cannot parse ${record.file}: ${(error as Error).message}`,
-      { status: 500 },
-    );
+    return new Response(`Cannot parse ${record.file}: ${errorMessage(error)}`, {
+      status: 500,
+    });
   }
 }

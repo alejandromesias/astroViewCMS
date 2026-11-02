@@ -886,10 +886,10 @@ describe('schema issues', () => {
     expect(context.limits.size).toBe(0);
   });
 
-  it('a refinement that throws a non-Error still reports an issue', async () => {
+  it('a refinement that throws a string still reports an issue with the string', async () => {
     const error = await failure(
       z.object({}).refine(() => {
-        throw new Error('boom');
+        throw 'boom';
       }),
       {},
     );
@@ -897,6 +897,26 @@ describe('schema issues', () => {
       { path: [], message: 'boom', kind: 'refinement-threw' },
     ]);
   });
+
+  it.each([
+    ['null', null, 'null'],
+    ['undefined', undefined, 'undefined'],
+    ['a plain object', { code: 7 }, '[object Object]'],
+  ])(
+    'a refinement that throws %s still reports an issue, not a second throw',
+    async (_label, thrown, message) => {
+      const error = await failure(
+        z.object({}).refine(() => {
+          throw thrown;
+        }),
+        {},
+      );
+      expect(error).toBeInstanceOf(DraftError);
+      expect(error.issues).toEqual([
+        { path: [], message, kind: 'refinement-threw' },
+      ]);
+    },
+  );
 
   it('fails a reference to a collection the site does not have', async () => {
     const error = await failure(z.object({ r: reference('nowhere') }), {

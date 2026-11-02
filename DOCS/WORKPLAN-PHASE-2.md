@@ -291,6 +291,9 @@ done. Item 6 of the design (the front server) is step 2.8.
     `--bundle-id` reports "Unknown option" until 2.0b adds it.
   - `test/support/preview-server.ts` now exports `SERVER_DIR`, `childEnv`,
     `freePort` and `waitForServer` for reuse.
+  - Review fix (P1): `build.ts` runs `assertOutDirIsSafe` before the build, so
+    `--out .` (the repo root, the cwd) or a non-empty folder without a
+    `bundle.json` is refused before anything is cleared.
 
 #### 2.0f Security review — DONE 2026-11-01, remaining ignore approved · [user]
 
@@ -341,6 +344,10 @@ done. Item 6 of the design (the front server) is step 2.8.
   (carries the field, never branches on it) and `preview-contract` (no copy
   of the shape) needed no change. Four new tests in `handlers.test.ts`, one
   in `bridge.test.ts`; `d12-media.e2e` expectations gained `kind: 'invalid'`.
+  - **Review fix (P2):** a thrown non-Error (`null`, a string, an object) no
+    longer makes the catch throw again. `error-message.ts` `errorMessage()` is
+    used in `content-api.ts`, `dev/documents.ts` and `schema/json-schema.ts`;
+    `integration.ts` still has its own `(error as Error).message` sites.
 
 #### 2.0i Pin D15 — DONE 2026-11-01
 

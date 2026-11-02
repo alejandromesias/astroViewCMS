@@ -7,6 +7,7 @@ import { revisionOf } from 'preview-contract';
 import { PROTOCOL_VERSION } from 'preview-protocol';
 import type { Plugin } from 'vite';
 import { astroVersion, newBundleId, readSiteCommit } from './bundle.ts';
+import { errorMessage } from './error-message.ts';
 import {
   readDataStore,
   shapeDocuments,
@@ -222,7 +223,7 @@ export default function previewRenderServer(
           writeManifest(site, 'images.json', imageManifest(site.root));
         } catch (error) {
           logger.warn(
-            `bundle.json or images.json not written: ${(error as Error).message}`,
+            `bundle.json or images.json not written: ${errorMessage(error)}`,
           );
         }
         if (schemaManifest !== undefined) {
@@ -253,9 +254,7 @@ export default function previewRenderServer(
             languages: collectLanguages(site.root, store, site.extraLanguages),
           });
         } catch (error) {
-          logger.warn(
-            `documents.json not written: ${(error as Error).message}`,
-          );
+          logger.warn(`documents.json not written: ${errorMessage(error)}`);
         }
       },
     },
