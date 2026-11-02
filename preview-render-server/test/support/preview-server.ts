@@ -3,6 +3,7 @@
 // (their global setups pick the site config). The usual .build/<site> output
 // and a server already running on the usual port are left alone.
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -89,6 +90,47 @@ export async function startPreviewServer(
     stop: async () => {
       server.kill();
       fs.rmSync(buildDir, { recursive: true, force: true });
+    },
+  };
+}
+
+export interface BuiltNode {
+  baseUrl: string;
+  stop(): Promise<void>;
+}
+
+/** Starts the front server (src/start.ts) by hand on an existing build folder
+ *  (`--out`), on a free port, with `env` on top of the child environment. No
+ *  rebuild. PREVIEW_INSECURE is left out of the inherited environment, so the node
+ *  is gated unless `env` sets it. */
+export async function startBuiltNode(
+  outDir: string,
+  env: NodeJS.ProcessEnv,
+): Promise<BuiltNode> {
+  const inherited = childEnv();
+  delete inherited.PREVIEW_INSECURE;
+  const port = await freePort();
+  const child = spawn(
+    process.execPath,
+    ['src/start.ts', 'sites/sample-site.config.ts', '--out', outDir],
+    {
+      cwd: SERVER_DIR,
+      env: { ...inherited, ...env, HOST: '127.0.0.1', PORT: String(port) },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+  let output = '';
+  child.stdout?.on('data', (chunk) => (output += chunk));
+  child.stderr?.on('data', (chunk) => (output += chunk));
+  const baseUrl = `http://127.0.0.1:${port}`;
+  await waitForServer(baseUrl, child, () => output);
+  return {
+    baseUrl,
+    stop: async () => {
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      const exited = once(child, 'exit');
+      child.kill();
+      await exited;
     },
   };
 }

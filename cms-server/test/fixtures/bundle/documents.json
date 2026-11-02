@@ -1,0 +1,50 @@
+[
+  {
+    "key": "authors/noor-haddad",
+    "file": "src/content/authors/noor-haddad.yaml",
+    "format": "yaml",
+    "buildTime": false,
+    "revision": "fc219f4aceb68b08"
+  },
+  {
+    "key": "blog/blog-1",
+    "file": "src/content/blog/blog-1.md",
+    "format": "md",
+    "buildTime": false,
+    "revision": "f0a7b71033203392"
+  },
+  {
+    "key": "data:src/config/theme.json",
+    "file": "src/config/theme.json",
+    "format": "json",
+    "buildTime": true,
+    "buildTimeFields": [
+      "*"
+    ],
+    "revision": "70df3841b1c2ea25"
+  },
+  {
+    "key": "fixtures/define-vars",
+    "file": "src/content/fixtures/define-vars.json",
+    "format": "json",
+    "editable": false,
+    "buildTime": false,
+    "revision": "9ef732885ca3cc6a"
+  },
+  {
+    "key": "stats/editors",
+    "file": "src/content/stats.yaml",
+    "format": "yaml",
+    "entryKey": "editors",
+    "buildTime": false,
+    "revision": "05a0f951dd049418"
+  },
+  {
+    "key": "testimonials/t-ana",
+    "file": "src/content/testimonials.json",
+    "format": "json",
+    "entryKey": "t-ana",
+    "buildTime": false,
+    "revision": "83fc1b9775cfcc6c"
+  }
+]

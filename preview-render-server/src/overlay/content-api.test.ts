@@ -466,6 +466,24 @@ describe('images in drafts (D5, D12)', () => {
     expect(value.data.avatar.src).toBe('/staging/new.png');
   });
 
+  it('finds a staged image by its absolute URL key, exactly (2.7a)', async () => {
+    const url = `http://cms.localhost:4400/media/staging/${'a'.repeat(64)}.png`;
+    const media = {
+      [url]: { url, width: 10, height: 12, format: 'png' },
+    };
+    const { value } = await run(
+      { 'authors/ana': { name: 'A', avatar: url } },
+      () => api.getEntry('authors', 'ana'),
+      media,
+    );
+    expect(value.data.avatar).toMatchObject({
+      src: url,
+      width: 10,
+      height: 12,
+      format: 'png',
+    });
+  });
+
   it('an image in neither fails the field with "image not found"', async () => {
     const error = await run(
       { 'authors/ana': { name: 'A', avatar: '../../assets/missing.png' } },

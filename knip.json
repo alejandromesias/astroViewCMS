@@ -28,9 +28,8 @@
       "project": ["src/**"]
     },
     "cms-server": {
-      "entry": ["src/**/*.test.ts", "test/**/*.test.ts"],
-      "project": ["src/**", "test/**"],
-      "ignoreDependencies": ["preview-contract", "preview-protocol", "sharp"]
+      "entry": ["src/**/*.test.ts", "test/**/*.test.ts", "editor/editor.ts", "editor/**/*.test.ts"],
+      "project": ["src/**", "test/**", "editor/**"]
     }
   }
 }

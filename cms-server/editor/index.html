@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Preview editor</title>
+    <link rel="stylesheet" href="/editor.css" />
+    <script type="module" src="/editor.js"></script>
+  </head>
+  <body>
+    <aside>
+      <header>
+        <h1>Preview editor</h1>
+        <p id="status" role="status">Waiting for the page…</p>
+      </header>
+
+      <ul id="limits" hidden></ul>
+
+      <div id="documents"></div>
+
+      <section class="upload">
+        <h2>Draft image</h2>
+        <input id="upload" type="file" accept="image/png,image/jpeg,image/webp,image/avif,image/gif" />
+        <p id="upload-result" hidden>
+          <code id="upload-url"></code>
+          <button id="upload-copy" type="button">Copy</button>
+        </p>
+        <p class="hint">Put this URL in a document's image field; the editor sends the image's size with every draft.</p>
+      </section>
+
+      <details>
+        <summary>Overlay sent</summary>
+        <pre id="envelope"></pre>
+      </details>
+    </aside>
+
+    <iframe id="preview" title="Site preview"></iframe>
+
+    <template id="document-template">
+      <section class="document">
+        <!-- biome-ignore lint/a11y/useHeadingContent: editor.ts fills the key and file in -->
+        <h2><span data-slot="key"></span> <small data-slot="file"></small></h2>
+        <p class="note" data-slot="note" hidden></p>
+        <div data-slot="fields">
+          <label class="field">
+            <span data-slot="value-label">Value (JSON)</span>
+            <textarea data-field="value" spellcheck="false" autocomplete="off"></textarea>
+          </label>
+          <label class="field" data-slot="body-field" hidden>
+            <span>Body</span>
+            <textarea data-field="body" spellcheck="false" autocomplete="off"></textarea>
+          </label>
+          <div class="actions">
+            <button type="button" data-action="reset">Reset</button>
+            <button type="button" data-action="delete">Delete in draft</button>
+          </div>
+        </div>
+        <span class="error" data-slot="error" role="alert"></span>
+      </section>
+    </template>
+  </body>
+</html>

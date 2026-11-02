@@ -75,6 +75,9 @@ export const imageRecordSchema = z.object({
   hash: z.string(),
 });
 
+/** Schema of images.json: the list of ImageRecords, sorted by path (2.0c). */
+export const imagesJsonSchema = z.array(imageRecordSchema);
+
 /** Schema of one RouteRecord. */
 export const routeRecordSchema = z.object({
   pattern: z.string(),

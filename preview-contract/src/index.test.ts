@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   documentRecordSchema,
+  imagesJsonSchema,
   mintPreviewToken,
   parseRenderRequest,
   routeRecordSchema,
@@ -20,6 +21,7 @@ describe('the package entry point', () => {
     ).toBe(true);
     expect(routeRecordSchema.safeParse({}).success).toBe(false);
     expect(schemaJsonSchema.safeParse({}).success).toBe(true);
+    expect(imagesJsonSchema.safeParse([]).success).toBe(true);
     expect(parseRenderRequest({ documents: {} })).toEqual({
       ok: true,
       documents: {},

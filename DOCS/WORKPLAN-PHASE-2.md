@@ -1096,7 +1096,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
 
 ### 2.4 Bundle reader and read API — after 2.0b, 2.0c, 2.0d, 2.1c · ∥ 2.2, 2.3
 
-#### 2.4a Bundle reader and list routes — after 2.0b, 2.0c, 2.0d, 2.1c
+#### 2.4a Bundle reader and list routes — after 2.0b, 2.0c, 2.0d, 2.1c · DONE 2026-11-02
 
 - A `BundleSource` interface (`current(): Promise<BundleRef | null>`). Phase
   2 first implements it with an explicit directory from the config; 2.9c
@@ -1136,6 +1136,45 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
     `createApp` registers a group only when its dep is present. A test builds the app
     with every dep and asserts each group's routes exist. When the last group lands
     (2.9c), the fields become required.
+- **Result (2026-11-02):** the bundle reader and the three routes.
+  - **Built:** `preview-contract/src/manifest.ts` gets `imagesJsonSchema` (`z.array(imageRecordSchema)`),
+    tested in `manifest.test.ts` and `index.test.ts`. `cms-server/src/bundle/`: `read.ts`
+    (`readBundle`, `BundleError`, `Bundle`, `DocumentEntry`), `source.ts` (`BundleSource`,
+    `BundleRef`, `directoryBundleSource(dir)`), `store.ts` (`createBundleStore`), each with its
+    `*.test.ts`. `cms-server/src/http/bundle-routes.ts` (`registerBundleRoutes`) and its test.
+    `http/app.ts`: `AppDeps.bundle?: BundleSource` and one registration line; the editor and media
+    fields that other agents added are untouched. `test/helpers/bundle.ts` (`FIXTURE_BUNDLE`,
+    `bundleFolder`, `removeBundleFolders`): temp copies under `.test-tmp/`.
+  - **Calls, beyond the gaps block:** `GET /api/schema` answers `{ collections: [{ name, loader?,
+    schema?, error? }] }` in schema.json order (a list, not an object keyed by name).
+    `GET /api/documents?collection=` items are `key`, `file?`, `revision`, `format`, `editable`
+    (always a boolean), `buildTime`, `buildTimeFields?`; `entryKey` and `title` are left out.
+    Check order for `/api/documents`: bundle (503 or 500), then `key` (501), then a missing
+    collection (400), then an unknown one (404). `GET /api/status` loads the whole bundle, so a
+    corrupt file answers 500 there too. A document's collection is the part before its first
+    slash, and a key with no slash is in none. An error reads `<file> at <field>: <message>`
+    (`documents.json at [2].revision: ...`), built from the Zod path. A duplicate document key is
+    a BundleError. `bundle.json` is read on every request; the other four files are read only
+    when its `bundleId` changes, and a new bundle that fails to parse leaves the cached one in place.
+    The wiring test is in `bundle-routes.test.ts`, not `app.test.ts`, which another agent is editing.
+  - **Biome:** its organize-imports rule moved `imagesJsonSchema` into the sorted `./manifest.ts`
+    export block of `index.ts`, so the export is not a bare append line.
+  - **Fixture caveat:** `schema.json` and `routes.json` are copies of
+    `preview-render-server/.build/sample-site-manifest/` from the 2026-10-31 build, which predates
+    2.0c and 2.0d. No build ran, as this task forbids. The tests parse both with the current contract
+    schemas. `documents.json` has 6 of the 37 records, with revisions from `revisionOf` and
+    `canonicalEntryText` over the real sample-site files. `images.json` has 3 of the src images.
+    `bundle.json` is hand-written.
+  - **Evidence:** `npx vitest run --project cms-server cms-server/src/bundle cms-server/src/http/bundle-routes.test.ts`:
+    4 files, 45 tests pass. `npx vitest run --project preview-contract preview-contract/src/manifest.test.ts preview-contract/src/index.test.ts`:
+    2 files, 28 pass. `npm run typecheck -w preview-contract` is clean. `npm run typecheck -w cms-server`
+    has no error in the new files; the errors left are in other agents' files (`body.ts`, `media.ts`,
+    `server.ts` and their tests). Biome is clean on every file I touched.
+  - **Open:** Stryker not run on the new files (TESTING 7). `npm run check` (knip, dependency-cruiser)
+    not run, as instructed. `server.ts` passes whatever deps its caller gives, so the running server
+    has no bundle routes until a bundle source is wired (2.9c). The list has no `title` (design 5.9,
+    "if the data has one"). Replace the fixture's `schema.json` and `routes.json` with a fresh
+    sample-site build once a build is allowed.
 
 #### 2.4b Read one document — after 2.4a, 2.2
 
@@ -1239,7 +1278,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
 
 ### 2.7 Media — after 2.1c · ∥ everything
 
-#### 2.7a `POST /api/media` — after 2.1c
+#### 2.7a `POST /api/media` — after 2.1c · DONE 2026-11-02
 
 - Multipart upload, 10 MB cap, only image types, measured once with `sharp`
   (`limitInputPixels` kept on), stored as
@@ -1294,6 +1333,41 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
     On Windows a rename over an existing file can fail with `EPERM` or `EBUSY` while an
     indexer holds it: retry a few times with a short delay. Directories are injected as
     `{ stagingDir, mediaFile }`.
+- **Result (2026-11-02):**
+  - **Built.** `http/media.ts` (`mediaRoutes`: `POST /api/media`, `GET /media/staging/:file`);
+    `http/body.ts` (`readBody`, `BodyTooLargeError`, the only body reader); `http/guard.ts`
+    (`rejectCrossSite`, `rejectUnlessContentType`); `fs/atomic.ts` (`writeFileAtomic` with
+    `EPERM`/`EBUSY` retry, `errorCode`); `media/measure.ts` (sharp, `limitInputPixels`
+    fixed at 0x3fff squared, five formats); `media/staging.ts` (hashed names, atomic
+    write, `stagedFormat`); `media/metadata.ts` (`media.json` with a per-file queue).
+    `server.ts` streams the body (`Readable.toWeb`, `duplex: 'half'`). `app.ts` gets
+    `AppDeps.media` and one registration. Every new source file has its own test file.
+    `test/helpers/png.ts` builds the bomb header. The content-api case is added.
+  - **Calls and deviations.** Declared type is checked against the stopgap's five types
+    (415 otherwise), and the measured format must also be one of the five. The extension
+    comes from the bytes only, so PNG bytes declared `image/jpeg` are stored `.png`.
+    Guard statuses are the stopgap's (404 wrong type, 403 cross-site). AVIF arrives from
+    sharp as `heif` with `av1` compression and is named `avif`. `media.json` is keyed by
+    the sha256 id. The `413` stream test accepts `413` or a reset, as settled.
+    `server.test.ts` now calls `closeAllConnections()` in its close helper: without it a
+    refused upload kept the test waiting about 5 s. The disconnect test at server level waits
+    50 ms, so it is time-based; the deterministic check is in `http/media.test.ts`.
+    `test/helpers/app-deps.ts` (another agent's shared fixture) gets a placeholder `media`
+    field, because `AppDeps.media` is required. The stopgap files are untouched.
+  - **Evidence.** `npx vitest run --project cms-server` on `src/fs`, `src/http`,
+    `src/media` and `src/server.test.ts`: 11 files, 157 tests pass. `npx vitest run
+    --project preview-render-server .../content-api.test.ts`: 79 pass (new case included).
+    `npm run typecheck -w cms-server`: clean. `npx biome check` on the touched files:
+    clean. Not run, as instructed: the whole suite, `npm run check`, e2e, builds, Stryker,
+    depcruise, knip.
+  - **Open items.** (1) `d12-media` e2e case, orchestrator. (2) Nothing builds
+    `MediaRouteDeps` from `cms.config.ts` yet (`.cms/<site>/staging`, `media.json`, and
+    `origins.cms`). (3) depcruise and knip rules for the new `fs/` and `media/` folders,
+    and a Stryker re-run on the changed files. (4) A damaged `media.json` makes every
+    upload fail with a named error until it is fixed; it is not reset silently. (5) The
+    rename retry is proved with an injected rename, not with a file that an indexer holds.
+    (6) The bomb test uses a header-only PNG, so it proves the pixel limit and not a real
+    decode. (7) 2.7b recognises staging URLs by the prefix `${origins.cms}/media/staging/`.
 
 #### 2.7b Images at save time — after 2.5c, 2.7a, 2.4c
 
@@ -1567,7 +1641,7 @@ request-path rules apply (no `child_process`, no `fs` except the allowlist).
     local `start:sample` takes no editor (as before this change). Stryker has not
     been run on the new files.
 
-#### 2.8e End-to-end proof — after 2.8c, 2.8d, 2.8a
+#### 2.8e End-to-end proof — after 2.8c, 2.8d, 2.8a · DONE 2026-11-02
 
 - Against a real build: the frame-ancestors header on a prerendered static
   page, `401` without the cookie, the token exchange and redirect, the
@@ -1593,6 +1667,30 @@ request-path rules apply (no `child_process`, no `fs` except the allowlist).
   `preview-contract` (proved with a throwaway file). `cms-server` has no
   internal secret yet: 2.9b, which adds it, must generate it distinct from
   `previewTokenSecret` and test that.
+- **Result (2026-11-02):** new `preview-render-server/test/e2e/gated-node.e2e.test.ts`
+  (13 tests) starts a second node by hand from the built `sample-site` folder
+  (`--out`, no rebuild, `PREVIEW_INSECURE` left out) through the new helper
+  `startBuiltNode` in `test/support/preview-server.ts` (existing exports unchanged).
+  Covers every case in the gaps block: the exact frame-ancestors header on
+  `/faq` (no `*`); `401` with `no-store`, the exact body and the header on a page,
+  on `/_astro/<file>` and on `/__preview/config`; the `303` exchange with the exact
+  `Set-Cookie` (`Partitioned`, `Max-Age=43200`) whose value verifies for this site
+  with an expiry about 12 h out, and a `Location` of `/faq?lang=en` with the token
+  removed (a token as the only parameter gives `/faq`); the cookie
+  sent by hand opens the page, an asset and the config route; expired, other-site,
+  internal-secret-signed and tampered tokens give `401`, `no-store` and no cookie,
+  even beside a valid cookie; the internal bearer works on `/__preview/validate`
+  with a real body and on a page, and the token secret does not work as a bearer;
+  equal secrets make the node exit 1 with the "must differ" message.
+  Calls: the second node is spawned as `start.ts sites/sample-site.config.ts --out
+  <buildDir>/sample-site` with `PREVIEW_SITE=sample-site` and the same two editor
+  origins as the global node. The cookie is checked with `verifyPreviewToken`, not
+  by string, because the server mints it at its own time.
+  Deviations: none. No production code changed.
+  Evidence: `npm run test:e2e -w preview-render-server -- test/e2e/gated-node.e2e.test.ts`,
+  13 of 13 passed (twice). `biome check` on the two files and `tsc` for
+  preview-render-server are clean. Not run: the full e2e suite, `npm run check`.
+  Open: the cookie inside a Chromium iframe is still 2.12b.
 
 ### 2.9 Node supervision, builds and the overlay — after 2.8, 2.3c, 2.5c · ∥ 2.6, 2.7, 2.10a
 
@@ -1624,7 +1722,7 @@ Design 4.4, 5.6.
   secret in the parent environment is absent in the child (test); queue
   merging with a fake build function.
 
-#### 2.9b Node supervisor — after 2.8c, 2.0e
+#### 2.9b Node supervisor — after 2.8c, 2.0e · DONE 2026-11-02
 
 - Starts the front server as a child process with the environment of design
   5.6. Readiness: polls `GET /__preview/config` with the internal bearer.
@@ -1674,6 +1772,68 @@ Design 4.4, 5.6.
     global setup builds `sample-site` once; the swap test copies the bundle and rewrites
     `bundle.json` in the copy.
   - Runs after 2.8e, never beside it.
+- **Result (2026-11-02):** built `cms-server/src/preview/supervisor.ts`
+  (`createSupervisor` with `start`, `swap`, `stop`, `status`; `restartDelayMs`,
+  `childEnvironment`, `portInUseMessage`) and `supervisor.test.ts` (26 tests, fake
+  spawn, fetch, clock and sleep). `loadSecrets` refuses equal secrets (env, file,
+  generated; checked before a new file is written; 4 tests in `secrets.test.ts`).
+  `preview-contract/src/preview-config.ts` (`previewConfigSchema`, `PreviewConfig`,
+  non-strict) with its test, exported from the index. `GET /__preview/config` answers
+  `bundleId` and `protocolVersion`: `bundleIdentity(manifestDir)` in
+  `preview-config.ts` (missing `bundle.json` gives nulls, an invalid one gives 500),
+  `previewConfigResponse(env, identity)`, and `preview-config-route.ts` reads the
+  identity once through the virtual module's `manifestDir`. The bridge's `isConfig`
+  already accepts extra keys, so `bridge.ts` is unchanged. Design 5.6 (PREVIEW_SITE)
+  and 5.7 (the answer) already carried this text; no design edit. cms-server e2e:
+  `cms-server/vitest.e2e.config.ts`, `test/e2e/global-setup.ts` (builds sample-site
+  once into `cms-server/.build/supervisor-e2e-*`, removed in teardown),
+  `test/e2e/supervisor.e2e.test.ts`, the `test:e2e` script, `cms-server/.gitignore`
+  (`.build/`), `vitest.projects.ts` excludes `test/e2e/**` from the unit project, and
+  `scripts/check.ts` has a "cms-server e2e" step before the renderer's e2e.
+  - Calls: spawn is `process.execPath <start.ts> <siteConfig> --out <bundle.dir>` with
+    cwd preview-render-server. The site config is still needed (start.ts takes the
+    site root from it), so the supervisor is given the config the build used.
+    Environment: an allowlist (PATH, TEMP, TMP, TMPDIR, SYSTEMROOT, WINDIR, matched
+    without case) plus PREVIEW_EDITOR_ORIGINS, PREVIEW_TOKEN_SECRET,
+    PREVIEW_INTERNAL_SECRET, PREVIEW_SITE, PORT and HOST=127.0.0.1. Readiness: GET
+    `/__preview/config` with the internal bearer, parsed by `previewConfigSchema`,
+    and its bundleId must equal the one started (20 s timeout, 200 ms polls).
+    Backoff: `min(30 s, 1 s × 2^(n-1))`, so 1, 2, 4, 8, 16 s, then 30 s at most.
+    Five failures in a row give `failed`; the count resets when the node was up 60 s
+    (60 000 ms resets, 59 999 does not). A port in use before start, or EADDRINUSE from
+    the child, gives an error naming the port, with no retry. Swap: SIGTERM, a 5 s
+    grace, SIGKILL, and the old exit awaited; then one attempt for the new node. On
+    failure the new node is stopped and the previous bundle starts as an ordinary
+    start: `{ ok: false, rolledBack: true }`, or `false` if that failed too. Swap with
+    nothing running starts. `stop()` kills the node and cancels a backoff or readiness
+    wait; a pending start resolves with `ok: false`. Injected: spawn, fetch, portInUse
+    (the default is a real probe), parentEnv, now, sleep (the default is an unref'd
+    timer), readyTimeoutMs, pollMs, graceMs.
+  - Deviations: SYSTEMROOT and WINDIR go to the node on every OS, not only Windows
+    (harmless). "Then up to 30 s" is read as doubling capped at 30 s. `status()` is a
+    plain function, with no route (2.9c). Found while testing: a failed swap killed the
+    new node a second time during the rollback; fixed by clearing the reference.
+  - Evidence: `npx vitest run --project cms-server` on `supervisor.test.ts` and
+    `secrets.test.ts`: 55 passed, 1 skipped (the POSIX-only mode test). `npm run
+    test:e2e -w cms-server`: 4 of 4 passed (about 20 s; it builds sample-site, runs the
+    real node, swaps to a copy whose bundle.json names `e2e-swapped`, checks the served
+    bundleId against each bundle.json, and checks that stop frees the port).
+    `npm run test:e2e -w preview-render-server -- test/e2e/config-route.e2e.test.ts`:
+    2 of 2. Unit: `preview-config.test.ts` passes in preview-contract (10) and in
+    preview-render-server (9). `tsc` exits 0 for cms-server, preview-contract and
+    preview-render-server. Biome is clean on my files.
+  - Other edit: `preview-render-server/test/e2e/gated-node.e2e.test.ts` expected the
+    old exact body of `/__preview/config`; it now expects bundleId and protocolVersion.
+    It is not run (not my file).
+  - Open: stop() is not wired to cms-server's exit yet (2.9c, with server.ts, which
+    I did not touch). `preview-contract/src/index.ts` fails biome's organizeImports:
+    the export block mixes the other agent's `imagesJsonSchema` lines with mine (mine
+    are in sorted position); run `biome check --write` on that file once that agent is
+    done. `preview-contract/src/index.test.ts` does not yet assert the new export.
+    gated-node.e2e needs a run: `npm run test:e2e -w preview-render-server -- test/e2e/gated-node.e2e.test.ts`.
+    Not run: `npm run check`, knip, depcruise, Stryker. The grace-then-kill path is
+    proven with a fake child only (Windows `kill` is hard). The config route imports
+    `virtual:preview-site`, as media-route does, so a dev run without a bundle fails there.
 
 #### 2.9c State, triggers and status — after 2.9a, 2.9b, 2.4a
 
@@ -1821,7 +1981,7 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
 
 Design 5.8. This is still a test tool, not the phase 3 editor.
 
-#### 2.11a Copy and serve — after 2.1c
+#### 2.11a Copy and serve — after 2.1c · DONE 2026-11-02
 
 - Copy `preview-render-server/test-editor/` into `cms-server/editor/` (the
   original is removed in 2.12a; the duplication lasts only until then).
@@ -1849,6 +2009,48 @@ Design 5.8. This is still a test tool, not the phase 3 editor.
   - **Config.** `editor/` is added to `tsconfig`, the vitest include and `knip.json`; it
     stays out of Stryker and coverage. The page loads but does not work as an editor
     until 2.11b (it still calls `/__dev/documents`).
+
+- **Result (2026-11-02):** `cms-server/editor/` holds `index.html`, `editor.css`,
+  `editor.ts` and `editor.test.ts`, copied from `preview-render-server/test-editor/`
+  (originals untouched). `src/editor/page.ts` `loadEditorPage()` reads the HTML and
+  CSS and bundles `editor.ts` with rolldown in memory. `src/http/editor-routes.ts`
+  serves `/`, `/editor.css`, `/editor.js`; `app.ts` has `AppDeps { editor }` and one
+  `app.route` registration.
+  Calls and deviations:
+  - `AppDeps.editor` is `{ page: { html, css, script }, previewOrigin }`. The gap
+    text named only the script as a dep; the HTML and CSS are loaded at start too,
+    and `previewOrigin` feeds `frame-src`.
+  - The security headers go on every app response (a sub-app `use('*')`), not only
+    the three editor routes, so the JSON 404 and `/api` answers carry them too.
+  - `index.html` loads the script with a module tag in `<head>` (no body change); the
+    `h2` has a biome-ignore (editor.ts fills it in).
+  - `editor.ts` has a local `EditorDocument` (`format` is `string`), replacing the
+    renderer import.
+  - Tests: `src/http/editor-routes.test.ts` (exact CSP, types, bodies), and
+    `src/editor/page.test.ts` (default folder, `ENOENT` for a missing file). The copied
+    `editor.test.ts` reads `index.html` now. `test/helpers/app-deps.ts` `fakeAppDeps()`
+    gives `app.test.ts` and `server.test.ts` their deps.
+  - Config: `package.json` gets `rolldown ^1.2.15` (dependencies) and `happy-dom
+    ^21.0.4` (devDependencies). `npm install` ran once; the lockfile diff is those
+    two entries only. `tsconfig` includes `editor`, `vitest.projects.ts` includes
+    `editor/**/*.test.ts`, and `knip.json` has the editor entries; `preview-protocol`
+    left the cms-server `ignoreDependencies`. Coverage and Stryker do not include
+    `editor/`.
+  Evidence: `npx vitest run --project cms-server` on the five files (`editor.test.ts`,
+  `page.test.ts`, `app.test.ts`, `editor-routes.test.ts`, `server.test.ts`): 5 files,
+  48 tests pass. `tsc`: no errors in these files. Biome clean on the changed files.
+  Knip: nothing in the new files.
+  Open:
+  - Nothing calls `loadEditorPage()` yet (no start code); the start code must call it
+    and pass the result into `createApp`.
+  - The page loads but does not work as an editor until 2.11b (it still calls
+    `/__dev/documents`, `/__preview/warm` and `/__preview-media/new`).
+  - Thumbnails from the preview origin need the gate cookie: phase 3.
+  - Other agents' files, not 2.11a: `tsc` fails in `src/http/body.test.ts` (`duplex`);
+    knip lists `src/media/measure.ts`, `src/bundle/read.ts`, `src/media/metadata.ts`
+    and `fs/atomic.ts` as unused, and suggests dropping the `sharp` ignore.
+  - `npx biome` failed here ("could not determine executable"); the checks used
+    `./node_modules/.bin/biome`.
 
 #### 2.11b Data sources — after 2.11a, 2.4b, 2.7a, 2.9e
 
