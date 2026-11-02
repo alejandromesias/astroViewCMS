@@ -1314,6 +1314,9 @@ request-path rules apply (no `child_process`, no `fs` except the allowlist).
   Evidence: e2e 92 tests; `100 consecutive edits` missed its 60 ms median once
   (68.3) in the full parallel run and passed alone. Open: `serve/` is not in
   the depcruise request-path rule list; README is 2.13b.
+  Review fix: `serveStatic` now resolves the served file with `realpathSync` and
+  refuses it unless its real path is inside the real client folder, so a symlink
+  that points outside (file or folder) is not served.
 
 #### 2.8c Token and cookie — after 2.0a, 2.8a, 2.8b · DONE
 
