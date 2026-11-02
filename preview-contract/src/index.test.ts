@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   documentRecordSchema,
+  mintPreviewToken,
   parseRenderRequest,
   routeRecordSchema,
   schemaJsonSchema,
+  verifyPreviewToken,
 } from './index.ts';
 
 describe('the package entry point', () => {
@@ -23,5 +25,21 @@ describe('the package entry point', () => {
       documents: {},
       media: {},
     });
+  });
+
+  it('exposes the preview token functions', () => {
+    const token = mintPreviewToken({
+      secret: 'a-secret-that-is-long-enough-for-tests',
+      site: 'sample-site',
+      ttlSeconds: 60,
+      now: 1_800_000_000,
+    });
+    expect(
+      verifyPreviewToken(token, {
+        secret: 'a-secret-that-is-long-enough-for-tests',
+        site: 'sample-site',
+        now: 1_800_000_001,
+      }),
+    ).toEqual({ ok: true, exp: 1_800_000_060 });
   });
 });

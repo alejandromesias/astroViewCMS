@@ -1,0 +1,7 @@
+# Partner documents are YAML, one file each. The unquoted date is a YAML
+# timestamp; the schema coerces it.
+name: Northwind Labs
+logo: ../../assets/partners/northwind.png
+url: https://example.com/northwind
+order: 2
+since: 2021-03-15

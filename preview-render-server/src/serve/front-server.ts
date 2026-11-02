@@ -37,9 +37,23 @@ async function respond(
 ): Promise<void> {
   res.setHeader('Content-Security-Policy', options.csp);
   try {
-    if (!options.gate.allows(req)) {
-      res.writeHead(401, { 'content-type': 'text/plain; charset=utf-8' });
+    const decision = options.gate.check(req);
+    if (decision.action === 'deny') {
+      res.writeHead(401, {
+        'content-type': 'text/plain; charset=utf-8',
+        'cache-control': 'no-store',
+      });
       res.end('Unauthorized');
+      return;
+    }
+    if (decision.action === 'redirect') {
+      // The token exchange: the cookie is set here and the token leaves the URL.
+      res.writeHead(303, {
+        location: decision.location,
+        'set-cookie': decision.setCookie,
+        'cache-control': 'no-store',
+      });
+      res.end();
       return;
     }
     if (serveStatic(options.clientDir, req, res)) return;

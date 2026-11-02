@@ -1,0 +1,6 @@
+# Partner documents are YAML, one file each.
+name: Atlas Studio
+logo: ../../assets/partners/atlas.png
+url: https://example.com/atlas
+order: 3
+since: 2022-01-20 # unquoted date

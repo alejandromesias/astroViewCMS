@@ -18,47 +18,55 @@ import {
 } from 'preview-protocol';
 import { createPatcher } from './patch.ts';
 
-export interface BridgeOptions {
-  /** Origins besides the page's own that may drive it (the editor's). Never `'*'`. */
-  editorOrigins?: string[];
-}
-
 /**
- * Starts the bridge. It announces the page with `preview:ready` (the editor
- * answers with a draft, even an empty one, which primes the page: it may be
- * older than the saved content, and the answer tells the editor which
- * documents the page reads), then renders and patches on every
- * `preview:draft`. After a ClientRouter navigation it announces the new path.
+ * Starts the bridge. It first fetches the editor origins from
+ * `GET /__preview/config` (the node's environment), then announces the page
+ * with `preview:ready` (the editor answers with a draft, even an empty one,
+ * which primes the page: it may be older than the saved content, and the
+ * answer tells the editor which documents the page reads), then renders and
+ * patches on every `preview:draft`. After a ClientRouter navigation it
+ * announces the new path.
  *
- * `win` and `fetchImpl` are parameters so tests can pass fakes. Returns a
- * function that stops it, or null when the page isn't in an iframe (the
- * bridge is then inactive, so previews opened directly behave like the site).
+ * `win` and `fetchImpl` are parameters so tests can pass fakes. Resolves to a
+ * function that stops it, or to null when the page isn't in an iframe (the
+ * bridge is then inactive, so previews opened directly behave like the site)
+ * or when the origins cannot be read: then it stays off, sends nothing and
+ * answers nobody.
  */
-export function startBridge(
+export async function startBridge(
   win: Window & typeof globalThis = window,
   fetchImpl: typeof fetch = win.fetch.bind(win),
-  options: BridgeOptions = {},
-): (() => void) | null {
+): Promise<(() => void) | null> {
   if (win.parent === win) return null;
 
   const doc = win.document;
-  const allowed = new Set([
-    win.location.origin,
-    ...(options.editorOrigins ?? []),
-  ]);
+  // Until the origins are read, only the page's own origin is allowed.
+  const allowed = new Set([win.location.origin]);
+  let configured = false;
   const patcher = createPatcher(win);
   // The origin of the editor that last spoke to us; answers go there.
   let editorOrigin = win.location.origin;
   let requestCount = 0;
 
   const currentPath = () =>
-    pathWithoutToken(win.location.pathname + win.location.search);
+    pathWithoutPreviewToken(win.location.pathname + win.location.search);
   const send = (
     message: PageMessage,
     targets: Iterable<string> = [editorOrigin],
   ) => {
     for (const target of targets) win.parent.postMessage(message, target);
   };
+  // To every allowed origin: the editor's is not known until it speaks, and a
+  // message only arrives where the target origin matches the parent's.
+  const announce = () =>
+    send(
+      {
+        type: 'preview:ready',
+        path: currentPath(),
+        protocol: PROTOCOL_VERSION,
+      },
+      allowed,
+    );
 
   async function onDraft(message: DraftMessage) {
     const path = currentPath();
@@ -125,6 +133,9 @@ export function startBridge(
 
   // The path the editor was last told about.
   let announcedPath = currentPath();
+  // The navigations that happened while the origins were read: each one still
+  // owes the editor a `ready`, sent once the origins are known.
+  let readiesOwed = 0;
   // A ClientRouter navigation replaced the document: tell the editor where we are.
   const onNavigated = () => {
     const path = currentPath();
@@ -134,39 +145,107 @@ export function startBridge(
     if (path !== announcedPath) requestCount++;
     announcedPath = path;
     patcher.reset();
-    send({ type: 'preview:ready', path, protocol: PROTOCOL_VERSION }, allowed);
+    if (configured) announce();
+    else readiesOwed++;
   };
 
-  // Start listening before announcing, so a draft sent in reply isn't missed.
+  // Listen before the origins are read, so a navigation during that read (the
+  // first load's astro:page-load) is not missed.
   win.addEventListener('message', onMessage);
   doc.addEventListener('astro:page-load', onNavigated);
-  // To every allowed origin: the editor's is not known until it speaks, and a
-  // message only arrives where the target origin matches the parent's.
-  send(
-    { type: 'preview:ready', path: currentPath(), protocol: PROTOCOL_VERSION },
-    allowed,
-  );
-  return () => {
+  const stop = () => {
     win.removeEventListener('message', onMessage);
     doc.removeEventListener('astro:page-load', onNavigated);
   };
+  const editorOrigins = await fetchEditorOrigins(fetchImpl);
+  if (editorOrigins === null) {
+    stop();
+    return null;
+  }
+  for (const origin of editorOrigins) allowed.add(origin);
+  configured = true;
+  // One `ready` for the start, and one for each navigation before this point.
+  for (let owed = 0; owed <= readiesOwed; owed++) announce();
+  return stop;
 }
 
 /**
- * The path with its `token` parameters removed (D14): the token that the node
- * exchanges for a cookie must never reach a postMessage. The other parameters
- * keep their order and their encoding. A path without a token comes back
- * unchanged, empty `?` and empty parts included.
+ * The path with its `preview_token` parameters removed (D14, PHASE-2-DESIGN
+ * 5.7): the token that the node exchanges for a cookie must never reach a
+ * postMessage. The other parameters keep their order and their encoding, and a
+ * site's own `token` parameter stays. A path without a preview token comes
+ * back unchanged, empty `?` and empty parts included.
  */
-export function pathWithoutToken(path: string): string {
+export function pathWithoutPreviewToken(path: string): string {
   const cut = path.indexOf('?');
   if (cut < 0) return path;
   const parts = path.slice(cut + 1).split('&');
-  if (!parts.some((part) => queryName(part) === 'token')) return path;
+  if (!parts.some((part) => queryName(part) === PREVIEW_TOKEN)) return path;
   const kept = parts.filter(
-    (part) => part !== '' && queryName(part) !== 'token',
+    (part) => part !== '' && queryName(part) !== PREVIEW_TOKEN,
   );
   return path.slice(0, cut) + (kept.length > 0 ? `?${kept.join('&')}` : '');
+}
+
+const PREVIEW_TOKEN = 'preview_token';
+
+/**
+ * The editor origins from `GET /__preview/config`. Any failure (a network
+ * error, a status other than 200, JSON that is not `{ editorOrigins: string[] }`)
+ * logs once and gives null: the bridge fails closed. An entry that is not an
+ * exact http or https origin is dropped; `'*'` never passes.
+ */
+async function fetchEditorOrigins(
+  fetchImpl: typeof fetch,
+): Promise<string[] | null> {
+  try {
+    const response = await fetchImpl('/__preview/config', {
+      cache: 'no-store',
+      credentials: 'same-origin',
+    });
+    if (response.status !== 200) {
+      throw new Error(`/__preview/config answered ${response.status}`);
+    }
+    const body: unknown = await response.json();
+    if (!isConfig(body)) {
+      throw new Error('/__preview/config is not { editorOrigins: string[] }');
+    }
+    return body.editorOrigins.filter(isExactOrigin);
+  } catch (error) {
+    console.error(
+      '[preview-bridge] no editor origins; the bridge stays off',
+      error,
+    );
+    return null;
+  }
+}
+
+function isConfig(value: unknown): value is { editorOrigins: string[] } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'editorOrigins' in value &&
+    isStringArray(value.editorOrigins)
+  );
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === 'string')
+  );
+}
+
+/** True for an http or https origin written exactly as `URL` would print it, such as `https://a.example:8443`. */
+function isExactOrigin(text: string): boolean {
+  try {
+    const url = new URL(text);
+    return (
+      (url.protocol === 'http:' || url.protocol === 'https:') &&
+      url.origin === text
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** The decoded name of one `name=value` pair, or the raw text if it is malformed. */

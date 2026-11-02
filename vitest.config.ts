@@ -47,6 +47,7 @@ export default defineConfig({
         'preview-render-server/src/render-route.ts',
         'preview-render-server/src/validate-route.ts',
         'preview-render-server/src/warmup-route.ts',
+        'preview-render-server/src/preview-config-route.ts',
         'preview-render-server/src/dev/documents-route.ts',
         'preview-render-server/src/render/runtime.ts',
         'preview-render-server/src/overlay/content-shim.ts',

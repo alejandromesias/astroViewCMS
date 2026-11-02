@@ -6,31 +6,40 @@ import {
   type RenderResponse,
 } from 'preview-protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { BridgeOptions } from './bridge.ts';
-import { pathWithoutToken, startBridge } from './bridge.ts';
+import { pathWithoutPreviewToken, startBridge } from './bridge.ts';
 
 const ORIGIN = 'http://localhost:4400';
 const EDITOR = 'https://editor.example';
 const PAGE =
   '<main><div data-preview-region="blocks"><p>saved</p></div></main>';
 
-/** A page inside an iframe: real DOM (happy-dom), fake parent, fetch and location. */
-function setup(
+/**
+ * A page inside an iframe: real DOM (happy-dom), fake parent, fetch and location.
+ * `config` is the answer to `GET /__preview/config`: the origins it lists, or a
+ * response or an error to give instead. Resolves once the bridge has started.
+ */
+async function setup(
   html = PAGE,
-  options?: BridgeOptions,
+  config: string[] | Response | Error | Promise<Response> = [],
   location = { pathname: '/blog/blog-1', search: '' },
 ) {
   document.head.innerHTML = '<title>Saved</title>';
   document.body.innerHTML = html;
   const parent = { postMessage: vi.fn() };
   const fetch = vi.fn<typeof globalThis.fetch>();
+  if (config instanceof Error) fetch.mockRejectedValueOnce(config);
+  else if (config instanceof Promise) fetch.mockReturnValueOnce(config);
+  else
+    fetch.mockResolvedValueOnce(
+      Array.isArray(config) ? Response.json({ editorOrigins: config }) : config,
+    );
   const win = Object.assign(new EventTarget(), {
     parent,
     document,
     DOMParser: window.DOMParser,
     location: { origin: ORIGIN, ...location },
   }) as unknown as Window & typeof globalThis;
-  const stop = startBridge(win, fetch, options);
+  const stop = await startBridge(win, fetch);
 
   const sent = () =>
     parent.postMessage.mock.calls.map(([message]) => message as PageMessage);
@@ -44,7 +53,10 @@ function setup(
       Object.assign(new Event('message'), { data, source, origin }),
     );
   };
-  return { win, parent, fetch, stop, sent, targets, post };
+  // The render requests, without the one that read the origins.
+  const renders = () =>
+    fetch.mock.calls.filter(([url]) => url !== '/__preview/config');
+  return { win, parent, fetch, stop, sent, targets, post, renders };
 }
 
 const rendered = (body: string, extra: Partial<RenderResponse> = {}) =>
@@ -64,41 +76,53 @@ const region = () => document.querySelector('[data-preview-region="blocks"]')!;
 const blocks = (inner: string) =>
   `<main><div data-preview-region="blocks">${inner}</div></main>`;
 
-let bridge: ReturnType<typeof setup>;
+let bridge: Awaited<ReturnType<typeof setup>>;
 afterEach(() => bridge?.stop?.());
 
-describe('pathWithoutToken', () => {
+// The preview token is `preview_token` (PHASE-2-DESIGN 5.7). The name `token`
+// was the phase 1 placeholder; a site's own `token` parameter is not ours.
+describe('pathWithoutPreviewToken', () => {
   it.each([
-    ['/blog/blog-1?token=secret&locale=en', '/blog/blog-1?locale=en'],
-    ['/blog/blog-1?locale=en&token=secret', '/blog/blog-1?locale=en'],
+    ['/blog/blog-1?preview_token=secret&locale=en', '/blog/blog-1?locale=en'],
+    ['/blog/blog-1?locale=en&preview_token=secret', '/blog/blog-1?locale=en'],
     [
-      '/blog/blog-1?locale=en&token=secret&page=2',
+      '/blog/blog-1?locale=en&preview_token=secret&page=2',
       '/blog/blog-1?locale=en&page=2',
     ],
-    ['/blog/blog-1?token=secret', '/blog/blog-1'],
-    ['/blog/blog-1?token', '/blog/blog-1'],
-    ['/blog/blog-1?token=', '/blog/blog-1'],
-    ['/blog/blog-1?token=a&locale=en&token=b', '/blog/blog-1?locale=en'],
-    ['/blog/blog-1?&token=secret&locale=en', '/blog/blog-1?locale=en'],
-    ['/blog/blog-1?token=secret&', '/blog/blog-1'],
-    ['/blog/blog-1?to%6ben=secret&locale=en', '/blog/blog-1?locale=en'],
-    ['/blog/blog-1?locale=a%20b&token=x', '/blog/blog-1?locale=a%20b'],
-    ['/blog/blog-1?%zz=1&token=secret', '/blog/blog-1?%zz=1'],
-  ])('drops the token from %s', (path, expected) => {
-    expect(pathWithoutToken(path)).toBe(expected);
+    ['/blog/blog-1?preview_token=secret', '/blog/blog-1'],
+    ['/blog/blog-1?preview_token', '/blog/blog-1'],
+    ['/blog/blog-1?preview_token=', '/blog/blog-1'],
+    [
+      '/blog/blog-1?preview_token=a&locale=en&preview_token=b',
+      '/blog/blog-1?locale=en',
+    ],
+    ['/blog/blog-1?&preview_token=secret&locale=en', '/blog/blog-1?locale=en'],
+    ['/blog/blog-1?preview_token=secret&', '/blog/blog-1'],
+    ['/blog/blog-1?preview%5Ftoken=secret&locale=en', '/blog/blog-1?locale=en'],
+    ['/blog/blog-1?locale=a%20b&preview_token=x', '/blog/blog-1?locale=a%20b'],
+    ['/blog/blog-1?%zz=1&preview_token=secret', '/blog/blog-1?%zz=1'],
+    [
+      '/blog/blog-1?token=secret&preview_token=abc',
+      '/blog/blog-1?token=secret',
+    ],
+  ])('drops the preview token from %s', (path, expected) => {
+    expect(pathWithoutPreviewToken(path)).toBe(expected);
   });
 
   it.each([
     ['/blog/blog-1'],
     ['/blog/blog-1?'],
     ['/blog/blog-1?locale=en'],
-    ['/blog/blog-1?tokens=1'],
-    ['/blog/blog-1?mytoken=1'],
-    ['/blog/blog-1?token.id=1'],
-    ['/blog/blog-1?Token=1'],
+    ['/blog/blog-1?token=secret'],
+    ['/blog/blog-1?token'],
+    ['/blog/blog-1?preview_tokens=1'],
+    ['/blog/blog-1?mypreview_token=1'],
+    ['/blog/blog-1?preview_token.id=1'],
+    ['/blog/blog-1?Preview_token=1'],
+    ['/blog/blog-1?preview-token=1'],
     ['/blog/blog-1?locale=en&&page=2'],
   ])('leaves %s as it is (near miss)', (path) => {
-    expect(pathWithoutToken(path)).toBe(path);
+    expect(pathWithoutPreviewToken(path)).toBe(path);
   });
 });
 
@@ -114,39 +138,123 @@ describe('protocol version', () => {
       { type: 'preview:draft', documents: {}, media: {} },
       'sent none',
     ],
-  ])('answers %s with an error and does not render', (_, message, text) => {
-    bridge = setup();
-    bridge.post(message);
-    expect(bridge.fetch).not.toHaveBeenCalled();
-    const error = bridge.sent().at(-1)!;
-    expect(error).toMatchObject({
-      type: 'preview:error',
-      path: '/blog/blog-1',
-      status: 0,
-    });
-    expect((error as { message: string }).message).toContain(
-      'protocol mismatch',
-    );
-    expect((error as { message: string }).message).toContain(
-      text.replace('sent', 'other sent'),
-    );
-  });
+  ])(
+    'answers %s with an error and does not render',
+    async (_, message, text) => {
+      bridge = await setup();
+      bridge.post(message);
+      expect(bridge.renders()).toEqual([]);
+      const error = bridge.sent().at(-1)!;
+      expect(error).toMatchObject({
+        type: 'preview:error',
+        path: '/blog/blog-1',
+        status: 0,
+      });
+      expect((error as { message: string }).message).toContain(
+        'protocol mismatch',
+      );
+      expect((error as { message: string }).message).toContain(
+        text.replace('sent', 'other sent'),
+      );
+    },
+  );
 });
 
 describe('startBridge', () => {
-  it('does nothing outside an iframe', () => {
+  it('does nothing outside an iframe, and does not even read the origins', async () => {
     const win = Object.assign(new EventTarget(), {
       document,
       location: { origin: ORIGIN },
     });
     (win as { parent?: unknown }).parent = win;
+    const fetch = vi.fn<typeof globalThis.fetch>();
     expect(
-      startBridge(win as unknown as Window & typeof globalThis, vi.fn()),
+      await startBridge(win as unknown as Window & typeof globalThis, fetch),
     ).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('announces the page path to the editor, with an explicit target origin', () => {
-    bridge = setup();
+  it('reads the editor origins from /__preview/config before it announces anything', async () => {
+    bridge = await setup(PAGE, [EDITOR]);
+    expect(bridge.fetch).toHaveBeenCalledExactlyOnceWith('/__preview/config', {
+      cache: 'no-store',
+      credentials: 'same-origin',
+    });
+    expect(bridge.targets()).toEqual([ORIGIN, EDITOR]);
+  });
+
+  it('owes a ready for a navigation that happens while the origins are read, and sends it once they are known', async () => {
+    let answer!: (response: Response) => void;
+    const pending = new Promise<Response>((resolve) => {
+      answer = resolve;
+    });
+    const started = setup(PAGE, pending);
+    // The first load's astro:page-load can fire before the origins arrive.
+    document.dispatchEvent(new Event('astro:page-load'));
+    answer(Response.json({ editorOrigins: [EDITOR] }));
+    bridge = await started;
+    const ready = {
+      type: 'preview:ready',
+      path: '/blog/blog-1',
+      protocol: PROTOCOL_VERSION,
+    };
+    // Two readies, each sent to the page's origin and the editor's.
+    expect(bridge.sent()).toEqual([ready, ready, ready, ready]);
+    expect(bridge.targets()).toEqual([ORIGIN, EDITOR, ORIGIN, EDITOR]);
+  });
+
+  it.each([
+    ['an unreachable route', new TypeError('Failed to fetch')],
+    ['a status other than 200', new Response('nope', { status: 503 })],
+    ['JSON that is not valid', new Response('{not json')],
+    [
+      'JSON without an origin list',
+      Response.json({ editorOrigins: 'https://editor.example' }),
+    ],
+    ['a list with a non-string', Response.json({ editorOrigins: [1] })],
+  ])(
+    'fails closed on %s: logs once, sends nothing and answers nobody',
+    async (_label, config) => {
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        bridge = await setup(PAGE, config);
+        expect(bridge.stop).toBeNull();
+        expect(bridge.sent()).toEqual([]);
+        bridge.post(draft());
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(bridge.fetch).toHaveBeenCalledOnce();
+        expect(bridge.parent.postMessage).not.toHaveBeenCalled();
+        expect(log).toHaveBeenCalledOnce();
+        expect(log.mock.calls[0]?.[0]).toBe(
+          '[preview-bridge] no editor origins; the bridge stays off',
+        );
+      } finally {
+        log.mockRestore();
+      }
+    },
+  );
+
+  it.each([
+    ['an exact https origin', EDITOR, true],
+    ['an exact http origin with a port', 'http://localhost:3000', true],
+    ['an origin with a trailing slash', `${EDITOR}/`, false],
+    ['an origin with a path', `${EDITOR}/editor`, false],
+    ['an origin with a default port', `${EDITOR}:443`, false],
+    ['an origin in capitals', 'https://Editor.example', false],
+    ['a wildcard', '*', false],
+    ['the literal null origin', 'null', false],
+    ['another scheme', 'ftp://editor.example', false],
+  ])(
+    'keeps only exact http or https origins from the route: %s',
+    async (_label, listed, kept) => {
+      bridge = await setup(PAGE, [listed]);
+      expect(bridge.targets()).toEqual(kept ? [ORIGIN, listed] : [ORIGIN]);
+      expect(bridge.targets()).not.toContain('*');
+    },
+  );
+
+  it('announces the page path to the editor, with an explicit target origin', async () => {
+    bridge = await setup();
     expect(bridge.parent.postMessage).toHaveBeenCalledExactlyOnceWith(
       {
         type: 'preview:ready',
@@ -157,25 +265,25 @@ describe('startBridge', () => {
     );
   });
 
-  it('omits the token query parameter from the ready path', () => {
-    bridge = setup(PAGE, undefined, {
+  it('omits the preview_token query parameter from the ready path, and keeps a site token', async () => {
+    bridge = await setup(PAGE, [], {
       pathname: '/blog/blog-1',
-      search: '?token=secret&locale=en',
+      search: '?token=site&preview_token=secret&locale=en',
     });
 
     expect(bridge.sent()).toEqual([
       {
         type: 'preview:ready',
-        path: '/blog/blog-1?locale=en',
+        path: '/blog/blog-1?token=site&locale=en',
         protocol: PROTOCOL_VERSION,
       },
     ]);
   });
 
-  it('sends no token in the render request or in the answer', async () => {
-    bridge = setup(PAGE, undefined, {
+  it('sends no preview token in the render request or in the answer', async () => {
+    bridge = await setup(PAGE, [], {
       pathname: '/blog/blog-1',
-      search: '?token=secret&locale=en',
+      search: '?preview_token=secret&locale=en',
     });
     bridge.fetch.mockResolvedValue(rendered(blocks('<p>x</p>')));
 
@@ -194,14 +302,14 @@ describe('startBridge', () => {
     });
   });
 
-  it('announces to every allowed editor origin, never "*"', () => {
-    bridge = setup(PAGE, { editorOrigins: [EDITOR] });
+  it('announces to every allowed editor origin, never "*"', async () => {
+    bridge = await setup(PAGE, [EDITOR]);
     expect(bridge.targets().sort()).toEqual([EDITOR, ORIGIN].sort());
     expect(bridge.targets()).not.toContain('*');
   });
 
-  it('announces the new path after a ClientRouter navigation', () => {
-    bridge = setup();
+  it('announces the new path after a ClientRouter navigation', async () => {
+    bridge = await setup();
     bridge.parent.postMessage.mockClear();
     (bridge.win.location as { pathname: string }).pathname = '/faq';
     document.dispatchEvent(new Event('astro:page-load'));
@@ -211,7 +319,7 @@ describe('startBridge', () => {
   });
 
   it('drops the answer to a draft sent before a navigation', async () => {
-    bridge = setup();
+    bridge = await setup();
     let answer!: (response: Response) => void;
     bridge.fetch.mockReturnValueOnce(
       new Promise((resolve) => (answer = resolve)),
@@ -228,7 +336,7 @@ describe('startBridge', () => {
   });
 
   it('keeps the answer to a draft sent before a repeat ready for the same path (D14)', async () => {
-    bridge = setup();
+    bridge = await setup();
     let answer!: (response: Response) => void;
     bridge.fetch.mockReturnValueOnce(
       new Promise((resolve) => (answer = resolve)),
@@ -242,8 +350,8 @@ describe('startBridge', () => {
 });
 
 describe('on a draft', () => {
-  beforeEach(() => {
-    bridge = setup();
+  beforeEach(async () => {
+    bridge = await setup();
   });
 
   it('POSTs the overlay to the render route for the current path and patches the page', async () => {
@@ -262,7 +370,8 @@ describe('on a draft', () => {
     bridge.post(draft(documents, media));
 
     await vi.waitFor(() => expect(region().innerHTML).toBe('<p>draft</p>'));
-    expect(bridge.fetch).toHaveBeenCalledExactlyOnceWith(
+    expect(bridge.renders()).toHaveLength(1);
+    expect(bridge.fetch).toHaveBeenCalledWith(
       '/__preview/render?path=%2Fblog%2Fblog-1',
       {
         method: 'POST',
@@ -283,11 +392,11 @@ describe('on a draft', () => {
 
   it('keeps the query string in the path it asks for', async () => {
     bridge.stop?.();
-    bridge = setup(PAGE, undefined, { pathname: '/blog', search: '?page=2' });
+    bridge = await setup(PAGE, [], { pathname: '/blog', search: '?page=2' });
     bridge.fetch.mockResolvedValue(rendered(blocks('<p>x</p>')));
     bridge.post(draft());
-    await vi.waitFor(() => expect(bridge.fetch).toHaveBeenCalled());
-    expect(bridge.fetch.mock.calls[0]![0]).toBe(
+    await vi.waitFor(() => expect(bridge.renders()).not.toEqual([]));
+    expect(bridge.renders()[0]![0]).toBe(
       '/__preview/render?path=%2Fblog%3Fpage%3D2',
     );
   });
@@ -302,7 +411,7 @@ describe('on a draft', () => {
 
   it('answers to the origin of the editor that sent the draft', async () => {
     bridge.stop?.();
-    bridge = setup(PAGE, { editorOrigins: [EDITOR] });
+    bridge = await setup(PAGE, [EDITOR]);
     bridge.fetch.mockResolvedValue(rendered(blocks('<p>x</p>')));
     bridge.post(draft(), { origin: EDITOR });
     await vi.waitFor(() =>
@@ -444,8 +553,8 @@ describe('on a draft', () => {
 });
 
 describe('ignores messages', () => {
-  beforeEach(() => {
-    bridge = setup(PAGE, { editorOrigins: [EDITOR] });
+  beforeEach(async () => {
+    bridge = await setup(PAGE, [EDITOR]);
   });
 
   it.each([
@@ -453,29 +562,29 @@ describe('ignores messages', () => {
     ['from an origin that is not allowed', { origin: 'https://evil.example' }],
   ])('%s', (_, from) => {
     bridge.post(draft(), from);
-    expect(bridge.fetch).not.toHaveBeenCalled();
+    expect(bridge.renders()).toEqual([]);
   });
 
-  it('that are not drafts', () => {
+  it('that are not drafts', async () => {
     bridge.post({ type: 'preview:ready', path: '/' });
     bridge.post({ type: 'preview:draft', region: 'blocks', props: {} }); // protocol v1
     bridge.post({ type: 'preview:draft', documents: [], media: {} });
     bridge.post('hello');
-    expect(bridge.fetch).not.toHaveBeenCalled();
+    expect(bridge.renders()).toEqual([]);
   });
 
-  it('after it is stopped', () => {
+  it('after it is stopped', async () => {
     bridge.stop?.();
     bridge.post(draft());
-    expect(bridge.fetch).not.toHaveBeenCalled();
+    expect(bridge.renders()).toEqual([]);
   });
 });
 
 describe('stale answers', () => {
   const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-  beforeEach(() => {
-    bridge = setup();
+  beforeEach(async () => {
+    bridge = await setup();
   });
 
   it('drops the answer of a draft when a message with another protocol came after it', async () => {
@@ -546,8 +655,8 @@ describe('stale answers', () => {
 });
 
 describe('what the bridge does around a draft', () => {
-  it('ignores messages that are not drafts completely: nothing is sent and the editor origin does not change', () => {
-    bridge = setup(PAGE, { editorOrigins: [EDITOR] });
+  it('ignores messages that are not drafts completely: nothing is sent and the editor origin does not change', async () => {
+    bridge = await setup(PAGE, [EDITOR]);
     bridge.parent.postMessage.mockClear();
     bridge.post({ type: 'preview:ready', path: '/' }, { origin: EDITOR });
     bridge.post('hello', { origin: EDITOR });
@@ -560,7 +669,7 @@ describe('what the bridge does around a draft', () => {
   });
 
   it('forgets the inline scripts it ran when the page is replaced, so the new page gets them', async () => {
-    bridge = setup();
+    bridge = await setup();
     const inline = '<script>window.island = 1</script>';
     const scripts = () =>
       Array.from(
@@ -580,7 +689,7 @@ describe('what the bridge does around a draft', () => {
   });
 
   it('logs what it patched and what failed', async () => {
-    bridge = setup();
+    bridge = await setup();
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     bridge.fetch.mockResolvedValueOnce(rendered(blocks('<p>x</p>')));
@@ -610,8 +719,8 @@ describe('what the bridge does around a draft', () => {
     error.mockRestore();
   });
 
-  it('stops listening for navigations too', () => {
-    bridge = setup();
+  it('stops listening for navigations too', async () => {
+    bridge = await setup();
     bridge.stop?.();
     bridge.parent.postMessage.mockClear();
     document.dispatchEvent(new Event('astro:page-load'));
@@ -620,8 +729,8 @@ describe('what the bridge does around a draft', () => {
 });
 
 describe('error answers', () => {
-  beforeEach(() => {
-    bridge = setup();
+  beforeEach(async () => {
+    bridge = await setup();
   });
 
   it('only a 422 is read as field errors', async () => {

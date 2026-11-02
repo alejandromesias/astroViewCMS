@@ -25,7 +25,7 @@ before writing tests, [TESTING-RECOMMENDATIONS.md](TESTING-RECOMMENDATIONS.md).
 |---|---|
 | Phase 2 design | approved by the user, 2026-10-31 |
 | Decisions D17 to D22 | logged in SYSTEM-DESIGN section 11 |
-| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.8b done 2026-11-01 (2.8b: gate seam only, 2.8c pending); the rest not started |
+| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.8b, 2.8c done 2026-11-01 (2.8c: token and gate built; 2.8d pending); the rest not started |
 
 **Done when:** every row of PHASE-2-DESIGN.md section 1 passes. Section 5
 below maps each row to the test that proves it.
@@ -537,7 +537,12 @@ done. Item 6 of the design (the front server) is step 2.8.
   machine, since 2.1e changed their step lists (the coverage step moved into
   the fast set) and neither has run since. Fix what broke in `scripts/check.ts`
   or the docs; update the timings in QUALITY-TOOLING.md. Note any e2e flake
-  (`100 consecutive edits` missed its median once on 2026-11-01).
+  (`100 consecutive edits` missed its 60 ms median in four full runs on
+  2026-11-01: 68.3 after 2.8b, 71.8 after 2.8c, 62.6 during 2.8d and 68.1 in
+  the review run; it passed alone each time. Decide whether the budget needs
+  headroom or the test needs to run serially, and whether the front server
+  added to the per-request cost; measure the test alone before and after the
+  front server.)
 - Raise `cms-server` branch coverage (66.67%, 8 of 12; the misses are in
   `server.ts`, lines 41-43 and 53, the Request/Response bridge) with tests
   that tell the branches apart, then raise the floors to match. Do not add
@@ -554,7 +559,7 @@ parsed returns the original text **byte for byte**; the original line endings
 Round-trip tests run on copies of the sample's own files, committed as
 fixtures.
 
-#### 2.2a JSON codec — after 2.1a
+#### 2.2a JSON codec — after 2.1a · DONE
 
 - `parse(text)` and `write(originalText, value)`: key order of existing keys,
   indentation (tabs, 2 or 4 spaces; 2 for a new file), the final newline.
@@ -564,8 +569,69 @@ fixtures.
   (IMPLEMENTATION-RECOMMENDATIONS 4).
 - **Done when:** unchanged value, edited scalar, added key, removed key,
   reordered array and a hostile key (`__proto__`) round-trip as stated.
+- Gaps settled (calls, 2026-11-01): the code lives in `cms-server/src/codecs/`. 2.2a
+  creates the shared `types.ts`, which 2.2b to 2.2d import and do not
+  redefine: `interface Codec { parse(text: string): unknown; write(original:
+  string, value: unknown): string }` and `class CodecError extends Error`
+  with `format`, `line` and `column`.
+  - **Dependency:** `jsonc-parser` is added to `cms-server`; knip and
+    osv-scanner must stay clean.
+  - **Parse is strict JSON** (Astro uses `JSON.parse`, so comments are an
+    error). Parser errors become a `CodecError` with a 1-based line. The
+    result keeps `__proto__` as an own key; the code never assigns by key
+    onto a plain object (`Map`, `Object.hasOwn`, `Object.fromEntries`).
+  - **Write:** an unchanged value returns the original string itself.
+    Indentation is read from the first indented line (tab or N spaces, 2 when
+    there is none or the text is empty); the line ending is the first one in
+    the text (CRLF kept); a missing final newline stays missing, and a new
+    file gets one. Existing keys keep their place whatever the order in
+    `value` (object key order is not an edit; array order is). New keys go
+    last; a type change replaces the whole node; arrays are diffed by index
+    (shrink removes the tail, growth appends).
+  - **Fixtures:** committed copies of three of the sample's `.json` files
+    under `cms-server/test/fixtures/json/`, and a test that
+    `write(text, parse(text))` returns `text` for each. CRLF and tab cases
+    are synthetic strings in the test.
+- **Result (2026-11-01):** `cms-server/src/codecs/types.ts` (`Codec`,
+  `CodecError`), `json.ts` (`jsonCodec`), `json.test.ts`, `types.test.ts`, and
+  fixtures `cms-server/test/fixtures/json/{config,testimonials,home-v2}.json`,
+  byte copies of the sample's `src/config/config.json`,
+  `src/content/testimonials.json` and `src/content/landing/home-v2.json`.
+  `jsonc-parser` ^3.3.1 is a `cms-server` dependency (one line each in
+  `package.json` and `package-lock.json`; it was already in `node_modules`
+  through astro).
+  - **Calls:** `parse` returns `JSON.parse`'s value. The error position comes
+    from `parseTree` with comments and trailing commas disallowed; in a probe
+    it reported an error for every input `JSON.parse` rejects. The message is
+    `Invalid JSON at line L, column C: <reason>`. `write` diffs the old and new
+    values (object keys through `Object.entries` and a `Map`, arrays by index),
+    then applies `modify` and `applyEdits` one change at a time. Indentation
+    is the first indented line's leading whitespace (tab or spaces), 2 when
+    there is none. The line ending is the first one in the text. Whitespace-only
+    text is a new file. `CodecError` is `(message, { format, line?, column? })`;
+    `line` and `column` are undefined for write errors.
+  - **Deviations:** a change of the root (type, or a scalar root that changed)
+    rewrites the whole document, so whitespace in the old text is lost. An
+    object key whose value is `undefined` counts as absent. An `undefined`
+    array item or top-level value is a `CodecError`. `home-v2.json` was chosen
+    over `long.json` (45 KB) for size.
+  - **Unrequested:** `types.test.ts`, to follow the one-test-file-per-source
+    rule. No other files changed.
+  - **Finding:** `jsonc-parser`'s ESM build has extensionless imports and
+    cannot load in plain Node ESM. The package's `main` (UMD) is what resolves,
+    and named imports work from `cms-server` in Node, tsc and Vitest.
+  - **Evidence:** `npx vitest run --project cms-server cms-server/src/codecs`:
+    2 files, 40 tests, all pass (json 37, types 3). `write(text, parse(text))`
+    returns `text` for each fixture. Each change kind is checked against an
+    exact expected string. `npm run check`, second run: tsc (4 projects),
+    biome lint, unit tests with coverage, depcruise and osv-scanner pass.
+    knip failed once with an array-buffer allocation error and passed on a
+    standalone rerun. biome format fails only on
+    `preview-contract/src/token.ts`, another agent's file in progress.
+  - **Open:** Stryker has not been run on the new files
+    (TESTING-RECOMMENDATIONS 7).
 
-#### 2.2b YAML codec — after 2.1a
+#### 2.2b YAML codec — after 2.1a · DONE
 
 - The `yaml` package's Document API with `merge: true` (as Astro parses, so
   `<<: *anchor` keys expand). A structural `applyValue(doc, value)` updates
@@ -575,6 +641,71 @@ fixtures.
 - **Done when:** the sample's YAML files (`partners`, `stats.yaml`, the
   YAML author) round-trip with comments, order and quoting intact after an
   edit of one field and after adding a list item.
+- Gaps settled (calls, 2026-11-01): imports `Codec` and `CodecError` from 2.2a's
+  `codecs/types.ts`.
+  - **Parse:** `parseDocument(text, { merge: true })`; `doc.errors` (duplicate
+    keys included) become a `CodecError` with the line from `linePos`. The
+    value is `doc.toJS()`. A top-level value that is not a map or a sequence
+    is refused with a `CodecError`.
+  - **Diff against `toJS()` of the original**, not against the nodes, so
+    merged keys count as present. A changed key that came in through `<<:`
+    is written as an own key, which overrides the merged one. A change whose
+    path goes *into* an alias node is a `CodecError` (the sample has no
+    anchors: test it on a synthetic string).
+  - **Sequences:** match items by deep equality first (longest common
+    subsequence), so a removed or reordered item keeps its node and its
+    comments; only unmatched items are replaced, inserted or deleted.
+  - **Scalars:** a changed string keeps the node's quote style; a type change
+    becomes a plain scalar. Equal values are not touched. **Correction
+    (review, 2026-11-01):** the plan first said dates stay strings under the
+    `yaml` core schema. Astro's `parseYaml` uses `schema: 'core'`,
+    `customTags: ['timestamp']` and `merge: true`, so unquoted dates are
+    `Date` objects; the codec uses Astro's options.
+  - **Serialising:** the library re-serialises the whole document, so the
+    guarantee is "the text differs only on the edited lines", tested as a
+    line diff on the sample copies (not byte-for-byte globally). Use
+    `lineWidth: 0` (no folding of long strings) and set `indentSeq` from what
+    the original does. An unchanged value returns the original string. The
+    original line ending is kept (CRLF converted back) and so is a missing
+    final newline. `write('', value)` creates a block-style document.
+  - **Fixtures:** the sample's YAML files under
+    `cms-server/test/fixtures/yaml/`.
+- **Result (2026-11-01):** `cms-server/src/codecs/yaml.ts` (`yamlCodec`) and
+  `yaml.test.ts` (35 tests). Fixtures are byte copies under
+  `cms-server/test/fixtures/yaml/`: `partners/{atlas,bright,loop,northwind}.yaml`,
+  `stats.yaml`, `authors/noor-haddad.yaml`. No new dependency (`yaml` ^2.9.1 is
+  already in `cms-server`). `types.ts` is unchanged.
+  - **Deviation, dates:** the spec says the core schema leaves dates as strings,
+    which Astro's loader reads. That is wrong. Astro's `parseYaml`
+    (`@astrojs/internal-helpers`, used by the file loader) parses with
+    `schema: 'core'`, `customTags: ['timestamp']` and `merge: true`, so an
+    unquoted date is a `Date`. The stats schema's `z.date()` needs that. The
+    codec uses Astro's options, so its values match what the site reads. A
+    changed date is written as a date and the rest of its line, including its
+    comment, stays.
+  - **Deviation, parse:** an empty document (`null`) is refused with the same
+    CodecError as a scalar, since it is not a map or a sequence.
+  - **Calls:** diff against `toJS()` of the original. A changed merged key is
+    written as an own pair. Removing a merged key is a CodecError, and so is
+    any change that goes into an alias. Sequences: longest common subsequence
+    keeps matched nodes. An unmatched new item equal to an unmatched old one
+    takes that node, so a moved item keeps its quoting and comments. The rest
+    are paired in order: containers are patched in place, scalars are updated
+    or replaced, extra new items are created, extra old ones dropped. A list's
+    header comment (above its first item) moves to whichever item takes the
+    first place. A changed string keeps its quote style. Other changed scalars
+    are replaced, carrying the inline comment: an in-place update kept `0x1F`'s
+    hex format. After patching, `toJS()` must equal the value, else CodecError.
+  - **Layout:** indent, `indentSeq`, line ending and final newline are read from
+    the original. Known limit: 4-space indent with unindented sequences is not
+    reproduced (the library indents them). Not in the sample; the tests cover
+    the two layouts it does reproduce.
+  - **Evidence:** targeted `npx vitest run --project cms-server
+    cms-server/src/codecs`: 3 files, 75 tests pass (json 37, types 3, yaml 35).
+    `npm run check`: all ten steps pass (exit 0). Coverage for
+    `cms-server/src/codecs`: 99.06 lines, 93.29 branches, 100 functions, 99.47
+    statements.
+  - **Open:** Stryker has not been run on the new files (TESTING-RECOMMENDATIONS 7).
 
 #### 2.2c Markdown and MDX frontmatter codec — after 2.2b
 
@@ -598,7 +729,7 @@ fixtures.
 
 Design 4.2. Git is the command line, run with `execFile`, never a shell.
 
-#### 2.3a Exec wrapper — after 2.1a
+#### 2.3a Exec wrapper — after 2.1a · DONE
 
 - `git/exec.ts`: fixed argument arrays, `cwd`, a timeout, `GIT_TERMINAL_PROMPT=0`,
   stderr captured into typed errors. Refs, branch names and paths from
@@ -606,6 +737,58 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   `exec` function is injected, with the real one as the default.
 - **Done when:** unit tests cover argument-injection attempts, timeouts and
   error mapping with a fake `exec`.
+- Gaps settled (calls, 2026-11-01): `cms-server/src/git/exec.ts` (the `child_process`
+  rule already allows `src/git/`).
+  - **Shape:** `type ExecFn = (file, args, { cwd, env, timeout, maxBuffer })
+    => Promise<{ stdout, stderr }>`, rejecting with Node's error shape
+    (`code`, `killed`, `signal`, `stdout`, `stderr`). The real one wraps
+    `execFile` with `encoding: 'utf8'`, `windowsHide: true` and never a
+    `shell`. `runGit(args, { cwd, timeoutMs = 60_000, env, exec = realExec })`
+    returns stdout; a clone passes a longer timeout.
+  - **Fixed environment and options:** `GIT_TERMINAL_PROMPT=0`,
+    `GCM_INTERACTIVE=never`, `LC_ALL=C`, over the inherited environment
+    (the test harness's isolation variables pass through); `-c
+    protocol.ext.allow=never` before every command, because the remote URL
+    comes from the config file.
+  - **Validators, thrown before any spawn** as `GitError` kind
+    `invalid-argument`: `assertRef` (no leading `-`, no whitespace, control
+    or NUL, none of `~ ^ : ? * [ \`, no `..`, `@{`, `//`, trailing `/` or
+    `.lock`), `assertRelativePath` (no NUL, not absolute, no `..` segment,
+    no leading `-`; always passed after `--`), `assertRemoteUrl` (no leading
+    `-`, no `ext::`).
+  - **`GitError`:** `kind` is `invalid-argument | timeout | failed | spawn`
+    (ENOENT is `spawn`, "git not found"; a killed child is `timeout`; a
+    `maxBuffer` overflow is `failed`), plus `args`, `exitCode` and `stderr`.
+    `://user:secret@` is redacted to `://***@` in the message, `args` and
+    `stderr`.
+  - **Tests:** the fake `exec` for everything above, plus one smoke test of
+    the real default (`git --version`). Test files may use `child_process`.
+  - **Not here:** credentials for private remotes. Git uses the machine's
+    credential helper or SSH keys, and `GIT_TERMINAL_PROMPT=0` makes a missing
+    credential fail fast. Open item for 2.3b's wrong-URL and auth errors.
+- **Result (2026-11-01):** `cms-server/src/git/exec.ts` and `exec.test.ts`
+  (72 tests). Exports: `ExecFn`, `ExecOptions`, `ExecResult`, `realExec`,
+  `runGit`, `GitError`, `assertRef`, `assertRelativePath`, `assertRemoteUrl`.
+  No dependency added.
+  - **Calls:** `runGit`'s `args` on `GitError` are the caller's arguments, without
+    the fixed `-c protocol.ext.allow=never` prefix. The redaction runs in the
+    `GitError` constructor, so `message`, `args` and `stderr` are redacted in
+    every error, including the validators'. Error kinds: a `maxBuffer` overflow
+    is `failed`; a killed child is `timeout`; `ENOENT` is `spawn` ("git not
+    found"); any other start failure is `spawn`; a non-zero exit is `failed` with
+    `exitCode`. A rejection that is not an `Error` is `spawn`.
+  - **Also:** `runGit` refuses a NUL in any argument (`invalid-argument`) before
+    spawning. `assertRelativePath` also refuses an empty path, a drive-relative
+    path (`C:x`), and a path with a `..` segment; `.` is accepted, since `siteDir`
+    can be `.`. `assertRef` also refuses an empty name. `assertRemoteUrl` refuses
+    an empty URL and `ext::` in any case.
+  - **Evidence:** `npx vitest run --project cms-server cms-server/src/git`: 1 file,
+    72 tests pass. The fake `exec` covers the validators (near-miss tables),
+    timeouts, error mapping, redaction and the fixed environment. Real-process
+    tests: `git --version` through the default, a stdout/stderr round trip with no
+    shell, a killed timeout, and `ENOENT`. Lint and typecheck of `cms-server/src/git`
+    are clean.
+  - **Open:** Stryker has not been run on the new files (TESTING-RECOMMENDATIONS 7).
 
 #### 2.3b Repo lifecycle — after 2.3a, 2.1c
 
@@ -854,7 +1037,7 @@ request-path rules apply (no `child_process`, no `fs` except the allowlist).
   (68.3) in the full parallel run and passed alone. Open: `serve/` is not in
   the depcruise request-path rule list; README is 2.13b.
 
-#### 2.8c Token and cookie — after 2.0a, 2.8a, 2.8b
+#### 2.8c Token and cookie — after 2.0a, 2.8a, 2.8b · DONE
 
 - `mintPreviewToken` and `verifyPreviewToken` in the contract package:
   `base64url(payload).base64url(HMAC-SHA256)`, payload `{ site, exp }`,
@@ -866,8 +1049,99 @@ request-path rules apply (no `child_process`, no `fs` except the allowlist).
   (constant-time), else `401`.
 - **Done when:** unit tests for expiry, tampering, wrong site, a missing
   header, a token in a URL that has other parameters.
+- Gaps settled (calls, 2026-11-01):
+  - **Token API** (`preview-contract/src/token.ts`, exported from the index):
+    `mintPreviewToken({ secret, site, ttlSeconds, now? })` and
+    `verifyPreviewToken(token, { secret, site, now? })` returning `{ ok: true,
+    exp } | { ok: false, reason: 'malformed' | 'signature' | 'expired' |
+    'site' }`. The secret is used as UTF-8 key bytes (not hex-decoded). The
+    payload is parsed with strict Zod. It is stateless: a token can be
+    exchanged more than once inside its 60 s. `node:crypto` is imported, so
+    the builder checks that no browser bundle imports `preview-contract`'s
+    index (the bridge imports only `preview-protocol`); if one does, export
+    the token from a subpath instead.
+  - **The cookie value is the same kind of token**, minted with `ttlSeconds`
+    43200 and `Max-Age=43200`, verified by the same function. Replaying it as
+    `?preview_token=` gives nothing the cookie does not already give.
+  - **The node needs its site:** a new `PREVIEW_SITE` variable, required when
+    the gate is on, added to `serve/settings.ts`. Both secrets must be at
+    least 32 characters. Also in `cms-server/src/config/secrets.ts`: secrets
+    taken from the environment get the same 64-hex check as the file ones
+    (the open item from 2.1c).
+  - **Gate interface:** `allows(req): boolean` cannot redirect. It becomes
+    `check(req): { action: 'allow' } | { action: 'redirect', location,
+    setCookie } | { action: 'deny' }`, and `front-server.ts` carries it out.
+    Update `front-server.test.ts` and `gate.test.ts`; `createGate` loses its
+    "task 2.8c not built" throw.
+  - **Exchange:** GET or HEAD with `preview_token` in the query. A bad,
+    expired or wrong-site token is `401` (it does not fall back to the
+    cookie). `Location` is relative (path plus the other parameters in their
+    original order and encoding; all `preview_token` parameters dropped; no
+    `?` if nothing is left), never built from `Host`. Status `303`,
+    `Cache-Control: no-store` on the redirect and on every `401`. The token
+    is never logged.
+  - **Cookie:** `__Host-preview=<token>; HttpOnly; Secure; SameSite=None;
+    Partitioned; Path=/; Max-Age=43200`. Read by exact name from the `Cookie`
+    header; any valid one among duplicates is enough.
+  - **Bearer:** `Authorization: Bearer <secret>` is compared as SHA-256
+    digests with `timingSafeEqual`, and bypasses the cookie on every path.
+  - **Also in this task:** add `preview-render-server/src/serve/` to the
+    request-path depcruise rules (open item from 2.8b); `static.ts` is the
+    one allowed `fs` user there, listed with a comment. Tests drive the real
+    gate through `createFrontServer` with `fetch(..., { redirect: 'manual' })`.
 
-#### 2.8d Config route and bridge — after 2.8b
+- **Result (2026-11-01):** built `preview-contract/src/token.ts` (`mintPreviewToken`,
+  `verifyPreviewToken`, exported from the index); the gate in `serve/gate.ts` is
+  `check(req)` returning `allow`, `redirect` (303 with `Set-Cookie`) or `deny`
+  (401), and `front-server.ts` carries it out, with `Cache-Control: no-store` on
+  the 303 and on every 401; `serve/settings.ts` requires `PREVIEW_SITE` when the
+  gate is on and a 32-character minimum on both secrets; `createGate` no longer
+  throws the "not built" error; `cms-server/src/config/secrets.ts` checks env
+  secrets as 64 hex digits; `serve/` is in `REQUEST_PATH` with `serve/static.ts`
+  on the fs allowlist, and the annex row and the request-path paragraph in
+  QUALITY-TOOLING.md are updated.
+  Calls: time is Unix seconds; the token is HMAC over the payload part with the
+  secret as UTF-8 bytes; the signature is checked before the payload is read, and
+  expiry (`now >= exp`) before the site. Every `preview_token` in an exchange must
+  verify (a bad one gives 401, no cookie fallback); all are dropped from the
+  `Location`. The Location is the normalised path plus the other raw segments in
+  order (empty segments dropped, token names matched after decoding), so a
+  `//host` target gives only its path. A target URL cannot parse is 401. Only GET
+  and HEAD exchange. The internal bearer is checked first, on every path (SHA-256
+  digests, `timingSafeEqual`). The cookie is found by exact name, and any valid
+  duplicate is enough. `createGate(settings, deps)` takes an optional `{ now }`
+  with the real clock as the default; `Gate` requests are
+  `Pick<IncomingMessage, 'method' | 'url' | 'headers'>`, so tests pass plain
+  objects.
+  Deviations: none in the named API. Shared secrets are compared by length first
+  only in the token module (the bearer compares digests, so length does not leak).
+  Unrequested: corrected the stale "gate not built" comments in
+  `sites/local-insecure.env` and `test/support/preview-server.ts`; updated the
+  status row at the top of this file; `token.test.ts` cases use an HMAC oracle
+  built in the test; `secrets.test.ts` env values changed to valid hex.
+  Evidence: `preview-contract` `token.test.ts` and `index.test.ts`, 34 passed;
+  `preview-render-server` `src/serve`, 105 passed (4 files, including the real
+  gate over HTTP with `redirect: 'manual'`); `cms-server` `secrets.test.ts`, 25
+  passed and 1 skipped (the POSIX-only mode test). Gates: depcruise, knip,
+  biome lint and format on my files, tsc for contract and cms-server, and osv
+  pass. The full `npm run check` is **not green** because of work outside this
+  task: the parallel 2.8d change to the bridge and its tests
+  (`bridge.ts`, `bridge.test.ts`, `preview-config.test.ts`,
+  `test/e2e/config-route.e2e.test.ts`, two cases in `integration.test.ts`) fails
+  tsc, format, and 2 unit tests. The preview-render-server e2e suite had one
+  timing miss (`100 consecutive edits`, 71.8 ms against 60 ms) and passes when
+  its file runs alone (50 of 50). The browser suite has 25 failures ("not
+  settled yet": the bridge never sends its second `ready`) that come from the
+  2.8d bridge and harness wiring. The `/__preview/config` route answers through
+  the front server with the harness origin, so the gate is not the cause. I did
+  not confirm the browser suite against a pre-2.8c baseline.
+  Open: cms-server does not mint the token yet (2.8d/2.8e), and its `site` must
+  match `PREVIEW_SITE`; no client file imports the contract index, but depcruise
+  does not enforce that (the index is outside `client-stays-browser-safe`); a
+  token secret equal to the internal secret is not refused; Safari and Firefox
+  are untested (phase 4).
+
+#### 2.8d Config route and bridge — after 2.8b · DONE
 
 - `GET /__preview/config` answers `{ editorOrigins }` from the environment
   at run time (injected route).
@@ -879,6 +1153,70 @@ request-path rules apply (no `child_process`, no `fs` except the allowlist).
   the browser harness config.
 - **Done when:** the bridge tests and the browser suite pass with origins
   coming from the route. [build]
+- Gaps settled (calls, 2026-11-01):
+  - **The bridge already strips a `token` query parameter** (`pathWithoutToken`
+    in `bridge.ts`), which is not the parameter the design names. It becomes
+    `preview_token` (a site's own `token` parameter must reach the editor
+    untouched). The builder checks where `token` came from, changes the
+    tests, and says what it found.
+  - **Route:** `src/preview-config-route.ts`, injected with `injectRoute`
+    like the other preview routes, for build and dev (in dev with no front
+    server the variable is unset and the answer is `[]`). It reads
+    `process.env.PREVIEW_EDITOR_ORIGINS` on each request through one shared
+    parser exported from `serve/settings.ts` (the CSP code uses the same
+    one), answers JSON with `Cache-Control: no-store`, and `500` for an
+    invalid value. The pure handler is unit-tested; the route file itself is
+    excluded from coverage and Stryker like its siblings and proved by the
+    end-to-end suite.
+  - **Bridge:** it fetches `/__preview/config` first. Entries that are not
+    exact origins (`new URL(x).origin === x`, http or https) are dropped. If
+    the fetch fails, is not `200`, or the JSON is invalid, the bridge **fails
+    closed**: it logs once, sends no `ready` and answers nobody. `startBridge`
+    loses `options.editorOrigins`; the tests pass a fake `fetchImpl`.
+  - **Harness:** the browser harness starts the node with
+    `PREVIEW_EDITOR_ORIGINS=<HARNESS_ORIGIN>` instead of
+    `site.config.ts`'s `editorOrigins`. The builder lists the docs that still
+    mention `editorOrigins` for 2.13b; it does not rewrite them here.
+- **Result (2026-11-01):** the route `GET /__preview/config` (`src/preview-config.ts`
+  pure handler, `src/preview-config-route.ts` wrapper, injected in
+  `integration.ts`). `parseEditorOrigins` is exported from `serve/settings.ts`
+  (the CSP uses it too). `SiteConfig.editorOrigins` and the `bridgeScript()`
+  argument are gone. The bridge fetches the origins first, keeps only exact
+  http(s) origins, fails closed (logs once, no `ready`, no listeners), and
+  drops `preview_token` from its paths.
+  - **The `token` parameter, where it came from:** not the design's name. The
+    phase 1 D14 work (commit af262b6, 2026-10-30) wrote the bridge's
+    `pathWithoutToken` and its tests with `token`, before the gate existed.
+    The gate (2.8c, `gate.ts`), PHASE-2-DESIGN 5.7 and SYSTEM-DESIGN's D14
+    all name `preview_token`. The stripping therefore never matched the real
+    token parameter. The function is now `pathWithoutPreviewToken`, drops
+    `preview_token` in every form, and leaves a site's own `token` untouched
+    (a near-miss test pins that).
+  - **Ordering change found by the browser suite:** a first attempt fetched
+    the origins before attaching listeners. The first load's `astro:page-load`
+    then fired during the read and its second `ready` was lost; the harness
+    (and D14's priming) wait for two. Listeners now attach first; a navigation
+    during the read owes one `ready`, sent when the origins arrive.
+  - **Also:** `startBridge` is async and resolves to the stop function or null.
+    `bridgeScript()` takes only the file. The browser harness passes
+    `PREVIEW_EDITOR_ORIGINS=<HARNESS_ORIGIN>` through the new `serverEnv`
+    argument of `startPreviewServer`; the e2e global setup passes two origins.
+    `knip.json`, the coverage excludes and Stryker name the new route file.
+  - **Docs still mentioning `editorOrigins` (not rewritten, for 2.13b):**
+    `preview-render-server/README.md:49`, `DOCS/PREVIEW-RENDER-SERVER.md`
+    lines 67, 145, 160 and 310, `DOCS/QUALITY-TOOLING.md:355`, and
+    `DOCS/PHASE-2-DESIGN.md:510` (describes the removal, so it is current).
+    `DOCS/SYSTEM-DESIGN.md:1334` and `DOCS/WORKPLAN-PHASE-0-1.md` are history.
+  - **Evidence:** `preview-render-server` unit tests: `bridge.test.ts`,
+    `integration.test.ts`, `preview-config.test.ts`, `serve/settings.test.ts`
+    pass (176 tests). Typecheck clean. Browser suite (`npm run test:browser`):
+    10 files, 25 tests pass. e2e: `config-route.e2e.test.ts` (2) passes;
+    `d9-old-routes` and `preview-server` pass, except one performance budget
+    (median 62.6 ms against 60 ms) that passed on rerun alone. `npm run check`:
+    all ten steps pass.
+  - **Open:** `sites/local-insecure.env` sets no `PREVIEW_EDITOR_ORIGINS`, so a
+    local `start:sample` takes no editor (as before this change). Stryker has not
+    been run on the new files.
 
 #### 2.8e End-to-end proof — after 2.8c, 2.8d, 2.8a
 
@@ -887,6 +1225,11 @@ request-path rules apply (no `child_process`, no `fs` except the allowlist).
   internal bearer on `/__preview/validate`, an expired token.
 - **Done when:** these tests are in the end-to-end suite and pass. The
   "never `'*'`" rule of the bridge stays. [build]
+- **Added (2026-11-01, review of 2.8c):** `readGate` in `serve/settings.ts`
+  refuses `PREVIEW_TOKEN_SECRET` equal to `PREVIEW_INTERNAL_SECRET` (one
+  leaked secret would otherwise open both the cookie and the bearer path),
+  and `cms-server`'s `loadSecrets` generates two distinct values. One test
+  each. No separate task: it is two lines next to the gate this task proves.
 
 ### 2.9 Node supervision, builds and the overlay — after 2.8, 2.3c, 2.5c · ∥ 2.6, 2.7, 2.10a
 
@@ -1161,6 +1504,12 @@ Design 5.8. This is still a test tool, not the phase 3 editor.
   both READMEs, SYSTEM-DESIGN (roadmap status, the Phase documents table,
   open questions), and the README map. Phase 3 moves from section 12 of
   SYSTEM-DESIGN to a design of its own when it starts.
+- **Carried in (2026-11-01):** `editorOrigins` is still described in
+  `preview-render-server/README.md:49`, `PREVIEW-RENDER-SERVER.md` (lines 67,
+  145, 160, 310) and `QUALITY-TOOLING.md:355`; it now comes from
+  `PREVIEW_EDITOR_ORIGINS` through `GET /__preview/config`. Document the YAML
+  codec's known limit (4-space indent with unindented sequences is written
+  indented) in `CMS-SERVER.md`.
 - **Done when:** a reader can go from `DOCS/README.md` to every phase 2
   document and no document contradicts the code.
 
@@ -1169,6 +1518,10 @@ Design 5.8. This is still a test tool, not the phase 3 editor.
 - Set the coverage floors and the Stryker threshold for `cms-server` from
   the first full run (not guessed), as for the renderer. Per-file Stryker
   floors only if the user wants them.
+- **Carried in (2026-11-01):** the first Stryker run over the new files
+  (`cms-server/src/codecs`, `src/git`, `src/config`, and the token and gate
+  code) has not happened; 2.2a, 2.2b and 2.3a each logged that. Run it before
+  setting the floor and triage the survivors, the codecs first.
 - **Remark (2026-11-01, from the full Stryker run after 2.0a):**
   `preview-contract` is the weakest package at 83.10% (9 survivors, 3 with
   no coverage), against 92.98% for the renderer and 97.22% for

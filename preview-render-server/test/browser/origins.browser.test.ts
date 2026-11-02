@@ -1,5 +1,6 @@
 // Origins: the bridge takes messages only from the page's own origin and from
-// the editor origins the build lists (SiteConfig.editorOrigins). A draft from an
+// the editor origins the node lists at GET /__preview/config
+// (PREVIEW_EDITOR_ORIGINS, set by global-setup). A draft from an
 // origin that is not listed is ignored; the same draft from a listed origin is
 // applied.
 import { afterEach, describe, expect, it } from 'vitest';

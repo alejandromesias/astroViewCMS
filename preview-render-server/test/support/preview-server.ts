@@ -33,9 +33,12 @@ export function childEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return env;
 }
 
-/** `siteConfig` is relative to the preview-render-server folder. */
+/** `siteConfig` is relative to the preview-render-server folder. `serverEnv`
+ *  goes to the running server only (the build does not read it): the editor
+ *  origins are read at run time. */
 export async function startPreviewServer(
   siteConfig: string,
+  serverEnv: NodeJS.ProcessEnv = {},
 ): Promise<PreviewServer> {
   // Inside the workspace, not the OS temp folder: the build resolves its npm
   // packages from node_modules, during prerendering and at runtime.
@@ -63,9 +66,10 @@ export async function startPreviewServer(
     ['--expose-gc', 'src/start.ts', siteConfig],
     {
       cwd: SERVER_DIR,
-      // PREVIEW_INSECURE: the gate (2.8c) is not built, and tests run without it.
+      // PREVIEW_INSECURE: these tests run without the gate.
       env: {
         ...env,
+        ...serverEnv,
         HOST: '127.0.0.1',
         PORT: String(port),
         PREVIEW_INSECURE: '1',

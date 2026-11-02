@@ -5,6 +5,7 @@ import {
   type PreviewServer,
   startPreviewServer,
 } from '../support/preview-server.ts';
+import { HARNESS_ORIGIN } from './origin.ts';
 
 declare module 'vitest' {
   export interface ProvidedContext {
@@ -15,7 +16,10 @@ declare module 'vitest' {
 let preview: PreviewServer | undefined;
 
 export async function setup(project: TestProject) {
-  preview = await startPreviewServer('test/browser/site.config.ts');
+  // The harness page is an editor for this node: its origin is the only one the bridge accepts.
+  preview = await startPreviewServer('test/browser/site.config.ts', {
+    PREVIEW_EDITOR_ORIGINS: HARNESS_ORIGIN,
+  });
   project.provide('baseUrl', preview.baseUrl);
 }
 

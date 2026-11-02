@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { frameAncestorsCsp, readServeSettings } from './settings.ts';
 
+const SECRET_A = 'a'.repeat(32);
+const SECRET_B = 'b'.repeat(32);
+
 const REFUSAL = new Error(
   'Refusing to start without the preview gate: set PREVIEW_TOKEN_SECRET and PREVIEW_INTERNAL_SECRET, or PREVIEW_INSECURE=1 for local runs',
 );
@@ -68,16 +71,18 @@ describe('readServeSettings', () => {
     expect(() => readServeSettings(env)).toThrow(REFUSAL);
   });
 
-  it('turns the gate on when both secrets are set, and keeps their values', () => {
+  it('turns the gate on when both secrets and the site are set, and keeps their values', () => {
     expect(
       readServeSettings({
-        PREVIEW_TOKEN_SECRET: 'token',
-        PREVIEW_INTERNAL_SECRET: 'internal',
+        PREVIEW_SITE: 'sample-site',
+        PREVIEW_TOKEN_SECRET: SECRET_A,
+        PREVIEW_INTERNAL_SECRET: SECRET_B,
       }).gate,
     ).toEqual({
       kind: 'gated',
-      tokenSecret: 'token',
-      internalSecret: 'internal',
+      site: 'sample-site',
+      tokenSecret: SECRET_A,
+      internalSecret: SECRET_B,
     });
   });
 
@@ -85,8 +90,9 @@ describe('readServeSettings', () => {
     expect(
       readServeSettings({
         PREVIEW_INSECURE: '1',
-        PREVIEW_TOKEN_SECRET: 'token',
-        PREVIEW_INTERNAL_SECRET: 'internal',
+        PREVIEW_SITE: 'sample-site',
+        PREVIEW_TOKEN_SECRET: SECRET_A,
+        PREVIEW_INTERNAL_SECRET: SECRET_B,
       }).gate.kind,
     ).toBe('gated');
   });
@@ -102,4 +108,48 @@ describe('readServeSettings', () => {
       ),
     );
   });
+
+  it('accepts a secret of exactly 32 characters', () => {
+    expect(
+      readServeSettings({
+        PREVIEW_SITE: 'sample-site',
+        PREVIEW_TOKEN_SECRET: 'x'.repeat(32),
+        PREVIEW_INTERNAL_SECRET: 'y'.repeat(32),
+      }).gate.kind,
+    ).toBe('gated');
+  });
+
+  it.each([
+    [
+      'PREVIEW_TOKEN_SECRET',
+      {
+        PREVIEW_TOKEN_SECRET: 'x'.repeat(31),
+        PREVIEW_INTERNAL_SECRET: SECRET_B,
+      },
+    ],
+    [
+      'PREVIEW_INTERNAL_SECRET',
+      {
+        PREVIEW_TOKEN_SECRET: SECRET_A,
+        PREVIEW_INTERNAL_SECRET: 'y'.repeat(31),
+      },
+    ],
+  ])('refuses a %s shorter than 32 characters', (name, secrets) => {
+    expect(() =>
+      readServeSettings({ PREVIEW_SITE: 'sample-site', ...secrets }),
+    ).toThrow(new Error(`${name} must be at least 32 characters`));
+  });
+
+  it.each([{}, { PREVIEW_SITE: '' }])(
+    'refuses the gate without a site, with the environment %j',
+    (siteEnv) => {
+      expect(() =>
+        readServeSettings({
+          ...siteEnv,
+          PREVIEW_TOKEN_SECRET: SECRET_A,
+          PREVIEW_INTERNAL_SECRET: SECRET_B,
+        }),
+      ).toThrow(new Error('PREVIEW_SITE must be set when the gate is on'));
+    },
+  );
 });

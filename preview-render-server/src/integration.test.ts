@@ -75,9 +75,9 @@ describe('devRoutes', () => {
 });
 
 describe('bridgeScript', () => {
-  it('starts the bridge with the editor origins of the site config', () => {
-    expect(bridgeScript('C:/x/bridge.ts', ['https://editor.example'])).toBe(
-      'import { startBridge } from "C:/x/bridge.ts"; startBridge(window, window.fetch.bind(window), { editorOrigins: ["https://editor.example"] });',
+  it('starts the bridge; the editor origins come from /__preview/config at run time', () => {
+    expect(bridgeScript('C:/x/bridge.ts')).toBe(
+      'import { startBridge } from "C:/x/bridge.ts"; startBridge(window, window.fetch.bind(window));',
     );
   });
 });
@@ -275,12 +275,13 @@ describe('previewRenderServer', () => {
       ['/__preview/validate', false],
       ['/__preview-media/[file]', false],
       ['/__preview/warm', false],
+      ['/__preview/config', false],
       ['/__editor', undefined],
     ]);
     expect(injectScript).toHaveBeenCalledExactlyOnceWith(
       'page',
       expect.stringMatching(
-        /^import \{ startBridge \} from ".*\/client\/bridge\.ts"; startBridge\(window, window\.fetch\.bind\(window\), \{ editorOrigins: \[\] \}\);$/,
+        /^import \{ startBridge \} from ".*\/client\/bridge\.ts"; startBridge\(window, window\.fetch\.bind\(window\)\);$/,
       ),
     );
     const plugins = updateConfig.mock.calls[0]![0].vite!.plugins as Plugin[];
@@ -831,11 +832,13 @@ describe('previewRenderServer setup', () => {
       ['/__preview/validate', 'validate-route.ts'],
       ['/__preview-media/[file]', 'media-route.ts'],
       ['/__preview/warm', 'warmup-route.ts'],
+      ['/__preview/config', 'preview-config-route.ts'],
       ['/__editor', '../test-editor/editor.astro'],
     ]);
     for (const route of routes)
       expect(fs.existsSync(fileURLToPath(route.entrypoint))).toBe(true);
     expect(routes.map((route) => route.prerender)).toEqual([
+      false,
       false,
       false,
       false,
@@ -859,11 +862,12 @@ describe('previewRenderServer setup', () => {
         '/__preview/validate',
         '/__preview-media/[file]',
         '/__preview/warm',
+        '/__preview/config',
         '/__dev/documents',
         '/__dev/memory',
         '/__editor',
       ]);
-      const dev = routes[5];
+      const dev = routes[6];
       expect(dev!.prerender).toBe(false);
       expect(posix(path.relative(here, fileURLToPath(dev!.entrypoint)))).toBe(
         'dev/documents-route.ts',
@@ -874,17 +878,11 @@ describe('previewRenderServer setup', () => {
     }
   });
 
-  it('adds the bridge script with the editor origins and a bridge file that exists', async () => {
-    const { injectScript } = await runSetup({
-      ...site,
-      ...outputs(),
-      editorOrigins: ['https://editor.example', 'http://localhost:3000'],
-    });
+  it('adds the bridge script with no origins in the build, and a bridge file that exists', async () => {
+    const { injectScript } = await runSetup({ ...site, ...outputs() });
     const [stage, code] = injectScript.mock.calls[0] as [string, string];
     expect(stage).toBe('page');
-    expect(code).toContain(
-      '{ editorOrigins: ["https://editor.example","http://localhost:3000"] }',
-    );
+    expect(code).not.toContain('editorOrigins');
     const bridge = /from "([^"]+)"/.exec(code)![1];
     expect(bridge).not.toContain('\\');
     expect(fs.existsSync(bridge!)).toBe(true);

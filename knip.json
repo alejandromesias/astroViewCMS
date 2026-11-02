@@ -7,7 +7,7 @@
     "preview-render-server": {
       "entry": [
         "sites/*.config.ts",
-        "src/{render,validate,media,warmup}-route.ts",
+        "src/{render,validate,media,warmup,preview-config}-route.ts",
         "src/dev/documents-route.ts",
         "src/client/bridge.ts",
         "src/overlay/{content-shim,image-service,data-proxy}.ts",

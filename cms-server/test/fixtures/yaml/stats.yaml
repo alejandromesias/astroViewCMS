@@ -1,0 +1,15 @@
+# Many documents in one YAML file (file() loader). Dates are unquoted and the
+# schema uses a plain z.date().
+- id: sites
+  label: Sites launched
+  value: "240+" # keep as text, it has a suffix
+  updated: 2026-09-01
+- id: editors
+  label: Active editors
+  value: "1,800"
+  # comment inside the list
+  updated: 2026-09-14
+- id: uptime
+  label: Uptime
+  value: "99.98%"
+  updated: 2026-10-01

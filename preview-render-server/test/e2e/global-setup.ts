@@ -17,7 +17,9 @@ declare module 'vitest' {
 let preview: PreviewServer | undefined;
 
 export async function setup(project: TestProject) {
-  preview = await startPreviewServer('sites/sample-site.config.ts');
+  preview = await startPreviewServer('sites/sample-site.config.ts', {
+    PREVIEW_EDITOR_ORIGINS: 'https://editor.example http://localhost:3000',
+  });
   project.provide('baseUrl', preview.baseUrl);
   project.provide('buildDir', preview.buildDir);
 }

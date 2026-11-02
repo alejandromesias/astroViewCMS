@@ -4,7 +4,7 @@ const SRC = '^preview-render-server/src/';
 const TESTS = '(\\.test\\.ts$|/test/)';
 // Files that serve preview requests. build-time code (manifest, schema, build.ts,
 // integration.ts) and dev/** (PREVIEW_DEV only) write files and are out of scope.
-const REQUEST_PATH = `${SRC}(render/|overlay/|client/|[^/]+-route\\.ts$|request-guard\\.ts$)`;
+const REQUEST_PATH = `${SRC}(render/|overlay/|client/|serve/|[^/]+-route\\.ts$|request-guard\\.ts$)`;
 
 /** @type {import('dependency-cruiser').IConfiguration} */
 module.exports = {
@@ -60,6 +60,8 @@ module.exports = {
           `${SRC}overlay/plugins\\.ts$`,
           // reads media files to serve them
           `${SRC}media-route\\.ts$`,
+          // reads the client/ folder to serve static files (createReadStream, statSync); traversal-guarded
+          `${SRC}serve/static\\.ts$`,
         ],
       },
       to: { path: ['^node:fs(/promises)?$', '^fs(/promises)?$'] },

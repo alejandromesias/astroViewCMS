@@ -436,7 +436,8 @@ is the reason for the list.
 `preview-protocol/src`, `preview-contract/src` and `cms-server/src` against `.dependency-cruiser.cjs`. A rule is an
 "allowed to import" question; a violation prints the rule name below.
 "Request path" means the files that serve a preview request: `render/`,
-`overlay/`, `client/`, `*-route.ts` and `request-guard.ts`.
+`overlay/`, `client/`, `serve/` (the front server and the gate), `*-route.ts` and
+`request-guard.ts`.
 
 | Rule | In plain words | Why | Severity |
 | --- | --- | --- | --- |
@@ -444,7 +445,7 @@ is the reason for the list.
 | `protocol-is-a-leaf` | `preview-protocol` never imports `preview-render-server` or `cms-server` | it is the shared contract; the CMS app imports it too | error |
 | `contract-is-a-leaf` | `preview-contract` imports no workspace package except `preview-protocol` (Zod is external and allowed) | it is shared with `cms-server`; it must not pull in the renderer, the sample site or the CMS server | error |
 | `request-path-no-process-or-git` | the request path imports no `child_process`, git library or store/write module | the preview node is read-only (decision 4) | error |
-| `request-path-fs-allowlist` | only `render/runtime.ts`, `overlay/plugins.ts` and `media-route.ts` import `fs` | the tool sees imports, not calls, so each `fs` user is reviewed once | error |
+| `request-path-fs-allowlist` | only `render/runtime.ts`, `overlay/plugins.ts`, `media-route.ts` and `serve/static.ts` import `fs` | the tool sees imports, not calls, so each `fs` user is reviewed once; `serve/static.ts` only reads the client folder, traversal-guarded | error |
 | `renderer-never-imports-cms-server` | `preview-render-server` never imports `cms-server` | the two apps share only `preview-contract` and `preview-protocol` (design 5.11) | error |
 | `cms-server-never-imports-renderer` | `cms-server` imports no `preview-render-server` module | the CMS uses `preview-protocol` and `preview-contract` only (design 5.11) | error |
 | `child-process-only-in-git-and-preview` | only `cms-server/src/git/` and `cms-server/src/preview/` import `node:child_process` | process calls stay in two reviewable places (design 5.11) | error |

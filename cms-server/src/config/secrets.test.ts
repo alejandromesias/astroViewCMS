@@ -9,6 +9,9 @@ const DIR = join('site-folder', '.cms', 'sample-site');
 const FILE = join(DIR, 'secrets.json');
 const HEX_01 = '01'.repeat(32);
 const HEX_02 = '02'.repeat(32);
+// Environment values are checked like file values, so they are 64 hex digits too.
+const ENV_TOKEN_HEX = 'ab'.repeat(32);
+const ENV_INTERNAL_HEX = 'cd'.repeat(32);
 
 function missing(): Error {
   return Object.assign(new Error('ENOENT: no such file'), { code: 'ENOENT' });
@@ -138,14 +141,14 @@ describe('loadSecrets with the environment', () => {
     const secrets = await loadSecrets(
       DIR,
       {
-        PREVIEW_TOKEN_SECRET: 'env-token',
-        PREVIEW_INTERNAL_SECRET: 'env-internal',
+        PREVIEW_TOKEN_SECRET: ENV_TOKEN_HEX,
+        PREVIEW_INTERNAL_SECRET: ENV_INTERNAL_HEX,
       },
       fs.deps,
     );
     expect(secrets).toEqual({
-      previewTokenSecret: 'env-token',
-      previewInternalSecret: 'env-internal',
+      previewTokenSecret: ENV_TOKEN_HEX,
+      previewInternalSecret: ENV_INTERNAL_HEX,
     });
     expect(fs.reads).toEqual([]);
     expect(fs.writes).toEqual([]);
@@ -156,11 +159,11 @@ describe('loadSecrets with the environment', () => {
     const fs = fakeFs(storedText(HEX_01, HEX_02));
     const secrets = await loadSecrets(
       DIR,
-      { PREVIEW_TOKEN_SECRET: 'env-token' },
+      { PREVIEW_TOKEN_SECRET: ENV_TOKEN_HEX },
       fs.deps,
     );
     expect(secrets).toEqual({
-      previewTokenSecret: 'env-token',
+      previewTokenSecret: ENV_TOKEN_HEX,
       previewInternalSecret: HEX_02,
     });
     expect(fs.writes).toEqual([]);
@@ -170,12 +173,12 @@ describe('loadSecrets with the environment', () => {
     const fs = fakeFs(storedText(HEX_01, HEX_02));
     const secrets = await loadSecrets(
       DIR,
-      { PREVIEW_INTERNAL_SECRET: 'env-internal' },
+      { PREVIEW_INTERNAL_SECRET: ENV_INTERNAL_HEX },
       fs.deps,
     );
     expect(secrets).toEqual({
       previewTokenSecret: HEX_01,
-      previewInternalSecret: 'env-internal',
+      previewInternalSecret: ENV_INTERNAL_HEX,
     });
   });
 
@@ -183,12 +186,12 @@ describe('loadSecrets with the environment', () => {
     const fs = fakeFs();
     const secrets = await loadSecrets(
       DIR,
-      { PREVIEW_INTERNAL_SECRET: 'env-internal' },
+      { PREVIEW_INTERNAL_SECRET: ENV_INTERNAL_HEX },
       fs.deps,
     );
     expect(secrets).toEqual({
       previewTokenSecret: HEX_01,
-      previewInternalSecret: 'env-internal',
+      previewInternalSecret: ENV_INTERNAL_HEX,
     });
     expect(fs.writes).toEqual([
       {
@@ -211,6 +214,57 @@ describe('loadSecrets with the environment', () => {
       previewInternalSecret: HEX_02,
     });
     expect(fs.reads).toEqual([FILE]);
+  });
+});
+
+describe('loadSecrets with a malformed environment value', () => {
+  it.each([
+    ['too short', 'ab'.repeat(31)],
+    ['too long', `${'ab'.repeat(32)}a`],
+    ['not hex', 'zz'.repeat(32)],
+    ['with a space', `${'ab'.repeat(31)} a`],
+  ])(
+    'refuses PREVIEW_TOKEN_SECRET that is %s, and reads and writes nothing',
+    async (_label, value) => {
+      const fs = fakeFs();
+      await expect(
+        loadSecrets(DIR, { PREVIEW_TOKEN_SECRET: value }, fs.deps),
+      ).rejects.toThrow(
+        new Error('PREVIEW_TOKEN_SECRET must be 64 hex digits'),
+      );
+      expect(fs.reads).toEqual([]);
+      expect(fs.writes).toEqual([]);
+    },
+  );
+
+  it('refuses PREVIEW_INTERNAL_SECRET even when the token secret is valid', async () => {
+    const fs = fakeFs();
+    await expect(
+      loadSecrets(
+        DIR,
+        {
+          PREVIEW_TOKEN_SECRET: ENV_TOKEN_HEX,
+          PREVIEW_INTERNAL_SECRET: 'not-hex',
+        },
+        fs.deps,
+      ),
+    ).rejects.toThrow(
+      new Error('PREVIEW_INTERNAL_SECRET must be 64 hex digits'),
+    );
+    expect(fs.writes).toEqual([]);
+  });
+
+  it('accepts upper-case hex from the environment, as the file does', async () => {
+    const fs = fakeFs();
+    const secrets = await loadSecrets(
+      DIR,
+      {
+        PREVIEW_TOKEN_SECRET: ENV_TOKEN_HEX.toUpperCase(),
+        PREVIEW_INTERNAL_SECRET: ENV_INTERNAL_HEX,
+      },
+      fs.deps,
+    );
+    expect(secrets.previewTokenSecret).toBe(ENV_TOKEN_HEX.toUpperCase());
   });
 });
 

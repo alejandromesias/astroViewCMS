@@ -41,7 +41,7 @@ const IMAGE_EXTENSIONS = new Set([
 
 // Added only to the preview build. It:
 // - injects the render routes /__preview/render, /__preview/validate and
-//   /__preview/warm, the draft image route /__preview-media/[file] (a stopgap
+//   /__preview/warm, the editor origins route /__preview/config, the draft image route /__preview-media/[file] (a stopgap
 //   until the CMS app stages media, phase 2) and the test editor page
 //   /__editor (and, with PREVIEW_DEV=1, /__dev/documents, the editor's
 //   stopgap data source), plus an on-demand page that keeps the site's renderers in the
@@ -112,6 +112,11 @@ export default function previewRenderServer(
           entrypoint: new URL('./warmup-route.ts', import.meta.url),
           prerender: false,
         });
+        injectRoute({
+          pattern: '/__preview/config',
+          entrypoint: new URL('./preview-config-route.ts', import.meta.url),
+          prerender: false,
+        });
         for (const route of devRoutes())
           injectRoute({ ...route, prerender: false });
         // The test editor is a plain prerendered page.
@@ -124,7 +129,7 @@ export default function previewRenderServer(
         const bridge = fileURLToPath(
           new URL('./client/bridge.ts', import.meta.url),
         );
-        injectScript('page', bridgeScript(toPosix(bridge), site.editorOrigins));
+        injectScript('page', bridgeScript(toPosix(bridge)));
 
         // The import scan (kept for documents.json) says which JSON files the
         // site's code imports; the overlay turns those into proxy modules.
@@ -275,13 +280,10 @@ export function devRoutes(
   ];
 }
 
-/** The page script that starts the bridge (client/bridge.ts) with the editor
- *  origins of the site config. */
-export function bridgeScript(
-  bridgeFile: string,
-  editorOrigins: string[] = [],
-): string {
-  return `import { startBridge } from ${JSON.stringify(bridgeFile)}; startBridge(window, window.fetch.bind(window), { editorOrigins: ${JSON.stringify(editorOrigins)} });`;
+/** The page script that starts the bridge (client/bridge.ts). The editor
+ *  origins come from GET /__preview/config at run time, not from the build. */
+export function bridgeScript(bridgeFile: string): string {
+  return `import { startBridge } from ${JSON.stringify(bridgeFile)}; startBridge(window, window.fetch.bind(window));`;
 }
 
 /** Removes everything directly inside `outDir` except the names in `keep`, so

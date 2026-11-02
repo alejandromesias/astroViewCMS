@@ -55,8 +55,8 @@ export async function loadSecrets(
     randomBytes,
   },
 ): Promise<Secrets> {
-  const fromEnvToken = fromEnvironment(env[ENV_TOKEN]);
-  const fromEnvInternal = fromEnvironment(env[ENV_INTERNAL]);
+  const fromEnvToken = fromEnvironment(ENV_TOKEN, env[ENV_TOKEN]);
+  const fromEnvInternal = fromEnvironment(ENV_INTERNAL, env[ENV_INTERNAL]);
   if (fromEnvToken !== undefined && fromEnvInternal !== undefined) {
     return {
       previewTokenSecret: fromEnvToken,
@@ -70,8 +70,17 @@ export async function loadSecrets(
   };
 }
 
-function fromEnvironment(value: string | undefined): string | undefined {
-  return value === undefined || value === '' ? undefined : value;
+// An environment value gets the same check as the file: 64 hex digits, so a
+// bad deployment value fails at start rather than being used as a key.
+function fromEnvironment(
+  name: string,
+  value: string | undefined,
+): string | undefined {
+  if (value === undefined || value === '') return undefined;
+  if (!HEX_SECRET.safeParse(value).success) {
+    throw new Error(`${name} must be 64 hex digits`);
+  }
+  return value;
 }
 
 // Reads the file, or creates it with two new secrets when it does not exist.
