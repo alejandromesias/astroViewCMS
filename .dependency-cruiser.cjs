@@ -12,12 +12,13 @@ module.exports = {
     {
       name: 'client-stays-browser-safe',
       comment:
-        'client/** ships to the browser: no node builtins, no server modules outside client/. ' +
+        'client/** ships to the browser: no node builtins, no server modules outside client/, ' +
+        'and not preview-contract (its index pulls in node:crypto and Zod). ' +
         'The bridge size budget depends on this.',
       severity: 'error',
       from: { path: `${SRC}client/`, pathNot: TESTS },
       to: {
-        path: [`^node:`, `^(assert|buffer|child_process|crypto|fs|http|https|net|os|path|stream|url|util|zlib)$`, `${SRC}(?!client/)`],
+        path: [`^preview-contract/`, `^node:`, `^(assert|buffer|child_process|crypto|fs|http|https|net|os|path|stream|url|util|zlib)$`, `${SRC}(?!client/)`],
       },
     },
     {

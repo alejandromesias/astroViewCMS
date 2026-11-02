@@ -441,7 +441,7 @@ is the reason for the list.
 
 | Rule | In plain words | Why | Severity |
 | --- | --- | --- | --- |
-| `client-stays-browser-safe` | `client/` imports no `node:*` builtin and no server module outside `client/` | the bridge runs in the browser and has a size budget | error |
+| `client-stays-browser-safe` | `client/` imports no `node:*` builtin, no server module outside `client/` and nothing from `preview-contract` (its index pulls in `node:crypto` and Zod) | the bridge runs in the browser and has a size budget | error |
 | `protocol-is-a-leaf` | `preview-protocol` never imports `preview-render-server` or `cms-server` | it is the shared contract; the CMS app imports it too | error |
 | `contract-is-a-leaf` | `preview-contract` imports no workspace package except `preview-protocol` (Zod is external and allowed) | it is shared with `cms-server`; it must not pull in the renderer, the sample site or the CMS server | error |
 | `request-path-no-process-or-git` | the request path imports no `child_process`, git library or store/write module | the preview node is read-only (decision 4) | error |

@@ -70,6 +70,12 @@ function readGate(env: Env): GateSettings {
         `PREVIEW_INTERNAL_SECRET must be at least ${MIN_SECRET_LENGTH} characters`,
       );
     }
+    // One leaked value would otherwise open both the cookie and the bearer path.
+    if (tokenSecret === internalSecret) {
+      throw new Error(
+        'PREVIEW_TOKEN_SECRET and PREVIEW_INTERNAL_SECRET must differ',
+      );
+    }
     const site = nonEmpty(env.PREVIEW_SITE);
     if (site === undefined) {
       throw new Error('PREVIEW_SITE must be set when the gate is on');

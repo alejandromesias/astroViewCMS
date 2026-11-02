@@ -48,7 +48,7 @@ came from "island" meaning four things at once.
 | **Region** | A marked part of a rendered page that the bridge can swap by itself | header, main content, footer |
 | **Overlay** | The documents sent with a render request, which replace the built content while that request renders | `{ "pages/home": {…draft…} }` |
 | **Preview bundle** | The preview build of a site at one code revision: server, client assets, manifest | `.build/sample-site/` |
-| **Preview node** | A running preview bundle: one Node process per active site | `node entry.mjs` on :4401 (sample-site) |
+| **Preview node** | A running preview bundle: one Node process per active site | `node src/start.ts --out <bundle>` on :4401 (sample-site; a bundle is not self-running since 2.8b, the front server starts it) |
 | **CMS app** | Editor UI plus API: auth, documents, drafts, saving, publishing, tenants | not built yet |
 
 "Island" survives only as Astro's own term (`astro-island`, hydrated
@@ -199,7 +199,7 @@ it's in the wrong place.
 ```text
  CMS APP (editor origin)           PREVIEW NODE (site's preview origin, read-only)
  ───────────────────────           ────────────────────────────────────────────────
- holds drafts per document         node entry.mjs   (preview bundle of the site)
+ holds drafts per document         start.ts --out <bundle>  (front server + bundle)
         │                            · serves built pages, /_astro/*, /_image
         │ postMessage                · POST /__preview/render
         ▼                            · getEntry/getCollection shim reads the overlay
@@ -1554,6 +1554,14 @@ plan, and a one-line pointer stays here.
   does not accept this cookie in an iframe. Plan on option B (one shared
   site) for Safari unless a macOS WebKit run or a real Safari shows
   `Partitioned` working. The script was thrown away.
+
+- **A preview bundle is not self-running (2.8b, 2026-11-01).** With
+  `@astrojs/node` in `mode: 'middleware'`, `entry.mjs` only exports a
+  handler; the front server in `preview-render-server/src/serve/` listens,
+  applies the gate and the CSP header, and is started by `start.ts --out
+  <bundle>`. A bundled image or a copied bundle must therefore ship
+  `preview-render-server` (or a bundled build of `start.ts`) with it and run
+  that, not `node entry.mjs`. Decide this when the image is designed.
 
 ### Known issues to carry
 

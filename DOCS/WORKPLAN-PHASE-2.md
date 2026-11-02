@@ -25,7 +25,7 @@ before writing tests, [TESTING-RECOMMENDATIONS.md](TESTING-RECOMMENDATIONS.md).
 |---|---|
 | Phase 2 design | approved by the user, 2026-10-31 |
 | Decisions D17 to D22 | logged in SYSTEM-DESIGN section 11 |
-| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.8b, 2.8c done 2026-11-01 (2.8c: token and gate built; 2.8d pending); the rest not started |
+| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); next: 2.1f alone, then 2.1g, then the rest of wave 4; the rest not started |
 
 **Done when:** every row of PHASE-2-DESIGN.md section 1 passes. Section 5
 below maps each row to the test that proves it.
@@ -87,8 +87,8 @@ Rules for running tasks in parallel:
 | 1 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a |
 | 2 | 2.0b, 2.0c, 2.1a, 2.8b |
 | 3 | 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8c, 2.8d |
-| 4 | 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a |
-| 5 | 2.3c, 2.4b, 2.4c, 2.5a |
+| 4 | 2.1f (alone, first), 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a |
+| 5 | 2.1g, 2.3c, 2.4b, 2.4c, 2.5a |
 | 6 | 2.5b, 2.6a, 2.9a, 2.10a |
 | 7 | 2.5c, 2.9c, 2.10b |
 | 8 | 2.6b, 2.7b, 2.7c, 2.9d |
@@ -543,6 +543,9 @@ done. Item 6 of the design (the front server) is step 2.8.
   headroom or the test needs to run serially, and whether the front server
   added to the per-request cost; measure the test alone before and after the
   front server.)
+- **Run this task first and alone** (review, 2026-11-02): it is `[build]`, and
+  it settles the `100 consecutive edits` budget before anything else adds
+  load. Other wave 4 tasks start after it.
 - Raise `cms-server` branch coverage (66.67%, 8 of 12; the misses are in
   `server.ts`, lines 41-43 and 53, the Request/Response bridge) with tests
   that tell the branches apart, then raise the floors to match. Do not add
@@ -550,6 +553,19 @@ done. Item 6 of the design (the front server) is step 2.8.
   if the bridge is about to change, defer those tests and say so.
 - **Done when:** both long modes pass; the `cms-server` branch floor is raised
   to within 2 points of its measured number; the Result block records both.
+
+#### 2.1g Stryker over the new code — after 2.1f · [build]
+
+- Run Stryker (`npx stryker run`, or `npm run check -- --mutation`; see QUALITY-TOOLING.md) once over the code
+  written since the last full run: `cms-server/src/codecs`, `src/git`,
+  `src/config`, `preview-contract/src/token.ts`, `preview-render-server/src/serve/`
+  and `preview-config.ts`. Triage the survivors, codecs first: a save that
+  rewrites a file wrong corrupts the site, so kill the survivors that a real
+  round trip could notice. Add the missing tests; do not change the global
+  `break` threshold here (2.13c).
+- Runs before 2.5a, which is the first task to save through the codecs.
+- **Done when:** the survivors are killed or each is written down as
+  equivalent, and the Result block gives the score per folder.
 
 ### 2.2 Format codecs — after 2.1a · ∥ 2.3, 2.1b to 2.1d, 2.0
 
@@ -858,7 +874,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
 
 ### 2.5 Saving — after 2.2, 2.3c, 2.4 · ∥ 2.6a, 2.7a, 2.8, 2.9a
 
-#### 2.5a Write planner — after 2.2, 2.4a
+#### 2.5a Write planner — after 2.2, 2.4a, 2.1g
 
 - A pure function from a change (`update`, `create` or `delete`, with its
   value) and the document's record to file operations (write text, delete
@@ -942,6 +958,12 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   height, format }`. `GET /media/staging/<sha256>.<ext>` serves it with
   `X-Content-Type-Options: nosniff` and long caching; the name is a hash, so
   it can't be guessed and needs no cookie (design 5.5).
+- **The upload must stream (from the 2.1a log).** `cms-server/src/http/server.ts`
+  buffers request bodies today; this task replaces that bridge for the upload
+  route so the 10 MB cap is enforced while reading (abort and answer `413` at
+  the cap, never buffer the whole body first). Test it with an oversized
+  body and a client that disconnects mid-upload. This is also the "bridge is
+  about to change" case of 2.1f: do not test the buffering there.
 - Metadata cache `.cms/<site>/media.json` (path or hash to `{ width, height,
   format }`), written atomically.
 - **The stopgap route's tests move here** (`media-route.test.ts`),
@@ -1225,11 +1247,12 @@ request-path rules apply (no `child_process`, no `fs` except the allowlist).
   internal bearer on `/__preview/validate`, an expired token.
 - **Done when:** these tests are in the end-to-end suite and pass. The
   "never `'*'`" rule of the bridge stays. [build]
-- **Added (2026-11-01, review of 2.8c):** `readGate` in `serve/settings.ts`
-  refuses `PREVIEW_TOKEN_SECRET` equal to `PREVIEW_INTERNAL_SECRET` (one
-  leaked secret would otherwise open both the cookie and the bearer path),
-  and `cms-server`'s `loadSecrets` generates two distinct values. One test
-  each. No separate task: it is two lines next to the gate this task proves.
+- **Done at review (2026-11-02):** `readGate` refuses `PREVIEW_TOKEN_SECRET`
+  equal to `PREVIEW_INTERNAL_SECRET` (with a test), and depcruise's
+  `client-stays-browser-safe` now also forbids `client/` importing
+  `preview-contract` (proved with a throwaway file). `cms-server` has no
+  internal secret yet: 2.9b, which adds it, must generate it distinct from
+  `previewTokenSecret` and test that.
 
 ### 2.9 Node supervision, builds and the overlay — after 2.8, 2.3c, 2.5c · ∥ 2.6, 2.7, 2.10a
 
@@ -1509,7 +1532,10 @@ Design 5.8. This is still a test tool, not the phase 3 editor.
   145, 160, 310) and `QUALITY-TOOLING.md:355`; it now comes from
   `PREVIEW_EDITOR_ORIGINS` through `GET /__preview/config`. Document the YAML
   codec's known limit (4-space indent with unindented sequences is written
-  indented) in `CMS-SERVER.md`.
+  indented) in `CMS-SERVER.md`. `bundle.json` and `images.json` are not in
+  `PREVIEW-RENDER-SERVER.md` or the renderer README either (2.0b/2.0c logs).
+  `SYSTEM-DESIGN.md` lines 51 and 202 were corrected on 2026-11-02; check the
+  rest of it for the same "bundle runs `node entry.mjs`" claim.
 - **Done when:** a reader can go from `DOCS/README.md` to every phase 2
   document and no document contradicts the code.
 

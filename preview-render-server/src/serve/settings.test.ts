@@ -140,6 +140,18 @@ describe('readServeSettings', () => {
     ).toThrow(new Error(`${name} must be at least 32 characters`));
   });
 
+  it('refuses the same value for both secrets', () => {
+    expect(() =>
+      readServeSettings({
+        PREVIEW_SITE: 'sample-site',
+        PREVIEW_TOKEN_SECRET: SECRET_A,
+        PREVIEW_INTERNAL_SECRET: SECRET_A,
+      }),
+    ).toThrow(
+      new Error('PREVIEW_TOKEN_SECRET and PREVIEW_INTERNAL_SECRET must differ'),
+    );
+  });
+
   it.each([{}, { PREVIEW_SITE: '' }])(
     'refuses the gate without a site, with the environment %j',
     (siteEnv) => {
