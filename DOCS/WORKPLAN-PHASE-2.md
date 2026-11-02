@@ -1536,6 +1536,15 @@ Design 4.4, 5.6.
   `.cms/<site>/logs/`; the result is `{ bundleId, dir, ok, firstError }`
   with the first failing file and message.
 - Garbage-collects old bundles, keeping the last two and the last good one.
+- **Failed builds and `--out` (review, 2026-11-02):** `build.ts` now refuses a
+  non-empty `--out` folder that has no `manifest/bundle.json`
+  (`assertOutDirIsSafe`, so `--out .` cannot delete a repo). A build that fails
+  before it writes `bundle.json` leaves such a folder behind. Each build here
+  uses a fresh `bundles/<bundleId>/`, so this never blocks a rebuild, but the
+  runner must remove the folder of a failed build itself, or the garbage
+  collection must (a failed folder is never "the last good one"). If any build
+  ever has to reuse a folder, write a marker file before `clearBundle` in
+  `integration.ts` first.
 - **Done when:** a build of a worktree of the seeded remote succeeds; a
   commit with a broken component fails with its `firstError`; a leaked
   secret in the parent environment is absent in the child (test); queue
