@@ -25,7 +25,7 @@ before writing tests, [TESTING-RECOMMENDATIONS.md](TESTING-RECOMMENDATIONS.md).
 |---|---|
 | Phase 2 design | approved by the user, 2026-10-31 |
 | Decisions D17 to D22 | logged in SYSTEM-DESIGN section 11 |
-| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); next: 2.1f alone, then 2.1g, then the rest of wave 4; the rest not started |
+| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); next: 2.1f alone, then 2.2c, 2.2d and 2.3b in parallel (gaps settled 2026-11-02), then 2.1g over them, then the rest of wave 4; the rest not started |
 
 **Done when:** every row of PHASE-2-DESIGN.md section 1 passes. Section 5
 below maps each row to the test that proves it.
@@ -553,11 +553,34 @@ done. Item 6 of the design (the front server) is step 2.8.
   if the bridge is about to change, defer those tests and say so.
 - **Done when:** both long modes pass; the `cms-server` branch floor is raised
   to within 2 points of its measured number; the Result block records both.
+- Gaps settled (calls, 2026-11-02):
+  - **Where the cost comes from:** `serve/static.ts` answers only GET and HEAD, so the
+    render POST never touches the disk; the front server is not the obvious cause. Check
+    that first.
+  - **Measuring "before the front server":** first, on today's code, time the test
+    through the front server and again through the adapter handler alone (cheap, no
+    second checkout). Only if that is inconclusive, build a baseline at the parent of
+    `0fa7b2d` (the commit that added the front server, 2.8b) in a throwaway `git
+    worktree` with **its own workspace links**. A `node_modules` junction to the main
+    checkout makes Vite resolve `preview-protocol` and `preview-contract` to today's
+    code, and the "before" build would not be clean.
+  - **Deciding the budget, in this order:** (1) if the test passes when run serially
+    (own Vitest project, or `describe.sequential` in a file of its own), stop there;
+    (2) if the front server's cost is real, look for cheap per-request fixes first, such
+    as building the CSP header once; (3) only then raise the budget, set from the
+    measured median plus headroom, and log it as a change to PHASE-2-DESIGN 5.1 item 8
+    (the 60 ms median is a regression gate, not a user-experience target).
+  - **Floor:** `cms-server` branches 64 to 65 (within 2 points of 66.67). The 4 misses are in
+    the bridge that 2.7a rewrites, so add **no tests** for them and say so in the Result.
+  - **`npm run check`** runs the whole unit suite, as this plan asks; it overrides the
+    "never the full suite" line of `CLAUDE.md` for this task only. Run it once at a time
+    (two coverage runs collide on `reports/coverage`).
 
-#### 2.1g Stryker over the new code — after 2.1f · [build]
+#### 2.1g Stryker over the new code — after 2.1f, 2.2c, 2.2d, 2.3b · [build]
 
 - Run Stryker (`npx stryker run`, or `npm run check -- --mutation`; see QUALITY-TOOLING.md) once over the code
-  written since the last full run: `cms-server/src/codecs`, `src/git`,
+  written since the last full run: `cms-server/src/codecs` (now with `frontmatter.ts`
+  and `file-entries.ts`), `src/git` (now with `repo.ts`), `src/log.ts`,
   `src/config`, `preview-contract/src/token.ts`, `preview-render-server/src/serve/`
   and `preview-config.ts`. Triage the survivors, codecs first: a save that
   rewrites a file wrong corrupts the site, so kill the survivors that a real
@@ -731,6 +754,34 @@ fixtures.
 - **Done when:** a frontmatter-only change leaves the body byte for byte
   (bigspring's home page is frontmatter only); a body-only change leaves the
   frontmatter byte for byte; `.md` and `.mdx` both covered.
+- Gaps settled (calls, 2026-11-02): `cms-server/src/codecs/frontmatter.ts` (design 5.2)
+  and `frontmatter.test.ts`. Imports `Codec`/`CodecError` from `types.ts` and `yamlCodec`
+  from `yaml.ts`; defines nothing twice.
+  - **Value shape:** `{ data, body }` (D2, design 5.3). `Codec` stays `parse(text)` and
+    `write(original, value)`; one codec for both `.md` and `.mdx`.
+  - **Fences:** do not import the regex from `preview-render-server/src/dev/documents.ts`
+    (`cms-server` may not import the renderer, rule 2.1b, and that route goes away in
+    2.12a). Write the codec's own, with **Astro's frontmatter parsing as the reference**,
+    since the site reads the file through Astro. Cases to test: a byte-order mark, blank
+    lines before the opening `---`, `---` with trailing spaces, `---\r\n` fences, `---`
+    thematic breaks inside the body, empty frontmatter (`---\n---`), no fences.
+  - **Parse:** a file without fences is `{ data: {}, body: text }`. **The body is exact:**
+    do not strip the blank lines after the closing fence (the old `splitFrontmatter`
+    does, for display). An unclosed fence, or frontmatter that is not a map, is a
+    `CodecError`. So is TOML frontmatter (`+++`) or JSON frontmatter (D13). The caller
+    (2.4a, 2.5a) presents that as "this document is read-only, it needs a developer", not
+    as a crash.
+  - **Write:** the frontmatter goes through `yamlCodec.write` on the original frontmatter
+    text, so a body-only change leaves it byte for byte. YAML error lines are shifted by
+    the fence offset so they point into the file. A file without frontmatter gets fences
+    only if the data is not empty (D13). If the original had fences and the data becomes
+    empty, the fences stay and nothing is written between them (check that the YAML
+    codec gives an empty string for empty data, not `{}`). `write('', value)` works,
+    because new documents arrive in 2.5a.
+  - **Tests:** the `Done when` cases on byte copies of the sample's files under
+    `cms-server/test/fixtures/markdown/`: `homepage/-index.md` (frontmatter only), a
+    `blog/blog-*.md`, `pages/elements.mdx`. Plus a test that a body with leading blank
+    lines renders the same as Astro's rendering of it (`@astrojs/markdown-remark`).
 
 #### 2.2d `file()` entry codec — after 2.2a, 2.2b
 
@@ -740,6 +791,31 @@ fixtures.
 - **Done when:** editing one `testimonials` entry and one `stats` entry
   leaves the rest of each file byte for byte; removing the last entry leaves
   a valid empty container.
+- Gaps settled (calls, 2026-11-02): `cms-server/src/codecs/file-entries.ts` (design 5.2)
+  and `file-entries.test.ts`. It is a **thin layer over the file's own codec** (D13):
+  parse the whole file, find the entry, change it, call `codec.write(original, whole)`.
+  It does not edit text itself.
+  - **Guarantee, reworded:** JSON: every other entry is byte for byte. YAML: only the edited
+    lines differ, and an unchanged value returns the original string (the 2.2b guarantee).
+  - **Entry id** (checked in `astro/dist/content/loaders/file.js`): array shape, the id is
+    `(item.id ?? item.slug)?.toString()`; match on that, or entries keyed by `slug` are
+    invisible. Keyed shape: the key, looked up with `Object.hasOwn` (hostile keys). A string
+    entry named `$schema` is skipped by Astro; skip it too, and refuse it as a document key.
+  - **Operations:** replace, add and remove. Replace or remove of a missing key is a
+    `CodecError`; an add of an existing key is too. **Add** appends at the end of the array,
+    or after the last key. In the array shape, `value.id` (or `slug`) must equal the key
+    when present; when absent it is inserted first. A new `id` takes the type of the file's
+    existing ids (number or string).
+  - **Duplicate ids:** Astro throws `DuplicateContentEntrySlugError`, so that site does not
+    build. Every operation on such a file, reads included, is a `CodecError`; the document
+    is read-only and needs a developer (as for TOML frontmatter in 2.2c).
+  - **Empty result:** removing the last entry writes `[]` or `{}` (JSON and YAML); test the
+    YAML case, since the library may need a nudge to keep a valid empty container.
+  - **Errors from below:** an edit that goes into a YAML alias, or removes a merged key, is
+    the `CodecError` that `yamlCodec` already raises; do not catch it.
+  - **Fixtures:** the sample only has array-shaped files (`testimonials.json`, `stats.yaml`),
+    so add synthetic keyed-shape files (JSON and YAML) and one YAML with an alias, under
+    `cms-server/test/fixtures/entries/`. A save never converts a file's format.
 
 ### 2.3 Git core — after 2.1a · ∥ 2.2, 2.1b to 2.1d, 2.0
 
@@ -816,6 +892,52 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   interrupted sync is handled in 2.10b.
 - **Done when:** tests against the harness (2.1d): fresh clone, existing
   clone, wrong remote URL, a dirty tree after a simulated crash.
+- Gaps settled (calls, 2026-11-02): `cms-server/src/git/repo.ts` and `repo.test.ts`, plus
+  `cms-server/src/log.ts` (below). The `.cms` root is an **injected parameter** (the config
+  has no such field; tests use `.test-tmp`).
+  - **Shape:** `ensureRepo({ config, cmsDir, exec?, log? })` returns the repo folder, the site
+    folder (`siteDir` joined once, here) and whether it recovered a dirty tree.
+  - **Clone:** `.cms/<site>/repo/`, full history (no shallow clone: publish names the commit it
+    overwrote, design 4.2), `--branch <branch>`, with `-c core.autocrlf=false` on the clone
+    itself and in the repo config. Otherwise a clone on Windows converts LF files to CRLF
+    and breaks every codec's byte-for-byte guarantee (`CLAUDE.md`: every file is LF). Use the
+    longer clone timeout (2.3a: the default is 60 s; take 5 minutes).
+  - **Identity, every start:** set `user.name` and `user.email` from `config.git.author` on
+    every start, not only at clone, so a config change is not ignored. Also set
+    `core.hooksPath` to an empty folder and `commit.gpgsign=false` on the CMS clone, so the
+    user's global hooks or signing do not run on CMS commits. Keep the global config
+    itself: it carries the credential helper.
+  - **Existing clone:** check `origin` against `config.remote` (exact string compare of
+    `git remote get-url origin`; loosen only on a real case), `fetch`, create `cms/work` from
+    `origin/<branch>` only if missing. An existing `cms/work` is **never reset by a fetch**:
+    it holds the saves. If HEAD is not on `cms/work` (detached or another branch), check it
+    out after recovery. A leftover `cms/work-next` is 2.10b's.
+  - **Wrong URL:** a hard `RepoError` kind `url-mismatch`; no repoint, no re-clone (anti-goal:
+    lose saved work). The message shows both URLs, redacted, and says whether `cms/work` has
+    unpublished saves (commits `origin/<branch>..cms/work`), so the developer knows
+    whether deleting `.cms/<site>/repo` loses anything.
+  - **Crash recovery:** `reset --hard` to `cms/work`'s tip plus `clean -fd` (ignored files
+    kept), because a crash while creating a document leaves an untracked file (design 5.3
+    step 5; staged media lives outside the repo, in `.cms/<site>/staging/`). Log every
+    removed path. No mutex: recovery runs before the server listens (2.3c adds it).
+  - **Errors:** a typed `RepoError` with kinds `auth-failed`, `remote-not-found`,
+    `url-mismatch` and `failed`, classified from the `GitError`'s redacted stderr
+    (stable under `LC_ALL=C`). Anything unrecognised is `failed` with that stderr. Only
+    GitHub remotes (HTTPS and SSH) are classified for now; other hosts fall to `failed`.
+  - **`runGit` additions** (in `git/exec.ts` and `exec.test.ts`, not in `repo.ts`):
+    `GIT_ASKPASS` set to empty, and `GIT_SSH_COMMAND=ssh -o BatchMode=yes` **unless the
+    environment already sets it**, so an SSH passphrase prompt cannot hang the server
+    (`GIT_TERMINAL_PROMPT=0` does not stop it) and a user's own SSH options survive.
+  - **Logger (convention for all of `cms-server`):** `src/log.ts` exports
+    `Logger = { info, warn, error }(message, fields?)` and a default that writes one JSON
+    line per event (stdout for info, stderr for warn and error). `fields` go through the same
+    credential redaction as `GitError`. Inject it everywhere, with the default as the real
+    one. Build logs stay in files under `.cms/<site>/logs/`; 2.9c's status route reports
+    state, not log lines. About 30 lines, with its own test.
+  - **Tests:** seed the remote once per file (the harness seed takes about 10 s) and clone
+    per test. The four cases of Done-when, plus: `siteDir` variant, `core.autocrlf` in the
+    clone, an existing `cms/work` kept across a fetch, HEAD off `cms/work`, an untracked
+    file removed by recovery, and the error kinds from fake `exec` stderr.
 
 #### 2.3c Mutex, commits, diffs, worktrees — after 2.3b
 
