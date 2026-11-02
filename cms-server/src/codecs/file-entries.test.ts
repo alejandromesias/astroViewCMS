@@ -267,6 +267,49 @@ describe('changeEntry on an array file (testimonials.json)', () => {
       `Entry id "${key}" must be a number, as the file's other ids are`,
     );
   });
+
+  it('keeps a string id when a replace of a string-id entry has no id, in a mixed-id array', () => {
+    const original =
+      '[\n  { "id": 1, "v": "a" },\n  { "id": "hello", "v": "b" }\n]\n';
+    const result = changeEntry(JSON_FORMAT, original, {
+      op: 'replace',
+      key: 'hello',
+      value: { v: 'c' },
+    });
+    expect(JSON.parse(result)).toEqual([
+      { id: 1, v: 'a' },
+      { id: 'hello', v: 'c' },
+    ]);
+  });
+
+  it('keeps a number id when a replace of a number-id entry has no id, in a mixed-id array', () => {
+    const original =
+      '[\n  { "id": 1, "v": "a" },\n  { "id": "hello", "v": "b" }\n]\n';
+    const result = changeEntry(JSON_FORMAT, original, {
+      op: 'replace',
+      key: '1',
+      value: { v: 'c' },
+    });
+    expect(JSON.parse(result)).toEqual([
+      { id: 1, v: 'c' },
+      { id: 'hello', v: 'b' },
+    ]);
+  });
+
+  it('types an added id from the file-wide guess, unchanged, in a mixed-id array', () => {
+    const original =
+      '[\n  { "id": 1, "v": "a" },\n  { "id": "hello", "v": "b" }\n]\n';
+    const result = changeEntry(JSON_FORMAT, original, {
+      op: 'add',
+      key: '3',
+      value: { v: 'c' },
+    });
+    expect(JSON.parse(result)).toEqual([
+      { id: 1, v: 'a' },
+      { id: 'hello', v: 'b' },
+      { id: 3, v: 'c' },
+    ]);
+  });
 });
 
 describe('changeEntry on a keyed file (keyed.json)', () => {

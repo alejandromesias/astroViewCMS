@@ -65,7 +65,10 @@ function writeMarkdown(original: string, value: unknown): string {
       }
       return next.body;
     }
-    return `---${eol}${newYaml(next.data, eol)}---${eol}${next.body}`;
+    // A byte-order mark stays first in the file, in front of the new opening fence, not in the body.
+    const bom = next.body.startsWith(BOM) ? BOM : '';
+    const body = next.body.slice(bom.length);
+    return `${bom}---${eol}${newYaml(next.data, eol)}---${eol}${body}`;
   }
   const current = dataOf(parts.raw, lineOffset(parts));
   return (

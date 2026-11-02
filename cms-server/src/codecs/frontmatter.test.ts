@@ -259,6 +259,23 @@ describe('markdownCodec.write', () => {
     ).toBe('---\ntitle: Hi\n---\nText\n');
   });
 
+  it('a BOM file without frontmatter keeps the BOM first, before the new fence, out of the body', () => {
+    const output = markdownCodec.write('﻿Text\n', {
+      data: { title: 'Hi' },
+      body: '﻿Text\n',
+    });
+    expect(output).toBe('﻿---\ntitle: Hi\n---\nText\n');
+    expect(markdownCodec.parse(output)).toEqual({
+      data: { title: 'Hi' },
+      body: 'Text\n',
+    });
+  });
+
+  it('an unchanged BOM file without frontmatter is returned as it was', () => {
+    const text = '﻿Text\n';
+    expect(markdownCodec.write(text, markdownCodec.parse(text))).toBe(text);
+  });
+
   it('empty data on a file without frontmatter writes the body only', () => {
     expect(markdownCodec.write('Text\n', { data: {}, body: 'New\n' })).toBe(
       'New\n',

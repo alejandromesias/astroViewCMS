@@ -52,21 +52,21 @@ function changeArray(
   const index = ids.indexOf(change.key);
   if (change.op === 'add') {
     if (index !== -1) throw exists(change.key, format);
-    return [...items, arrayEntry(change, items, format)];
+    return [...items, arrayEntry(change, usesNumberIds(items), format)];
   }
   if (index === -1) throw missing(change.key, format);
   if (change.op === 'remove')
     return items.filter((_, position) => position !== index);
   const next = [...items];
-  next[index] = arrayEntry(change, items, format);
+  next[index] = arrayEntry(change, hasNumberId(items[index]), format);
   return next;
 }
 
 // The object that goes into the array. A `value.id` or `slug` must equal the key. When there is none, `id` is
-// added first, typed as the file's other ids are (number or string).
+// added first. Its type is passed in: a replace keeps the replaced entry's type, and an add uses the file's.
 function arrayEntry(
   change: { readonly key: string; readonly value: unknown },
-  items: readonly unknown[],
+  numericId: boolean,
   format: EntryFormat,
 ): Record<string, unknown> {
   const { key, value } = change;
@@ -83,7 +83,7 @@ function arrayEntry(
       );
     return value;
   }
-  const id = usesNumberIds(items) ? numberId(key, format) : key;
+  const id = numericId ? numberId(key, format) : key;
   const pairs: [string, unknown][] = [
     ['id', id],
     ...Object.entries(value).filter(([name]) => name !== 'id'),
@@ -152,7 +152,11 @@ function checkUnique(
 }
 
 function usesNumberIds(items: readonly unknown[]): boolean {
-  return items.some((item) => isRecord(item) && typeof item.id === 'number');
+  return items.some(hasNumberId);
+}
+
+function hasNumberId(item: unknown): boolean {
+  return isRecord(item) && typeof item.id === 'number';
 }
 
 // A key that is not a number in its exact text (`03`, `abc`) cannot be a numeric id.

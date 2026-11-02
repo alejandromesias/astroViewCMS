@@ -834,6 +834,7 @@ fixtures.
   `types.ts` and `yamlCodec`. Tests: `frontmatter.test.ts`, 28 passing (targeted run); byte
   copies of the sample's `homepage/-index.md`, `blog/blog-1.md` and `pages/elements.mdx` under
   `cms-server/test/fixtures/markdown/`. The `Done when` cases are exact-string assertions.
+  - **Review fix (2026-11-02):** a BOM file without frontmatter gets the BOM before the new opening fence, not in the body; 2 regression tests, 30 passing.
   - **Dependency:** `@astrojs/markdown-remark` as a `cms-server` devDependency (`^7.3.4`, the
     hoisted 7.3.4) for the Astro reference test (`parseFrontmatter`, `createMarkdownProcessor`).
     The lockfile change is the workspace entry only. `npm` resolved `^7.3.4` to 7.3.5 and nested
@@ -907,6 +908,9 @@ fixtures.
     `testimonials.json` and `stats.yaml`; keyed JSON and YAML). The alias case pins the YAML
     codec's refusal. `biome lint` is clean on both files, `biome format` was applied to them, and
     `tsc -p cms-server` is clean.
+  - **Fix (review, commit 4f1c744):** a replace without an id now keeps the replaced entry's id
+    type, so a string id stays a string in a mixed-id array. Add keeps the file-wide guess. Three
+    regression tests added; `file-entries.test.ts` has 40 tests passing.
   - **Open:** Stryker has not been run on the new files (TESTING-RECOMMENDATIONS 7). `npm run
     check` was not run, as instructed.
 
