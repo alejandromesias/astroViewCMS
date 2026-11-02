@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { choosePort, parseCliOptions, parsePort } from './cli-options.ts';
+import {
+  choosePort,
+  parseBundleId,
+  parseCliOptions,
+  parsePort,
+} from './cli-options.ts';
 
 describe('parseCliOptions', () => {
   it('reads the config path and leaves every override unset', () => {
@@ -67,10 +72,24 @@ describe('parseCliOptions', () => {
     expect(parseCliOptions(['--dev']).configPath).toBeUndefined();
   });
 
+  it('reads --bundle-id, in either form, and leaves it unset otherwise', () => {
+    expect(
+      parseCliOptions(['sites/a.config.ts', '--bundle-id', 'test-1']).bundleId,
+    ).toBe('test-1');
+    expect(
+      parseCliOptions(['sites/a.config.ts', '--bundle-id=b.2_x']).bundleId,
+    ).toBe('b.2_x');
+    expect(parseCliOptions(['sites/a.config.ts']).bundleId).toBeUndefined();
+  });
+
   it.each([
     [['a.config.ts', 'b.config.ts'], 'Unexpected argument: b.config.ts'],
     [['a.config.ts', '-root'], 'Unexpected argument: -root'],
-    [['a.config.ts', '--bundle-id', 'x'], 'Unknown option: --bundle-id'],
+    [['a.config.ts', '--bundle-id'], '--bundle-id needs a value'],
+    [
+      ['a.config.ts', '--bundle-id', '../x'],
+      '--bundle-id must start with a letter or digit and hold only letters, digits, dots, dashes and underscores, got "../x"',
+    ],
     [['a.config.ts', '--roots', '/x'], 'Unknown option: --roots'],
     [['a.config.ts', '--__proto__', 'x'], 'Unknown option: --__proto__'],
     [['a.config.ts', '--constructor=1'], 'Unknown option: --constructor'],
@@ -121,4 +140,25 @@ describe('choosePort', () => {
   it('falls back to the config port when neither is given', () => {
     expect(choosePort(undefined, undefined, 4400)).toBe('4400');
   });
+});
+
+describe('parseBundleId', () => {
+  it.each([
+    'a',
+    '1',
+    'build-2026',
+    'x.y_z',
+    '3f9c1e2a-7b4d-4e8f-9a1b-0c2d3e4f5a6b',
+  ])('accepts %j', (value) => {
+    expect(parseBundleId(value)).toBe(value);
+  });
+
+  it.each(['.', '..', '.hidden', '-x', 'a/b', 'a\\b', 'a b', '', 'a\n'])(
+    'rejects %j, which would not be a plain folder name',
+    (value) => {
+      expect(() => parseBundleId(value)).toThrow(
+        `--bundle-id must start with a letter or digit and hold only letters, digits, dots, dashes and underscores, got "${value}"`,
+      );
+    },
+  );
 });

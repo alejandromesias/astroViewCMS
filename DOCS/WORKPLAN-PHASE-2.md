@@ -25,7 +25,7 @@ before writing tests, [TESTING-RECOMMENDATIONS.md](TESTING-RECOMMENDATIONS.md).
 |---|---|
 | Phase 2 design | approved by the user, 2026-10-31 |
 | Decisions D17 to D22 | logged in SYSTEM-DESIGN section 11 |
-| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01 ; the rest not started |
+| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.8b done 2026-11-02 (2.8b: gate seam only, 2.8c pending); the rest not started |
 
 **Done when:** every row of PHASE-2-DESIGN.md section 1 passes. Section 5
 below maps each row to the test that proves it.
@@ -168,7 +168,7 @@ done. Item 6 of the design (the front server) is step 2.8.
   - Two comments that named the old `.build/<site>-manifest/` folder were
     updated after 2.0d.
 
-#### 2.0b Bundle identity — after 2.0a
+#### 2.0b Bundle identity — after 2.0a · DONE
 
 - The build writes `bundle.json` `{ bundleId, siteCommit, protocolVersion,
   astroVersion, builtAt }` next to the manifests. `bundleId` is a fresh
@@ -179,8 +179,18 @@ done. Item 6 of the design (the front server) is step 2.8.
 - **Done when:** a build of `sample-site` writes a `bundle.json` the schema
   accepts, with `protocolVersion` equal to `PROTOCOL_VERSION`; unit tests
   cover the no-git case. [build]
+- **Result (2026-11-02):** `bundleJsonSchema` (strict) in `preview-contract/src/bundle.ts`;
+  `newBundleId()` (UUID), `readSiteCommit` and `astroVersion()` in the renderer's
+  `src/bundle.ts`; `--bundle-id` on the build CLI (`start.ts` accepts and ignores
+  it); `astro:build:done` writes `bundle.json` into the manifest folder.
+  Calls: bundle ids match `^[A-Za-z0-9][\w.-]*$` (the id becomes a folder name
+  later); `siteCommit` is 40 to 64 lowercase hex or null; `bundle.json` and
+  `images.json` are written in their own try/catch that warns, before
+  `documents.json`. Evidence: `manifest-identity` and `bundle-copy` e2e.
+  Open: `PREVIEW-RENDER-SERVER.md` and the renderer README do not list
+  `bundle.json` / `images.json` yet (2.13b).
 
-#### 2.0c Revisions and the image list — after 2.0a
+#### 2.0c Revisions and the image list — after 2.0a · DONE
 
 - `revisionOf(text)` in the contract package: SHA-256, hex, first 16
   characters.
@@ -196,6 +206,15 @@ done. Item 6 of the design (the front server) is step 2.8.
 - **Done when:** the manifest of `sample-site` carries both, `testimonials`
   entries have different revisions, and editing one entry's formatting in
   the shared file changes no other entry's revision (unit test). [build]
+- **Result (2026-11-02):** `revisionOf(string | Uint8Array)` and
+  `canonicalEntryText` in `preview-contract/src/revision.ts`; `DocumentRecord.revision`
+  is required; `ImageRecord` / `imageRecordSchema` added; `withRevisions` in the
+  renderer's `manifest/documents.ts` (`shapeDocuments` stays pure);
+  `images.json` is a plain array `{ path, hash }` sorted by path (no
+  `imagesJsonSchema` yet). Calls: `revisionOf` takes bytes so images and binary
+  documents are hashed raw; an entry with no file of its own hashes
+  `canonicalEntryText` of its data from Astro's data store. Evidence: the four
+  `testimonials` revisions are distinct; the reflow unit test passes.
 
 #### 2.0d Manifests inside `outDir`, relative paths — start now · DONE 2026-11-01
 
@@ -337,7 +356,7 @@ done. Item 6 of the design (the front server) is step 2.8.
 
 ### 2.1 Package scaffold and guardrails — after 2.0a, 2.0f
 
-#### 2.1a The package — after 2.0a, 2.0f
+#### 2.1a The package — after 2.0a, 2.0f · DONE
 
 - `cms-server/` with the whole checklist (workspaces, scripts, strict
   `tsconfig.json` copied from `preview-protocol`, Biome, Knip entry points,
@@ -349,6 +368,15 @@ done. Item 6 of the design (the front server) is step 2.8.
   `404` for everything unknown.
 - **Done when:** `npm run check` passes with `cms-server` in every tool, and
   `createApp(...).request('/nope')` answers `404` in a test.
+- **Result (2026-11-02):** `cms-server/` with `createApp` in `src/http/app.ts`
+  (design 5.2: only `http/` imports hono) and `startServer` in `src/server.ts`;
+  checklist done (workspaces, Biome, Knip, Stryker globs and project, depcruise
+  and graph paths, `check.ts`, QUALITY-TOOLING.md, `.gitignore` gets `.cms/` and
+  `.test-tmp/`). Calls: hono has no Node adapter in the dependency list, so
+  `server.ts` has a small Request/Response bridge over `node:http`; it buffers
+  bodies, so 2.7a (media upload) must make it stream; knip ignores zod, yaml,
+  sharp and the two workspace packages until 2.2 uses them; only the depcruise
+  paths were added, the cms-server rules are 2.1b.
 
 #### 2.1b Dependency rules — after 2.1a
 
@@ -658,7 +686,7 @@ request-path rules apply (no `child_process`, no `fs` except the allowlist).
   SYSTEM-DESIGN.md section 12, with one shared site as the fallback. 2.8b
   and 2.8c are unblocked.
 
-#### 2.8b Front server — after 2.0d, 2.0e
+#### 2.8b Front server — after 2.0d, 2.0e · DONE (gate is a seam until 2.8c)
 
 - The preview build switches `@astrojs/node` to `mode: 'middleware'`. A small
   Node server (`src/serve/`) imports the built entry's `handler`, applies
@@ -673,6 +701,25 @@ request-path rules apply (no `child_process`, no `fs` except the allowlist).
 - **Done when:** the existing end-to-end suite passes through the front
   server with `PREVIEW_INSECURE=1`; unit tests cover the header with and
   without extra origins. [build]
+- **Result (2026-11-02):** `preview-render-server/src/serve/` (`settings`, `gate`,
+  `static`, `front-server`); the adapter is in `mode: 'middleware'`
+  (`build.ts`); `start.ts` refuses before loading the build, requires
+  `options.mode === 'middleware'` and runs the front server. The adapter's
+  static handler exists only in standalone mode, so `serve/static.ts` serves
+  `client/` itself (traversal guarded). Order: CSP header, gate, static,
+  handler. **The gate is a seam:** with both secrets set, `createGate` throws
+  "task 2.8c not built", so a gated node cannot start until 2.8c. Calls:
+  `PREVIEW_INSECURE` accepts only `'1'`, secrets win if both are set;
+  `PREVIEW_EDITOR_ORIGINS` is validated as bare http(s) origins (blocks CSP
+  injection via `;`); `start:sample` uses `--env-file=sites/local-insecure.env`
+  (npm scripts run through cmd.exe on Windows). Test harnesses set
+  `PREVIEW_INSECURE=1`. **`bundle-copy.e2e` now starts the copy through
+  `start.ts --out <copy>`**, because in middleware mode `entry.mjs` no longer
+  listens: a bundle is not self-running any more, the front server belongs to
+  the renderer package (revisit if phase 4 wants a self-contained bundle).
+  Evidence: e2e 92 tests; `100 consecutive edits` missed its 60 ms median once
+  (68.3) in the full parallel run and passed alone. Open: `serve/` is not in
+  the depcruise request-path rule list; README is 2.13b.
 
 #### 2.8c Token and cookie — after 2.0a, 2.8a, 2.8b
 

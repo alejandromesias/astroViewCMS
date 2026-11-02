@@ -7,6 +7,8 @@
     "!preview-contract/src/**/*.test.ts",
     "preview-protocol/src/**/*.ts",
     "!preview-protocol/src/**/*.test.ts",
+    "cms-server/src/**/*.ts",
+    "!cms-server/src/**/*.test.ts",
     "preview-render-server/src/**/*.ts",
     "!preview-render-server/src/**/*.test.ts",
     "!preview-render-server/src/**/*.d.ts",

@@ -16,7 +16,9 @@ function makeDeps(overrides: Partial<HandlerDeps> = {}): HandlerDeps {
   return {
     renderPage: vi.fn(async () => page),
     validate: vi.fn(async () => []),
-    builtDocuments: () => [{ key: 'blog/a', format: 'md', buildTime: false }],
+    builtDocuments: () => [
+      { key: 'blog/a', format: 'md', buildTime: false, revision: 'r-blog' },
+    ],
     ...overrides,
   };
 }

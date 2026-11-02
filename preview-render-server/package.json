@@ -13,7 +13,7 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "build:sample": "node src/build.ts sites/sample-site.config.ts --dev",
-    "start:sample": "node src/start.ts sites/sample-site.config.ts"
+    "start:sample": "node --env-file=sites/local-insecure.env src/start.ts sites/sample-site.config.ts"
   },
   "dependencies": {
     "@astrojs/node": "^11.1.9",

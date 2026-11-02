@@ -5,3 +5,7 @@ node_modules/
 
 # generated reports
 reports/
+
+# cms-server: working copies and bundles, and the temp folders its tests create
+.cms/
+.test-tmp/

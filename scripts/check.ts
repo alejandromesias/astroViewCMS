@@ -21,6 +21,8 @@ const FAST: Step[] = [
   { name: 'protocol tests', command: 'npm run test -w preview-protocol', kind: 'gate' },
   { name: 'tsc contract', command: 'npm run typecheck -w preview-contract', kind: 'gate' },
   { name: 'contract tests', command: 'npm run test -w preview-contract', kind: 'gate' },
+  { name: 'tsc cms-server', command: 'npm run typecheck -w cms-server', kind: 'gate' },
+  { name: 'cms-server tests', command: 'npm run test -w cms-server', kind: 'gate' },
   { name: 'biome lint', command: 'npm run lint', kind: 'gate' },
   { name: 'biome format', command: 'npm run format:check', kind: 'gate' },
   { name: 'unit tests', command: 'npm run test -w preview-render-server', kind: 'gate' },

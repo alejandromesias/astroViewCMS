@@ -3,8 +3,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stringify } from 'devalue';
+import { bundleJsonSchema } from 'preview-contract';
+import { PROTOCOL_VERSION } from 'preview-protocol';
 import type { Plugin } from 'vite';
 import { afterAll, describe, expect, it, vi } from 'vitest';
+import { astroVersion } from './bundle.ts';
 import previewRenderServer, {
   bridgeScript,
   devRoutes,
@@ -38,6 +41,8 @@ for (const file of [
   'src/content/assets/b.JPG',
   'src/assets/nested/c.webp',
   'src/content/notes.txt',
+  // The file an authors/ana entry in the store points at (revisions read it).
+  'src/content/authors/ana.json',
 ]) {
   fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
   fs.writeFileSync(path.join(root, file), '');
@@ -325,6 +330,30 @@ describe('previewRenderServer hooks', () => {
     expect(manifest('documents.json')).toEqual([]);
     expect(manifest('code-languages.json')).toHaveProperty('languages');
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('writes bundle.json with the bundle id, the protocol version and no commit outside git', () => {
+    const integration = previewRenderServer(hookSite, 'test-bundle')
+      .hooks as unknown as Record<string, Hook>;
+    integration['astro:build:done']!({ logger: { warn: vi.fn() } });
+    expect(bundleJsonSchema.parse(manifest('bundle.json'))).toEqual({
+      bundleId: 'test-bundle',
+      siteCommit: null,
+      protocolVersion: PROTOCOL_VERSION,
+      astroVersion: astroVersion(),
+      builtAt: expect.any(String),
+    });
+  });
+
+  it('lists the images under src/ in path order, relative to the site root', () => {
+    const integration = hooksOf(hookSite);
+    integration['astro:build:done']!({ logger: { warn: vi.fn() } });
+    // The fixture images are empty files, so they share the hash of "".
+    expect(manifest('images.json')).toEqual([
+      { path: 'src/assets/nested/c.webp', hash: 'e3b0c44298fc1c14' },
+      { path: 'src/content/assets/a.png', hash: 'e3b0c44298fc1c14' },
+      { path: 'src/content/assets/b.JPG', hash: 'e3b0c44298fc1c14' },
+    ]);
   });
 
   it('passes the site buildTimeFields on to documents.json', () => {

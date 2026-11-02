@@ -110,6 +110,7 @@ describe('handleDocument', () => {
       file: 'src/content/authors/ana.json',
       format: 'json',
       buildTime: false,
+      revision: 'r-ana',
     },
     {
       key: 'data:src/config/config.json',
@@ -117,6 +118,7 @@ describe('handleDocument', () => {
       format: 'json',
       buildTime: true,
       buildTimeFields: ['site.base_url'],
+      revision: 'r-config',
     },
     {
       key: 'site/rules',
@@ -124,8 +126,9 @@ describe('handleDocument', () => {
       format: 'toml',
       editable: false,
       buildTime: false,
+      revision: 'r-rules',
     },
-    { key: 'loader/x', format: 'other', buildTime: false },
+    { key: 'loader/x', format: 'other', buildTime: false, revision: 'r-x' },
   ];
   const files: Record<string, string> = {
     'src/content/authors/ana.json': '{"name":"Ana"}',
@@ -375,13 +378,20 @@ describe('parseDocument: details', () => {
 
 describe('handleDocument: details', () => {
   const records: DocumentRecord[] = [
-    { key: 'a/one', file: 'one.json', format: 'json', buildTime: false },
+    {
+      key: 'a/one',
+      file: 'one.json',
+      format: 'json',
+      buildTime: false,
+      revision: 'r1',
+    },
     {
       key: 'a/two',
       file: 'two.json',
       format: 'json',
       buildTime: true,
       buildTimeFields: ['x.y', 'z'],
+      revision: 'r2',
     },
     {
       key: 'a/three',
@@ -389,6 +399,7 @@ describe('handleDocument: details', () => {
       format: 'json',
       editable: true as never,
       buildTime: false,
+      revision: 'r3',
     },
     {
       key: 'a/ro',
@@ -397,18 +408,44 @@ describe('handleDocument: details', () => {
       editable: false,
       buildTime: true,
       buildTimeFields: ['*'],
+      revision: 'r4',
     },
-    { key: 'a/post', file: 'post.md', format: 'md', buildTime: false },
+    {
+      key: 'a/post',
+      file: 'post.md',
+      format: 'md',
+      buildTime: false,
+      revision: 'r5',
+    },
     {
       key: 'a/yaml',
       file: 'list.yaml',
       format: 'yaml',
       entryKey: 'b',
       buildTime: false,
+      revision: 'r6',
     },
-    { key: 'a/nofile', file: '', format: 'json', buildTime: false },
-    { key: 'a/dup', file: 'first.json', format: 'json', buildTime: false },
-    { key: 'a/dup', file: 'second.json', format: 'json', buildTime: false },
+    {
+      key: 'a/nofile',
+      file: '',
+      format: 'json',
+      buildTime: false,
+      revision: 'r7',
+    },
+    {
+      key: 'a/dup',
+      file: 'first.json',
+      format: 'json',
+      buildTime: false,
+      revision: 'r8',
+    },
+    {
+      key: 'a/dup',
+      file: 'second.json',
+      format: 'json',
+      buildTime: false,
+      revision: 'r9',
+    },
   ];
   const files: Record<string, string> = {
     'one.json': '{"n":1}',

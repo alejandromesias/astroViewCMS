@@ -2,9 +2,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { stringify } from 'devalue';
-import { describe, expect, it } from 'vitest';
+import { canonicalEntryText, revisionOf } from 'preview-contract';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { DataStore } from './documents.ts';
-import { readDataStore, shapeDocuments } from './documents.ts';
+import { readDataStore, shapeDocuments, withRevisions } from './documents.ts';
 
 const store: DataStore = new Map([
   [
@@ -262,5 +263,144 @@ describe('readDataStore', () => {
       'src/content/authors/ana.json',
     );
     fs.rmSync(cacheDir, { recursive: true, force: true });
+  });
+});
+
+describe('withRevisions (WORKPLAN 2.0c)', () => {
+  // Site folders made per test, removed afterwards.
+  const folders: string[] = [];
+  const siteWith = (files: Record<string, string>) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'revisions-'));
+    folders.push(root);
+    for (const [file, text] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+      fs.writeFileSync(path.join(root, file), text);
+    }
+    return root;
+  };
+  afterEach(() => {
+    for (const folder of folders.splice(0))
+      fs.rmSync(folder, { recursive: true, force: true });
+  });
+
+  /** A store with two entries of one shared testimonials.json file. */
+  const testimonialsStore = (ana: unknown, kofi: unknown): DataStore =>
+    new Map([
+      [
+        'testimonials',
+        new Map([
+          [
+            't-ana',
+            {
+              id: 't-ana',
+              filePath: 'src/content/testimonials.json',
+              data: ana,
+            },
+          ],
+          [
+            't-kofi',
+            {
+              id: 't-kofi',
+              filePath: 'src/content/testimonials.json',
+              data: kofi,
+            },
+          ],
+        ]),
+      ],
+    ]);
+
+  /** Each document's revision, by key, for a store read from `root`. */
+  const revisionsOf = (root: string, store: DataStore) =>
+    Object.fromEntries(
+      withRevisions(
+        shapeDocuments({
+          store,
+          loaderKinds: { testimonials: 'file' },
+          scan: { buildTimeFiles: [], dataModules: [] },
+        }),
+        store,
+        root,
+      ).map((document): [string, string] => [document.key, document.revision]),
+    );
+
+  it('hashes a document with a file of its own by the bytes of that file', () => {
+    const root = siteWith({
+      'src/content/blog/hello.md': '# Hello\n',
+      'src/config/config.json': '{"title":"Site"}',
+    });
+    const store: DataStore = new Map([
+      [
+        'blog',
+        new Map([
+          ['hello', { id: 'hello', filePath: 'src/content/blog/hello.md' }],
+        ]),
+      ],
+    ]);
+    const documents = withRevisions(
+      shapeDocuments({
+        store,
+        loaderKinds: {},
+        scan: {
+          buildTimeFiles: [],
+          dataModules: ['src/config/config.json'],
+        },
+      }),
+      store,
+      root,
+    );
+    expect(documents.map((d) => [d.key, d.revision])).toEqual([
+      ['blog/hello', revisionOf('# Hello\n')],
+      ['data:src/config/config.json', revisionOf('{"title":"Site"}')],
+    ]);
+  });
+
+  it('gives a file() entry the hash of its own data, not of the shared file', () => {
+    const root = siteWith({
+      'src/content/testimonials.json':
+        '[{"name":"Ana","quote":"Great"},{"name":"Kofi","quote":"Good"}]',
+    });
+    const ana = { name: 'Ana', quote: 'Great' };
+    const revisions = revisionsOf(
+      root,
+      testimonialsStore(ana, { name: 'Kofi', quote: 'Good' }),
+    );
+    expect(revisions['testimonials/t-ana']).toBe(
+      revisionOf(canonicalEntryText(ana)),
+    );
+    expect(revisions['testimonials/t-ana']).not.toBe(
+      revisions['testimonials/t-kofi'],
+    );
+  });
+
+  it('keeps every revision when the shared file is only reformatted', () => {
+    const root = siteWith({
+      'src/content/testimonials.json':
+        '[{"name":"Ana","quote":"Great"},{"name":"Kofi","quote":"Good"}]',
+    });
+    const ana = { name: 'Ana', quote: 'Great' };
+    const kofi = { name: 'Kofi', quote: 'Good' };
+    const before = revisionsOf(root, testimonialsStore(ana, kofi));
+    fs.writeFileSync(
+      path.join(root, 'src/content/testimonials.json'),
+      '[\n  {\n    "quote": "Great",\n    "name": "Ana"\n  },\n  {"name": "Kofi", "quote": "Good"}\n]\n',
+    );
+    expect(revisionsOf(root, testimonialsStore(ana, kofi))).toEqual(before);
+  });
+
+  it('moves only the revision of the entry whose data changed', () => {
+    const root = siteWith({
+      'src/content/testimonials.json': '[]',
+    });
+    const kofi = { name: 'Kofi', quote: 'Good' };
+    const before = revisionsOf(
+      root,
+      testimonialsStore({ name: 'Ana', quote: 'Great' }, kofi),
+    );
+    const after = revisionsOf(
+      root,
+      testimonialsStore({ name: 'Ana', quote: 'Excellent' }, kofi),
+    );
+    expect(after['testimonials/t-ana']).not.toBe(before['testimonials/t-ana']);
+    expect(after['testimonials/t-kofi']).toBe(before['testimonials/t-kofi']);
   });
 });

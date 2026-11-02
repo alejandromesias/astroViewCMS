@@ -14,18 +14,22 @@ import {
   waitForServer,
 } from '../support/preview-server.ts';
 
-/** Starts the bundle's own server entry (server/entry.mjs) on `port`, the way
- *  a copied bundle is run by hand. Returns the child and its base URL. */
+/** Starts the front server (src/start.ts) on `port` against the copied bundle
+ *  folder (--out), as a node run by hand. Returns the child and its base URL. */
 async function startEntry(
   bundle: string,
   port: number,
 ): Promise<{ child: ChildProcess; baseUrl: string }> {
   const child = spawn(
     process.execPath,
-    [path.join(bundle, 'server', 'entry.mjs')],
+    ['src/start.ts', 'sites/sample-site.config.ts', '--out', bundle],
     {
       cwd: SERVER_DIR,
-      env: childEnv({ HOST: '127.0.0.1', PORT: String(port) }),
+      env: childEnv({
+        HOST: '127.0.0.1',
+        PORT: String(port),
+        PREVIEW_INSECURE: '1',
+      }),
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   );

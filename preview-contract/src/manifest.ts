@@ -22,6 +22,17 @@ export interface DocumentRecord {
   buildTime: boolean;
   /** Which fields are read at build time; `['*']` means the whole file. */
   buildTimeFields?: string[];
+  /** The document's revision (revisionOf in revision.ts, 2.0c): the hash of
+   *  the file's bytes, or of the entry's canonical data for a `file()` entry. */
+  revision: string;
+}
+
+/** One image under the site's src/, with the hash of its bytes (images.json,
+ *  D12): lets cms-server see which saved images the bundle lacks. */
+export interface ImageRecord {
+  /** Relative to the site root, with forward slashes. */
+  path: string;
+  hash: string;
 }
 
 /** One route of the site, as Astro's routing table lists it. */
@@ -55,6 +66,13 @@ export const documentRecordSchema = z.object({
   entryKey: z.string().optional(),
   buildTime: z.boolean(),
   buildTimeFields: z.array(z.string()).optional(),
+  revision: z.string(),
+});
+
+/** Schema of one ImageRecord. */
+export const imageRecordSchema = z.object({
+  path: z.string(),
+  hash: z.string(),
 });
 
 /** Schema of one RouteRecord. */

@@ -6,6 +6,7 @@
     "preview-protocol",
     "preview-contract",
     "preview-render-server",
+    "cms-server",
     "sample-site"
   ],
   "devDependencies": {
@@ -24,12 +25,12 @@
     "check": "node scripts/check.ts",
     "audit": "osv-scanner scan source -L package-lock.json --config osv-scanner.toml",
     "knip": "knip",
-    "depcruise": "depcruise preview-render-server/src preview-protocol/src preview-contract/src --config .dependency-cruiser.cjs",
+    "depcruise": "depcruise preview-render-server/src preview-protocol/src preview-contract/src cms-server/src --config .dependency-cruiser.cjs",
     "lint": "biome lint",
     "format:check": "biome format",
     "graph": "node scripts/graph.ts",
     "measure:memory": "node scripts/measure-memory.mjs",
     "measure:listing": "node scripts/measure-listing-routes.mjs",
-    "deps": "depcruise preview-render-server/src preview-protocol/src preview-contract/src --config .dependency-cruiser-graph.cjs -T text"
+    "deps": "depcruise preview-render-server/src preview-protocol/src preview-contract/src cms-server/src --config .dependency-cruiser-graph.cjs -T text"
   }
 }

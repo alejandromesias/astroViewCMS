@@ -38,7 +38,7 @@ async function startNode(outDir: string, port: number): Promise<ChildProcess> {
     ['src/start.ts', SITE_CONFIG, '--out', outDir, '--port', String(port)],
     {
       cwd: SERVER_DIR,
-      env: childEnv({ HOST: '127.0.0.1' }),
+      env: childEnv({ HOST: '127.0.0.1', PREVIEW_INSECURE: '1' }),
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   );

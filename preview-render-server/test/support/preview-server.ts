@@ -63,7 +63,13 @@ export async function startPreviewServer(
     ['--expose-gc', 'src/start.ts', siteConfig],
     {
       cwd: SERVER_DIR,
-      env: { ...env, HOST: '127.0.0.1', PORT: String(port) },
+      // PREVIEW_INSECURE: the gate (2.8c) is not built, and tests run without it.
+      env: {
+        ...env,
+        HOST: '127.0.0.1',
+        PORT: String(port),
+        PREVIEW_INSECURE: '1',
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   );

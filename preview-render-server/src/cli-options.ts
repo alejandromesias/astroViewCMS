@@ -1,7 +1,8 @@
 // Command-line options for build.ts and start.ts. The site config file is the
 // first argument that isn't a flag (argv[2] in the usual call). The flags
 // override the site config (see resolveSiteConfig in site-config.ts) or the
-// environment. --bundle-id is added with the bundle identity work (step 2.0b).
+// environment.
+import { bundleIdPattern } from 'preview-contract';
 
 /** What build.ts and start.ts take from the command line. */
 export interface CliOptions {
@@ -16,12 +17,15 @@ export interface CliOptions {
   /** The port start.ts listens on, ahead of the PORT variable and the config's
    *  port (see choosePort). build.ts ignores it. */
   port: number | undefined;
+  /** build.ts only: the bundle id written to bundle.json, in place of a fresh
+   *  random one (tests use it to know the id). start.ts ignores it. */
+  bundleId: string | undefined;
   /** build.ts only: adds the editor's stopgap route, as PREVIEW_DEV=1 does. */
   dev: boolean;
 }
 
 /** Flags that take a value, written as `--flag value` or `--flag=value`. */
-const VALUE_FLAGS = new Set(['--root', '--out', '--port']);
+const VALUE_FLAGS = new Set(['--root', '--out', '--port', '--bundle-id']);
 /** Flags that stand alone and take no value. */
 const SWITCH_FLAGS = new Set(['--dev']);
 
@@ -34,6 +38,7 @@ export function parseCliOptions(args: readonly string[]): CliOptions {
     root: undefined,
     out: undefined,
     port: undefined,
+    bundleId: undefined,
     dev: false,
   };
   // An iterator, so a value flag can take the next word as its value.
@@ -84,7 +89,21 @@ function assignValue(options: CliOptions, name: string, value: string): void {
     case '--port':
       options.port = parsePort(value);
       return;
+    case '--bundle-id':
+      options.bundleId = parseBundleId(value);
+      return;
   }
+}
+
+/** Reads a bundle id. It becomes a folder name later (see bundleIdPattern), so
+ *  anything with a separator or a leading dot is refused. */
+export function parseBundleId(value: string): string {
+  if (!bundleIdPattern.test(value)) {
+    throw new Error(
+      `--bundle-id must start with a letter or digit and hold only letters, digits, dots, dashes and underscores, got "${value}"`,
+    );
+  }
+  return value;
 }
 
 /** Reads a port number from 1 to 65535. Only plain digits are accepted, so

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { documentRecordSchema, routeRecordSchema } from './manifest.ts';
+import {
+  documentRecordSchema,
+  imageRecordSchema,
+  routeRecordSchema,
+} from './manifest.ts';
 
 /** A complete, valid document record, built per test. */
 const documentOf = () => ({
@@ -9,6 +13,7 @@ const documentOf = () => ({
   entryKey: 'a/b',
   buildTime: true,
   buildTimeFields: ['title', '*'],
+  revision: 'a1b2c3d4e5f60718',
 });
 
 /** A complete, valid route record, built per test. */
@@ -25,8 +30,23 @@ const routeOf = () => ({
 describe('documentRecordSchema', () => {
   it('accepts a complete record and one with only the required keys', () => {
     expect(documentRecordSchema.parse(documentOf())).toEqual(documentOf());
-    const minimal = { key: 'data:x.json', format: 'json', buildTime: false };
+    const minimal = {
+      key: 'data:x.json',
+      format: 'json',
+      buildTime: false,
+      revision: '0123456789abcdef',
+    };
     expect(documentRecordSchema.parse(minimal)).toEqual(minimal);
+  });
+
+  it('keeps the revision a string, and refuses a record without one', () => {
+    expect(
+      documentRecordSchema.safeParse({ ...documentOf(), revision: 7 }).success,
+    ).toBe(false);
+    expect(
+      documentRecordSchema.safeParse({ ...documentOf(), revision: undefined })
+        .success,
+    ).toBe(false);
   });
 
   it('accepts editable only as false, the TOML and other-format case', () => {
@@ -35,6 +55,7 @@ describe('documentRecordSchema', () => {
       format: 'toml',
       buildTime: false,
       editable: false,
+      revision: '0123456789abcdef',
     };
     expect(documentRecordSchema.parse(toml)).toEqual(toml);
     expect(
@@ -53,6 +74,17 @@ describe('documentRecordSchema', () => {
   ])('refuses a record where %s', (_name, change) => {
     expect(
       documentRecordSchema.safeParse({ ...documentOf(), ...change }).success,
+    ).toBe(false);
+  });
+});
+
+describe('imageRecordSchema', () => {
+  it('accepts a path and its hash, and refuses a record without a hash', () => {
+    const image = { path: 'src/assets/a.png', hash: 'e3b0c44298fc1c14' };
+    expect(imageRecordSchema.parse(image)).toEqual(image);
+    expect(
+      imageRecordSchema.safeParse({ path: image.path, hash: undefined })
+        .success,
     ).toBe(false);
   });
 });

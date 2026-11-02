@@ -13,6 +13,7 @@ describe('the package entry point', () => {
         key: 'data:x.json',
         format: 'json',
         buildTime: false,
+        revision: '0123456789abcdef',
       }).success,
     ).toBe(true);
     expect(routeRecordSchema.safeParse({}).success).toBe(false);

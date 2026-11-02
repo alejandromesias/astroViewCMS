@@ -18,6 +18,7 @@ page and patches the DOM as drafts change. The code is a set of npm workspaces:
 | `preview-render-server` | The server, the Astro integration, the overlay that swaps in draft content, and the bridge (`src/client/`). All the production logic. | yes |
 | `preview-protocol` | Shared types for the messages between editor, server and bridge. | yes |
 | `preview-contract` | The contract between the renderer and `cms-server`: manifest shapes, `schema.json`, the render request body, with Zod schemas. Depends only on `preview-protocol` and Zod. | yes |
+| `cms-server` | The CMS server on `127.0.0.1`: Hono routes over plain modules for documents, git, media and preview nodes. Depends on `preview-protocol` and `preview-contract`, never on the renderer. | yes |
 | `sample-site` | Sample Astro site the server renders in tests and demos. | no (fixtures, not our code) |
 
 Because the server will later handle many sites and untrusted editor input, the
@@ -61,7 +62,7 @@ CI, fail the build). "Report" means the output needs a human reading it.
   `exactOptionalPropertyTypes` (`{ a?: string }` does not accept an explicit
   `undefined`), `noImplicitOverride` and `noFallthroughCasesInSwitch`. When one
   fails, fix the code rather than relaxing the flag.
-- **Biome** lints and formats `preview-render-server`, `preview-protocol` and `preview-contract`
+- **Biome** lints and formats `preview-render-server`, `preview-protocol`, `preview-contract` and `cms-server`
   (test fixtures are excluded). Rules are the recommended set plus three
   stricter ones: unused imports are errors, a promise nobody awaits is an error
   (`noFloatingPromises`), and `any` is an error. Test files may use `any` and
@@ -123,6 +124,8 @@ CI, fail the build). "Report" means the output needs a human reading it.
 | Unit tests, protocol | `npm run test -w preview-protocol` | seconds |
 | Typecheck, contract | `npm run typecheck -w preview-contract` | seconds |
 | Unit tests, contract | `npm run test -w preview-contract` | seconds |
+| Typecheck, cms-server | `npm run typecheck -w cms-server` | seconds |
+| Unit tests, cms-server | `npm run test -w cms-server` | seconds |
 | Lint | `node_modules/.bin/biome lint` | ~2 s |
 | Format check | `node_modules/.bin/biome format` (fix with `--write`) | ~2 s |
 | Unit tests, one file | `cd preview-render-server && ../node_modules/.bin/vitest run <file>` | seconds |
@@ -268,8 +271,8 @@ empty). Each change is a *mutant*. It then re-runs the tests: if one fails the
 mutant is *killed* (good); if none fails it *survived* (the tests do not pin
 that behaviour down).
 
-- **Packages covered:** `preview-render-server`, `preview-contract` and
-  `preview-protocol` (`mutate` in `stryker.config.json`). Their tests run through
+- **Packages covered:** `preview-render-server`, `preview-contract`,
+  `preview-protocol` and `cms-server` (`mutate` in `stryker.config.json`). Their tests run through
   `vitest.mutation.config.ts`, which lists each package as a Vitest project;
   a new package needs a project entry there as well as `mutate` globs.
   `vitest.related: true` is set so a single-file run (`--mutate <file>`) runs only

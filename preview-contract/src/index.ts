@@ -6,9 +6,17 @@
 export type {
   BuildTimeFields,
   DocumentRecord,
+  ImageRecord,
   RouteRecord,
 } from './manifest.ts';
-export { documentRecordSchema, routeRecordSchema } from './manifest.ts';
+export {
+  documentRecordSchema,
+  imageRecordSchema,
+  routeRecordSchema,
+} from './manifest.ts';
+export type { BundleJson } from './bundle.ts';
+export { bundleIdPattern, bundleJsonSchema } from './bundle.ts';
+export { canonicalEntryText, revisionOf } from './revision.ts';
 export type { CollectionSchemaJson } from './schema.ts';
 export {
   collectionSchemaJson,

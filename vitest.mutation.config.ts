@@ -22,6 +22,13 @@ export default defineConfig({
           include: ['src/**/*.test.ts'],
         },
       },
+      {
+        test: {
+          name: 'cms-server',
+          root: 'cms-server',
+          include: ['src/**/*.test.ts'],
+        },
+      },
     ],
   },
 });

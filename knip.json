@@ -26,6 +26,11 @@
     "preview-contract": {
       "entry": ["src/*.test.ts"],
       "project": ["src/**"]
+    },
+    "cms-server": {
+      "entry": ["src/**/*.test.ts"],
+      "project": ["src/**"],
+      "ignoreDependencies": ["preview-contract", "preview-protocol", "sharp", "yaml", "zod"]
     }
   }
 }

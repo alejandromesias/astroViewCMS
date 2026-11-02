@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { canonicalEntryText, revisionOf } from 'preview-contract';
 import { parse } from 'devalue';
 import type { ProjectScan } from './import-scan.ts';
 import type { BuildTimeFields, DocumentRecord } from './types.ts';
@@ -8,7 +9,12 @@ import type { BuildTimeFields, DocumentRecord } from './types.ts';
 interface StoreEntry {
   id: string;
   filePath?: string;
+  /** The entry's parsed data, after the collection's schema ran. */
+  data?: unknown;
 }
+
+/** A document before its revision is added (withRevisions). */
+type DocumentDraft = Omit<DocumentRecord, 'revision'>;
 
 /** Collection name -> entry id -> entry, as Astro's content layer keeps them. */
 export type DataStore = Map<string, Map<string, StoreEntry>>;
@@ -49,9 +55,9 @@ export function shapeDocuments({
   scan: ProjectScan;
   buildTimeFields?: BuildTimeFields;
   readOnlyCollections?: string[];
-}): DocumentRecord[] {
+}): DocumentDraft[] {
   const readOnly = new Set(readOnlyCollections);
-  const documents: DocumentRecord[] = [];
+  const documents: DocumentDraft[] = [];
   const buildTime = (
     key: string,
     scanned: boolean,
@@ -105,6 +111,30 @@ export function shapeDocuments({
       ? { ...doc, editable: false }
       : doc,
   );
+}
+
+/** Adds each document's `revision` (WORKPLAN 2.0c, design 5.3). A document with
+ *  a file of its own is hashed by the file's bytes. A `file()` entry is hashed
+ *  by the canonical form of its own data, so editing one entry of a shared file
+ *  leaves the other entries' revisions alone. Reads the files under `root`. */
+export function withRevisions(
+  documents: DocumentDraft[],
+  store: DataStore,
+  root: string,
+): DocumentRecord[] {
+  const entries = new Map<string, StoreEntry>();
+  for (const [collection, list] of store) {
+    for (const entry of list.values()) {
+      entries.set(`${collection}/${entry.id}`, entry);
+    }
+  }
+  return documents.map((document) => {
+    const text =
+      document.entryKey !== undefined || document.file === undefined
+        ? canonicalEntryText(entries.get(document.key)?.data)
+        : fs.readFileSync(path.join(root, document.file));
+    return { ...document, revision: revisionOf(text) };
+  });
 }
 
 function formatOf(file: string | undefined): DocumentRecord['format'] {

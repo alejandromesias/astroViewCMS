@@ -2,8 +2,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AstroIntegration } from 'astro';
+import type { BundleJson, ImageRecord } from 'preview-contract';
+import { revisionOf } from 'preview-contract';
+import { PROTOCOL_VERSION } from 'preview-protocol';
 import type { Plugin } from 'vite';
-import { readDataStore, shapeDocuments } from './manifest/documents.ts';
+import { astroVersion, newBundleId, readSiteCommit } from './bundle.ts';
+import {
+  readDataStore,
+  shapeDocuments,
+  withRevisions,
+} from './manifest/documents.ts';
 import type { ProjectScan } from './manifest/import-scan.ts';
 import { scanProject } from './manifest/import-scan.ts';
 import { collectLanguages, LANGUAGES_FILE } from './manifest/languages.ts';
@@ -42,12 +50,15 @@ const IMAGE_EXTENSIONS = new Set([
 //   pages, by redirecting the pages' imports to a generated wrapper (the site's
 //   source stays untouched);
 // - adds the bridge script to every page;
-// - writes the build manifests (schema.json, routes.json, documents.json) to
+// - writes the build manifests (bundle.json, schema.json, routes.json,
+//   documents.json with a revision per document, images.json) to
 //   site.manifestDir;
 // - generates a virtual module that hands the routes the site's pages, every
 //   image under src/, where to keep uploads and the site's CMS schemas.
+// `bundleId` goes into bundle.json; build.ts passes one (--bundle-id or fresh).
 export default function previewRenderServer(
   site: ResolvedSiteConfig,
+  bundleId: string = newBundleId(),
 ): AstroIntegration {
   const contentConfig = findContentConfig(site.root);
   // Filled in by astro:config:setup, used when the build is done.
@@ -194,6 +205,21 @@ export default function previewRenderServer(
       // The content data store is complete once the build is done, and so is
       // the outDir clean-up, so the manifests are written from here on.
       'astro:build:done': ({ logger }) => {
+        try {
+          const bundle: BundleJson = {
+            bundleId,
+            siteCommit: readSiteCommit(site.root),
+            protocolVersion: PROTOCOL_VERSION,
+            astroVersion: astroVersion(),
+            builtAt: new Date().toISOString(),
+          };
+          writeManifest(site, 'bundle.json', bundle);
+          writeManifest(site, 'images.json', imageManifest(site.root));
+        } catch (error) {
+          logger.warn(
+            `bundle.json or images.json not written: ${(error as Error).message}`,
+          );
+        }
         if (schemaManifest !== undefined) {
           writeManifest(site, 'schema.json', schemaManifest);
         }
@@ -202,17 +228,21 @@ export default function previewRenderServer(
         }
         try {
           const store = readDataStore(cacheDir);
-          const documents = shapeDocuments({
+          const documents = withRevisions(
+            shapeDocuments({
+              store,
+              loaderKinds,
+              scan,
+              ...(site.buildTimeFields === undefined
+                ? {}
+                : { buildTimeFields: site.buildTimeFields }),
+              ...(site.readOnlyCollections === undefined
+                ? {}
+                : { readOnlyCollections: site.readOnlyCollections }),
+            }),
             store,
-            loaderKinds,
-            scan,
-            ...(site.buildTimeFields === undefined
-              ? {}
-              : { buildTimeFields: site.buildTimeFields }),
-            ...(site.readOnlyCollections === undefined
-              ? {}
-              : { readOnlyCollections: site.readOnlyCollections }),
-          });
+            site.root,
+          );
           writeManifest(site, 'documents.json', documents);
           writeManifest(site, LANGUAGES_FILE, {
             languages: collectLanguages(site.root, store, site.extraLanguages),
@@ -423,6 +453,19 @@ export function findImages(dir: string): string[] {
         IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase()),
     )
     .map((entry) => path.join(entry.parentPath, entry.name));
+}
+
+/** The images under the site's src/, sorted by path, each with the hash of its
+ *  bytes (images.json, D12). The bytes are hashed as they are, never decoded. */
+function imageManifest(root: string): ImageRecord[] {
+  const src = path.join(root, 'src');
+  if (!fs.existsSync(src)) return [];
+  return findImages(src)
+    .map((file) => ({
+      path: toPosix(path.relative(root, file)),
+      hash: revisionOf(fs.readFileSync(file)),
+    }))
+    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }
 
 function importPath(root: string, file: string): string {

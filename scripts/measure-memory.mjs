@@ -110,7 +110,7 @@ try {
   let output = '';
   server = spawn(process.execPath, ['--expose-gc', 'src/start.ts', SITE_CONFIG], {
     cwd: SERVER_DIR,
-    env: { ...env, HOST: '127.0.0.1', PORT: String(port) },
+    env: { ...env, HOST: '127.0.0.1', PORT: String(port), PREVIEW_INSECURE: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.stdout.on('data', (chunk) => (output += chunk));
