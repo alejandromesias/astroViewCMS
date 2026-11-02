@@ -433,7 +433,7 @@ is the reason for the list.
 ## Annex: dependency-cruiser rules
 
 `npm run depcruise` checks every import under `preview-render-server/src`,
-`preview-protocol/src` and `preview-contract/src` against `.dependency-cruiser.cjs`. A rule is an
+`preview-protocol/src`, `preview-contract/src` and `cms-server/src` against `.dependency-cruiser.cjs`. A rule is an
 "allowed to import" question; a violation prints the rule name below.
 "Request path" means the files that serve a preview request: `render/`,
 `overlay/`, `client/`, `*-route.ts` and `request-guard.ts`.
@@ -441,14 +441,24 @@ is the reason for the list.
 | Rule | In plain words | Why | Severity |
 | --- | --- | --- | --- |
 | `client-stays-browser-safe` | `client/` imports no `node:*` builtin and no server module outside `client/` | the bridge runs in the browser and has a size budget | error |
-| `protocol-is-a-leaf` | `preview-protocol` never imports `preview-render-server` | it is the shared contract; the CMS app imports it too | error |
-| `contract-is-a-leaf` | `preview-contract` imports no workspace package except `preview-protocol` (Zod is external and allowed) | it is shared with `cms-server`; it must not pull in the renderer or the sample site | error |
+| `protocol-is-a-leaf` | `preview-protocol` never imports `preview-render-server` or `cms-server` | it is the shared contract; the CMS app imports it too | error |
+| `contract-is-a-leaf` | `preview-contract` imports no workspace package except `preview-protocol` (Zod is external and allowed) | it is shared with `cms-server`; it must not pull in the renderer, the sample site or the CMS server | error |
 | `request-path-no-process-or-git` | the request path imports no `child_process`, git library or store/write module | the preview node is read-only (decision 4) | error |
 | `request-path-fs-allowlist` | only `render/runtime.ts`, `overlay/plugins.ts` and `media-route.ts` import `fs` | the tool sees imports, not calls, so each `fs` user is reviewed once | error |
+| `renderer-never-imports-cms-server` | `preview-render-server` never imports `cms-server` | the two apps share only `preview-contract` and `preview-protocol` (design 5.11) | error |
+| `cms-server-never-imports-renderer` | `cms-server` imports no `preview-render-server` module | the CMS uses `preview-protocol` and `preview-contract` only (design 5.11) | error |
+| `child-process-only-in-git-and-preview` | only `cms-server/src/git/` and `cms-server/src/preview/` import `node:child_process` | process calls stay in two reviewable places (design 5.11) | error |
+| `hono-only-in-http` | only `cms-server/src/http/` imports `hono` | the other CMS modules stay HTTP-free (design 5.11) | error |
 | `no-circular` | no runtime import cycles (`import type` is ignored) | cycles break load order and make code hard to test | error |
-| `no-test-in-production` | production code never imports a test, test helper or fixture | tests must not ship or shape the build | error |
+| `no-test-in-production` | production code (the four packages' `src`) never imports a test, test helper or fixture | tests must not ship or shape the build | error |
 | `no-orphans` | lists files nothing imports | Knip already gates dead code; entries loaded by URL look orphaned | warning |
 | `not-to-unresolvable` | every import resolves (`virtual:` and `astro:` are exempt) | a typo or missing dependency fails here | error |
+
+Test files (`*.test.ts` and anything under `test/`) are exempt from
+`child-process-only-in-git-and-preview` and `hono-only-in-http` (`pathNot: TESTS`),
+because the git test harness (`cms-server/test/helpers/`) runs `git` in tests.
+Packages in `node_modules` are shown as edges but not followed (`doNotFollow`),
+so the `node_modules/` matchers see them.
 
 Out of scope on purpose: build-time code (`manifest/`, `schema/`, `build.ts`,
 `integration.ts`) writes files, and `dev/` runs only under `PREVIEW_DEV`.

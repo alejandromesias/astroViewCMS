@@ -25,7 +25,7 @@ before writing tests, [TESTING-RECOMMENDATIONS.md](TESTING-RECOMMENDATIONS.md).
 |---|---|
 | Phase 2 design | approved by the user, 2026-10-31 |
 | Decisions D17 to D22 | logged in SYSTEM-DESIGN section 11 |
-| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1e, 2.8b done 2026-11-02 (2.8b: gate seam only, 2.8c pending); the rest not started |
+| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.8b done 2026-11-01 (2.8b: gate seam only, 2.8c pending); the rest not started |
 
 **Done when:** every row of PHASE-2-DESIGN.md section 1 passes. Section 5
 below maps each row to the test that proves it.
@@ -179,7 +179,7 @@ done. Item 6 of the design (the front server) is step 2.8.
 - **Done when:** a build of `sample-site` writes a `bundle.json` the schema
   accepts, with `protocolVersion` equal to `PROTOCOL_VERSION`; unit tests
   cover the no-git case. [build]
-- **Result (2026-11-02):** `bundleJsonSchema` (strict) in `preview-contract/src/bundle.ts`;
+- **Result (2026-11-01):** `bundleJsonSchema` (strict) in `preview-contract/src/bundle.ts`;
   `newBundleId()` (UUID), `readSiteCommit` and `astroVersion()` in the renderer's
   `src/bundle.ts`; `--bundle-id` on the build CLI (`start.ts` accepts and ignores
   it); `astro:build:done` writes `bundle.json` into the manifest folder.
@@ -206,7 +206,7 @@ done. Item 6 of the design (the front server) is step 2.8.
 - **Done when:** the manifest of `sample-site` carries both, `testimonials`
   entries have different revisions, and editing one entry's formatting in
   the shared file changes no other entry's revision (unit test). [build]
-- **Result (2026-11-02):** `revisionOf(string | Uint8Array)` and
+- **Result (2026-11-01):** `revisionOf(string | Uint8Array)` and
   `canonicalEntryText` in `preview-contract/src/revision.ts`; `DocumentRecord.revision`
   is required; `ImageRecord` / `imageRecordSchema` added; `withRevisions` in the
   renderer's `manifest/documents.ts` (`shapeDocuments` stays pure);
@@ -368,7 +368,7 @@ done. Item 6 of the design (the front server) is step 2.8.
   `404` for everything unknown.
 - **Done when:** `npm run check` passes with `cms-server` in every tool, and
   `createApp(...).request('/nope')` answers `404` in a test.
-- **Result (2026-11-02):** `cms-server/` with `createApp` in `src/http/app.ts`
+- **Result (2026-11-01):** `cms-server/` with `createApp` in `src/http/app.ts`
   (design 5.2: only `http/` imports hono) and `startServer` in `src/server.ts`;
   checklist done (workspaces, Biome, Knip, Stryker globs and project, depcruise
   and graph paths, `check.ts`, QUALITY-TOOLING.md, `.gitignore` gets `.cms/` and
@@ -378,7 +378,7 @@ done. Item 6 of the design (the front server) is step 2.8.
   sharp and the two workspace packages until 2.2 uses them; only the depcruise
   paths were added, the cms-server rules are 2.1b.
 
-#### 2.1b Dependency rules — after 2.1a
+#### 2.1b Dependency rules — after 2.1a · DONE
 
 - In `.dependency-cruiser.cjs` (design 5.11): `preview-render-server` never
   imports `cms-server` and the reverse; only `cms-server/src/git/` and
@@ -387,9 +387,32 @@ done. Item 6 of the design (the front server) is step 2.8.
   the renderer. Update the annex table of QUALITY-TOOLING.md.
 - Prove each rule fails: add a violating import, see the error, remove it
   (as was done for cycles).
+- Gaps settled (calls): add `cms-server` to the `from` list of
+  `no-test-in-production`, and `^cms-server/` to the `to` lists of
+  `protocol-is-a-leaf` and `contract-is-a-leaf`. The `depcruise` script
+  already lists `cms-server/src`; update the annex intro to say so.
+  `src/git/` and `src/preview/` don't exist yet: prove those two rules with a
+  throwaway file at that path, then delete it. Do not create empty folders.
+  Test files are exempt from the `child_process` and `hono` rules
+  (`pathNot: TESTS`), since 2.1d's harness runs `git`; say so in the annex.
 - **Done when:** `npm run depcruise` passes and the table lists the rules.
+- **Result (2026-11-01):** four rules added in `.dependency-cruiser.cjs`:
+  `renderer-never-imports-cms-server`, `cms-server-never-imports-renderer`,
+  `child-process-only-in-git-and-preview`, `hono-only-in-http`; `^cms-server/`
+  in `protocol-is-a-leaf` and `contract-is-a-leaf`; `cms-server` in
+  `no-test-in-production`; annex table and intro updated. Proof: 7 throwaway
+  violating files (every new or extended rule) gave 7 errors, each naming its rule;
+  allowed-path probes in `src/git/`, `src/preview/` and `src/http/` gave none;
+  all probes deleted, `npm run depcruise` exits 0. **Call:** `options.exclude`
+  no longer drops `node_modules/`. An excluded package lost its edges, so the
+  hono rule never fired (and the existing `node_modules/` matchers never did).
+  `doNotFollow` already stops the walk there. Test files exempt via `pathNot`.
+  **Review (2026-11-01):** the `exclude` change was not asked for; kept, since
+  without it the new `hono-only-in-http` rule cannot fire. The renderer/cms-server
+  separation became two rules, one per direction. `npm run check` passes. The
+  throwaway-file proofs are the agent's report; the reviewer did not re-run them.
 
-#### 2.1c Configuration — after 2.1a
+#### 2.1c Configuration — after 2.1a · DONE
 
 - `cms.config.ts` per site, parsed with Zod (design 5.10): `site`, `remote`,
   `branch`, `siteDir`, `previewSiteConfig`, `origins`, `publish.buildCheck`,
@@ -401,17 +424,81 @@ done. Item 6 of the design (the front server) is step 2.8.
   600) so a restart doesn't invalidate sessions.
 - Rejects: the same origin for CMS and preview, a non-http(s) origin, a
   `siteDir` that escapes the repo (`..`, absolute), an unknown `buildCheck`.
+- Gaps settled (calls): the code lives in `cms-server/src/config/`: a pure
+  `parseConfig(raw, env)` (Zod `strict()`, no file access), `loadSecrets(dir,
+  deps)` with injected `readFile`, `writeFile`, `mkdir` and `randomBytes`, and
+  a thin `loadConfig(path)` (a dynamic `import()` of the file, covered by one
+  test on a temp `.ts` file). `origins.cms` and `origins.preview` must differ
+  in scheme, host **or port** (`localhost:4400` vs `:4401` is fine).
+  `previewSiteConfig` must also be relative and stay inside the repo.
+  Secrets are 32 random bytes, hex. The `0o600` mode is asserted only off
+  Windows (chmod is a no-op there and the developer machine is Windows).
+  Remove `zod` from knip's `ignoreDependencies` for `cms-server` once used.
 - **Done when:** tests cover defaults, each rejection and secret
   generation, with the file system injected.
+- **Result (2026-11-01):** `cms-server/src/config/`: `schema.ts` (strict Zod
+  schema, `parseConfig(raw)`), `secrets.ts` (`loadSecrets(dir, env, deps)`),
+  `load.ts` (`loadConfig(path)`), each with its `*.test.ts` (94 pass, 1 skipped
+  on win32). `knip.json`: `zod` removed from the cms-server `ignoreDependencies`.
+  **Calls:** `parseConfig` takes no `env` (only the secrets read the
+  environment); `env` is the second argument of `loadSecrets`, not a field of
+  `deps`; `z.strictObject` is Zod's `strict()`. `collections` is built with
+  `Object.fromEntries`, since `z.record` drops a `__proto__` name (the test found
+  it). Checks beyond the list: `site` must be one safe folder segment (it names
+  `.cms/<site>/`); `media.folder` must stay inside the site; origins are
+  normalised to scheme, host and port, and a path, query, hash or credentials
+  are refused; `newEntryFormat` is `json`, `md`, `mdx` or `yaml` (the formats
+  the CMS creates, design 5.4). An empty environment value counts as unset. An
+  existing secrets file is never replaced: only a missing file is created, and
+  other read errors are rethrown. Defaults: `branch` `main`, `siteDir` `.`,
+  `buildCheck` `auto`, `media.folder` `src/assets/uploads`,
+  `syncIntervalSeconds` 60, `collections` `{}`, `git.author` as above. The mode
+  600 is checked on the injected `writeFile` options on every platform; the
+  real-file check is skipped on win32. `npm run check`: every gate passes; the
+  cms-server floors hold, and the config files are at 100% in a run of their
+  own tests.
+  **Review (2026-11-01):** deviations from the "Gaps settled" text above:
+  `parseConfig(raw)` has no `env`, and the `site`, `media.folder`, origin-shape
+  and `newEntryFormat` checks were added (none asked for; all kept). **Open:**
+  secrets taken from the environment are not validated (the file ones must be
+  64 hex digits), so a short `PREVIEW_TOKEN_SECRET` is accepted; tighten in 2.8c,
+  which first uses the token. `npm run check` passes.
 
-#### 2.1d Git test harness — after 2.1a
+#### 2.1d Git test harness — after 2.1a · DONE
 
 - `test/helpers/`: creates a bare repo in a gitignored temp folder inside the
   workspace, seeded from `sample-site` (at the repo root, and a variant with
   the site under a subfolder for `siteDir`); `developerClone(remote)` that
   commits and pushes as a second person; cleanup.
+- Gaps settled (calls): helpers in `cms-server/test/helpers/`, the harness
+  test beside them as `harness.test.ts`. Add `test/**/*.test.ts` to the
+  `cms-server` project's `include` (`vitest.projects.ts`), to `tsconfig.json`
+  `include`, and to knip's `entry` and `project`. `test/` stays out of
+  Stryker's `mutate` and of coverage (`src/**` only). Every `git` call goes
+  through one `git(cwd, args)` helper using `execFile` (no shell, Windows
+  paths) with `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` pointing at the null
+  device, `GIT_TERMINAL_PROMPT=0`, and `-c user.name -c user.email -c
+  core.autocrlf=false -c init.defaultBranch=main`, so the machine's git
+  settings (CRLF, signing, credential helpers) cannot change a result. Temp
+  folders go under `cms-server/.test-tmp/`, one unique folder per test, removed
+  afterwards. The seed copies `sample-site` without `node_modules`, `dist` and
+  `.astro`.
 - **Done when:** a test seeds a remote, clones it as the developer, pushes,
   and a second clone sees the push.
+- **Result (2026-11-01):** `cms-server/test/helpers/git.ts` (`git`,
+  `makeTestRoot`, `removeTestRoot`, `seedRemote`, `cloneRemote`,
+  `commitAndPush`, `readText`) and `harness.test.ts` (7 cases, all pass). Wiring:
+  `vitest.projects.ts` include, `cms-server/tsconfig.json` include, knip
+  `entry` and `project`. **Calls:** the null device is `NUL` on Windows
+  (`os.devNull` is `\\.\nul`, which git rejects); inherited `GIT_*` variables
+  are dropped; `-c commit.gpgsign=false` added to the listed flags. The
+  developer's commit is `commitAndPush` and the second clone is `cloneRemote`,
+  so `developerClone` is not a separate function. Seeding takes about 10 s on
+  this machine, so the seeding cases have a 60 s timeout.
+  **Review (2026-11-01):** `commit.gpgsign=false` and the `GIT_*` filter were
+  not asked for; kept. The 10 s seed is mostly copying `sample-site`; if later
+  git tests seed often, seed once per file (`beforeAll`) and clone from it.
+  `npm run check` passes.
 
 #### 2.1e Unified coverage run — after 2.1a · DONE
 
@@ -432,7 +519,7 @@ done. Item 6 of the design (the front server) is step 2.8.
   package drops under its floor (prove it by raising one floor temporarily);
   the renderer's numbers match its old standalone run. 2.13c reviews the
   `cms-server` floor at the end. [unit-only]
-- **Result (2026-11-02):** `vitest.projects.ts` (shared project list), root `vitest.config.ts`
+- **Result (2026-11-01):** `vitest.projects.ts` (shared project list), root `vitest.config.ts`
   (coverage moved there from the renderer: Vitest reads coverage only from the root; HTML in
   `reports/coverage`), root `coverage` script. The gate now runs in the **fast** set:
   `unit tests + coverage` replaces the four per-package test steps (the per-package `test`
@@ -450,7 +537,7 @@ done. Item 6 of the design (the front server) is step 2.8.
   machine, since 2.1e changed their step lists (the coverage step moved into
   the fast set) and neither has run since. Fix what broke in `scripts/check.ts`
   or the docs; update the timings in QUALITY-TOOLING.md. Note any e2e flake
-  (`100 consecutive edits` missed its median once on 2026-11-02).
+  (`100 consecutive edits` missed its median once on 2026-11-01).
 - Raise `cms-server` branch coverage (66.67%, 8 of 12; the misses are in
   `server.ts`, lines 41-43 and 53, the Request/Response bridge) with tests
   that tell the branches apart, then raise the floors to match. Do not add
@@ -747,7 +834,7 @@ request-path rules apply (no `child_process`, no `fs` except the allowlist).
 - **Done when:** the existing end-to-end suite passes through the front
   server with `PREVIEW_INSECURE=1`; unit tests cover the header with and
   without extra origins. [build]
-- **Result (2026-11-02):** `preview-render-server/src/serve/` (`settings`, `gate`,
+- **Result (2026-11-01):** `preview-render-server/src/serve/` (`settings`, `gate`,
   `static`, `front-server`); the adapter is in `mode: 'middleware'`
   (`build.ts`); `start.ts` refuses before loading the build, requires
   `options.mode === 'middleware'` and runs the front server. The adapter's

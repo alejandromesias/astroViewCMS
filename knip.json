@@ -28,9 +28,9 @@
       "project": ["src/**"]
     },
     "cms-server": {
-      "entry": ["src/**/*.test.ts"],
-      "project": ["src/**"],
-      "ignoreDependencies": ["preview-contract", "preview-protocol", "sharp", "yaml", "zod"]
+      "entry": ["src/**/*.test.ts", "test/**/*.test.ts"],
+      "project": ["src/**", "test/**"],
+      "ignoreDependencies": ["preview-contract", "preview-protocol", "sharp", "yaml"]
     }
   }
 }

@@ -25,7 +25,7 @@ module.exports = {
       comment: 'preview-protocol is the shared contract; the CMS app imports it too.',
       severity: 'error',
       from: { path: '^preview-protocol/src/' },
-      to: { path: ['preview-render-server'] },
+      to: { path: ['preview-render-server', '^cms-server/'] },
     },
     {
       name: 'contract-is-a-leaf',
@@ -33,7 +33,7 @@ module.exports = {
         'preview-contract (manifests, schema.json, render request) imports no other workspace package but preview-protocol. Zod is the only external dependency.',
       severity: 'error',
       from: { path: '^preview-contract/src/', pathNot: TESTS },
-      to: { path: ['^preview-render-server/', '^sample-site/'] },
+      to: { path: ['^preview-render-server/', '^sample-site/', '^cms-server/'] },
     },
     {
       name: 'request-path-no-process-or-git',
@@ -65,6 +65,35 @@ module.exports = {
       to: { path: ['^node:fs(/promises)?$', '^fs(/promises)?$'] },
     },
     {
+      name: 'renderer-never-imports-cms-server',
+      comment: 'The preview node and the CMS server are separate apps. They share only preview-contract and preview-protocol.',
+      severity: 'error',
+      from: { path: SRC },
+      to: { path: '^cms-server/' },
+    },
+    {
+      name: 'cms-server-never-imports-renderer',
+      comment: 'cms-server uses preview-protocol and preview-contract only, never a renderer module (design 5.11).',
+      severity: 'error',
+      from: { path: '^cms-server/src/' },
+      to: { path: '^preview-render-server/' },
+    },
+    {
+      name: 'child-process-only-in-git-and-preview',
+      comment:
+        'Only the git layer and the preview-node client start processes. Tests are exempt: test/helpers runs git to build remotes and clones.',
+      severity: 'error',
+      from: { path: '^cms-server/src/', pathNot: [TESTS, '^cms-server/src/(git|preview)/'] },
+      to: { path: ['^node:child_process$', '^child_process$'] },
+    },
+    {
+      name: 'hono-only-in-http',
+      comment: 'Only src/http/ knows the HTTP framework, so the other modules stay HTTP-free (design 5.11). Tests are exempt.',
+      severity: 'error',
+      from: { path: '^cms-server/src/', pathNot: [TESTS, '^cms-server/src/http/'] },
+      to: { path: 'node_modules/hono/' },
+    },
+    {
       name: 'no-circular',
       severity: 'error',
       comment: 'Import cycles, type-only imports included (tsPreCompilationDeps), as Skott reported them.',
@@ -75,7 +104,7 @@ module.exports = {
       name: 'no-test-in-production',
       comment: 'Production code must not import tests, helpers or fixtures.',
       severity: 'error',
-      from: { path: '^(preview-render-server|preview-protocol|preview-contract)/', pathNot: [TESTS, '^preview-render-server/(test|test-editor)/'] },
+      from: { path: '^(preview-render-server|preview-protocol|preview-contract|cms-server)/', pathNot: [TESTS, '^preview-render-server/(test|test-editor)/'] },
       to: { path: TESTS },
     },
     {
@@ -109,8 +138,10 @@ module.exports = {
   ],
   options: {
     doNotFollow: { path: 'node_modules' },
+    // node_modules is not excluded here: an excluded package drops its edges, so
+    // `node_modules/...` matchers never fire. doNotFollow above already stops the walk there.
     exclude: {
-      path: ['(^|/)node_modules/', '^sample-site/', '^reports/', 'test/fixtures'],
+      path: ['^sample-site/', '^reports/', 'test/fixtures'],
     },
     parser: 'swc',
     // Count `import type` as an edge, so a cycle made of types alone is reported.
