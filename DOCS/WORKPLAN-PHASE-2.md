@@ -87,7 +87,7 @@ Rules for running tasks in parallel:
 | 1 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a |
 | 2 | 2.0b, 2.0c, 2.1a, 2.8b |
 | 3 | 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8c, 2.8d |
-| 4 | 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a |
+| 4 | 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a |
 | 5 | 2.3c, 2.4b, 2.4c, 2.5a |
 | 6 | 2.5b, 2.6a, 2.9a, 2.10a |
 | 7 | 2.5c, 2.9c, 2.10b |
@@ -442,7 +442,22 @@ done. Item 6 of the design (the front server) is step 2.8.
   floor. **Found:** the renderer was already under its 97% branch floor since the wave-1
   commits, unseen because the old step ran only under `--e2e`; fixed with one front-server
   test (968/998 to 969). Open: `--e2e` and `--all` step lists not exercised yet; cms-server
-  branches are at 66.67% and need tests as the package grows.
+  branches are at 66.67% and need tests as the package grows (task 2.1f).
+
+#### 2.1f Verify the long check modes and lift cms-server branches — after 2.1e · [build]
+
+- Run `npm run check -- --e2e` and `npm run check -- --all` once on a quiet
+  machine, since 2.1e changed their step lists (the coverage step moved into
+  the fast set) and neither has run since. Fix what broke in `scripts/check.ts`
+  or the docs; update the timings in QUALITY-TOOLING.md. Note any e2e flake
+  (`100 consecutive edits` missed its median once on 2026-11-02).
+- Raise `cms-server` branch coverage (66.67%, 8 of 12; the misses are in
+  `server.ts`, lines 41-43 and 53, the Request/Response bridge) with tests
+  that tell the branches apart, then raise the floors to match. Do not add
+  tests for code that 2.7a will rewrite (the bridge buffers bodies today);
+  if the bridge is about to change, defer those tests and say so.
+- **Done when:** both long modes pass; the `cms-server` branch floor is raised
+  to within 2 points of its measured number; the Result block records both.
 
 ### 2.2 Format codecs — after 2.1a · ∥ 2.3, 2.1b to 2.1d, 2.0
 
