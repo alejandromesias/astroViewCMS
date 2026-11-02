@@ -6,7 +6,7 @@ import { build } from 'astro';
 import { newBundleId } from './bundle.ts';
 import { parseCliOptions } from './cli-options.ts';
 import previewRenderServer from './integration.ts';
-import { loadSiteConfig } from './site-config.ts';
+import { assertOutDirIsSafe, loadSiteConfig } from './site-config.ts';
 
 // --dev (or PREVIEW_DEV=1) adds the editor's stopgap route /__dev/documents.
 // --root and --out override the site config's root and output folder (see
@@ -20,6 +20,8 @@ const site = await loadSiteConfig(options.configPath, undefined, {
   root: options.root,
   out: options.out,
 });
+// Refuses an output folder the build would clear, before anything is deleted.
+assertOutDirIsSafe(site);
 
 await build({
   root: site.root,

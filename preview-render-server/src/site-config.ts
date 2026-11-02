@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { ResolvedSiteConfig, SiteConfig } from './types.ts';
@@ -70,6 +71,65 @@ export function resolveSiteConfig(
     mediaDir: path.join(outDir, 'media'),
     manifestDir: path.join(outDir, 'manifest'),
   };
+}
+
+/** Refuses an output folder that a build would clear. clearBundle (integration.ts)
+ *  deletes everything directly inside `outDir` except the media folder, so this
+ *  runs before the build starts and throws, naming the folder and the reason, when
+ *  `outDir` is the filesystem root, the site root, an ancestor of the site root,
+ *  the current folder (`cwd`) or an ancestor of it, or when it exists, is not
+ *  empty and has no bundle.json (manifestDir/bundle.json, written by the build).
+ *  A missing or empty folder, and a rebuild over an old bundle, pass. It reads the
+ *  file system, so it stays out of the pure resolveSiteConfig. build.ts calls it
+ *  once, before build(). */
+export function assertOutDirIsSafe(
+  site: Pick<ResolvedSiteConfig, 'root' | 'outDir' | 'manifestDir'>,
+  cwd: string = process.cwd(),
+): void {
+  const outDir = path.resolve(site.outDir);
+  const refuse = (reason: string): never => {
+    throw new Error(
+      `Refusing to build into ${outDir}: ${reason}. A build clears this folder, so give it a folder of its own.`,
+    );
+  };
+  const real = comparableFolder(outDir);
+  if (path.parse(real).root === real) refuse('it is a filesystem root');
+  const root = comparableFolder(site.root);
+  if (real === root) refuse('it is the site root');
+  if (isWithin(root, real)) refuse('it contains the site root');
+  if (isWithin(comparableFolder(cwd), real)) {
+    refuse('it is the current folder or contains it');
+  }
+  if (!fs.existsSync(outDir) || fs.readdirSync(outDir).length === 0) return;
+  if (!fs.existsSync(path.join(site.manifestDir, 'bundle.json'))) {
+    refuse('it is not empty and has no bundle.json from an earlier build');
+  }
+}
+
+/** The real, absolute path of `target`: symlinks in the existing part are
+ *  followed, so a folder that does not exist yet is placed where it would be. */
+function realPath(target: string): string {
+  const resolved = path.resolve(target);
+  if (fs.existsSync(resolved)) return fs.realpathSync.native(resolved);
+  const parent = path.dirname(resolved);
+  return parent === resolved
+    ? resolved
+    : path.join(realPath(parent), path.basename(resolved));
+}
+
+/** A folder's real path, lowercased on Windows, whose file system ignores case. */
+function comparableFolder(target: string): string {
+  const real = realPath(target);
+  return process.platform === 'win32' ? real.toLowerCase() : real;
+}
+
+/** True when `inner` is `outer` or sits inside it. Both are comparableFolder keys. */
+function isWithin(inner: string, outer: string): boolean {
+  const rel = path.relative(outer, inner);
+  return (
+    rel === '' ||
+    (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel))
+  );
 }
 
 /** A folder next to `outDir` whose name is `outDir`'s name plus `-suffix`,
