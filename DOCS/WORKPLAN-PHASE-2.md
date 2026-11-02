@@ -531,7 +531,7 @@ done. Item 6 of the design (the front server) is step 2.8.
   test (968/998 to 969). Open: `--e2e` and `--all` step lists not exercised yet; cms-server
   branches are at 66.67% and need tests as the package grows (task 2.1f).
 
-#### 2.1f Verify the long check modes and lift cms-server branches — after 2.1e · [build]
+#### 2.1f Verify the long check modes and lift cms-server branches — after 2.1e · [build] · DONE 2026-11-02
 
 - Run `npm run check -- --e2e` and `npm run check -- --all` once on a quiet
   machine, since 2.1e changed their step lists (the coverage step moved into
@@ -576,6 +576,44 @@ done. Item 6 of the design (the front server) is step 2.8.
     "never the full suite" line of `CLAUDE.md` for this task only. Run it once at a time
     (two coverage runs collide on `reports/coverage`).
 
+- **Result (2026-11-02):** run alone, nothing else running.
+  - **Changed:** the three `100 consecutive edits` tests and the memory test moved
+    from `preview-server.e2e.test.ts` to `test/e2e/budgets.e2e.test.ts`, unchanged. The
+    shared HTTP helpers (`post`, `render`, `readJson`, `BASE`) are in `test/e2e/client.ts`.
+    `vitest.e2e.config.ts` has two projects, `e2e` (`groupOrder` 1) and `e2e-budgets`
+    (`groupOrder` 2), so the budget file runs last and alone. Each project has its own
+    global setup, so the sample site is built twice. Budgets unchanged (median 60 ms).
+    Root `vitest.config.ts`: `cms-server` branches floor 64 to 65. No tests added for the
+    bridge in `server.ts` (misses at lines 41-43 and 53, rewritten by 2.7a). Biome
+    `noExplicitAny` override is for `*.test.ts` only, so `client.ts` gets a `biome-ignore`
+    on its parsed-JSON `any`. QUALITY-TOOLING.md: timings, file name, the 2026-11-02
+    Stryker run. `scripts/check.ts`: nothing broken found in either run.
+  - **Measured, `100 consecutive edits` of `landing/long`:** alone through the front server
+    (filter run): render median 8.4 and 8.8 ms, round trip 11.8 and 12.6 ms. The budget
+    file alone as its own project: render median 9.5 ms, p95 22.2 ms. Adapter handler
+    alone (in-process bench, 3 rounds of 100): render median 9.7, 8.0, 8.1 ms; through
+    the front server 6.9, 8.2, 7.2 ms. Round trip front 11.3, 14.1, 11.5 ms; adapter 15.3,
+    12.1, 12.3 ms. The front server adds nothing measurable. `serve/static.ts` answers only
+    GET and HEAD, so the render POST never touches the disk. The baseline at `0fa7b2d^` was
+    not built: the inconclusive path was not reached.
+  - **Full runs:** `npm run check -- --e2e` passed (e2e 46.7 s, 94 tests in 14 files;
+    browser 33.4 s, 25 tests; unit tests and coverage 25.5 s, 1650 tests). `npm run check
+    -- --all` passed every step except Stryker (see open items): e2e 46.0 s, browser 31.0 s,
+    Stryker 593.6 s. No budget miss in either run. The check hides console output, so
+    the values are not in the logs. Earlier misses were 68.3, 71.8, 62.6 and 68.1 ms in
+    parallel runs.
+  - **Decision:** step 1 of the budget order (run serially) resolved it. Steps 2 and 3
+    were not needed: no front-server cost to cut, and the 60 ms budget is unchanged, so
+    PHASE-2-DESIGN 5.1 item 8 is not edited. The serial fix is shown by two passing full
+    runs. A miss in a parallel run was not reproduced, so the cause is inferred from the
+    earlier pattern.
+  - **Open, left for 2.1g:** the `--all` run is red on the Stryker step, so `npm run check -- --all`
+    exits 1. Stryker scores 88.88% over 4,254 mutants,
+    under the `thresholds.break` of 90. `cms-server` is 78.3% (`server.ts` 36%, `codecs`
+    72.8%), code from waves 1 to 3. No `src` file changed in 2.1f. `thresholds.break` is
+    unchanged. 2.1g owns this. Nothing committed. Logs: `/tmp/check-e2e-1.log`,
+    `/tmp/check-all-1.log`.
+
 #### 2.1g Stryker over the new code — after 2.1f, 2.2c, 2.2d, 2.3b · [build]
 
 - Run Stryker (`npx stryker run`, or `npm run check -- --mutation`; see QUALITY-TOOLING.md) once over the code
@@ -589,6 +627,14 @@ done. Item 6 of the design (the front server) is step 2.8.
 - Runs before 2.5a, which is the first task to save through the codecs.
 - **Done when:** the survivors are killed or each is written down as
   equivalent, and the Result block gives the score per folder.
+- **Heads-up, look at this first (2026-11-02):** `npm run check -- --all` is red on Stryker
+  alone: 88.88% against the `break: 90` (found in 2.1f; no `src` file changed in that task).
+  The drop comes from `cms-server` code from waves 1 to 3 (`server.ts` about 36%, `codecs`
+  about 73%). Before the new-code triage above, read the per-file report, find where the
+  score fell, and get `--all` back to green (kill survivors, or write each down as
+  equivalent). `server.ts` is the bridge that 2.7a rewrites: do not add tests for it. If
+  its survivors cannot be killed that way, say so in the Result and ask before touching
+  `thresholds.break` (2.13c). 2.1f stays DONE with this open.
 
 ### 2.2 Format codecs — after 2.1a · ∥ 2.3, 2.1b to 2.1d, 2.0
 
@@ -746,7 +792,7 @@ fixtures.
     statements.
   - **Open:** Stryker has not been run on the new files (TESTING-RECOMMENDATIONS 7).
 
-#### 2.2c Markdown and MDX frontmatter codec — after 2.2b
+#### 2.2c Markdown and MDX frontmatter codec — after 2.2b · DONE 2026-11-02
 
 - Split at the `---` fences; frontmatter through the YAML codec; the body
   written exactly as given. A file gets frontmatter only if the data isn't
@@ -783,7 +829,29 @@ fixtures.
     `blog/blog-*.md`, `pages/elements.mdx`. Plus a test that a body with leading blank
     lines renders the same as Astro's rendering of it (`@astrojs/markdown-remark`).
 
-#### 2.2d `file()` entry codec — after 2.2a, 2.2b
+- **Result (2026-11-02):** `cms-server/src/codecs/frontmatter.ts` exports `markdownCodec`
+  (`{ data, body }`, one codec for `.md` and `.mdx`), built on `Codec`/`CodecError` from
+  `types.ts` and `yamlCodec`. Tests: `frontmatter.test.ts`, 28 passing (targeted run); byte
+  copies of the sample's `homepage/-index.md`, `blog/blog-1.md` and `pages/elements.mdx` under
+  `cms-server/test/fixtures/markdown/`. The `Done when` cases are exact-string assertions.
+  - **Dependency:** `@astrojs/markdown-remark` as a `cms-server` devDependency (`^7.3.4`, the
+    hoisted 7.3.4) for the Astro reference test (`parseFrontmatter`, `createMarkdownProcessor`).
+    The lockfile change is the workspace entry only. `npm` resolved `^7.3.4` to 7.3.5 and nested
+    a second copy, so the range is pinned to the installed version.
+  - **Deviations from the gaps block:**
+    1. A closing fence must be a line of `---` (with trailing spaces or tabs). Astro's regex also
+       closes on `---` inside a line; the line rule keeps the write-back on a real fence line, so a
+       file Astro reads with a mid-line `---` is refused here, read-only.
+    2. JSON frontmatter is refused only when it is fenced with `;;;`. Astro reads only YAML in
+       `---` and TOML in `+++`, so a `{...}` block with no fence is body, as in Astro.
+    3. Blank or comment-only frontmatter reads as `{}`, as in Astro. Writing data into it replaces
+       the comments (no comments to keep).
+    4. A body that would start a `---` block when there is no frontmatter is refused, so the
+       write cannot change what the file reads back as.
+  - **Not run:** `npm run check`, knip and Stryker (the coordinator's gate). The new devDependency
+    is for knip to confirm, and the codec has no Stryker run yet.
+
+#### 2.2d `file()` entry codec — after 2.2a, 2.2b · DONE 2026-11-02
 
 - Rewrite only the entry found by `entryKey`; every other entry stays byte
   for byte. Both shapes: an array of objects with `id`, and an object keyed
@@ -816,6 +884,31 @@ fixtures.
   - **Fixtures:** the sample only has array-shaped files (`testimonials.json`, `stats.yaml`),
     so add synthetic keyed-shape files (JSON and YAML) and one YAML with an alias, under
     `cms-server/test/fixtures/entries/`. A save never converts a file's format.
+- **Result (2026-11-02):** `cms-server/src/codecs/file-entries.ts` (`changeEntry`,
+  `EntryChange`, `EntryFormat`) and `file-entries.test.ts`; synthetic fixtures
+  `cms-server/test/fixtures/entries/{keyed.json,keyed.yaml,alias.yaml}` (`alias.yaml` is keyed,
+  with `home: &card` and `about: *card`). No dependency; `types.ts`, `json.ts`, `yaml.ts` unchanged.
+  - **Shape:** `changeEntry(format, original, change)`. `format` is `{ name, codec }`; the name is
+    the `format` of any CodecError, because `Codec` carries no name. `change` is
+    `{ op: 'replace' | 'add' | 'remove', key, value }`. It parses the whole file, changes one
+    entry, and calls `codec.write`. It edits no text.
+  - **Calls:** array shape: the id is `(item.id ?? item.slug)` as a string, and an empty id is no
+    id. Items without an id, and non-object items, are left alone, as Astro skips them. A value
+    whose `id` or `slug` differs from the key is refused. A missing id is inserted first, typed as
+    the file's `id`s are (a number when the file uses numbers; the key must round-trip, so `03`
+    is refused). Keyed shape: `Object.hasOwn` for lookup, `Object.fromEntries` to build. `$schema`
+    is refused as a key for every operation. A duplicate id is a CodecError for every operation
+    (Astro's DuplicateContentEntrySlugError).
+  - **Not in the block:** an `undefined` value is refused, since the JSON codec would treat it as
+    an absent key. Removing a middle entry from a JSON array is diffed by index by the codec; the
+    test shows the other entries stay byte for byte on `testimonials.json`, the one file checked.
+  - **Evidence:** `npx vitest run --project cms-server cms-server/src/codecs/file-entries.test.ts`:
+    1 file, 37 tests pass. The byte-for-byte cases pin the exact text (replace, add and remove on
+    `testimonials.json` and `stats.yaml`; keyed JSON and YAML). The alias case pins the YAML
+    codec's refusal. `biome lint` is clean on both files, `biome format` was applied to them, and
+    `tsc -p cms-server` is clean.
+  - **Open:** Stryker has not been run on the new files (TESTING-RECOMMENDATIONS 7). `npm run
+    check` was not run, as instructed.
 
 ### 2.3 Git core — after 2.1a · ∥ 2.2, 2.1b to 2.1d, 2.0
 
@@ -882,7 +975,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
     are clean.
   - **Open:** Stryker has not been run on the new files (TESTING-RECOMMENDATIONS 7).
 
-#### 2.3b Repo lifecycle — after 2.3a, 2.1c
+#### 2.3b Repo lifecycle — after 2.3a, 2.1c · DONE 2026-11-02
 
 - Ensure `.cms/<site>/repo/`: clone if missing, check the `origin` URL
   matches the config, fetch, create `cms/work` from `origin/<branch>`.
@@ -938,6 +1031,43 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
     per test. The four cases of Done-when, plus: `siteDir` variant, `core.autocrlf` in the
     clone, an existing `cms/work` kept across a fetch, HEAD off `cms/work`, an untracked
     file removed by recovery, and the error kinds from fake `exec` stderr.
+- **Result (2026-11-02):** `cms-server/src/git/repo.ts` (`ensureRepo`, `RepoError`,
+  `RepoErrorKind`, `RepoState`) and `repo.test.ts` (19 tests, real git on local bare remotes);
+  `cms-server/src/log.ts` (`logger`, `Logger`, `LogField`) and `log.test.ts` (6 tests).
+  `git/exec.ts` exports `redact` and sets `GIT_ASKPASS=` and `GIT_SSH_COMMAND`;
+  `exec.test.ts` gains 2 tests (74 in total). No dependency.
+  - **Calls:** `ensureRepo({ config, cmsDir, exec?, log? })` returns `{ repoDir, siteFolder,
+    recovered }`. Any `GitError` becomes a `RepoError`: a GitHub remote's stderr is classified
+    (`auth-failed`, `remote-not-found`), and everything else is `failed` with git's message and
+    stderr. A non-git error passes through unchanged.
+  - **Order:** the author, remote and branch are checked before any git call. For an existing
+    clone the origin check comes before any change. Then the identity, hooks, gpgsign and
+    autocrlf settings; `fetch origin`; `cms/work` from `origin/<branch>` if missing; the dirty
+    check; `checkout --force cms/work`; `clean -fd`.
+  - **Deviation, recovery order:** the block says "check it out after recovery" when HEAD is off
+    `cms/work`. A reset cannot run on another branch without moving that branch, so the forced
+    checkout runs first. It also discards the changes, so the end state is the same: HEAD on
+    `cms/work`, a clean tree, and every path logged.
+  - **Calls, others:** the paths come from `status --porcelain -z --untracked-files=all
+    --no-renames`. They go out in one `warn` line, `Discarded the uncommitted changes of an
+    unfinished save` with `{ paths }`. Ignored files are kept. The count of unpublished saves
+    is `rev-list --count origin/<branch>..cms/work`, 0 when `cms/work` is missing, and the note
+    says "could not be checked" when git cannot count. A `git.author` without `<email>` is a
+    `failed` RepoError before any git call (the schema accepts any string; this check is new).
+    The logger writes stdout for info and stderr for warn and error, and `redact` runs on every
+    string field. `redact` stays in `exec.ts` and `log.ts` imports it, not a shared module.
+  - **Deviation, tests:** the real-remote tests seed once per file in `beforeAll`, as the block
+    asks. TESTING-RECOMMENDATIONS 1 asks for fixtures inside `it`. The seed runs the harness's
+    git, not the code under test, so no Stryker coverage is lost.
+  - **Evidence:** `npx vitest run --project cms-server cms-server/src/log.test.ts
+    cms-server/src/git cms-server/src/codecs/file-entries.test.ts`: 4 files, 136 tests pass
+    (repo 19, exec 74, log 6, file-entries 37). `tsc -p cms-server` is clean. `biome lint` is
+    clean on the six files, and `biome format` was applied to the three new ones.
+    `depcruise` on the new files printed a TypeScript-version warning and gave no usable
+    result, so the full gate has to check the rules.
+  - **Open:** Stryker has not been run on the new files (TESTING-RECOMMENDATIONS 7).
+    `npm run check` was not run, as instructed. `cmsDir` is injected and has no caller yet
+    (2.3c, 2.9). A leftover `cms/work-next` is left to 2.10b, as the block says.
 
 #### 2.3c Mutex, commits, diffs, worktrees — after 2.3b
 

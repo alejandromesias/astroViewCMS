@@ -30,7 +30,7 @@
     "cms-server": {
       "entry": ["src/**/*.test.ts", "test/**/*.test.ts"],
       "project": ["src/**", "test/**"],
-      "ignoreDependencies": ["preview-contract", "preview-protocol", "sharp", "yaml"]
+      "ignoreDependencies": ["preview-contract", "preview-protocol", "sharp"]
     }
   }
 }

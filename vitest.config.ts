@@ -24,7 +24,7 @@ export default defineConfig({
         'preview-render-server/**': { lines: 97, functions: 97, branches: 97, statements: 97 },
         'preview-protocol/**': { lines: 98, functions: 98, branches: 98, statements: 98 },
         'preview-contract/**': { lines: 98, functions: 98, branches: 86, statements: 96 },
-        'cms-server/**': { lines: 85, functions: 98, branches: 64, statements: 83 },
+        'cms-server/**': { lines: 85, functions: 98, branches: 65, statements: 83 },
       },
       include: [
         'preview-render-server/src/**',
