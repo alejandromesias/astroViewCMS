@@ -124,4 +124,17 @@ describe('createFrontServer', () => {
     expect(await response.text()).toBe('partial');
     expect(log).toHaveBeenCalledWith(new Error('late'));
   });
+
+  it('keeps the status of a response the handler started before it calls next', async () => {
+    const base = await start({
+      handler: (_req, res, next) => {
+        res.writeHead(202, { 'content-type': 'text/plain' });
+        res.write('started;');
+        next();
+      },
+    });
+    const response = await fetch(`${base}/api`);
+    expect(response.status).toBe(202);
+    expect(await response.text()).toBe('started;Not Found');
+  });
 });

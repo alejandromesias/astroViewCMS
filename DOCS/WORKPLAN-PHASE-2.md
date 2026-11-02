@@ -25,7 +25,7 @@ before writing tests, [TESTING-RECOMMENDATIONS.md](TESTING-RECOMMENDATIONS.md).
 |---|---|
 | Phase 2 design | approved by the user, 2026-10-31 |
 | Decisions D17 to D22 | logged in SYSTEM-DESIGN section 11 |
-| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.8b done 2026-11-02 (2.8b: gate seam only, 2.8c pending); the rest not started |
+| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1e, 2.8b done 2026-11-02 (2.8b: gate seam only, 2.8c pending); the rest not started |
 
 **Done when:** every row of PHASE-2-DESIGN.md section 1 passes. Section 5
 below maps each row to the test that proves it.
@@ -86,7 +86,7 @@ Rules for running tasks in parallel:
 |---|---|
 | 1 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a |
 | 2 | 2.0b, 2.0c, 2.1a, 2.8b |
-| 3 | 2.1b, 2.1c, 2.1d, 2.2a, 2.2b, 2.3a, 2.8c, 2.8d |
+| 3 | 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8c, 2.8d |
 | 4 | 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a |
 | 5 | 2.3c, 2.4b, 2.4c, 2.5a |
 | 6 | 2.5b, 2.6a, 2.9a, 2.10a |
@@ -412,6 +412,37 @@ done. Item 6 of the design (the front server) is step 2.8.
   commits and pushes as a second person; cleanup.
 - **Done when:** a test seeds a remote, clones it as the developer, pushes,
   and a second clone sees the push.
+
+#### 2.1e Unified coverage run — after 2.1a · DONE
+
+- One root Vitest config (`vitest.config.ts`) with `projects` for every
+  package: the renderer keeps its own config and exclusions as one project,
+  the others are inline projects (share the project list with
+  `vitest.mutation.config.ts` rather than copying it). Unit tests only: the
+  e2e and browser configs stay separate.
+- A root `coverage` script and a `coverage floors` gate in `scripts/check.ts`
+  that replace the renderer-only step. Floors are **per package** (per-glob
+  `thresholds`), so a weak package cannot hide behind strong ones; set them
+  just under each package's current numbers (`preview-contract`,
+  `preview-protocol`, `cms-server`, renderer: keep its existing floors).
+- Add the step to the QUALITY-TOOLING checklist "Adding a workspace package"
+  (done when this task is written up) and update its overview and command
+  tables.
+- **Done when:** `npm run check` runs one coverage gate that fails when any
+  package drops under its floor (prove it by raising one floor temporarily);
+  the renderer's numbers match its old standalone run. 2.13c reviews the
+  `cms-server` floor at the end. [unit-only]
+- **Result (2026-11-02):** `vitest.projects.ts` (shared project list), root `vitest.config.ts`
+  (coverage moved there from the renderer: Vitest reads coverage only from the root; HTML in
+  `reports/coverage`), root `coverage` script. The gate now runs in the **fast** set:
+  `unit tests + coverage` replaces the four per-package test steps (the per-package `test`
+  scripts remain). Floors, from measured numbers: renderer 97 across (unchanged; 96.99%
+  branches measured); protocol 98; contract lines/functions 98, branches 86, statements 96;
+  cms-server lines 85, functions 98, branches 64, statements 83. Gate proven by raising a
+  floor. **Found:** the renderer was already under its 97% branch floor since the wave-1
+  commits, unseen because the old step ran only under `--e2e`; fixed with one front-server
+  test (968/998 to 969). Open: `--e2e` and `--all` step lists not exercised yet; cms-server
+  branches are at 66.67% and need tests as the package grows.
 
 ### 2.2 Format codecs — after 2.1a · ∥ 2.3, 2.1b to 2.1d, 2.0
 

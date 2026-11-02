@@ -18,14 +18,12 @@ interface Step {
 const FAST: Step[] = [
   { name: 'tsc', command: 'npm run typecheck -w preview-render-server', kind: 'gate' },
   { name: 'tsc protocol', command: 'npm run typecheck -w preview-protocol', kind: 'gate' },
-  { name: 'protocol tests', command: 'npm run test -w preview-protocol', kind: 'gate' },
   { name: 'tsc contract', command: 'npm run typecheck -w preview-contract', kind: 'gate' },
-  { name: 'contract tests', command: 'npm run test -w preview-contract', kind: 'gate' },
   { name: 'tsc cms-server', command: 'npm run typecheck -w cms-server', kind: 'gate' },
-  { name: 'cms-server tests', command: 'npm run test -w cms-server', kind: 'gate' },
   { name: 'biome lint', command: 'npm run lint', kind: 'gate' },
   { name: 'biome format', command: 'npm run format:check', kind: 'gate' },
-  { name: 'unit tests', command: 'npm run test -w preview-render-server', kind: 'gate' },
+  // Every package's unit tests in one run, with the per-package coverage floors in vitest.config.ts.
+  { name: 'unit tests + coverage', command: 'npm run coverage', kind: 'gate' },
   { name: 'knip', command: 'npm run knip', kind: 'gate' },
   { name: 'depcruise', command: 'npm run depcruise', kind: 'gate' },
   {
@@ -43,8 +41,6 @@ const E2E: Step[] = [
   { name: 'e2e + budgets', command: 'npm run test:e2e -w preview-render-server', kind: 'gate' },
   // Browser suite (Vitest browser mode, Chromium): one file at a time, after e2e (tools run one at a time).
   { name: 'browser', command: 'npm run test:browser -w preview-render-server', kind: 'gate' },
-  // Fails below coverage.thresholds in vitest.config.ts (step 10c).
-  { name: 'coverage floors', command: 'npm run coverage -w preview-render-server', kind: 'gate' },
 ];
 
 // A crash fails the run, and so does a score under `thresholds.break` in stryker.config.json (step 10c).

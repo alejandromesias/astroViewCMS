@@ -27,36 +27,8 @@ export default getViteConfig(
           },
         },
       },
-      coverage: {
-        provider: 'v8',
-        reporter: ['text', 'html'],
-        // Floors just under the 2026-10-31 baseline (99.2 lines / 99.3 functions / 97.4 branches / 99.0 statements).
-        // A ratchet: raise when the score rises; lower only with a reason in the commit.
-        thresholds: { lines: 97, functions: 97, branches: 97, statements: 97 },
-        include: ['src/**', 'test-editor/**'],
-        exclude: [
-          '**/*.test.ts',
-          '**/*.d.ts',
-          'src/types.ts',
-          // Glue scripts with top-level side effects: covered by the
-          // end-to-end suite, not unit tests.
-          'src/build.ts',
-          'src/start.ts',
-          'test-editor/editor.astro',
-          // Import virtual modules only a real build can load (or are bound
-          // to them in a line or two): covered by the end-to-end suite.
-          'src/render-route.ts',
-          'src/validate-route.ts',
-          'src/warmup-route.ts',
-          'src/dev/documents-route.ts',
-          'src/render/runtime.ts',
-          'src/overlay/content-shim.ts',
-          'src/overlay/markdown-instance.ts',
-          // Run as a bundled copy by loadCmsCollections (tested in
-          // config-bundle.test.ts), so v8 can't attribute it to this file.
-          'src/schema/stubs-flavor1.ts',
-        ],
-      },
+      // Coverage options (include, exclude, floors) live in the root vitest.config.ts:
+      // Vitest reads them only from the root config, not from a project.
     },
   },
   // Astro config for the test run: no site, just the compiler.

@@ -41,6 +41,7 @@ tests for it; the full unit suite is for a person running the checks.
 | --- | --- | --- | --- |
 | Strict `tsc` flags | type holes | `preview-render-server/tsconfig.json` | gate |
 | Biome | code style and common mistakes | `biome.json` | gate |
+| Unit tests and coverage floors | every package's unit tests pass, and each package stays above its line, function, branch and statement floor | `vitest.config.ts` (root), `vitest.projects.ts` | gate |
 | Zod at the boundaries | untrusted input | code pattern | gate (tested at runtime) |
 | osv-scanner | known vulnerabilities in dependencies | `osv-scanner.toml` | gate |
 | Knip | dead code, unused exports and dependencies | `knip.json` | gate (should print nothing) |
@@ -67,6 +68,13 @@ CI, fail the build). "Report" means the output needs a human reading it.
   stricter ones: unused imports are errors, a promise nobody awaits is an error
   (`noFloatingPromises`), and `any` is an error. Test files may use `any` and
   non-null assertions. Style: 2-space indent, single quotes, LF line endings.
+- **Unit tests and coverage floors.** One Vitest run (`npm run coverage`, from
+  the root `vitest.config.ts`) runs the unit tests of all four packages. Their
+  projects come from `vitest.projects.ts`, which Stryker shares. The coverage
+  report covers each package's `src/` (and the renderer's `test-editor/`). Each
+  package has its own floor (one glob each), so a weak package cannot hide
+  behind strong ones. The renderer's floors are a ratchet at 97 on every metric.
+  The other three were measured on 2026-11-01 and set 1 to 2 points under.
 - **Zod** (imported from `astro/zod`, the copy Astro already ships) parses
   everything that crosses a trust boundary instead of casting it: the render
   request envelope (`src/render/envelope.ts`), the query checks in
@@ -126,6 +134,7 @@ CI, fail the build). "Report" means the output needs a human reading it.
 | Unit tests, contract | `npm run test -w preview-contract` | seconds |
 | Typecheck, cms-server | `npm run typecheck -w cms-server` | seconds |
 | Unit tests, cms-server | `npm run test -w cms-server` | seconds |
+| Unit tests and coverage floors, all packages | `npm run coverage` (root `vitest.config.ts`: one run, prints the coverage summary, fails under any package's floor) | ~55 s (measured 2026-11-01) |
 | Lint | `node_modules/.bin/biome lint` | ~2 s |
 | Format check | `node_modules/.bin/biome format` (fix with `--write`) | ~2 s |
 | Unit tests, one file | `cd preview-render-server && ../node_modules/.bin/vitest run <file>` | seconds |
@@ -139,7 +148,7 @@ CI, fail the build). "Report" means the output needs a human reading it.
 | Module graph | `npm run graph` (see [Module graph](#module-graph)) | ~20 s |
 | Edges of one file | `npm run -s deps -- --focus "<regex>"` or `--reaches "<regex>"` | ~3 s |
 | Stryker | `npx stryker run` | see Stryker |
-| Everything | `npm run check [-- flags]` | ~35 to 55 s fast, ~170 s with `--e2e`, ~325 s with `--all` (measured 2026-10-31) |
+| Everything | `npm run check [-- flags]` | ~127 s fast (measured 2026-11-01, see [Running everything](#running-everything)), ~170 s with `--e2e`, ~325 s with `--all` (the e2e and Stryker numbers are from 2026-10-31) |
 
 The e2e run builds the sample site and spawns the server, so it needs a free
 port and some memory. Add `--disableConsoleIntercept` to see its `console.log`
@@ -183,10 +192,10 @@ behaves the same on Windows and a Linux CI). Flags go after `--` and combine:
 
 | Flag | Runs | Time |
 | --- | --- | --- |
-| `--fast` (default) | tsc, tsc protocol, protocol tests, biome lint, biome format, unit tests, knip, depcruise, osv-scanner | ~35 to 55 s (measured 2026-10-31: 53 s wall on the first run, about 40 s warm) |
-| `--e2e` | the fast set, then e2e and the budget tests, the browser suite, and the coverage floors | ~170 s (measured 2026-10-31: sum of steps 165 s, of which e2e 52 s, browser 59 s, coverage 15 s; on 2026-10-30 it took 94 s, with 25 browser tests now and a busier machine) |
+| `--fast` (default) | tsc for the four packages, biome lint, biome format, unit tests and coverage floors (every package, one run), knip, depcruise, osv-scanner | ~127 s (measured 2026-11-01: the unit tests and coverage step 54 s, the rest 73 s; 2026-10-31 was 35 to 55 s, before the contract, protocol and cms-server tests joined the coverage run) |
+| `--e2e` | the fast set, then e2e and the budget tests, and the browser suite | the fast set plus ~111 s (measured 2026-10-31: e2e 52 s, browser 59 s; not re-measured since the coverage step moved into the fast set) |
 | `--mutation` | `npx stryker run` (incremental) | ~29 s when nothing changed; see below |
-| `--all` | everything above | ~325 s wall (measured 2026-10-31: Stryker 161 s after source changes, the other steps 164 s) |
+| `--all` | everything above (the coverage floors run in the fast set) | ~325 s wall (measured 2026-10-31: Stryker 161 s after source changes, the other steps 164 s) |
 
 Example: `npm run check -- --e2e --mutation`. An unknown flag exits with code 2.
 
@@ -353,11 +362,12 @@ computed styles, and the editor-origin check.
   `npm run test:browser -w preview-render-server -- morph.browser.test.ts`.
 - **Gate:** the `browser` step of `npm run check -- --e2e`, after e2e and the
   budgets.
-- **Out of the coverage floors and Stryker on purpose.** `vitest.config.ts`
-  includes only `src/**` and `test-editor/**`, so the coverage run never
-  reaches `test/browser/`. Stryker mutates only `src/` and runs through
-  `vitest.config.ts`, and a browser test cannot map a mutant to its line. Its
-  floors are unchanged by the browser suite.
+- **Out of the coverage floors and Stryker on purpose.** The root
+  `vitest.config.ts` includes only each package's `src/` (and the renderer's
+  `test-editor/`), so the coverage run never reaches `test/browser/`. Stryker
+  mutates only `src/` and runs through `vitest.mutation.config.ts`, and a
+  browser test cannot map a mutant to its line. Its floors are unchanged by the
+  browser suite.
 - **Not in dependency-cruiser's scope.** It scans `src/` only, so the suite is
   not checked by it. Production code still may not import `test/`
   (`no-test-in-production`).
@@ -410,8 +420,12 @@ unchecked. Go through this list when the package is created:
    [annex](#annex-dependency-cruiser-rules)). Update the annex table. Add the
    same path to the `deps` script and to `BASE`, `INTERNAL` and `FOLDERS` in
    `scripts/graph.ts`.
-8. **`scripts/check.ts`:** add its `typecheck` and `test` steps to `FAST`.
-9. **This manual:** update the overview and command tables.
+8. **`scripts/check.ts`:** add its `typecheck` step to `FAST`. Its unit tests
+   run in the one `unit tests + coverage` step, so they need no step of their own.
+9. **Coverage:** add a project for it to `vitest.projects.ts` (shared by the coverage and Stryker configs) and a per-package threshold glob to the root `vitest.config.ts`
+   threshold, so the unified coverage run (task 2.1e) covers it. A package
+   without a floor is unguarded.
+10. **This manual:** update the overview and command tables.
 
 Skipping a line does not fail anything; the package is just unchecked. That
 is the reason for the list.

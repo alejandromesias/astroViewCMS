@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
-  "_comment": "Docs: https://stryker-mutator.io/docs/stryker-js/configuration/. The exclusions mirror coverage.exclude in preview-render-server/vitest.config.ts.",
+  "_comment": "Docs: https://stryker-mutator.io/docs/stryker-js/configuration/. The exclusions mirror coverage.exclude in the root vitest.config.ts.",
   "packageManager": "npm",
   "mutate": [
     "preview-contract/src/**/*.ts",

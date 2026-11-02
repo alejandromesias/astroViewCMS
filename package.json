@@ -25,6 +25,7 @@
     "check": "node scripts/check.ts",
     "audit": "osv-scanner scan source -L package-lock.json --config osv-scanner.toml",
     "knip": "knip",
+    "coverage": "vitest run --coverage",
     "depcruise": "depcruise preview-render-server/src preview-protocol/src preview-contract/src cms-server/src --config .dependency-cruiser.cjs",
     "lint": "biome lint",
     "format:check": "biome format",
