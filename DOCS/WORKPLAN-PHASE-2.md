@@ -1110,6 +1110,32 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
 - **Done when:** route tests with a bundle built from `sample-site`
   (committed trimmed fixture for unit tests, the real one for e2e); a
   corrupted manifest answers a clear error.
+- Gaps settled (calls, 2026-11-02):
+  - **No config field for the bundle directory.** `createApp` takes a `BundleSource`
+    dep; a `directoryBundleSource(dir)` helper serves tests until 2.9c. Code in
+    `cms-server/src/bundle/`, routes in `http/bundle-routes.ts`.
+  - **`imagesJsonSchema` goes in `preview-contract`** (an array of `imageRecordSchema`),
+    exported from the index; the renderer's writer may use it. The other four files use
+    the existing contract schemas.
+  - **Cache by `bundleId`.** Parsed bundles are cached; the new bundle is swapped in only
+    after all five files parse, never half of one.
+  - **Status codes.** `GET /api/status` answers `200` with `bundle: null` when there is
+    no bundle. The data routes answer `503 { error: 'no-bundle' }`. A corrupt file is
+    `500 { error: 'bundle-invalid', message }` naming file and field. Errors use the
+    `{ error, message }` shape of design 5.9.
+  - **Query rules.** `GET /api/documents` with neither `collection` nor `key` is `400`;
+    an unknown collection is `404`; a collection with no documents (D15) is `200` with
+    an empty list; `key` answers `501` until 2.4b.
+  - **Fixture.** `cms-server/test/fixtures/bundle/`: the real `schema.json` and
+    `routes.json` of `sample-site` (2.4c needs them), trimmed `documents.json` and
+    `images.json`.
+  - **Unit tests only here.** The real-bundle e2e and an assertion that the fixture's
+    collection names equal the real build's wait for the `cms-server` e2e project
+    (created by 2.9b); the orchestrator adds them after both land.
+  - **Wiring.** `AppDeps` becomes an interface with one optional field per route group;
+    `createApp` registers a group only when its dep is present. A test builds the app
+    with every dep and asserts each group's routes exist. When the last group lands
+    (2.9c), the fields become required.
 
 #### 2.4b Read one document — after 2.4a, 2.2
 
@@ -1233,6 +1259,41 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   including the near-miss file names that must answer `404` (D15).
 - **Done when:** those tests pass against the new route; a non-image, an
   oversized file and a decompression bomb are refused.
+- Gaps settled (calls, 2026-11-02):
+  - **Raw body, not multipart.** The body is the image, `Content-Type: image/*`, as the
+    stopgap and the test editor do. No new dependency; the cap is a byte count; and
+    `image/*` is not a CORS-safelisted type, so a cross-site form cannot send it without
+    a preflight (multipart would be). Design 5.9 is amended. A test: `OPTIONS /api/media`
+    answers no CORS headers.
+  - **Streaming bridge.** `server.ts` passes the Node stream as the `Request` body
+    (`duplex: 'half'`) for every route. `readBody(request, maxBytes)` is the only way
+    any route reads a body (`PUT /api/changes` later uses it with its 4 MiB cap). It
+    checks `Content-Length`, then counts bytes and rejects at the cap with `413`. Up to
+    10 MB may be held in memory; nothing is written until the body is complete and
+    measured, so a disconnect leaves no file. The `413` test accepts a clean `413` or a
+    connection reset.
+  - **Names and types.** `id` is the sha256 hex; the file is `<64 hex>.<ext>` (the
+    stopgap used 16 hex, so the near-miss tests change; the stopgap's own tests stay until
+    2.12a). The extension comes from sharp's measured format (`jpg` for jpeg), never the
+    declared type. Only png, jpg, webp, avif and gif; SVG and TIFF are `415`.
+  - **Absolute URL.** `url` is built from `origins.cms`
+    (`http://cms.localhost:4400/media/staging/<sha>.<ext>`), because a relative URL
+    resolves against the preview origin inside the iframe. The renderer looks the media
+    map up by the exact `ref` first, so no renderer change is expected; this task adds a
+    `content-api.test.ts` case with a URL-shaped key, and the orchestrator adds a
+    `d12-media` e2e case. 2.7b recognises staging URLs by that prefix.
+  - **GET is not guarded against cross-site** (the preview iframe is cross-site by
+    design). It answers `X-Content-Type-Options: nosniff`, `Cross-Origin-Resource-Policy:
+    cross-origin` and `Cache-Control: public, max-age=31536000, immutable`. Write routes
+    use the shared guard `http/guard.ts` (content type and `Sec-Fetch-Site: cross-site`
+    refused).
+  - **Bomb test.** A hand-built PNG (huge IHDR, deflated zeros) streamed in the test;
+    `limitInputPixels` stays on, as an explicit constant.
+  - **`media.json`.** Writes go through one in-process queue (two uploads cannot lose an
+    update), via `cms-server/src/fs/atomic.ts` (temp file plus rename; 2.9c reuses it).
+    On Windows a rename over an existing file can fail with `EPERM` or `EBUSY` while an
+    indexer holds it: retry a few times with a short delay. Directories are injected as
+    `{ stagingDir, mediaFile }`.
 
 #### 2.7b Images at save time — after 2.5c, 2.7a, 2.4c
 
@@ -1513,6 +1574,19 @@ request-path rules apply (no `child_process`, no `fs` except the allowlist).
   internal bearer on `/__preview/validate`, an expired token.
 - **Done when:** these tests are in the end-to-end suite and pass. The
   "never `'*'`" rule of the bridge stays. [build]
+- Gaps settled (calls, 2026-11-02):
+  - **A second, gated node.** The e2e global setup runs with `PREVIEW_INSECURE=1`. The new
+    test file starts a second node in its `beforeAll` from the already built `buildDir`
+    (`start.ts --out`, a free port) with `PREVIEW_TOKEN_SECRET`,
+    `PREVIEW_INTERNAL_SECRET` (32+ characters each), `PREVIEW_SITE` and
+    `PREVIEW_EDITOR_ORIGINS`. No rebuild. Never runs beside 2.9b.
+  - **Cases.** CSP on a prerendered page (never contains `*`); `401` with `no-store` and
+    no cookie on a page, on `/_astro/*` and on `/__preview/config`; the `303` exchange
+    with the exact `Set-Cookie` string (including `Partitioned`) and a relative
+    `Location` without the token; a request with the cookie sent by hand (Node `fetch`
+    keeps no jar); the bearer on `/__preview/validate` with a real body; expired,
+    wrong-site and tampered tokens; the node refusing to start with equal secrets.
+  - **Not covered here:** the cookie inside a Chromium iframe (2.12b).
 - **Done at review (2026-11-02):** `readGate` refuses `PREVIEW_TOKEN_SECRET`
   equal to `PREVIEW_INTERNAL_SECRET` (with a test), and depcruise's
   `client-stays-browser-safe` now also forbids `client/` importing
@@ -1563,6 +1637,43 @@ Design 4.4, 5.6.
 - **Done when:** tests with a fake child covering backoff and the failure
   limit; an end-to-end test that swaps between two real bundles and sees the
   new `bundleId` served on the same port. [build]
+- Gaps settled (calls, 2026-11-02):
+  - **Identity in `GET /__preview/config`.** The answer gains `bundleId` and
+    `protocolVersion` (null when `manifest/bundle.json` is missing; read once, cached).
+    `previewConfigSchema` (non-strict) goes in `preview-contract`; the bridge keeps its
+    own check and tolerates the extra keys. This task changes `preview-config.ts`, its
+    test, `config-route.e2e` and design 5.7. Readiness requires the `bundleId` the
+    supervisor started, so a stale process on the port never counts as ready; the swap
+    e2e checks the real `bundleId`.
+  - **Secrets.** `loadSecrets` refuses equal token and internal secrets (test); the
+    supervisor test checks the child gets distinct ones. (The earlier note that
+    cms-server has no internal secret is stale: `loadSecrets` generates it.)
+  - **Environment.** An allowlist (`PATH`, temp folders, and `SystemRoot` and `windir`
+    on Windows) plus `PREVIEW_EDITOR_ORIGINS` (the CMS origin), `PREVIEW_TOKEN_SECRET`,
+    `PREVIEW_INTERNAL_SECRET`, `PREVIEW_SITE`, `PORT`, `HOST=127.0.0.1`. Design 5.6 omits
+    `PREVIEW_SITE`; fix it there.
+  - **Spawn** `process.execPath <start.ts> …` directly, never through `npm` (on Windows
+    the `cmd.exe` shim would take the kill and leave the node holding the port). The
+    `start.ts` path is an injected option (default: the sibling workspace folder).
+    Check whether `start.ts --out` still needs a site-config argument and pass the one
+    the build used.
+  - **Shape.** `cms-server/src/preview/supervisor.ts`; spawn, clock and timers injected;
+    `start(bundle)`, `swap(bundle)`, `stop()`, `status()`; no HTTP routes (2.9c wires
+    `/api/status`).
+  - **Failures.** The counter resets after the node has stayed up 60 s since ready; five
+    crashes or failed readiness checks before that is `failed`. A port in use is probed
+    at start for a friendly error naming the port, and an `EADDRINUSE` exit of the child
+    gives the same error. In a swap the new node waits for the old child's `exit`.
+  - **Swap.** The new node gets one attempt (start plus readiness timeout). On failure the
+    supervisor restarts the previous bundle as an ordinary start (normal backoff) and
+    returns `{ ok: false, rolledBack: true }`; `rolledBack: false` if that failed too.
+    2.9a's "keep the last two" keeps the folder. On Windows `child.kill()` is a hard
+    kill: grace-then-kill is tested with the fake child only.
+  - **E2E project.** `cms-server` has none: this task adds `cms-server/vitest.e2e.config.ts`,
+    a `test:e2e` script and a step in `scripts/check.ts` (steps run one at a time). Its
+    global setup builds `sample-site` once; the swap test copies the bundle and rewrites
+    `bundle.json` in the copy.
+  - Runs after 2.8e, never beside it.
 
 #### 2.9c State, triggers and status — after 2.9a, 2.9b, 2.4a
 
@@ -1721,6 +1832,23 @@ Design 5.8. This is still a test tool, not the phase 3 editor.
   replaces all of this)**.
 - **Done when:** the page loads from `createApp`, the script is served, and
   the headers are asserted in a test.
+- Gaps settled (calls, 2026-11-02):
+  - **Plain HTML.** `editor.astro` becomes `index.html` (cms-server cannot render Astro).
+    Routes `/`, `/editor.js`, `/editor.css`; no inline script or style.
+  - **Type import.** `editor.ts` imports `DevDocument` from the renderer, which the
+    `cms-server-never-imports-renderer` rule forbids. The copy gets a local
+    `EditorDocument`; 2.11b reshapes it.
+  - **Headers.** `nosniff`, `Referrer-Policy: no-referrer`, and a CSP: `default-src 'none'`,
+    `script-src 'self'`, `style-src 'self'`, `connect-src 'self'`, `img-src 'self'`,
+    `frame-src <origins.preview>`, `frame-ancestors 'none'`. (Thumbnails served by the
+    preview origin need the gate cookie and will not show top-level: phase 3.)
+  - **Bundling.** `createApp` stays synchronous and takes the built script as a dep; an
+    async `buildEditorScript()` runs rolldown once at start. Add `rolldown` to
+    `cms-server/package.json` (same version as the renderer's). Add `happy-dom` for the
+    copied tests, which run in the `cms-server` project.
+  - **Config.** `editor/` is added to `tsconfig`, the vitest include and `knip.json`; it
+    stays out of Stryker and coverage. The page loads but does not work as an editor
+    until 2.11b (it still calls `/__dev/documents`).
 
 #### 2.11b Data sources — after 2.11a, 2.4b, 2.7a, 2.9e
 
@@ -1771,7 +1899,8 @@ Design 5.8. This is still a test tool, not the phase 3 editor.
 - Check the table in section 5 row by row: each row has a test that
   runs in `npm run check -- --e2e`. Write the missing ones.
 - The browser test (design R7): a Chromium page on `cms.localhost` drives an
-  iframe on `preview.localhost` through the token and cookie; a draft
+  iframe on `preview.localhost` through the token and cookie (the iframe's
+  `fetch` succeeds; the same preview opened top-level answers `401`); a draft
   changes the preview; Save, reload, and the overlay shows the saved
   content.
 - A monorepo variant: the whole save and publish path with `siteDir` set.
