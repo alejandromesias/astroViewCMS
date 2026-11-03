@@ -104,7 +104,7 @@ alone in the main checkout and refreshes `cms-server/test/fixtures/bundle/` **be
 starts (2.4b's revision-equality test compares against today's files). Then 2.4b and 2.4c run in
 parallel; 2.5a waits for 2.1g.
 
-Wave 6 order (2026-11-03): 2.1h comes first in the wave for the `repo.ts` part (seed `repo.test.ts` from a small fixture, then mutate `repo.ts` and `documents/`), because 2.1h must finish those before 2.5b. 2.5b may start in parallel with the tests, but is not closed before `repo.ts` has a score. 2.6a, 2.9a and 2.10a do not wait for 2.1h.
+Wave 6 order (2026-11-03, revised after review): 2.1h part 1 comes first in the wave, in this order: `repo.ts` (seed `repo.test.ts` from a small fixture), the `core.hooksPath` guard in `repo.ts`, then `codecs/by-format.ts`, `manifest/documents.ts` and `preview-contract/src/revision.ts`. `documents/` waits for 2.5b's revision split, and `plan-write.ts` waits for 2.5b to close (2.5b and 2.0j both change it). 2.1h must finish `repo.ts` before 2.5b. 2.5b may start in parallel with the tests, but is not closed before `repo.ts` has a score. 2.6a, 2.9a and 2.10a do not wait for 2.1h.
 
 **Critical path** (the longest chain; it decides the elapsed time): 2.0a →
 2.1a → 2.3a → 2.3b → 2.3c → 2.5b → 2.5c → 2.9d → 2.9e → 2.10d → 2.10e →
@@ -396,6 +396,15 @@ done. Item 6 of the design (the front server) is step 2.8.
   (`fixtures` carries `readOnly: true`, another collection does not), a `plan-write.test.ts` case, and
   the `cms-server/test/fixtures/bundle/` `schema.json` refreshed after a `sample-site` build (run alone,
   as for 2.4c). Runs before 2.5c; it shares `integration.ts` with nothing else open.
+- **Decisions (2026-11-03, review):**
+  - `readOnly: true` is written only for read-only collections. No `readOnly: false`, so `schema.json` does not churn.
+  - `integration.ts` warns (`logger.warn`) for a name in `site.readOnlyCollections` that is not a collection of the build. The warning is new: `manifest/documents.ts` ignores such names silently today (`new Set(readOnlyCollections)`), and this task leaves that code alone. `documents.json` output does not change.
+  - Test for the warning: an `integration.test.ts` case with an unknown name.
+  - **Custom `generateId` (decided 2026-11-03, user approved):**
+    - `customId: true` on the loader record (`loaderInfoSchema` in `preview-contract/src/schema.ts`, a new optional `z.literal(true)`), written only when true. The stub `glob()` (`preview-render-server/src/schema/stubs-flavor1.ts`) sets it when its options carry a `generateId`. The loader schema is a plain `z.object`, not strict, so without the explicit key the reader drops it silently: add it, and test that the parsed value keeps it.
+    - `planWrite` refuses a create into such a collection with `unwritable` and a message saying the id cannot be turned into a path. It reuses the code, so the 2.5c mapping does not change. Updates and deletes still work, since they come from bundle records. `file()` loaders are unaffected.
+    - `sample-site` has no `generateId` (checked 2026-11-03), so the flag is not exercised end to end there. `integration.test.ts` gets a fixture collection with a custom `generateId`, and `plan-write.test.ts` gets the refusal case.
+    - Done when: the contract test (flag accepted, absent flag still valid), the `integration.test.ts` cases, the `plan-write.test.ts` case, and the `sample-site` rebuild that refreshes the fixture, as already specified.
 
 ### 2.1 Package scaffold and guardrails — after 2.0a, 2.0f
 
@@ -752,6 +761,14 @@ done. Item 6 of the design (the front server) is step 2.8.
   Media and `fs/atomic.ts` first: a wrong cap or a lost `media.json` update
   is the costly survivor.
 - Runs before 2.9c, which builds on the supervisor and the bundle reader.
+- **Split and order (2026-11-03, review; where this block and the bullets below differ, this block wins):**
+  - **Part 1 (wave 6, now), in this order:**
+    1. `repo.ts`: seed `repo.test.ts` from a small fixture under `cms-server/test/fixtures/`. Give `seedRemote` (`cms-server/test/helpers/git.ts`) a source option: `repo.test.ts` uses the fixture, and the other tests keep `sample-site`. Remove `repo.test.ts` from the exclude list in `vitest.mutation.cms-server.config.ts`. Mutate `repo.ts` and kill its survivors.
+    2. **The `core.hooksPath` leak, fixed in `src`.** `repo.ts` `setConfig` writes five keys (`user.name`, `user.email`, `core.hooksPath`, `commit.gpgsign`, `core.autocrlf`) with `cwd` at the clone. If the clone folder is not its own repo, git writes into a parent, the main checkout. Fix in `src`: before any write, check that `git rev-parse --show-toplevel` is `repoDir` (compare real paths), and fail as `failed` otherwise. Find which test wrote the main checkout's config, and add a test that a repo-less folder is refused and the parent's config is unchanged. `GIT_CEILING_DIRECTORIES` in the tests is an extra guard, not the fix. After every run, `git config --get core.hooksPath` must print `.githooks`.
+    3. Mutate `codecs/by-format.ts`, `manifest/documents.ts` (`withRevisions`) and `preview-contract/src/revision.ts` (`revisionOfEntry`). 2.5b does not touch these.
+    4. `documents/` (`read.ts`, `revision.ts`) after 2.5b's revision split has landed. `documents/plan-write.ts` is not mutated until 2.5b has closed, since 2.5b and 2.0j both change it.
+  - **File ownership:** 2.1h edits `repo.ts`, its tests, the test helpers, the mutation configs and the test files of the modules it mutates. The one `src` change is the guard in step 2. It does not edit `ops.ts`, the `documents/` changeset code, `plan-write.ts` (until 2.5b closes), `http/` or anything else 2.5b owns. If it needs one of those, it reports it.
+  - **Part 1 closes** with its Result block (scores per file, and the leak evidence). The task stays open for part 2 below, with the deadlines unchanged.
 - **Wave 5 code, added to this task (2026-11-03), each with its deadline:**
   - `cms-server/src/documents/` (`read.ts`, `revision.ts`): **before 2.5b and 2.5c.** Run again
     after any change to the revision rule, since its revision tests depend on it.
@@ -1622,13 +1639,32 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
 - **Result (2026-11-03, 2.5a):** `cms-server/src/documents/plan-write.ts` and `plan-write.test.ts` (43 tests). Scoped runs over `documents` and `codecs`: 9 files, 310 passed; biome and tsc clean. Nothing committed. Choices where the gaps block was silent: `ctx` also carries `documents` (the bundle's records by key, for file, format and entryKey), `collections` (schema.json loaders) and `config` (`collections`, for `newEntryFormat`); `readText` is async, so `planWrite` is async; every CodecError becomes `unwritable` with file, line and column; an update or delete of a key the bundle lacks is `unwritable`; a `..`, absolute, backslash, or empty or `.` segment is `outside-site`; a `file()` create checks for an existing entry first, so a duplicate is `exists`; `yml` maps to yaml; a delete takes no value.
   - **Open (for 2.5c):** a create into a read-only collection is not refused. The list is `readOnlyCollections` in the preview site config; `documents.json` carries it only per existing document, and a new key has no record. Options: a read-only flag per collection in `schema.json` (a small preview-render-server change), or cms-server reads the site config. Recommended: the `schema.json` flag, since the fixtures collection can be empty.
 
-#### 2.5b Changeset state from git — after 2.3c, 2.4b
+#### 2.5b Changeset state from git — after 2.0j, 2.3c, 2.4b
 
 - **Also (2026-11-03, from 2.5a):** expose the changeset's created documents in the shape of a bundle document record (key, file, format, `entryKey`), so 2.5c can add them to `planWrite`'s `ctx.documents`. Without them, a second save that edits a document the first save created is refused. Add a test for it.
 
+- **Decisions (2026-11-03, review; they override the bullets below where they differ):**
+  - **Base is the merge-base.** The base of each document is its revision at `git merge-base origin/<branch> cms/work`, the same baseline `changedPaths` uses (2.3b). A new `Repo.mergeBase()` reads it without the lock, like `showAt`. After a sync, `cms/work` sits on the new `origin/<branch>` and the merge-base moves forward by itself, so there is no second baseline.
+  - **Bytes first.** Add `showAtBytes(ref, path): Buffer | null` to `ops.ts`, and let `showAt` decode from it. A base revision hashes the bytes, so a BOM or invalid UTF-8 cannot change a hash.
+  - **Revision split, in `cms-server`.** Extract the pure part of `documents/revision.ts` so it takes bytes (or text) and the parsed value, and let `revisionOfDocument` reuse it. Do not edit `preview-contract/src/revision.ts`. This lands before 2.1h mutates `documents/` (2.1h part 1, step 4).
+  - **Document from a path.**
+    - A glob document is its own file. For an existing document the key comes from the bundle record. For a created one, the key follows Astro's glob id rule (checked 2026-11-03 in `node_modules/astro/dist/content/utils.js`, `getContentEntryIdAndSlug`, and `generateIdDefault` in `loaders/glob.js`): the id is `data.slug` (as `String()`) when the frontmatter sets it; otherwise the path under `base` with only its last extension stripped, split on `/`, each segment through `github-slugger`, and a trailing `/index` removed (`blog/index.md` is `blog`). Test: a created document's key equals the key a `sample-site` build gives it, with a mixed-case and spaced file name (`My Post.md` is `my-post`) among the cases.
+    - **Custom `generateId`:** decided in 2.0j (`customId` on the loader record). A create into such a collection is refused there, so the rule below never sees one.
+    - **Create path and round trip (decided 2026-11-03).** One pure function in `documents/` gives the key from a path and the frontmatter `slug` (the rule above). `planWrite` builds `base/id.ext` as now, computes the key back from that path and the value's `slug`, and refuses the create with `pattern-mismatch` when it differs from the requested id. The message names both. `planWrite` does not slug the id itself, so a caller asking for `My Post` gets that refusal, not a silent `my-post`. `pattern-mismatch` is my choice of code (no new code, no 2.5c mapping change). The round-trip refusal stays in place.
+    - A `file()` path is parsed on both sides, and entries are compared by `entryKey` (array item `id` or `slug`, or the object key, as `manifest/documents.ts` does around line 189). A file that holds no document is ignored.
+  - **Output.** `{ documents: [{ key, status: 'created' | 'modified' | 'deleted', baseRevision (null when created), value (absent when deleted), overwritten? }], createdRecords }`. `createdRecords` are bundle-shaped (key, file, format, `entryKey`) for 2.5c's `ctx.documents`.
+  - **Starts after 2.0j merges.** Both change `documents/plan-write.ts`, and 2.0j runs first and alone. The round-trip refusal is written on top of the merged 2.0j code (its `read-only` and `customId` checks), and its message names both ids. The `pattern-mismatch` code does not change the 2.5c mapping.
+  - **Slugger dependency (approved 2026-11-03).** Add `github-slugger` to `cms-server`'s dependencies at exact `2.0.0`: the version Astro 7.4.2 resolves (`node_modules/github-slugger`; Astro's own range is `^2.0.0`). `cms-server` is ESM (`"type": "module"`), so the import needs no change. Check that knip and the dependency checks accept it.
+  - **Test source.** The `sample-site` build for the comparison runs alone (`[build]`). The test compares the shared function with the keys that build gives, including `My Post`, a `slug` frontmatter case and an `index.md` case (with a pattern that matches it).
+  - **Trailers are read now.** `Repo.overwrittenSince()` runs `git log` over `origin/<branch>..cms/work` with `%(trailers:key=CMS-Overwrote,valueonly)`, and a pure parser reads the values. Split each value at its last space (a `file()` id may contain spaces). When a key repeats, the newest commit wins. Tests use hand-made commits (`git commit --trailer`). This makes the trailer format a tested contract that 2.10b must write.
+  - **Route.** `GET /api/changes` lives in `http/` and always answers `200`. A broken document is reported with its own `error` (`code`, `message`, `line?`, `column?`), not with a `409`: `409` is `PUT`'s answer (2.5c). A `file()` entry that is new at base is `created`. The earlier "key missing at base but marked modified" case is dropped, since the diff cannot produce it.
+  - **Errors are reported, not refused.** An unparseable shared file on either side: that document carries `error`. A read-only, `toml` or `other` document changed by hand: reported, not refused (refusing is 2.5c's `PUT`).
+  - **File ownership.** 2.5b owns `ops.ts`, the `documents/` changeset and revision code, and the `http/` route. 2.1h does not edit them.
+  - **Stryker.** 2.5b runs no Stryker. It closes only after 2.1h part 1 has scored `repo.ts`.
+  - **Done when, added:** the cases above; a `file()` entry added and another edited in one save; an upstream push to another entry of the same shared file is not a change; a second save to a created document; the created key matches the built key (the shared function against a real `sample-site` build, with `My Post`, `slug` and `index.md` cases); the round-trip refusal; the trailer parser cases; `GET /api/changes` answers `200` with a per-document `error`.
 - `GET /api/changes`: the documents that differ between `origin/<branch>`
   and `cms/work`, each with its saved value (or deleted) and its **base
-  revision**, which is its revision at `origin/<branch>`. No side file:
+  revision**, which is its revision at `origin/<branch>` (superseded by the merge-base decision above). No side file:
   state lives in git so a crash can't desync it **(call)**.
 - Commit messages carry trailers (`CMS-Overwrote: <key> <upstream-sha>`);
   2.10b writes them and this task reads them to fill `overwritten`.
@@ -2318,14 +2354,15 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
   text with its codec (a `file()` entry changes only itself). If upstream's
   revision differs from the base the save started from, record it as
   overwritten with the upstream commit in a commit trailer, carrying over
-  the trailers of earlier syncs. Saved images (paths under `media.folder`)
+  the trailers of earlier syncs. The re-apply commit must repeat the older `CMS-Overwrote` lines, because 2.5b's parser reads the newest value per key. Saved images (paths under `media.folder`)
   are restored from the old branch.
 - **Scenarios, one test each:** the developer edits another document; edits
   another field of the same document (the CMS version wins whole); edits
   another entry of the same `file()` file (both survive); deletes a document
   the CMS edited (recreated); edits a document the CMS deleted (stays
   deleted); reformats the file (the codec writes into the new formatting);
-  pushes nothing relevant (no-op); a crash after `cms/work-next` is made.
+  pushes nothing relevant (no-op); a crash after `cms/work-next` is made;
+  two syncs in a row keep the first sync's `CMS-Overwrote` trailer.
 - **Done when:** all of those pass against the harness.
 
 #### 2.10c Guard recheck after a sync — after 2.6b, 2.10b
