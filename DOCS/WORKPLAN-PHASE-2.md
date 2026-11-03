@@ -25,7 +25,7 @@ before writing tests, [TESTING-RECOMMENDATIONS.md](TESTING-RECOMMENDATIONS.md).
 |---|---|
 | Phase 2 design | approved by the user, 2026-10-31 |
 | Decisions D17 to D22 | logged in SYSTEM-DESIGN section 11 |
-| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); next: 2.1f alone, then 2.2c, 2.2d and 2.3b in parallel (gaps settled 2026-11-02), then 2.1g over them, then the rest of wave 4; the rest not started |
+| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); next: wave 5 (2.1g first, it gates 2.5a; 2.1i, the start code, alongside); the rest not started |
 
 **Done when:** every row of PHASE-2-DESIGN.md section 1 passes. Section 5
 below maps each row to the test that proves it.
@@ -88,8 +88,8 @@ Rules for running tasks in parallel:
 | 2 | 2.0b, 2.0c, 2.1a, 2.8b |
 | 3 | 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8c, 2.8d |
 | 4 | 2.1f (alone, first), 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a |
-| 5 | 2.1g, 2.3c, 2.4b, 2.4c, 2.5a |
-| 6 | 2.5b, 2.6a, 2.9a, 2.10a |
+| 5 | 2.1g, 2.1i, 2.3c, 2.4b, 2.4c, 2.5a (after 2.1g) |
+| 6 | 2.1h, 2.5b, 2.6a, 2.9a, 2.10a |
 | 7 | 2.5c, 2.9c, 2.10b |
 | 8 | 2.6b, 2.7b, 2.7c, 2.9d |
 | 9 | 2.9e, 2.10c |
@@ -623,6 +623,9 @@ done. Item 6 of the design (the front server) is step 2.8.
 
 #### 2.1g Stryker over the new code — after 2.1f, 2.2c, 2.2d, 2.3b · [build]
 
+- **Scope narrowed (2026-11-02):** this task covers the code that saves and
+  the code from waves 1 to 3; the wave 4b code (bundle reader, media,
+  supervisor) is 2.1h, so that 2.5a is not held up by it.
 - Run Stryker (`npx stryker run`, or `npm run check -- --mutation`; see QUALITY-TOOLING.md) once over the code
   written since the last full run: `cms-server/src/codecs` (now with `frontmatter.ts`
   and `file-entries.ts`), `src/git` (now with `repo.ts`), `src/log.ts`,
@@ -642,6 +645,47 @@ done. Item 6 of the design (the front server) is step 2.8.
   equivalent). `server.ts` is the bridge that 2.7a rewrites: do not add tests for it. If
   its survivors cannot be killed that way, say so in the Result and ask before touching
   `thresholds.break` (2.13c). 2.1f stays DONE with this open.
+
+#### 2.1h Stryker over the wave 4b code — after 2.1g · [build]
+
+- Added 2026-11-02, split from 2.1g. Same method as 2.1g, over the code of
+  2.4a, 2.7a, 2.9b and 2.11a: `cms-server/src/bundle/`, `src/media/`,
+  `src/fs/`, `src/http/` (`body.ts`, `guard.ts` and the route files; not
+  the bridge in `server.ts`, see 2.1g), `src/preview/supervisor.ts`, and the
+  renderer's `preview-config.ts` change (`bundleId`, `protocolVersion`).
+  Media and `fs/atomic.ts` first: a wrong cap or a lost `media.json` update
+  is the costly survivor.
+- Runs before 2.9c, which builds on the supervisor and the bundle reader.
+- **Done when:** as 2.1g, with the score per folder; `npm run check -- --all`
+  green, or the `break` question raised with the user (2.13c).
+
+#### 2.1i Start code — after 2.3b, 2.4a, 2.7a, 2.9b, 2.11a
+
+- Added 2026-11-02. Wave 4 left every part injectable and nothing that
+  builds the real server: `startServer(deps)` exists, but no code makes
+  `deps`. Add the composition root, `cms-server/src/main.ts`, and a
+  `start` script:
+  1. `loadConfig(path)` (path from the command line, default
+     `cms.config.ts` in the working folder), then `loadSecrets`.
+  2. `ensureRepo` (2.3b) with the `.cms` root next to the config,
+     including crash recovery, before the server listens.
+  3. The media deps from the config (`.cms/<site>/staging/`,
+     `.cms/<site>/media.json`, `origins.cms`) (2.7a open item 2).
+  4. `loadEditorPage()` passed into `createApp` (2.11a open item).
+  5. A `BundleSource`: `directoryBundleSource(dir)` from a `--bundle <dir>`
+     argument until 2.9c replaces it; without one, the data routes answer
+     `503 no-bundle` and `/api/status` answers `bundle: null`.
+  6. The supervisor started on the bundle when there is one, and
+     `stop()` on `SIGINT`, `SIGTERM` and server close (2.9b open item).
+  7. The logger (2.3b) everywhere; one line at start with the origins and
+     the port.
+- No new behaviour: only wiring. Keep `main.ts` small; anything with a
+  branch worth testing goes into a function with its own test file.
+- **Done when:** a test builds the full deps and asserts every route group
+  is registered (the wiring test agreed for 2.4a to 2.11a); an e2e test
+  starts `main.ts` against a harness repo and a built bundle, gets
+  `/api/status`, `/api/schema` and `/`, then stops it and finds no child
+  process left. A manual `npm start -w cms-server` opens the editor page.
 
 ### 2.2 Format codecs — after 2.1a · ∥ 2.3, 2.1b to 2.1d, 2.0
 
@@ -1183,14 +1227,24 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
 - `GET /api/documents?key=` (design 5.3): `{ key, value, revision, file,
   format, editable, buildTime, buildTimeFields }`. Reads from the working
   copy through the codecs; Markdown and MDX answer `{ data, body }` (D2);
-  `file()` entries by `entryKey`. The revision comes from the working
-  copy's text (`revisionOf`), not the manifest. Read-only formats answer
+  `file()` entries by `entryKey`. The revision is computed from the
+  working copy, never copied from the manifest, **with the same rule the
+  build used (2.0c; corrected 2026-11-02)**: a document that is one file
+  is `revisionOf(file bytes)`; a `file()` entry is
+  `revisionOf(canonicalEntryText(entry value))`, the entry's parsed value,
+  not the shared file's text. The parse must give the values Astro's data
+  store holds (the YAML codec's Astro options, so dates are `Date`), or
+  every entry looks changed. Put the rule in one function
+  (`revisionOfDocument`) that 2.5b and 2.5c reuse. Read-only formats answer
   their flags without a `value`, as the stopgap route does. `404` for an
   unknown key.
 - The list route also fills `title` when the data has `title` or `name`.
 - **Done when:** the cases of `dev/documents.test.ts` pass against the new
   route (copy them; that file is removed in 2.12a), including ids with
-  slashes (D10) and hostile keys.
+  slashes (D10) and hostile keys; and, for every document of the real
+  bundle fixture with its file unchanged, the route's revision equals the
+  manifest's (JSON, YAML, Markdown, MDX and `file()` entries of both
+  formats).
 
 #### 2.4c Schema walker — after 2.4a
 
@@ -1198,6 +1252,10 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   for `cms: 'reference'` and `cms: 'image'` fields through objects, arrays,
   `oneOf` and `anyOf`, and `$ref` into `$defs` (guard against cycles). Used
   by 2.6a and 2.7b.
+- **First (2026-11-02):** 2.4a's fixture `schema.json` and `routes.json`
+  come from the 2026-10-31 build. Rebuild `sample-site` once (`[build]`,
+  alone) and refresh `cms-server/test/fixtures/bundle/` from it, so these
+  tests run on today's schema; the e2e drift check keeps it current after.
 - **Done when:** tests on the sample's real `schema.json`: the landing
   blocks' `discriminatedUnion` with testimonial references, `authors`
   avatars, nested arrays.
@@ -1211,8 +1269,10 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   file). Creation derives the path from the collection's loader in
   `schema.json` (`base`, `pattern`) and the id, and the format from
   `collections.<name>.newEntryFormat` or the first extension of the pattern
-  (D13). Deleting a `file()` entry removes it from the shared file; a
-  document that is alone in its file removes the file.
+  (D13). Deleting a `file()` entry removes it from the shared file, and
+  the file stays even when it was the last entry (it becomes `[]` or `{}`,
+  2.2d); only a document that is a file of its own (glob loader) removes
+  the file.
 - Refuses read-only documents (`editable: false`) and a path that would
   leave `siteDir`.
 - **Done when:** tests for each operation on JSON, YAML, Markdown, MDX and
@@ -1282,7 +1342,8 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
 
 #### 2.7a `POST /api/media` — after 2.1c · DONE 2026-11-02
 
-- Multipart upload, 10 MB cap, only image types, measured once with `sharp`
+- Raw image body with an `image/*` content type (multipart dropped
+  2026-11-02, design 5.9), 10 MB cap, only image types, measured once with `sharp`
   (`limitInputPixels` kept on), stored as
   `.cms/<site>/staging/<sha256>.<ext>`, answered as `{ id, url, width,
   height, format }`. `GET /media/staging/<sha256>.<ext>` serves it with
@@ -1839,11 +1900,12 @@ Design 4.4, 5.6.
 
 - **Review fix (2026-11-02):** `start()` took its generation after the port check, so a `stop()` during the check could not end it and the node launched after `stop()` returned. The generation is now taken first and re-checked after the check (regression test).
 
-#### 2.9c State, triggers and status — after 2.9a, 2.9b, 2.4a
+#### 2.9c State, triggers and status — after 2.9a, 2.9b, 2.4a, 2.1h, 2.1i
 
 - `.cms/<site>/state.json`, written atomically: current and last-good
   bundle, protocol-rebuild attempts per `bundleId`.
-- The real `BundleSource`. The start-up sequence: load the state, start the
+- The real `BundleSource`, replacing 2.1i's `--bundle` directory in
+  `main.ts`. The start-up sequence: load the state, start the
   current bundle's node, or build if there is none.
 - Triggers from design 4.4 that are known here: no bundle, a save with
   `rebuild: true`, a protocol mismatch (compare `bundle.json`'s

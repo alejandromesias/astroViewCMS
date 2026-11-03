@@ -458,7 +458,11 @@ Round-trip tests run on copies of the sample's own files.
   - `PREVIEW_TOKEN_SECRET`: shared with `cms-server`, never with the browser;
   - `PREVIEW_INTERNAL_SECRET`: for `cms-server`'s own calls (below);
   - `PREVIEW_SITE`: the site name the token is checked against (2.8c);
-  - none of `cms-server`'s other secrets.
+  - `PORT`, and `HOST=127.0.0.1` (the renderer's default `localhost` may
+    bind IPv6 only, and readiness polls IPv4);
+  - from `cms-server`'s own environment only `PATH`, the temp folders and,
+    on Windows, `SystemRoot` and `windir`;
+  - none of `cms-server`'s other secrets or variables.
 - **Readiness:** poll `GET /__preview/config` until it answers, with a
   timeout. **Crashes:** restart with backoff (1 s, 2 s, 4 s, then up to
   30 s). After 5 failures in a row, show the error in `GET /api/status`.
