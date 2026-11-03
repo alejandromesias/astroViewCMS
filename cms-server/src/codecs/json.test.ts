@@ -399,9 +399,9 @@ describe('jsonCodec.write', () => {
   });
 
   it('still drops a nested undefined as an absent key', () => {
-    expect(jsonCodec.write('{\n  "k": 1\n}\n', { k: 1, x: { a: undefined } })).toBe(
-      '{\n  "k": 1,\n  "x": {}\n}\n',
-    );
+    expect(
+      jsonCodec.write('{\n  "k": 1\n}\n', { k: 1, x: { a: undefined } }),
+    ).toBe('{\n  "k": 1,\n  "x": {}\n}\n');
   });
 
   it('refuses an original that is not JSON, with its position', () => {

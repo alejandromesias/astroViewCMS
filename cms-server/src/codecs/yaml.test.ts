@@ -3,8 +3,8 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { yamlCodec } from './yaml.ts';
 import { CodecError } from './types.ts';
+import { yamlCodec } from './yaml.ts';
 
 // Copies of the sample site's YAML files: the partner documents, stats.yaml, and the YAML author.
 const FIXTURES = fileURLToPath(
@@ -381,9 +381,7 @@ describe('yamlCodec.write: mutation survivors', () => {
   });
 
   it('replaces a sequence with an empty string, and an empty sequence too', () => {
-    expect(yamlCodec.write('list:\n  - 1\n', { list: '' })).toBe(
-      'list: ""\n',
-    );
+    expect(yamlCodec.write('list:\n  - 1\n', { list: '' })).toBe('list: ""\n');
     expect(yamlCodec.write('list: []\n', { list: '' })).toBe('list: ""\n');
   });
 
@@ -396,9 +394,9 @@ describe('yamlCodec.write: mutation survivors', () => {
   });
 
   it('drops the comment of a removed item, and keeps the comments of the others', () => {
-    expect(
-      yamlCodec.write('- a # A\n- b # B\n- c # C\n', ['a', 'c']),
-    ).toBe('- a # A\n- c # C\n');
+    expect(yamlCodec.write('- a # A\n- b # B\n- c # C\n', ['a', 'c'])).toBe(
+      '- a # A\n- c # C\n',
+    );
   });
 
   it('keeps an unindented sequence unindented when a comment follows its key', () => {
@@ -411,15 +409,15 @@ describe('yamlCodec.write: mutation survivors', () => {
   });
 
   it('keeps the node of a repeated item that is still common, and gives the comment of the other to the new item', () => {
-    expect(
-      yamlCodec.write('- a # c0\n- a # c1\n', ['b', 'a']),
-    ).toBe('- b # c0\n- a # c1\n');
+    expect(yamlCodec.write('- a # c0\n- a # c1\n', ['b', 'a'])).toBe(
+      '- b # c0\n- a # c1\n',
+    );
   });
 
   it('keeps the node of the last common item when an earlier item is removed', () => {
-    expect(
-      yamlCodec.write('- a # c0\n- b # c1\n- a # c2\n', ['c', 'a']),
-    ).toBe('- c # c0\n- a # c2\n');
+    expect(yamlCodec.write('- a # c0\n- b # c1\n- a # c2\n', ['c', 'a'])).toBe(
+      '- c # c0\n- a # c2\n',
+    );
   });
 
   it('replaces a single item and keeps its comment', () => {
@@ -427,18 +425,16 @@ describe('yamlCodec.write: mutation survivors', () => {
   });
 
   it('keeps the node of an item that is common, when a repeated item is replaced by another', () => {
-    expect(
-      yamlCodec.write('- a # c0\n- b # c1\n', ['b', 'b']),
-    ).toBe('- b # c1\n- b # c0\n');
+    expect(yamlCodec.write('- a # c0\n- b # c1\n', ['b', 'b'])).toBe(
+      '- b # c1\n- b # c0\n',
+    );
   });
 
   it('keeps the comment of the item that stays, when an earlier item is replaced and a middle one removed', () => {
-    expect(
-      yamlCodec.write('- a # c0\n- b # c1\n', ['b']),
-    ).toBe('- b # c1\n');
-    expect(
-      yamlCodec.write('- a # c0\n- b # c1\n- c # c2\n', ['c', 'b']),
-    ).toBe('- c # c2\n- b # c1\n');
+    expect(yamlCodec.write('- a # c0\n- b # c1\n', ['b'])).toBe('- b # c1\n');
+    expect(yamlCodec.write('- a # c0\n- b # c1\n- c # c2\n', ['c', 'b'])).toBe(
+      '- c # c2\n- b # c1\n',
+    );
   });
 
   it('takes the layout from the key line, not from a sequence item line that follows a dash key', () => {

@@ -3,13 +3,13 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  changeEntry,
   type EntryChange,
   type EntryFormat,
-  changeEntry,
 } from './file-entries.ts';
 import { jsonCodec } from './json.ts';
-import { yamlCodec } from './yaml.ts';
 import { CodecError } from './types.ts';
+import { yamlCodec } from './yaml.ts';
 
 const FIXTURES = fileURLToPath(
   new URL('../../test/fixtures/', import.meta.url),

@@ -1,6 +1,6 @@
 import { once } from 'node:events';
 import fs from 'node:fs';
-import { type Server, request as httpRequest } from 'node:http';
+import { request as httpRequest, type Server } from 'node:http';
 import net, { type AddressInfo } from 'node:net';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
