@@ -15,16 +15,15 @@ export default defineConfig({
       reporter: ['text', 'html'],
       // reports/ is gitignored (generated reports).
       reportsDirectory: 'reports/coverage',
-      // One floor per package (one glob each), so a weak package cannot hide behind strong ones.
-      // The renderer's floors are a ratchet: just under the 2026-10-31 baseline (99.2 lines /
-      // 99.3 functions / 97.4 branches / 99.0 statements). Raise when the score rises; lower only
-      // with a reason in the commit. The other packages were measured 2026-11-01 and sit 1 to 2
-      // points under their numbers.
+      // Decision 2026-11-02 (user): every package has the same floors, 80 / 90 / 80 / 80, until
+      // a further assessment (DOCS/QUALITY-TOOLING.md, unit tests and coverage floors). One glob per
+      // package, so a weak package cannot hide behind strong ones. A file that cannot reasonably
+      // meet them may be excluded below, only after the user approves it.
       thresholds: {
-        'preview-render-server/**': { lines: 97, functions: 97, branches: 97, statements: 97 },
-        'preview-protocol/**': { lines: 98, functions: 98, branches: 98, statements: 98 },
-        'preview-contract/**': { lines: 98, functions: 98, branches: 86, statements: 96 },
-        'cms-server/**': { lines: 85, functions: 98, branches: 65, statements: 83 },
+        'preview-render-server/**': { lines: 80, functions: 90, branches: 80, statements: 80 },
+        'preview-protocol/**': { lines: 80, functions: 90, branches: 80, statements: 80 },
+        'preview-contract/**': { lines: 80, functions: 90, branches: 80, statements: 80 },
+        'cms-server/**': { lines: 80, functions: 90, branches: 80, statements: 80 },
       },
       include: [
         'preview-render-server/src/**',

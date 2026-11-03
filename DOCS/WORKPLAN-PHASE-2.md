@@ -2150,6 +2150,9 @@ Design 5.8. This is still a test tool, not the phase 3 editor.
 - Set the coverage floors and the Stryker threshold for `cms-server` from
   the first full run (not guessed), as for the renderer. Per-file Stryker
   floors only if the user wants them.
+- **Coverage floors are decided (user, 2026-11-02):** 80 lines, 90 functions, 80 branches,
+  80 statements for every package, until a further assessment (QUALITY-TOOLING). Only the
+  Stryker threshold is open here.
 - **Carried in (2026-11-01):** the first Stryker run over the new files
   (`cms-server/src/codecs`, `src/git`, `src/config`, and the token and gate
   code) has not happened; 2.2a, 2.2b and 2.3a each logged that. Run it before

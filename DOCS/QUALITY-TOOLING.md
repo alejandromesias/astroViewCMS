@@ -73,8 +73,14 @@ CI, fail the build). "Report" means the output needs a human reading it.
   projects come from `vitest.projects.ts`, which Stryker shares. The coverage
   report covers each package's `src/` (and the renderer's `test-editor/`). Each
   package has its own floor (one glob each), so a weak package cannot hide
-  behind strong ones. The renderer's floors are a ratchet at 97 on every metric.
-  The other three were measured on 2026-11-01 and set 1 to 2 points under.
+  behind strong ones. **Decision (user, 2026-11-02):** every package's floors are
+  Lines 80, Functions 90, Branches 80, Statements 80. This overrides all earlier
+  per-package floors (the renderer's ratchet at 97, the 98 and 86 of the other
+  packages, `cms-server`'s 85 / 98 / 65 / 83) until a further assessment. The
+  aim is test quality, not chasing a number. If a metric cannot reasonably be
+  met for a file, the file may be excluded from coverage, temporarily or
+  permanently, but only after the user approves it; the exclusion is listed with
+  its reason in `vitest.config.ts`.
 - **Zod** (imported from `astro/zod`, the copy Astro already ships) parses
   everything that crosses a trust boundary instead of casting it: the render
   request envelope (`src/render/envelope.ts`), the query checks in
