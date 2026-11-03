@@ -202,7 +202,9 @@ done. Item 6 of the design (the front server) is step 2.8.
 - What gets hashed **(call, refines design 5.3; corrected 2026-11-03)**: a
   document with a file of its own: the file's bytes. A `file()` entry: the
   raw value of the entry, as its file's parser reads it, without its id, in
-  canonical JSON (`revisionOfEntry`, preview-contract). Not the value after
+  canonical JSON (`revisionOfEntry`, preview-contract). Only for an array file:
+  in an object-keyed file the key is the id, so the value is hashed whole
+  (`revisionOfKeyedEntry`; review fix 2026-11-03, an `id` or `slug` field there is data). Not the value after
   the collection schema: the store's data has the schema applied, so it can
   hold defaults the file lacks and lacks keys the schema drops (`id`, in the
   sample). The build and `cms-server` each parse the file with the same
@@ -653,9 +655,9 @@ done. Item 6 of the design (the front server) is step 2.8.
   round trip could notice. Add the missing tests; do not change the global
   `break` threshold here (2.13c).
 - Runs before 2.5a, which is the first task to save through the codecs.
-- **Done when:** the survivors are killed or each is written down as
+- **Done when (superseded by the 2026-11-03 split below):** the survivors are killed or each is written down as
   equivalent, and the Result block gives the score per folder.
-- **Heads-up, look at this first (2026-11-02):** `npm run check -- --all` is red on Stryker
+- **Heads-up (2026-11-02, superseded by the 2026-11-03 split below):** `npm run check -- --all` is red on Stryker
   alone: 88.88% against the `break: 90` (found in 2.1f; no `src` file changed in that task).
   The drop comes from `cms-server` code from waves 1 to 3 (`server.ts` about 36%, `codecs`
   about 73%). Before the new-code triage above, read the per-file report, find where the
@@ -693,6 +695,10 @@ done. Item 6 of the design (the front server) is step 2.8.
     ask the user first.
   - **Done when (final):** every survivor in those three files is killed or written down as
     equivalent, and the Result gives their scores. The full-run score is read in 2.1h.
+  - **Start (2026-11-03):** run `yaml.ts` alone first and record the survivor count before writing
+    tests. The 33 predates `d0a4999`'s new tests, which may already have killed some of them.
+  - **No new dependency:** `fast-check` is not added. Round-trip tests on the sample files and
+    targeted cases cover the 33 survivors. Ask again only if the yaml score stalls.
   - **What gates what** (scores from the 2026-11-03 triage; "never mutated" means in no report):
 
     | File | State | Gates |
@@ -705,6 +711,7 @@ done. Item 6 of the design (the front server) is step 2.8.
     | `config/load.ts` | 53.8% | startup only (2.1h) |
     | `gate.ts` L121, `static.ts` L84 | open | none, but security code (2.1h) |
     | git `ops`/`mutex`/`exec`, `config/schema`, `log`, `token.ts` | 96 to 100% | done |
+- **Result, codecs (2026-11-03, 2.1g, scoped config):** `yaml.ts` 90.8 (33 survived, 1 no coverage) to 92.95 (26 survived, 0 no coverage); `frontmatter.ts` 99.41 (1 survived, no test added); `file-entries.ts` 98.75 (2 survived, no test added). Eight yaml mutants are now killed: three tests in `yaml.test.ts` (a root list's header stays on top when a commented item moves to the front; a string becomes a map or list and reads back; a binary value is replaced as a whole node), and one for line 134 (an inline comment is dropped when a scalar becomes a map). Line 134's comment said the comment moves to the new node, but the code moves it only to a new scalar, and a comment on a map prints inside the map; the comment now says it is dropped, and the test pins that. Equivalent, not tested on purpose (current line numbers): yaml L44, L78 (an empty schema name reads as core); L47 (eol matters only for CRLF or a missing final newline); L83-85 (linePos fallbacks; they rely on yaml setting linePos on every parse error, a library contract not proven here); L118 (3), L187, L193, L198, L237, L239, L241, L242, L244, L250, L253 (3), L256, L277 (2), L338, L343 (guards, loop bounds, or operand cases that never change output); frontmatter L180 (CodecError stores column undefined either way); file-entries L115 (2) (a removed key stays undefined; JSON drops it, YAML treats it as removal). Unresolved: none in scope. Config: `vitest.mutation.cms-server.config.ts` now also excludes `**/http/bundle-routes.test.ts`, which copies `sample-site` and fails the Stryker dry run in the sandbox (the same reason as `repo.test.ts`). Its tests no longer count toward kills in scoped runs, so 2.1h must check the scores of the files they cover. Checks: `cms-server/src/codecs` 6 files, 235 passed; biome and tsc clean. Thresholds unchanged. Nothing committed.
 - **Result, serve scope (2026-11-03, scoped config, `--force`):** static.ts 80.0 to 88.7 (HEAD opens no file, a stream error ends the response, a malformed path is refused and a file named `.undefined` is not served); gate.ts 90.9 (unchanged in Stryker, see open); settings.ts 97.6; preview-config.ts 88.9 to 94.4 (only ENOENT is swallowed; EISDIR and errors without a code propagate). Equivalent, not tested on purpose:
   - `gate.ts` `eq !== -1` and its unary mutant (L104): a pair without `=` reaches the real verifier with the whole pair, which no signed token can be; the name check already needs `eq >= 13`.
   - `gate.ts` `url ?? '/'` as `''` (L116): `new URL('')` is `/`. The `catch` returning undefined (L123) and the `firstPair` fallback (L145) are unreachable or implicit undefined: splitQuery skips empty segments, and every non-empty segment yields a pair.
@@ -729,6 +736,14 @@ done. Item 6 of the design (the front server) is step 2.8.
   Media and `fs/atomic.ts` first: a wrong cap or a lost `media.json` update
   is the costly survivor.
 - Runs before 2.9c, which builds on the supervisor and the bundle reader.
+- **Wave 5 code, added to this task (2026-11-03), each with its deadline:**
+  - `cms-server/src/documents/` (`read.ts`, `revision.ts`): **before 2.5b and 2.5c.** Run again
+    after any change to the revision rule, since its revision tests depend on it.
+  - `cms-server/src/schema/walk.ts`: **before 2.6a and 2.7b.**
+  - `cms-server/src/codecs/by-format.ts`: with the codec batch, before 2.5a.
+  - `preview-render-server/src/manifest/documents.ts` (`withRevisions`) and
+    `preview-contract/src/revision.ts` (`revisionOfEntry`): **once, now.** The 2.0c fix has landed
+    (`b137063`), so mutating them now avoids a second pass.
 - **Moved here from 2.1g (2026-11-03), each with its deadline:**
   - `cms-server/src/server.ts` (31.7%): **before 2.5c.** Kill its survivors like any other file.
   - `git/repo.ts`: **before 2.5b.** The Stryker run is blocked because `stryker.config.json` ignores
@@ -1530,6 +1545,47 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   It does not wait for `server.ts` (2.5c), `repo.ts` (2.5b) or the other items moved to 2.1h.
   See "What gates what" in 2.1g.
 
+- **Gaps settled (calls, 2026-11-03).** These supersede the shape and error text below where they differ.
+  - **Shape.** `planWrite(changes, ctx)` takes the whole save. `changes` is a list of
+    `{ op: 'update' | 'delete', key, value }` or `{ op: 'create', collection, id, value }`.
+    `ctx` gives `readText(path)` (the working copy, relative to `siteDir`), the loader data from
+    `schema.json`, and `newEntryFormat` from the config. The planner keeps a map of path to running
+    text and returns one `FileOp` per path (`{ op: 'write', path, text }` or `{ op: 'delete', path }`).
+    Paths are relative to `siteDir`; 2.5c joins them to the repo root. Pure: no file access.
+  - **Create in a `file()` collection.** The loader pattern is the file itself (for example
+    `src/content/testimonials.json`, with no `base`). The new entry goes into that file through
+    `changeEntry` with `op: 'add'`. A missing file is refused with `file-missing`; the planner never
+    creates a shared file.
+  - **Create in a glob collection.** The path is `base/id.ext`. `ext` is `newEntryFormat`, or else the
+    first extension of the pattern. The path, relative to `base`, must match the pattern (`path.matchesGlob`,
+    which is Node's built-in). A mismatch is refused with `pattern-mismatch`. The homepage pattern
+    `**/-*.{md,mdx}` is checked: `-index.md` matches and `index.md` does not. The existing ids carry the
+    dash, so valid creates keep it.
+  - **Matcher.** `path.matchesGlob` is used, with no new dependency. `picomatch` is in `node_modules`
+    only through Astro and tinyglobby, so a direct import would need your approval. Node 26 prints no
+    warning for it.
+  - **Refusals.** `..` segments, absolute paths, backslashes and a leading `/` in an id are refused.
+    A create whose file already exists is `exists`. A path outside `siteDir` is `outside-site`. Two
+    changes to the same key in one save, or a delete and a create of the same key, are `duplicate-key`.
+    Several changes to one file are applied in order on the running text.
+  - **Delete.** A `file()` entry is removed with `changeEntry` `remove`; the file stays and may become
+    `[]` or `{}` (2.2d). Only a glob document that is a file of its own produces `{ op: 'delete' }`
+    for its file.
+  - **Format.** `codecFor(format)` supplies the codec. `toml` and `other` are refused with `unwritable`.
+    Read-only documents (`editable: false`, including documents in `readOnlyCollections`) are refused
+    with `read-only`.
+  - **Markdown create.** `markdownCodec.write('', { data, body })` writes the frontmatter and the body
+    (checked 2026-11-03: `---\ntitle: Hi\n---\nText\n`), and with empty data it writes only the body.
+  - **Errors.** One `WritePlanError` with `code` (`read-only`, `unreadable`, `outside-site`,
+    `pattern-mismatch`, `exists`, `file-missing`, `duplicate-key`, `unwritable`), the document `key`, and
+    `file`, `line` and `column` when a `CodecError` caused it. The planner converts `CodecError`, so 2.5c
+    maps one error type to `422`.
+  - **Done when (added):** tests for each code above; an `add` to `testimonials.json` and to
+    `stats.yaml`; a homepage create that matches and one that does not; a Markdown create from an empty
+    file; and two changes to one shared file in one save.
+  - **Resolved (2026-11-03):** the planner uses Node's `path.matchesGlob`, with no new dependency
+    (approved by the user).
+
 - A pure function from a change (`update`, `create` or `delete`, with its
   value) and the document's record to file operations (write text, delete
   file). Creation derives the path from the collection's loader in
@@ -1544,6 +1600,9 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
 - **Done when:** tests for each operation on JSON, YAML, Markdown, MDX and
   `file()` documents, a new entry in a mixed JSON and YAML collection, and
   an id with slashes.
+
+- **Result (2026-11-03, 2.5a):** `cms-server/src/documents/plan-write.ts` and `plan-write.test.ts` (43 tests). Scoped runs over `documents` and `codecs`: 9 files, 310 passed; biome and tsc clean. Nothing committed. Choices where the gaps block was silent: `ctx` also carries `documents` (the bundle's records by key, for file, format and entryKey), `collections` (schema.json loaders) and `config` (`collections`, for `newEntryFormat`); `readText` is async, so `planWrite` is async; every CodecError becomes `unwritable` with file, line and column; an update or delete of a key the bundle lacks is `unwritable`; a `..`, absolute, backslash, or empty or `.` segment is `outside-site`; a `file()` create checks for an existing entry first, so a duplicate is `exists`; `yml` maps to yaml; a delete takes no value.
+  - **Open (for 2.5c):** a create into a read-only collection is not refused. The list is `readOnlyCollections` in the preview site config; `documents.json` carries it only per existing document, and a new key has no record. Options: a read-only flag per collection in `schema.json` (a small preview-render-server change), or cms-server reads the site config. Recommended: the `schema.json` flag, since the fixtures collection can be empty.
 
 #### 2.5b Changeset state from git — after 2.3c, 2.4b
 
@@ -2482,11 +2541,16 @@ Design 5.8. This is still a test tool, not the phase 3 editor.
 #### 2.13c Quality floors — after 2.12b
 
 - Set the coverage floors and the Stryker threshold for `cms-server` from
-  the first full run (not guessed), as for the renderer. Per-file Stryker
+  the first full run (not guessed), as for the renderer (superseded: the coverage floors are decided, see below). Per-file Stryker
   floors only if the user wants them.
 - **Coverage floors are decided (user, 2026-11-02):** 80 lines, 90 functions, 80 branches,
   80 statements for every package, until a further assessment (QUALITY-TOOLING). Only the
   Stryker threshold is open here.
+- **Stryker thresholds are decided (user, 2026-11-03):** `high` 90, `low` 80, `break` 75 in
+  `stryker.config.json` (were 80, 60, 90). This closes the Stryker `break` question here, and the
+  "do not touch `thresholds.break`" notes in 2.1g, 2.1h and the handoffs that cite 90. The
+  per-package question in the remark below is still open: it asks whether to add gates per
+  package, not what the global break is.
 - **Carried in (2026-11-01):** the first Stryker run over the new files
   (`cms-server/src/codecs`, `src/git`, `src/config`, and the token and gate
   code) has not happened; 2.2a, 2.2b and 2.3a each logged that. Run it before

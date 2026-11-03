@@ -376,7 +376,8 @@ as static files on the CMS origin (section 5.8).
   So editing two different entries of `testimonials.json` doesn't conflict.
   The same function, `revisionOfEntry` in the shared contract package, runs
   in the build (5.1 item 3) and in `cms-server`; each side parses the file
-  with the same options.
+  with the same options. For an object-keyed file, `revisionOfKeyedEntry` hashes
+  the whole value (the key is the id; review fix 2026-11-03).
 - **`PUT /api/changes`** (SYSTEM-DESIGN section 4), in this order:
   1. parse the body with Zod;
   2. check every `baseRevision` against the working copy. Any mismatch:
@@ -651,8 +652,9 @@ the git credential helper.
   as the remote, seeded from `sample-site`, with a second clone playing the
   developer who pushes. Every row of "Done when" (section 1) has an e2e
   test.
-- Stryker and coverage floors as for the renderer. Floors are set after
-  the first full run, not guessed.
+- Stryker and coverage floors are the same for every package: coverage 80 lines,
+  90 functions, 80 branches, 80 statements (decided 2026-11-02, root `vitest.config.ts`);
+  Stryker `high` 90, `low` 80, `break` 75 (decided 2026-11-03, `stryker.config.json`).
 
 ## 6. Measured at the end of phase 2
 
