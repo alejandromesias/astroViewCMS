@@ -1176,6 +1176,8 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
     "if the data has one"). Replace the fixture's `schema.json` and `routes.json` with a fresh
     sample-site build once a build is allowed.
 
+- **Review fix (2026-11-02):** the build wrote `schema.json` only when the site had a content config, so a site without one gave a bundle the reader refused. The build now writes an empty `{}` in that case (`integration.ts`, test updated).
+
 #### 2.4b Read one document — after 2.4a, 2.2
 
 - `GET /api/documents?key=` (design 5.3): `{ key, value, revision, file,
@@ -1834,6 +1836,8 @@ Design 4.4, 5.6.
     Not run: `npm run check`, knip, depcruise, Stryker. The grace-then-kill path is
     proven with a fake child only (Windows `kill` is hard). The config route imports
     `virtual:preview-site`, as media-route does, so a dev run without a bundle fails there.
+
+- **Review fix (2026-11-02):** `start()` took its generation after the port check, so a `stop()` during the check could not end it and the node launched after `stop()` returned. The generation is now taken first and re-checked after the check (regression test).
 
 #### 2.9c State, triggers and status — after 2.9a, 2.9b, 2.4a
 

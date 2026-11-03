@@ -354,14 +354,17 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
 
   async function start(bundle: BundleRef): Promise<StartResult> {
     await halt();
-    if (await portInUse(port)) {
+    // The generation is taken before the port check, so a stop() during the check ends this start.
+    const gen = ++generation;
+    const taken = await portInUse(port);
+    if (gen !== generation) return STOPPED_RESULT;
+    if (taken) {
       state = 'failed';
       lastError = portInUseMessage(port);
       return { ok: false, error: lastError };
     }
     failures = 0;
     target = bundle;
-    const gen = ++generation;
     return new Promise<StartResult>((resolve) => {
       void supervise(gen, bundle, undefined, resolve);
     });

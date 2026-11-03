@@ -10,9 +10,9 @@ import { afterAll, describe, expect, it, vi } from 'vitest';
 import { astroVersion } from './bundle.ts';
 import previewRenderServer, {
   bridgeScript,
+  clearBundle,
   devRoutes,
   findAstroConfig,
-  clearBundle,
   findImages,
   normalizeId,
   RESOLVED_ID,
@@ -965,12 +965,15 @@ describe('previewRenderServer setup', () => {
     expect(Object.keys(schema)).toEqual(['notes']);
   });
 
-  it('writes no schema.json for a site without a content config', async () => {
+  it('writes an empty schema.json for a site without a content config', async () => {
     const out = outputs();
-    await runSetup({ ...site, ...out });
-    expect(fs.existsSync(path.join(out.manifestDir, 'schema.json'))).toBe(
-      false,
-    );
+    const { hooks } = await runSetup({ ...site, ...out });
+    hooks['astro:build:done']!({ logger: { warn: vi.fn() } });
+    expect(
+      JSON.parse(
+        fs.readFileSync(path.join(out.manifestDir, 'schema.json'), 'utf8'),
+      ),
+    ).toEqual({});
   });
 });
 

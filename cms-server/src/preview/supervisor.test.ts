@@ -471,6 +471,34 @@ describe('createSupervisor start', () => {
     expect(fake.world.children).toHaveLength(1);
   });
 
+  it('stop() during the port check ends the start, and no node is launched afterwards', async () => {
+    const fake = rig();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reachedCheck: () => void = () => undefined;
+    const checking = new Promise<void>((resolve) => {
+      reachedCheck = resolve;
+    });
+    const supervisor = make(fake, {
+      portInUse: async () => {
+        reachedCheck();
+        await gate;
+        return false;
+      },
+    });
+    const starting = supervisor.start(A);
+    await checking;
+    await supervisor.stop();
+    release();
+    expect(await starting).toEqual({
+      ok: false,
+      error: 'The node was stopped before it was ready',
+    });
+    expect(fake.world.children).toHaveLength(0);
+  });
+
   it('stop() during a restart wait cancels the restart, and the pending start resolves', async () => {
     const fake = rig({ dies: () => ({ code: 1, signal: null, stderr: '' }) });
     let reachedWait: () => void = () => undefined;
