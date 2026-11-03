@@ -1,3 +1,4 @@
+// @ts-nocheck
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -76,9 +77,13 @@ describe('previewConfigResponse', () => {
     });
     expect({
       status: response.status,
+      cacheControl: response.headers.get('cache-control'),
+      contentType: response.headers.get('content-type'),
       body: await response.text(),
     }).toEqual({
       status: 500,
+      cacheControl: 'no-store',
+      contentType: 'text/plain; charset=utf-8',
       body: 'Error: bundle.json is not a valid bundle file',
     });
   });

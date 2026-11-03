@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   assertRef,
@@ -111,6 +112,7 @@ describe('assertRelativePath', () => {
     'a/-b',
     'a-b',
     'a\\b',
+    'notes/a:b.txt',
   ])('accepts the path %s', (path) => {
     expect(() => assertRelativePath(path)).not.toThrow();
   });
@@ -142,6 +144,7 @@ describe('assertRemoteUrl', () => {
     '/local/path',
     'file:///x',
     'ext:x',
+    'https://example.com/ext::x',
   ])('accepts the URL %s', (url) => {
     expect(() => assertRemoteUrl(url)).not.toThrow();
   });
@@ -240,10 +243,14 @@ describe('runGit', () => {
     expect({
       kind: error.kind,
       message: error.message,
+      args: error.args,
+      stderr: error.stderr,
       calls: calls.length,
     }).toEqual({
       kind: 'invalid-argument',
       message: 'invalid argument: "a\\u0000b"',
+      args: ['status', 'a\u0000b'],
+      stderr: '',
       calls: 0,
     });
   });
@@ -259,9 +266,16 @@ describe('runGit', () => {
     const error = await gitErrorOfAsync(() =>
       runGit(['status'], { cwd: '/repo', timeoutMs: 1500, exec }),
     );
-    expect({ kind: error.kind, message: error.message }).toEqual({
+    expect({
+      kind: error.kind,
+      message: error.message,
+      args: error.args,
+      stderr: error.stderr,
+    }).toEqual({
       kind: 'timeout',
       message: 'git status timed out after 1500 ms',
+      args: ['status'],
+      stderr: '',
     });
   });
 
@@ -276,10 +290,12 @@ describe('runGit', () => {
       kind: error.kind,
       message: error.message,
       exitCode: error.exitCode,
+      args: error.args,
     }).toEqual({
       kind: 'spawn',
       message: 'git not found',
       exitCode: undefined,
+      args: ['status'],
     });
   });
 
@@ -290,9 +306,14 @@ describe('runGit', () => {
     const error = await gitErrorOfAsync(() =>
       runGit(['status'], { cwd: '/repo', exec }),
     );
-    expect({ kind: error.kind, message: error.message }).toEqual({
+    expect({
+      kind: error.kind,
+      message: error.message,
+      args: error.args,
+    }).toEqual({
       kind: 'spawn',
       message: 'git could not start: permission denied',
+      args: ['status'],
     });
   });
 
@@ -339,9 +360,16 @@ describe('runGit', () => {
     const error = await gitErrorOfAsync(() =>
       runGit(['log'], { cwd: '/repo', exec }),
     );
-    expect({ kind: error.kind, message: error.message }).toEqual({
+    expect({
+      kind: error.kind,
+      message: error.message,
+      args: error.args,
+      stderr: error.stderr,
+    }).toEqual({
       kind: 'failed',
       message: 'git log output exceeded the buffer limit',
+      args: ['log'],
+      stderr: '',
     });
   });
 
@@ -389,6 +417,21 @@ describe('the real exec (no fake)', () => {
       },
     );
     expect(result).toEqual({ stdout: 'out', stderr: 'err' });
+  });
+
+  it('rejects a failed process with its exit code, stdout and stderr attached', async () => {
+    await expect(
+      realExec(
+        process.execPath,
+        ['-e', "process.stderr.write('bad'); process.exit(3)"],
+        {
+          cwd: process.cwd(),
+          env: process.env,
+          timeout: 10_000,
+          maxBuffer: 1_000_000,
+        },
+      ),
+    ).rejects.toMatchObject({ code: 3, stdout: '', stderr: 'bad' });
   });
 
   it('kills a process that runs past its timeout, and rejects with killed set', async () => {

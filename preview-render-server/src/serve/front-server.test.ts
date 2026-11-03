@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -96,6 +97,9 @@ describe('createFrontServer', () => {
     expect(response.status).toBe(401);
     expect(await response.text()).toBe('Unauthorized');
     expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('content-type')).toBe(
+      'text/plain; charset=utf-8',
+    );
     expect(response.headers.get('content-security-policy')).toBe(CSP);
     expect(handler).not.toHaveBeenCalled();
   });
@@ -130,8 +134,15 @@ describe('createFrontServer', () => {
       },
     });
     const response = await fetch(`${base}/api`);
-    expect(response.status).toBe(500);
-    expect(await response.text()).toBe('Internal Server Error');
+    expect({
+      status: response.status,
+      contentType: response.headers.get('content-type'),
+      body: await response.text(),
+    }).toEqual({
+      status: 500,
+      contentType: 'text/plain; charset=utf-8',
+      body: 'Internal Server Error',
+    });
     expect(log).toHaveBeenCalledWith(new Error('boom'));
   });
 

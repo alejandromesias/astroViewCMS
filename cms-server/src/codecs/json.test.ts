@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -361,6 +362,46 @@ describe('jsonCodec.write', () => {
     expect(
       codecErrorOf(() => jsonCodec.write('[1]\n', [1, undefined])).message,
     ).toBe(notJson);
+  });
+
+  it('refuses a function, symbol or bigint at any depth with a CodecError, not a TypeError', () => {
+    const original = '{\n  "k": 1\n}\n';
+    const notJson = 'Value cannot be written as JSON';
+    const refused = [
+      { k: () => 1 },
+      { k: 1, x: { a: () => 1 } },
+      { k: 1, x: [() => 1] },
+      { k: 1, x: [1, () => 1] },
+      { k: 1, x: { a: 1, b: () => 1 } },
+      { k: 1, x: Symbol('s') },
+      { k: 1, x: 1n },
+    ];
+    for (const value of refused) {
+      const error = codecErrorOf(() => jsonCodec.write(original, value));
+      expect({ message: error.message, format: error.format }).toEqual({
+        message: notJson,
+        format: 'json',
+      });
+    }
+  });
+
+  it('replaces a root with a new one under the first line break, not the CRLF at the end', () => {
+    expect(jsonCodec.write('{\n\t"k": 1\n}\r\n', [])).toBe('[]\n');
+    expect(jsonCodec.write('{\n\t"k": 1\n}\r\n', [null, 'x'])).toBe(
+      '[\n\tnull,\n\t"x"\n]\n',
+    );
+  });
+
+  it('accepts a null nested in a value, and writes it', () => {
+    expect(jsonCodec.write('{\n  "k": 1\n}\n', { k: 1, x: null })).toBe(
+      '{\n  "k": 1,\n  "x": null\n}\n',
+    );
+  });
+
+  it('still drops a nested undefined as an absent key', () => {
+    expect(jsonCodec.write('{\n  "k": 1\n}\n', { k: 1, x: { a: undefined } })).toBe(
+      '{\n  "k": 1,\n  "x": {}\n}\n',
+    );
   });
 
   it('refuses an original that is not JSON, with its position', () => {

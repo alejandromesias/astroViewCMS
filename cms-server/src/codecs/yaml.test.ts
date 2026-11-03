@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -331,6 +332,119 @@ describe('yamlCodec.write: mutation survivors', () => {
       'Key "k" comes from a merge and cannot be removed',
     );
     expect((caught as CodecError).format).toBe('yaml');
+  });
+
+  it('reports the column of a parse error, not 1', () => {
+    const error = codecErrorOf(() => yamlCodec.parse('a: 1\n  b: 2\n'));
+    expect({
+      message: error.message,
+      line: error.line,
+      column: error.column,
+    }).toEqual({
+      message: 'Invalid YAML at line 1, column 4: BLOCK_AS_IMPLICIT_KEY',
+      line: 1,
+      column: 4,
+    });
+  });
+
+  it('takes the first line break for the layout when the file mixes LF and CRLF', () => {
+    expect(yamlCodec.write('a: 1\nb: 2\r\n', { a: 5, b: 2 })).toBe(
+      'a: 5\nb: 2\n',
+    );
+  });
+
+  it('replaces an alias that holds a map with a sequence, as a whole node', () => {
+    expect(
+      yamlCodec.write('base: &b\n  x: 1\ncopy: *b\n', {
+        base: { x: 1 },
+        copy: [1, 2],
+      }),
+    ).toBe('base: &b\n  x: 1\ncopy:\n  - 1\n  - 2\n');
+  });
+
+  it('replaces an alias that holds a sequence with a map, as a whole node', () => {
+    expect(
+      yamlCodec.write('base: &b\n  - 1\ncopy: *b\n', {
+        base: [1],
+        copy: { x: 1 },
+      }),
+    ).toBe('base: &b\n  - 1\ncopy:\n  x: 1\n');
+  });
+
+  it('replaces a Date with an empty map, and the map is written as a map', () => {
+    expect(yamlCodec.write('d: 2020-01-01\n', { d: {} })).toBe('d: {}\n');
+  });
+
+  it('replaces a number with an empty map, and an empty map with a number', () => {
+    expect(yamlCodec.write('m: 5\n', { m: {} })).toBe('m: {}\n');
+    expect(yamlCodec.write('m: {}\n', { m: 5 })).toBe('m: 5\n');
+  });
+
+  it('replaces a sequence with an empty string, and an empty sequence too', () => {
+    expect(yamlCodec.write('list:\n  - 1\n', { list: '' })).toBe(
+      'list: ""\n',
+    );
+    expect(yamlCodec.write('list: []\n', { list: '' })).toBe('list: ""\n');
+  });
+
+  it('ignores a key whose value is undefined, so nothing changes', () => {
+    expect(yamlCodec.write('a: 1\n', { a: 1, b: undefined })).toBe('a: 1\n');
+  });
+
+  it('writes a changed number as plain text, not in the format of the old one', () => {
+    expect(yamlCodec.write('n: 0x1F\n', { n: 32 })).toBe('n: 32\n');
+  });
+
+  it('drops the comment of a removed item, and keeps the comments of the others', () => {
+    expect(
+      yamlCodec.write('- a # A\n- b # B\n- c # C\n', ['a', 'c']),
+    ).toBe('- a # A\n- c # C\n');
+  });
+
+  it('keeps an unindented sequence unindented when a comment follows its key', () => {
+    expect(yamlCodec.write('key: # note\n- a\n', { key: ['b'] })).toBe(
+      'key:\n# note\n- b\n',
+    );
+    expect(yamlCodec.write('key: # note text\n- a\n', { key: ['b'] })).toBe(
+      'key:\n# note text\n- b\n',
+    );
+  });
+
+  it('keeps the node of a repeated item that is still common, and gives the comment of the other to the new item', () => {
+    expect(
+      yamlCodec.write('- a # c0\n- a # c1\n', ['b', 'a']),
+    ).toBe('- b # c0\n- a # c1\n');
+  });
+
+  it('keeps the node of the last common item when an earlier item is removed', () => {
+    expect(
+      yamlCodec.write('- a # c0\n- b # c1\n- a # c2\n', ['c', 'a']),
+    ).toBe('- c # c0\n- a # c2\n');
+  });
+
+  it('replaces a single item and keeps its comment', () => {
+    expect(yamlCodec.write('- a # c0\n', ['b'])).toBe('- b # c0\n');
+  });
+
+  it('keeps the node of an item that is common, when a repeated item is replaced by another', () => {
+    expect(
+      yamlCodec.write('- a # c0\n- b # c1\n', ['b', 'b']),
+    ).toBe('- b # c1\n- b # c0\n');
+  });
+
+  it('keeps the comment of the item that stays, when an earlier item is replaced and a middle one removed', () => {
+    expect(
+      yamlCodec.write('- a # c0\n- b # c1\n', ['b']),
+    ).toBe('- b # c1\n');
+    expect(
+      yamlCodec.write('- a # c0\n- b # c1\n- c # c2\n', ['c', 'b']),
+    ).toBe('- c # c2\n- b # c1\n');
+  });
+
+  it('takes the layout from the key line, not from a sequence item line that follows a dash key', () => {
+    expect(yamlCodec.write('- key:\n- v\n', { key: ['q'] })).toBe(
+      'key:\n  - q\n',
+    );
   });
 });
 

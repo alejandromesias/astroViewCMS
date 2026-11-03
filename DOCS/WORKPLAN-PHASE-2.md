@@ -889,6 +889,12 @@ fixtures.
     first place. A changed string keeps its quote style. Other changed scalars
     are replaced, carrying the inline comment: an in-place update kept `0x1F`'s
     hex format. After patching, `toJS()` must equal the value, else CodecError.
+  - **Known limit (found in 2.1g, accepted by the user 2026-11-03):** the inline
+    comment moves to a replacement node only when both the old and the new node
+    are scalars. Replacing a scalar that has an inline comment with a map or a
+    sequence drops that comment. Not pinned by a test (a test would fix the
+    behaviour in place); `yaml.ts` lines 134-137 survive Stryker for that reason.
+    Revisit if a real site needs it.
   - **Layout:** indent, `indentSeq`, line ending and final newline are read from
     the original. Known limit: 4-space indent with unindented sequences is not
     reproduced (the library indents them). Not in the sample; the tests cover
