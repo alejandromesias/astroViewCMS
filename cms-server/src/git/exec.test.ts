@@ -101,6 +101,10 @@ describe('assertRef', () => {
       message: `invalid ref: ${JSON.stringify(ref)}`,
     });
   });
+
+  it('gives a refused ref an empty args list (no git call was made)', () => {
+    expect(gitErrorOf(() => assertRef('')).args).toEqual([]);
+  });
 });
 
 describe('assertRelativePath', () => {

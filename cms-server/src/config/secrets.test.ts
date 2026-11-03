@@ -103,6 +103,17 @@ describe('loadSecrets when nothing is in the environment', () => {
     expect(fs.writes).toEqual([]);
   });
 
+  it('rethrows a rejected value that is not an Error, even with code ENOENT', async () => {
+    const fs = fakeFs();
+    const notAnError = { code: 'ENOENT' };
+    const deps: SecretsDeps = {
+      ...fs.deps,
+      readFile: () => Promise.reject(notAnError),
+    };
+    await expect(loadSecrets(DIR, {}, deps)).rejects.toBe(notAnError);
+    expect(fs.writes).toEqual([]);
+  });
+
   it.each([
     ['not JSON', 'not json'],
     ['an empty object', '{}'],
@@ -350,4 +361,19 @@ describe('loadSecrets with the real file system', () => {
       }
     },
   );
+
+  it('creates the site folder when it does not exist yet', async () => {
+    await mkdir(TMP_ROOT, { recursive: true });
+    const root = await mkdtemp(join(TMP_ROOT, 'secrets-'));
+    const dir = join(root, 'site', 'nested');
+    try {
+      const secrets = await loadSecrets(dir, {});
+      const stored = JSON.parse(
+        await readFile(join(dir, 'secrets.json'), 'utf8'),
+      ) as unknown;
+      expect(stored).toEqual(secrets);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
