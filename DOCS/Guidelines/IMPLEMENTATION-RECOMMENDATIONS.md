@@ -1,6 +1,6 @@
 # Implementation recommendations
 
-Rules for writing production code in this repo. Each one comes from a real bug or weak spot that mutation testing found. The details and the original cases are in `DOCS/MUTATION-WEAK-SPOTS.md`.
+Rules for writing production code in this repo. Each one comes from a real bug or weak spot that mutation testing found. The details and the original cases are in `DOCS/Historic/MUTATION-WEAK-SPOTS.md`.
 
 ## 1. Treat every key from content or config as hostile
 

@@ -1,7 +1,7 @@
 // One command for every quality check: `npm run check [-- --fast|--e2e|--mutation|--all]`.
 // Tools run one after another (memory is low), output streams live, a failure
-// does not stop the run, and a summary table closes it. DOCS/QUALITY-TOOLING.md
-// describes each tool; DOCS/QUALITY-TOOLING-PLAN.md step 8b has the reasoning.
+// does not stop the run, and a summary table closes it. DOCS/Guidelines/QUALITY-TOOLING.md
+// describes each tool; DOCS/Historic/QUALITY-TOOLING-PLAN.md step 8b has the reasoning.
 import { spawnSync } from 'node:child_process';
 
 type Kind = 'gate' | 'report';

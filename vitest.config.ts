@@ -16,7 +16,7 @@ export default defineConfig({
       // reports/ is gitignored (generated reports).
       reportsDirectory: 'reports/coverage',
       // Decision 2026-11-02 (user): every package has the same floors, 80 / 90 / 80 / 80, until
-      // a further assessment (DOCS/QUALITY-TOOLING.md, unit tests and coverage floors). One glob per
+      // a further assessment (DOCS/Guidelines/QUALITY-TOOLING.md, unit tests and coverage floors). One glob per
       // package, so a weak package cannot hide behind strong ones. A file that cannot reasonably
       // meet them may be excluded below, only after the user approves it.
       thresholds: {

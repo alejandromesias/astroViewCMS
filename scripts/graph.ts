@@ -3,7 +3,7 @@
 //   deps.txt      for agents: one `from → to` line per edge, packages collapsed.
 // Scope and resolve options come from .dependency-cruiser-graph.cjs. For a
 // narrower question use `npm run deps -- --focus <regex>` or `--reaches <regex>`.
-// DOCS/QUALITY-TOOLING.md "Module graph" explains how to read both files.
+// DOCS/Guidelines/QUALITY-TOOLING.md "Module graph" explains how to read both files.
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 

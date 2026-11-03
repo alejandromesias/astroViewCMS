@@ -3,7 +3,7 @@
 Day-to-day reference for the automated checks in this repo: what each one
 guards, how to run it, and how to read what it says. It is meant to be read on
 its own. The reasoning behind each choice and the history of how each tool was
-set up is in [QUALITY-TOOLING-PLAN.md](QUALITY-TOOLING-PLAN.md).
+set up is in [QUALITY-TOOLING-PLAN.md](../Historic/QUALITY-TOOLING-PLAN.md).
 
 ## The project in one paragraph
 
@@ -94,7 +94,7 @@ CI, fail the build). "Report" means the output needs a human reading it.
   enforces the import rules. It includes cycles (`no-circular`: file A imports B
   imports A, which make code hard to test and to move; runtime imports only, as
   `import type` vanishes at compile time). The architecture notes in
-  [MODULE-GRAPH.md](MODULE-GRAPH.md) come from the same graph. The rules also
+  [MODULE-GRAPH.md](../MODULE-GRAPH.md) come from the same graph. The rules also
   keep the bridge (`client/`) free of Node and server modules and keep test
   fixtures out of production code.
 - **osv-scanner** (Google's open-source scanner) checks every package in
@@ -318,7 +318,7 @@ that behaviour down).
   3. *Equivalent mutants* (the change cannot alter behaviour, such as a
      `?? ''` fallback that is never reached) and *bare constants* (regexes,
      word lists, message strings) last. They are usually not worth a test.
-- **Context:** [MUTATION-WEAK-SPOTS.md](MUTATION-WEAK-SPOTS.md) is the record
+- **Context:** [MUTATION-WEAK-SPOTS.md](../Historic/MUTATION-WEAK-SPOTS.md) is the record
   of the first full run and the work that followed it, with the weakest files
   and function-level hot spots. Use it to see what has already been judged noise.
 - **One file:** `npx stryker run --mutate "preview-render-server/src/overlay/dates.ts"`

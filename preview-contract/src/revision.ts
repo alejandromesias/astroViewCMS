@@ -52,7 +52,7 @@ function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
   if (typeof value === 'object' && value !== null) {
     // Object.fromEntries defines each key as an own property, so a key named
-    // __proto__ stays a key (see DOCS/IMPLEMENTATION-RECOMMENDATIONS.md, 1).
+    // __proto__ stays a key (see DOCS/Guidelines/IMPLEMENTATION-RECOMMENDATIONS.md, 1).
     return Object.fromEntries(
       Object.entries(value)
         .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))

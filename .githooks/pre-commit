@@ -1,7 +1,7 @@
 #!/bin/sh
 # Fast gates before every commit; the rest runs in `npm run check`.
 # Enable per clone: git config core.hooksPath .githooks
-# DOCS/QUALITY-TOOLING-PLAN.md step 10b has the reasoning.
+# DOCS/Historic/QUALITY-TOOLING-PLAN.md step 10b has the reasoning.
 set -e
 npm run typecheck -w preview-render-server
 npm run typecheck -w preview-protocol

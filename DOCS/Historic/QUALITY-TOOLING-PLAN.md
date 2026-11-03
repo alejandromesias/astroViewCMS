@@ -1,7 +1,7 @@
 # Quality tooling plan
 
 Written 2026-10-28. Goal: keep the codebase reliable as it grows toward the
-multi-tenant shape in [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md). Each step is small,
+multi-tenant shape in [SYSTEM-DESIGN.md](../Designs/SYSTEM-DESIGN.md). Each step is small,
 lands on its own, and leaves the typecheck and the targeted tests green.
 
 | #   | Step                      | Tool                                                                                                         | When           | Status   |
@@ -15,7 +15,7 @@ lands on its own, and leaves the typecheck and the targeted tests green.
 | 7a  | Bridge size budget        | unit test, rolldown + gzip                                                                                   | after 2        | done     |
 | 7b  | Render time budget        | e2e `performance` test                                                                                       | after 7a       | done     |
 | 7c  | Memory budget             | e2e, dev-only memory route                                                                                   | after 7b       | done     |
-| 8   | Manual and check script   | `DOCS/QUALITY-TOOLING.md`, root `npm run check` (CI groundwork)                                              | after 7c       | done     |
+| 8   | Manual and check script   | `DOCS/Guidelines/QUALITY-TOOLING.md`, root `npm run check` (CI groundwork)                                              | after 7c       | done     |
 | 9   | Architecture rules        | dependency-cruiser                                                                                           | after 8        | done     |
 | 10a | Gate `preview-protocol`   | typecheck + unit tests in `check.ts`                                                                         | after 9        | done     |
 | 10b | Pre-commit hook           | `.githooks/pre-commit` (tsc, Biome, depcruise)                                                               | after 10a      | done     |
@@ -309,7 +309,7 @@ edits of `/landing/home-v2`, median and p95 logged, `median < 100 ms`.
 There is no remote yet, so this step prepares CI rather than setting it up.
 It has two outputs.
 
-### 8a. `DOCS/QUALITY-TOOLING.md`, the manual
+### 8a. `DOCS/Guidelines/QUALITY-TOOLING.md`, the manual
 
 This plan records how each tool was chosen and set up. The manual is the
 reference you use day to day, and it replaces this plan as the entry point.
@@ -346,7 +346,7 @@ reference you use day to day, and it replaces this plan as the entry point.
 - Keep the manual concise: a reference, not a history. Link this plan for the
   reasoning behind each tool.
 
-- Done 2026-10-28: `DOCS/QUALITY-TOOLING.md` written (overview table, command table with runtimes, "how to read failures", Stryker and incremental sections). Measured runtimes: tsc, biome lint, biome format, knip and osv-scanner about 1-2 s each, the bridge test about 1.7 s; the e2e run and a full Stryker run are given as rough figures and 8b should measure them. The last full Stryker run is dated 2026-10-28 from the report files' timestamps (MUTATION-WEAK-SPOTS.md itself carries no date).
+- Done 2026-10-28: `DOCS/Guidelines/QUALITY-TOOLING.md` written (overview table, command table with runtimes, "how to read failures", Stryker and incremental sections). Measured runtimes: tsc, biome lint, biome format, knip and osv-scanner about 1-2 s each, the bridge test about 1.7 s; the e2e run and a full Stryker run are given as rough figures and 8b should measure them. The last full Stryker run is dated 2026-10-28 from the report files' timestamps (MUTATION-WEAK-SPOTS.md itself carries no date).
 
 ### 8b. A root `check` script
 
@@ -513,7 +513,7 @@ fail the run when broken. It no longer waits for CI: it runs locally through
   - a two-file cycle.
 
   List the five checks in the done note. Leave no violation in the tree.
-- **Docs.** In `DOCS/QUALITY-TOOLING.md`:
+- **Docs.** In `DOCS/Guidelines/QUALITY-TOOLING.md`:
   - add a row to the overview table (gate);
   - add a row to the command table with its runtime;
   - add a "how to read failures" entry. A violation names the rule and the
@@ -549,7 +549,7 @@ on, with one hole and a few cheap upgrades. Each sub-step lands on its own.
 - **Do.** Add two gates to the `FAST` set, after `tsc`:
   `npm run typecheck -w preview-protocol` and
   `npm run test -w preview-protocol`. Update the `--fast` row and times in
-  `DOCS/QUALITY-TOOLING.md`; add the commands to the command table.
+  `DOCS/Guidelines/QUALITY-TOOLING.md`; add the commands to the command table.
 - **Verify.** Both steps pass in `npm run check`. Break one assertion in
   `preview-protocol/src/index.test.ts` and confirm `check` fails; revert.
 
@@ -593,14 +593,14 @@ on, with one hole and a few cheap upgrades. Each sub-step lands on its own.
   the floors chosen.
 
 - Done 2026-10-29: baselines coverage 99.09 statements / 97.15 branches / 99.3 functions / 99.15 lines; Stryker 91.83. Floors: coverage lines 96, functions 96, branches 94, statements 96 (`vitest.config.ts`); Stryker `thresholds.break` 85. Coverage runs as a `coverage floors` gate in `--e2e` (not `--fast`). Stryker stays in `--mutation`, now failing the run below 85. Verified: branches floor at 99 failed with "97.15% does not meet 99%"; break at 95 made Stryker exit 1. Both reverted.
-- **Decision 2026-11-03 (user):** Stryker thresholds are now `high` 90, `low` 80, `break` 75 (were 80, 60, 90). The earlier values were all over the place and forced failing runs. `DOCS/QUALITY-TOOLING.md` and `stryker.config.json` hold the current values; this log keeps the history.
-- **Decision 2026-11-02 (user):** coverage floors are the same for every package: lines 80, functions 90, branches 80, statements 80 (root `vitest.config.ts`). They replace the 96/96/94/96 floors above for the renderer, and the per-package floors of the other packages. `DOCS/QUALITY-TOOLING.md` holds the current values.
+- **Decision 2026-11-03 (user):** Stryker thresholds are now `high` 90, `low` 80, `break` 75 (were 80, 60, 90). The earlier values were all over the place and forced failing runs. `DOCS/Guidelines/QUALITY-TOOLING.md` and `stryker.config.json` hold the current values; this log keeps the history.
+- **Decision 2026-11-02 (user):** coverage floors are the same for every package: lines 80, functions 90, branches 80, statements 80 (root `vitest.config.ts`). They replace the 96/96/94/96 floors above for the renderer, and the per-package floors of the other packages. `DOCS/Guidelines/QUALITY-TOOLING.md` holds the current values.
 
 ### 10d. Third-package checklist
 
 - **Do.** Add the "Adding a workspace package" section to
-  `DOCS/QUALITY-TOOLING.md` (the checklist lives there, once) and the
-  preamble to phase 2 in `DOCS/SYSTEM-DESIGN.md` section 9, which points to
+  `DOCS/Guidelines/QUALITY-TOOLING.md` (the checklist lives there, once) and the
+  preamble to phase 2 in `DOCS/Designs/SYSTEM-DESIGN.md` section 9, which points to
   it. Docs only; done 2026-10-29 with the writing of this step.
 - **Later, with `cms-server`** (start of phase 2): work through the checklist
   and add its depcruise rules: the renderer must never import `cms-server`;

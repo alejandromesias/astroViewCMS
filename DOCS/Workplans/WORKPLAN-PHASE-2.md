@@ -1,23 +1,23 @@
 # Work plan, phase 2: `cms-server`, single tenant
 
 Written 2026-10-31, after the user approved
-[PHASE-2-DESIGN.md](PHASE-2-DESIGN.md). Steps 2.0 to 2.13 below turn that
+[PHASE-2-DESIGN.md](../Designs/PHASE-2-DESIGN.md). Steps 2.0 to 2.13 below turn that
 design into tasks. The step numbers differ from the first scaffold of the
 same day: git core, the read API and the front server became steps of their
 own once the dependencies were worked out.
 
 Read in this order:
 
-1. [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md), the authority (sections 1 to 6, 9,
+1. [SYSTEM-DESIGN.md](../Designs/SYSTEM-DESIGN.md), the authority (sections 1 to 6, 9,
    11; D17 to D22 are this phase's decisions).
-2. [PHASE-2-DESIGN.md](PHASE-2-DESIGN.md): what phase 2 builds and why. If
+2. [PHASE-2-DESIGN.md](../Designs/PHASE-2-DESIGN.md): what phase 2 builds and why. If
    this plan and the design disagree, fix this plan.
 3. This file: steps, tasks, status, measurements.
 
 Working rules, environment notes, gotchas and commands are in
-[README.md](README.md) and apply here unchanged. Before writing code, read
-[IMPLEMENTATION-RECOMMENDATIONS.md](IMPLEMENTATION-RECOMMENDATIONS.md);
-before writing tests, [TESTING-RECOMMENDATIONS.md](TESTING-RECOMMENDATIONS.md).
+[README.md](../README.md) and apply here unchanged. Before writing code, read
+[IMPLEMENTATION-RECOMMENDATIONS.md](../Guidelines/IMPLEMENTATION-RECOMMENDATIONS.md);
+before writing tests, [TESTING-RECOMMENDATIONS.md](../Guidelines/TESTING-RECOMMENDATIONS.md).
 
 ## 1. Where we are
 
@@ -2017,9 +2017,9 @@ request-path rules apply (no `child_process`, no `fs` except the allowlist).
     `knip.json`, the coverage excludes and Stryker name the new route file.
   - **Docs still mentioning `editorOrigins` (not rewritten, for 2.13b):**
     `preview-render-server/README.md:49`, `DOCS/PREVIEW-RENDER-SERVER.md`
-    lines 67, 145, 160 and 310, `DOCS/QUALITY-TOOLING.md:355`, and
-    `DOCS/PHASE-2-DESIGN.md:510` (describes the removal, so it is current).
-    `DOCS/SYSTEM-DESIGN.md:1334` and `DOCS/WORKPLAN-PHASE-0-1.md` are history.
+    lines 67, 145, 160 and 310, `DOCS/Guidelines/QUALITY-TOOLING.md:355`, and
+    `DOCS/Designs/PHASE-2-DESIGN.md:510` (describes the removal, so it is current).
+    `DOCS/Designs/SYSTEM-DESIGN.md:1334` and `DOCS/Workplans/WORKPLAN-PHASE-0-1.md` are history.
   - **Evidence:** `preview-render-server` unit tests: `bridge.test.ts`,
     `integration.test.ts`, `preview-config.test.ts`, `serve/settings.test.ts`
     pass (176 tests). Typecheck clean. Browser suite (`npm run test:browser`):

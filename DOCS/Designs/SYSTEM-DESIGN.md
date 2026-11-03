@@ -4,8 +4,8 @@ Written 2026-10-26. Status: **agreed** by the user on 2026-10-26; phase 1
 (page render with overlay) was built and tested by 2026-10-31. It gives the
 rules future sessions should follow, for every phase. Each phase's design
 and tasks are linked from the roadmap (section 9), and the map of all
-documents is [README.md](README.md). How the preview server works today is
-in [PREVIEW-RENDER-SERVER.md](PREVIEW-RENDER-SERVER.md); this document says
+documents is [README.md](../README.md). How the preview server works today is
+in [PREVIEW-RENDER-SERVER.md](../PREVIEW-RENDER-SERVER.md); this document says
 why, and where it should go next (phases 2 to 5).
 
 Product goals, in the user's order:
@@ -631,7 +631,7 @@ core.
 | Phase | Work | Done when |
 |---|---|---|
 | **0. Reset the save work** | Park the uncommitted per-island save (section 7). Write the richer sample site (section 8) | Sample site builds and runs with plain `astro dev` and `astro build` |
-| **1. Page render with overlay** | Content shim (`AsyncLocalStorage`, read log, image and reference conversion), route manifest and `getStaticPaths` handling, `POST /__preview/render`, protocol v2, bridge morph/head/priming, `documents.json` and `schema.json` from the build | Every case in section 8's table renders correctly or has a documented limit. Median render on the 40-block page measured against a 5 ms goal: not met (7 to 9 ms median on `landing/long`), accepted under the 60 ms median / 100 ms p95 end-to-end budgets ([WORKPLAN-PHASE-0-1.md section 10](WORKPLAN-PHASE-0-1.md#10-measurements)); the budget tests of QUALITY-TOOLING.md gate regressions. Unit, end-to-end and browser tests, all inside the quality flow |
+| **1. Page render with overlay** | Content shim (`AsyncLocalStorage`, read log, image and reference conversion), route manifest and `getStaticPaths` handling, `POST /__preview/render`, protocol v2, bridge morph/head/priming, `documents.json` and `schema.json` from the build | Every case in section 8's table renders correctly or has a documented limit. Median render on the 40-block page measured against a 5 ms goal: not met (7 to 9 ms median on `landing/long`), accepted under the 60 ms median / 100 ms p95 end-to-end budgets ([WORKPLAN-PHASE-0-1.md section 10](../Workplans/WORKPLAN-PHASE-0-1.md#10-measurements)); the budget tests of QUALITY-TOOLING.md gate regressions. Unit, end-to-end and browser tests, all inside the quality flow |
 | **2. CMS app, single tenant** | New `cms-server` package: document API, `PUT /api/changes` with revisions and validation, media staging, publish (commit, rebase, push), preview node supervision, separate origins and the preview token, editor origins as node config with `frame-ancestors`, rebuild on protocol mismatch (D14). Test editor talks to it | Edit two documents, save, reload: the preview shows saved content without a rebuild. A conflicting save answers 409. Publish creates one commit |
 | **3. Real editor** | Forms from `schema.json` (AstroAdmin's model), drafts in `localStorage`, document picker from the render's document list, click-to-focus from field paths | A non-developer can edit every case in the sample without touching JSON |
 | **4. Self-host package** | One container image (cms-server + preview node + git), env config, auth (one admin, argon2, sessions), rebuild on push webhook, bundled preview build (`--bundle`), Biome + CI | `docker run` on a small VPS edits and publishes the sample site |
@@ -644,8 +644,8 @@ and a design of its own when it needs decisions this document doesn't make.
 
 | Phase | Design | Work plan | Status |
 |---|---|---|---|
-| 0 and 1 | this document | [WORKPLAN-PHASE-0-1.md](WORKPLAN-PHASE-0-1.md) | closed 2026-10-31 |
-| 2 | [PHASE-2-DESIGN.md](PHASE-2-DESIGN.md) | [WORKPLAN-PHASE-2.md](WORKPLAN-PHASE-2.md) | design approved 2026-10-31; plan written (D17 to D22); not started |
+| 0 and 1 | this document | [WORKPLAN-PHASE-0-1.md](../Workplans/WORKPLAN-PHASE-0-1.md) | closed 2026-10-31 |
+| 2 | [PHASE-2-DESIGN.md](PHASE-2-DESIGN.md) | [WORKPLAN-PHASE-2.md](../Workplans/WORKPLAN-PHASE-2.md) | design approved 2026-10-31; plan written (D17 to D22); not started |
 | 3 to 5 | not yet; decided work in section 12 | not yet | |
 
 **Phase 2 refines the row above** (PHASE-2-DESIGN.md section 4). Publish
@@ -1396,7 +1396,7 @@ so the earlier ones stay unedited.
 - **D10, hostile keys.** Document keys, overlay keys and config keys may be
   any string, including prototype names (`__proto__`, `constructor`). Code
   keyed by them uses `Map`, `Object.hasOwn` and `Object.fromEntries`, never a
-  plain object lookup ([IMPLEMENTATION-RECOMMENDATIONS.md](IMPLEMENTATION-RECOMMENDATIONS.md)
+  plain object lookup ([IMPLEMENTATION-RECOMMENDATIONS.md](../Guidelines/IMPLEMENTATION-RECOMMENDATIONS.md)
   section 1).
 - **D10, generated identifiers.** Where the build turns a JSON key into an
   identifier (`export const <key>` in `overlay/plugins.ts`), the result must

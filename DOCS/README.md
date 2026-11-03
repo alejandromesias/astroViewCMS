@@ -6,21 +6,21 @@ and holds the working rules and commands that apply to every phase.
 ## 1. Document map
 
 ```text
- SYSTEM-DESIGN.md ─────────────── the authority: what we build and why, all phases,
+ Designs/SYSTEM-DESIGN.md ────── the authority: what we build and why, all phases,
    │                              decision log (D1 to D16), roadmap (section 9),
    │                              later-phase backlog (section 12)
    │
-   ├─ phase design (only where a phase needs one)
-   │    PHASE-2-DESIGN.md         cms-server, single tenant: decisions, contracts, step 2.0
+   ├─ Designs/PHASE-2-DESIGN.md   phase design (only where a phase needs one):
+   │                              cms-server, single tenant: decisions, contracts, step 2.0
    │
-   └─ work plans (steps and tasks, one per phase)
+   └─ Workplans/ (steps and tasks, one per phase)
         WORKPLAN-PHASE-0-1.md     phases 0 and 1: closed 2026-10-31, kept as the record
         WORKPLAN-PHASE-2.md       phase 2: current (58 tasks, with dependencies in the headlines)
 
  How the code works today        PREVIEW-RENDER-SERVER.md (the renderer, the bridge, the routes)
- Rules for code and tests        IMPLEMENTATION-RECOMMENDATIONS.md, TESTING-RECOMMENDATIONS.md
- Quality gates                   QUALITY-TOOLING.md (manual), QUALITY-TOOLING-PLAN.md (log)
- Working notes and analysis      MODULE-GRAPH.md, MUTATION-WEAK-SPOTS.md, VISUAL-CHECKS-ON-SAMPLE-SITE.md
+ Rules for code and tests        Guidelines/IMPLEMENTATION-RECOMMENDATIONS.md, Guidelines/TESTING-RECOMMENDATIONS.md
+ Quality gates                   Guidelines/QUALITY-TOOLING.md (manual); Historic/QUALITY-TOOLING-PLAN.md (log)
+ Working notes and analysis      MODULE-GRAPH.md; Historic/MUTATION-WEAK-SPOTS.md; Guidelines/VISUAL-CHECKS-ON-SAMPLE-SITE.md
  Session handoffs                Handoffs/ (history; never edited afterwards)
 ```
 
@@ -148,7 +148,7 @@ npm run test:browser   # Chromium browser tests (the iframe, the bridge, hydrati
 
 From the repo root, `npm run check` runs every quality gate (`-- --e2e` adds
 the end-to-end and browser suites, `-- --all` adds Stryker; timings in
-[QUALITY-TOOLING.md](QUALITY-TOOLING.md)). `npm run graph` draws the module
+[QUALITY-TOOLING.md](Guidelines/QUALITY-TOOLING.md)). `npm run graph` draws the module
 graph, `npm run measure:memory` and `npm run measure:listing -- --posts=N`
 repeat the measurements of WORKPLAN-PHASE-0-1.md section 10. `npm run build`
 and `npm start` in `preview-render-server` build and serve `sample-site`.
