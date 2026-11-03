@@ -301,9 +301,12 @@ that behaviour down).
   tests that cover its line.
 - **Score:** (killed + timeout) / (killed + timeout + survived + no coverage).
   Errored mutants are not counted. Thresholds in `stryker.config.json`: `high`
-  80, `low` 60. Above 80 is healthy; below 60 needs attention.
-- **Floor:** `break` is 90 (raised from 85 on 2026-10-31; baseline 91.74), so a score below 90
-  fails the run. It is a ratchet: raise it when the score rises; lower it only
+  90, `low` 80. Above 90 is healthy; below 80 needs attention.
+- **Floor:** `break` is 75 (decided by the user, 2026-11-03). A score below 75
+  fails the run. The values were all over the place and forced failing runs: `break` 90 failed the
+  2026-11-02 run at 88.88%. The thresholds live only in `stryker.config.json`; the docs quote them
+  from there. Earlier values: `break` 85 (2026-10-29), 90 (2026-10-31).
+  It is a ratchet: raise it when the score rises; lower it only
   with a reason in the commit.
 - **Report:** open `reports/mutation/mutation.html` in a browser. Filter by
   file, then by status (Survived, NoCoverage); each survivor shows the original
@@ -330,8 +333,8 @@ that behaviour down).
   **Run 2026-11-02** (`npm run check -- --all`, 594 s): 88.88% over 4,254 mutants (3747 killed, 33 timeout, 431 survived, 42 no coverage, 1 error), **under the 90 break**, so the run exits 1. `cms-server` is 78.3% (`server.ts` 36%, the bridge that 2.7a rewrites; `codecs` 72.8%). No `src` file changed in task 2.1f, so this is code from waves 1 to 3; task 2.1g owns it. Not fixed in 2.1f.
   **Forced full run, 2026-11-01** (new root config, `preview-protocol` added, ~29 min):
   92.83% over 2735 mutants. By package: preview-render-server 92.98%,
-  preview-protocol 97.22%, preview-contract 83.10% (above the `high` line of 80,
-  but the weakest; 9 survivors).
+  preview-protocol 97.22%, preview-contract 83.10% (between the `low` line of 80 and
+  the `high` line of 90, and the weakest; 9 survivors).
 
 ### Incremental mode
 

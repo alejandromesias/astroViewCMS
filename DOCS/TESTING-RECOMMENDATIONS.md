@@ -57,7 +57,7 @@ A file can score well only through other files' tests and still have no direct t
 - The result that counts is the Stryker re-run, not the green test run.
 - Read the surviving mutants from `reports/stryker-incremental.json`.
 - Mutants in module-level constants ("static" mutants) often survive under the Vitest runner, because modules are not reloaded for each mutant. Check them by hand and treat them as noise.
-- Floors: coverage floors are per package (root `vitest.config.ts`): 97% for the renderer, a little under the measured numbers for the others. Stryker breaks below 90%. Stryker breaks below 90%.
+- Floors: coverage floors are per package (root `vitest.config.ts`): 80 lines, 90 functions, 80 branches and 80 statements for every package (decided 2026-11-02; see QUALITY-TOOLING.md). Stryker fails the run below 75% (`break`); above 90% is healthy and below 80% needs attention (`high` 90, `low` 80; see QUALITY-TOOLING.md).
 
 ## 8. Agent and shell notes
 

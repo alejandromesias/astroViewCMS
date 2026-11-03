@@ -593,6 +593,8 @@ on, with one hole and a few cheap upgrades. Each sub-step lands on its own.
   the floors chosen.
 
 - Done 2026-10-29: baselines coverage 99.09 statements / 97.15 branches / 99.3 functions / 99.15 lines; Stryker 91.83. Floors: coverage lines 96, functions 96, branches 94, statements 96 (`vitest.config.ts`); Stryker `thresholds.break` 85. Coverage runs as a `coverage floors` gate in `--e2e` (not `--fast`). Stryker stays in `--mutation`, now failing the run below 85. Verified: branches floor at 99 failed with "97.15% does not meet 99%"; break at 95 made Stryker exit 1. Both reverted.
+- **Decision 2026-11-03 (user):** Stryker thresholds are now `high` 90, `low` 80, `break` 75 (were 80, 60, 90). The earlier values were all over the place and forced failing runs. `DOCS/QUALITY-TOOLING.md` and `stryker.config.json` hold the current values; this log keeps the history.
+- **Decision 2026-11-02 (user):** coverage floors are the same for every package: lines 80, functions 90, branches 80, statements 80 (root `vitest.config.ts`). They replace the 96/96/94/96 floors above for the renderer, and the per-package floors of the other packages. `DOCS/QUALITY-TOOLING.md` holds the current values.
 
 ### 10d. Third-package checklist
 

@@ -64,7 +64,7 @@ only.
   Vite compiles what goes into the build. `tsc` only type-checks.
 - **One test file per source file** (`*.test.ts` next to it), Vitest. Glue
   with top-level side effects (`build.ts`, `start.ts`) is
-  covered end-to-end. Coverage is **reported, not gated**.
+  covered end-to-end and left out of the coverage floors.
 - **Real Astro in tests:** render real `.astro` fixtures through the Container
   API (`getViteConfig`), no mocked renderer. Pass dependencies in (`win`,
   `fetch`) instead of module mocking.
