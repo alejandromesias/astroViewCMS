@@ -89,12 +89,6 @@ Rules for running tasks in parallel:
 | 3 | 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8c, 2.8d |
 | 4 | 2.1f (alone, first), 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a |
 | 5 | 2.1g (codecs only, 2026-11-03), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a (after 2.1g) |
-
-Wave 5 order (2026-11-03): the orchestrator writes `codecs/by-format.ts`, rebuilds `sample-site`
-alone in the main checkout and refreshes `cms-server/test/fixtures/bundle/` **before** 2.4b or 2.4c
-starts (2.4b's revision-equality test compares against today's files). Then 2.4b and 2.4c run in
-parallel; 2.5a waits for 2.1g.
-
 | 6 | 2.1h (now also `repo.ts`, before 2.5b), 2.5b, 2.6a, 2.9a, 2.10a |
 | 7 | 2.5c (`server.ts` survivors from 2.1h first), 2.9c, 2.10b |
 | 8 | 2.6b, 2.7b, 2.7c, 2.9d |
@@ -104,6 +98,11 @@ parallel; 2.5a waits for 2.1g.
 | 12 | 2.10f, 2.11d |
 | 13 | 2.12b |
 | 14 | 2.12c [user], 2.13a, 2.13b, 2.13c |
+
+Wave 5 order (2026-11-03): the orchestrator writes `codecs/by-format.ts`, rebuilds `sample-site`
+alone in the main checkout and refreshes `cms-server/test/fixtures/bundle/` **before** 2.4b or 2.4c
+starts (2.4b's revision-equality test compares against today's files). Then 2.4b and 2.4c run in
+parallel; 2.5a waits for 2.1g.
 
 **Critical path** (the longest chain; it decides the elapsed time): 2.0a →
 2.1a → 2.3a → 2.3b → 2.3c → 2.5b → 2.5c → 2.9d → 2.9e → 2.10d → 2.10e →
