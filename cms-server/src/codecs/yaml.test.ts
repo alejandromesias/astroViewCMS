@@ -129,6 +129,211 @@ describe('yamlCodec.parse', () => {
   });
 });
 
+// Cases the mutation run found untested: the LCS and greedy pairing of sequence items (a comment must
+// stay with its item), layout detection, a new file from an empty text, a value that cannot be written,
+// and the `format` of each error.
+describe('yamlCodec.write: mutation survivors', () => {
+  it('writes a new file from an empty or newline-only text, with a final newline', () => {
+    expect(yamlCodec.write('', { a: 1 })).toBe('a: 1\n');
+    expect(yamlCodec.write('\n', { a: 1 })).toBe('a: 1\n');
+    expect(yamlCodec.write('  ', { a: 1 })).toBe('a: 1\n');
+  });
+
+  it('writes a Date that becomes a number, as a number, and keeps its comment', async () => {
+    const text = await fixture('partners/atlas.yaml');
+    const value = yamlCodec.parse(text) as { since: unknown };
+    value.since = 12;
+    expect(yamlCodec.write(text, value)).toBe(
+      text.replace(
+        'since: 2022-01-20 # unquoted date',
+        'since: 12 # unquoted date',
+      ),
+    );
+  });
+
+  it('writes a Date in a new file as a timestamp', () => {
+    expect(yamlCodec.write('', { d: new Date(Date.UTC(2024, 4, 6)) })).toBe(
+      'd: 2024-05-06\n',
+    );
+  });
+
+  it('keeps the comment of the item that is matched, when an equal item is removed', () => {
+    expect(yamlCodec.write('- 1 # one-a\n- 2\n- 1 # one-b\n', [2, 1])).toBe(
+      '- 2\n- 1 # one-b\n',
+    );
+    expect(yamlCodec.write('- x # 1\n- x # 2\n', ['x'])).toBe('- x # 1\n');
+  });
+
+  it('moves an item with its comment when the order changes', () => {
+    expect(yamlCodec.write('- a # A\n- b\n', ['b', 'a'])).toBe(
+      '- b\n- a # A\n',
+    );
+    expect(yamlCodec.write('- a # A\n- b\n- c\n', ['c', 'b', 'a'])).toBe(
+      '- c\n- b\n- a # A\n',
+    );
+    expect(
+      yamlCodec.write('- id: a # A\n  v: 1\n- id: b\n  v: 2\n', [
+        { id: 'b', v: 2 },
+        { id: 'a', v: 1 },
+      ]),
+    ).toBe('- id: b\n  v: 2\n- id: a # A\n  v: 1\n');
+  });
+
+  it('keeps the comments of equal items when one is moved among duplicates', () => {
+    expect(yamlCodec.write('- 1\n- 2 # two\n- 1 # one-b\n', [1, 1, 2])).toBe(
+      '- 1\n- 1 # one-b\n- 2 # two\n',
+    );
+  });
+
+  it('appends and inserts items without moving the comments of the others', () => {
+    expect(yamlCodec.write('- a # A\n- b\n', ['a', 'b', 'c'])).toBe(
+      '- a # A\n- b\n- c\n',
+    );
+    expect(yamlCodec.write('- a\n- b # B\n', ['a', 'x', 'b'])).toBe(
+      '- a\n- x\n- b # B\n',
+    );
+  });
+
+  it('keeps the comment above a changed list item', () => {
+    expect(
+      yamlCodec.write('items:\n  # first\n  - 1\n', { items: ['one'] }),
+    ).toBe('items:\n  # first\n  - one\n');
+  });
+
+  it('moves the header comment onto a new first item, after the comment that item already has', () => {
+    expect(
+      yamlCodec.write('items:\n  # header\n  - a\n  # about b\n  - b\n', {
+        items: ['b', 'a'],
+      }),
+    ).toBe('items:\n  # header\n  # about b\n  - b\n  - a\n');
+  });
+
+  it('keeps the comment above a changed item that is not the first', () => {
+    expect(yamlCodec.write('- a\n# about 1\n- 1\n', ['a', 'one'])).toBe(
+      '- a\n# about 1\n- one\n',
+    );
+  });
+
+  it('does not write one node twice when an item repeats', () => {
+    expect(yamlCodec.write('- x # X\n- y\n', ['y', 'x', 'x'])).toBe(
+      '- y\n- x # X\n- x\n',
+    );
+  });
+
+  it('keeps the alignment that matches the most items, with the comment of the kept item', () => {
+    expect(
+      yamlCodec.write('- a # A\n- b\n- a # A2\n- c\n', ['b', 'a', 'c']),
+    ).toBe('- b\n- a # A2\n- c\n');
+  });
+
+  it('keeps the longest common run of items, with the comments of the items it keeps', () => {
+    expect(
+      yamlCodec.write('- a # 1\n- b # 2\n- a # 3\n- b # 4\n', ['b', 'a', 'b']),
+    ).toBe('- b # 2\n- a # 3\n- b # 4\n');
+    expect(yamlCodec.write('- a # 1\n- b\n- c # 3\n', ['b', 'c', 'a'])).toBe(
+      '- b\n- c # 3\n- a # 1\n',
+    );
+  });
+
+  it('refuses a change into an alias with the yaml format', () => {
+    let caught: unknown;
+    try {
+      yamlCodec.write('a: &x\n  k: 1\nb: *x\n', { a: { k: 2 }, b: { k: 2 } });
+    } catch (error) {
+      caught = error;
+    }
+    expect((caught as CodecError).message).toBe(
+      'A change inside an alias cannot be written as YAML',
+    );
+    expect((caught as CodecError).format).toBe('yaml');
+  });
+
+  it('replaces an alias that holds a string, and does not write into the alias', () => {
+    expect(
+      yamlCodec.write('a: &x hello\nb: *x\n', { a: 'hello', b: 'bye' }),
+    ).toBe('a: &x hello\nb: bye\n');
+  });
+
+  it('writes a quoted string that becomes a number as a plain number', () => {
+    expect(yamlCodec.write('label: "abc"\n', { label: 42 })).toBe(
+      'label: 42\n',
+    );
+  });
+
+  it('drops the tag of a scalar that changes type', () => {
+    expect(yamlCodec.write('n: !!int 3\n', { n: 'three' })).toBe('n: three\n');
+  });
+
+  it('keeps a missing final newline, on a one-line file', () => {
+    expect(yamlCodec.write('a: 1', { a: 2 })).toBe('a: 2');
+  });
+
+  it('indents a new sequence in a mapping that has none, with the default indent', () => {
+    expect(yamlCodec.write('a: 1\n', { a: 1, list: [1] })).toBe(
+      'a: 1\nlist:\n  - 1\n',
+    );
+  });
+
+  it('keeps a sequence unindented when the file has it unindented, and a key line with trailing spaces', () => {
+    expect(
+      yamlCodec.write('items:\n- a\n- b\n', { items: ['a', 'b', 'c'] }),
+    ).toBe('items:\n- a\n- b\n- c\n');
+    expect(
+      yamlCodec.write('items:  \n- a\n- b\n', { items: ['a', 'b', 'c'] }),
+    ).toBe('items:\n- a\n- b\n- c\n');
+  });
+
+  it('keeps an indented sequence indented', () => {
+    expect(yamlCodec.write('items:\n  - a\n', { items: ['a', 'b'] })).toBe(
+      'items:\n  - a\n  - b\n',
+    );
+  });
+
+  it('refuses an undefined item in a sequence, with the yaml format', () => {
+    let caught: unknown;
+    try {
+      yamlCodec.write('- a\n', ['a', undefined]);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(CodecError);
+    expect((caught as CodecError).message).toBe(
+      'Value cannot be written as YAML',
+    );
+    expect((caught as CodecError).format).toBe('yaml');
+  });
+
+  it('names the yaml format when the document is not a map or a sequence', () => {
+    let writeError: unknown;
+    try {
+      yamlCodec.write('a: 1\n', 5);
+    } catch (error) {
+      writeError = error;
+    }
+    expect((writeError as CodecError).format).toBe('yaml');
+    expect((writeError as CodecError).message).toBe(
+      'YAML document must be a map or a sequence',
+    );
+    expect(() => yamlCodec.parse('5')).toThrow(CodecError);
+  });
+
+  it('names the yaml format on a merge-key refusal', () => {
+    let caught: unknown;
+    try {
+      yamlCodec.write('base: &b\n  k: 1\nitem:\n  <<: *b\n', {
+        base: { k: 1 },
+        item: {},
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect((caught as CodecError).message).toBe(
+      'Key "k" comes from a merge and cannot be removed',
+    );
+    expect((caught as CodecError).format).toBe('yaml');
+  });
+});
+
 describe('yamlCodec.write', () => {
   it.each(FIXTURE_NAMES)(
     'returns the original text when the value is unchanged (%s)',

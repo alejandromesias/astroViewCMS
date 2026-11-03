@@ -17,7 +17,8 @@ import {
   runGit,
 } from './exec.ts';
 
-const WORK = 'cms/work';
+/** The branch that holds the saves. Only the CMS writes it. */
+export const WORK = 'cms/work';
 // A clone of a large site can take minutes. The other git calls keep the 60 s default of `runGit`.
 const CLONE_TIMEOUT_MS = 5 * 60_000;
 // Remote URLs that name GitHub: HTTPS, `ssh://`, or the SCP form `git@github.com:owner/repo`.
@@ -138,6 +139,8 @@ async function syncRepo(
   );
   await git(['checkout', '--force', WORK]);
   await git(['clean', '-fd']);
+  // A crash can leave a worktree whose folder is gone, and its record stays in the repo. Prune it here (2.3c).
+  await git(['worktree', 'prune']);
   if (dirty.length > 0)
     log.warn('Discarded the uncommitted changes of an unfinished save', {
       paths: dirty,

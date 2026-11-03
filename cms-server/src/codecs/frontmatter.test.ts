@@ -302,6 +302,141 @@ describe('markdownCodec.write', () => {
   });
 });
 
+// Cases the mutation run found untested: the last line without a newline, comment and blank lines in
+// frontmatter, CRLF and LF for new fences, comment-only frontmatter, merge errors without a position,
+// the value shape checks, and the position of a YAML error.
+describe('markdownCodec: mutation survivors', () => {
+  it('reads a closing fence that is the last line, without a newline', () => {
+    expect(markdownCodec.parse('---\ntitle: x\n---')).toEqual({
+      data: { title: 'x' },
+      body: '',
+    });
+  });
+
+  it('reads a key that follows a comment line in the frontmatter', () => {
+    expect(markdownCodec.parse('---\n# note\ntitle: x\n---\nbody\n')).toEqual({
+      data: { title: 'x' },
+      body: 'body\n',
+    });
+  });
+
+  it('treats a whitespace-only line in the frontmatter as blank', () => {
+    expect(markdownCodec.parse('---\n   \n---\nbody')).toEqual({
+      data: {},
+      body: 'body',
+    });
+  });
+
+  it('reads whitespace-only text without a newline as a body', () => {
+    expect(markdownCodec.parse('  ')).toEqual({ data: {}, body: '  ' });
+  });
+
+  it('writes LF fences for a file with LF line endings', () => {
+    expect(
+      markdownCodec.write('Body\n', { data: { title: 'x' }, body: 'Body\n' }),
+    ).toBe('---\ntitle: x\n---\nBody\n');
+  });
+
+  it('writes CRLF fences and YAML for a CRLF file without frontmatter', () => {
+    expect(
+      markdownCodec.write('Body\r\n', {
+        data: { title: 'x' },
+        body: 'Body\r\n',
+      }),
+    ).toBe('---\r\ntitle: x\r\n---\r\nBody\r\n');
+  });
+
+  it('replaces comment-only frontmatter with the new YAML, as a new block', () => {
+    expect(
+      markdownCodec.write('---\n# note\n---\nbody\n', {
+        data: { title: 'x' },
+        body: 'body\n',
+      }),
+    ).toBe('---\ntitle: x\n---\nbody\n');
+  });
+
+  it('a YAML error with no position stays without one, and names the yaml format', () => {
+    const original = '---\nbase: &b\n  k: 1\nitem:\n  <<: *b\n---\nbody\n';
+    let caught: unknown;
+    try {
+      markdownCodec.write(original, {
+        data: { base: { k: 1 }, item: {} },
+        body: 'body\n',
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(CodecError);
+    const error = caught as CodecError;
+    expect(error.message).toBe(
+      'Key "k" comes from a merge and cannot be removed',
+    );
+    expect(error.format).toBe('yaml');
+    expect(error.line).toBeUndefined();
+    expect(error.column).toBeUndefined();
+  });
+
+  it('points a YAML error at its line and column in the file', () => {
+    let caught: unknown;
+    try {
+      markdownCodec.parse('---\ntitle: "unclosed\n---\nbody\n');
+    } catch (error) {
+      caught = error;
+    }
+    const error = caught as CodecError;
+    expect(error).toBeInstanceOf(CodecError);
+    // The library reports an unclosed quote where the scalar ends: raw line 2, column 1, which is
+    // file line 3 after the opening fence.
+    expect(error.line).toBe(3);
+    expect(error.column).toBe(1);
+    expect(error.format).toBe('yaml');
+  });
+
+  it('reads an indented comment line in the frontmatter as blank', () => {
+    expect(markdownCodec.parse('---\n  # note\n---\nbody')).toEqual({
+      data: {},
+      body: 'body',
+    });
+  });
+
+  it('refuses a body that would read as frontmatter, with the markdown format', () => {
+    let caught: unknown;
+    try {
+      markdownCodec.write('Body\n', {
+        data: {},
+        body: '---\na: 1\n---\n',
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect((caught as CodecError).message).toBe(
+      'The body would read as frontmatter: it starts with a --- block',
+    );
+    expect((caught as CodecError).format).toBe('markdown');
+  });
+
+  it.each([
+    ['null', null],
+    ['data that is a string', { data: 'x', body: '' }],
+    ['data that is an array', { data: ['a'], body: '' }],
+    ['a body that is a number', { data: { a: 1 }, body: 5 }],
+    ['no body', { data: { a: 1 } }],
+  ])('refuses a value with %s as not { data, body }', (_label, value) => {
+    let caught: unknown;
+    try {
+      markdownCodec.write('Body\n', value);
+    } catch (error) {
+      caught = error;
+    }
+    const error = caught as CodecError;
+    expect(error).toBeInstanceOf(CodecError);
+    expect(error.message).toBe(
+      'Value must be { data, body }: data a map, body text',
+    );
+    expect(error.format).toBe('markdown');
+  });
+});
+
 describe('markdownCodec and Astro', () => {
   it('a body with leading blank lines renders as Astro renders the same file', async () => {
     const text = '---\ntitle: x\n---\n\n\n# Hi\n\nBody\n';

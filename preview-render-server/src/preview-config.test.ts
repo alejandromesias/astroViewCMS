@@ -60,10 +60,12 @@ describe('previewConfigResponse', () => {
     expect({
       status: response.status,
       cacheControl: response.headers.get('cache-control'),
+      contentType: response.headers.get('content-type'),
       body: await response.text(),
     }).toEqual({
       status: 500,
       cacheControl: 'no-store',
+      contentType: 'text/plain; charset=utf-8',
       body: 'Error: PREVIEW_EDITOR_ORIGINS: "https://editor.example/path" is not an origin',
     });
   });

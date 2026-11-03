@@ -32,6 +32,143 @@ function codecErrorOf(run: () => unknown): CodecError {
   throw new Error('expected the call to throw');
 }
 
+// Cases the mutation run found untested: id edge cases, presence checks, the keyed replace, and the
+// `format` of every error.
+describe('changeEntry: ids, presence, keyed replace and error formats', () => {
+  it('takes the key as the id when the value has a null or empty id, and drops that id', () => {
+    const original = '[\n  {\n    "id": "a"\n  }\n]\n';
+    for (const id of [null, '']) {
+      const result = changeEntry(JSON_FORMAT, original, {
+        op: 'add',
+        key: 'b',
+        value: { id, title: 'B' },
+      });
+      expect(jsonCodec.parse(result)).toEqual([
+        { id: 'a' },
+        { id: 'b', title: 'B' },
+      ]);
+    }
+  });
+
+  it('leaves items with no id, or a null id, out of the duplicate check', () => {
+    const noId = '[\n  { "title": "x" },\n  { "title": "y" }\n]\n';
+    const nullId =
+      '[\n  { "id": null, "title": "x" },\n  { "id": null, "title": "y" }\n]\n';
+    // `id ?? slug` is null only when the slug is null: that is the one way raw can be null.
+    const nullSlug =
+      '[\n  { "slug": null, "title": "x" },\n  { "slug": null, "title": "y" }\n]\n';
+    for (const original of [noId, nullId, nullSlug]) {
+      const result = changeEntry(JSON_FORMAT, original, {
+        op: 'add',
+        key: 'z',
+        value: { title: 'z' },
+      });
+      const [first, second] = jsonCodec.parse(original) as unknown[];
+      expect(jsonCodec.parse(result)).toEqual([
+        first,
+        second,
+        { id: 'z', title: 'z' },
+      ]);
+    }
+  });
+
+  it('treats an empty id as no id, so two empty ids are not duplicates', () => {
+    const original =
+      '[\n  { "id": "", "title": "x" },\n  { "id": "", "title": "y" }\n]\n';
+    const result = changeEntry(JSON_FORMAT, original, {
+      op: 'add',
+      key: 'z',
+      value: { title: 'z' },
+    });
+    expect(jsonCodec.parse(result)).toEqual([
+      { id: '', title: 'x' },
+      { id: '', title: 'y' },
+      { id: 'z', title: 'z' },
+    ]);
+  });
+
+  it('does not find an entry by the text of an empty id', () => {
+    const original = '[\n  { "id": "", "title": "x" }\n]\n';
+    const error = codecErrorOf(() =>
+      changeEntry(JSON_FORMAT, original, {
+        op: 'replace',
+        key: 'Stryker was here!',
+        value: { title: 'z' },
+      }),
+    );
+    expect(error.message).toBe('No entry with the id "Stryker was here!"');
+  });
+
+  it('names the json format on the array-shape errors', () => {
+    const duplicate = '[\n  { "id": "a" },\n  { "id": "a" }\n]\n';
+    const numeric = '[\n  { "id": 1 }\n]\n';
+    const whole = '[\n  { "id": "a" }\n]\n';
+    expect(
+      codecErrorOf(() =>
+        changeEntry(JSON_FORMAT, duplicate, {
+          op: 'replace',
+          key: 'a',
+          value: { title: 'z' },
+        }),
+      ).format,
+    ).toBe('json');
+    expect(
+      codecErrorOf(() =>
+        changeEntry(JSON_FORMAT, numeric, { op: 'add', key: 'abc', value: {} }),
+      ).format,
+    ).toBe('json');
+    expect(
+      codecErrorOf(() =>
+        changeEntry(JSON_FORMAT, whole, {
+          op: 'add',
+          key: 'x',
+          value: undefined,
+        }),
+      ).format,
+    ).toBe('json');
+    expect(
+      codecErrorOf(() =>
+        changeEntry(JSON_FORMAT, whole, {
+          op: 'replace',
+          key: 'a',
+          value: 'text',
+        }),
+      ).format,
+    ).toBe('json');
+  });
+
+  it('refuses to add a key that already exists, and names the format', () => {
+    const original = '{\n  "a": 1\n}\n';
+    const error = codecErrorOf(() =>
+      changeEntry(JSON_FORMAT, original, { op: 'add', key: 'a', value: 2 }),
+    );
+    expect(error.message).toBe('An entry with the id "a" already exists');
+    expect(error.format).toBe('json');
+  });
+
+  it('names the format on the $schema refusal', () => {
+    const error = codecErrorOf(() =>
+      changeEntry(JSON_FORMAT, '{\n  "a": 1\n}\n', {
+        op: 'add',
+        key: '$schema',
+        value: 'x',
+      }),
+    );
+    expect(error.message).toBe('"$schema" is not an entry');
+    expect(error.format).toBe('json');
+  });
+
+  it('replaces only the named entry of a keyed file', () => {
+    const original = '{\n  "a": 1,\n  "b": 2\n}\n';
+    const result = changeEntry(JSON_FORMAT, original, {
+      op: 'replace',
+      key: 'b',
+      value: 3,
+    });
+    expect(jsonCodec.parse(result)).toEqual({ a: 1, b: 3 });
+  });
+});
+
 const PRIYA_LINE = '"Priya Nair"';
 
 describe('changeEntry on an array file (testimonials.json)', () => {
