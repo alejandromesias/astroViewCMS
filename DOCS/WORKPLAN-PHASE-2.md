@@ -663,17 +663,17 @@ done. Item 6 of the design (the front server) is step 2.8.
   - **Machine:** `[build]`, alone. 2.1i's code may be written meanwhile, but its e2e must
     not run during the Stryker run.
 
-- **Result, serve scope (2026-11-03, scoped config, ):** static.ts 80.0 to 88.7 (HEAD opens no file, stream error ends the response, malformed path refused,  file not served); gate.ts 90.9 (unchanged in Stryker, see open); settings.ts 97.6; preview-config.ts 88.9 to 94.4 (only ENOENT is swallowed; EISDIR and errors without a code propagate). Equivalent, not tested on purpose:
-  -   and its unary mutant (L104): a pair without  reaches the real verifier with the whole pair, which no signed token can be; the name check already needs .
-  -   as  (L116):  is . The  returning undefined (L123) and the  fallback (L145) are unreachable or implicit undefined: splitQuery skips empty segments, and every non-empty segment yields a pair.
-  -   emptied (L152):  defaults an undefined  to its own clock.
-  -  path guard (L66): the realpath check in  refuses the same paths, so the early exit only saves a stat.
-  -   options (L92) and its catch (L93):  returns undefined for any error, so  is not observable. The realpath catch (L85-86) is unreachable after a successful stat.
-  -   as  (L37): same URL, as for gate.
-  -  split regex without  (L41): the empty items it adds are filtered out.
-  -  default  as  (L26):  returns a Buffer that  reads as UTF-8; 's catch returning undefined (L48) is implicit.
-  -  L233  to  on 0x20: a space is already caught by .
-- **Open (serve):** gate.ts L121 (): a hand-applied  fails 37 gate tests, but Stryker still reports the mutant Survived, though 54 tests cover it. Not resolved; check the sandbox run before trusting this score. static.ts L84 (the symlink-or-junction realpath check) also survives with an existing junction test; not analysed yet.
+- **Result, serve scope (2026-11-03, scoped config, `--force`):** static.ts 80.0 to 88.7 (HEAD opens no file, a stream error ends the response, a malformed path is refused and a file named `.undefined` is not served); gate.ts 90.9 (unchanged in Stryker, see open); settings.ts 97.6; preview-config.ts 88.9 to 94.4 (only ENOENT is swallowed; EISDIR and errors without a code propagate). Equivalent, not tested on purpose:
+  - `gate.ts` `eq !== -1` and its unary mutant (L104): a pair without `=` reaches the real verifier with the whole pair, which no signed token can be; the name check already needs `eq >= 13`.
+  - `gate.ts` `url ?? '/'` as `''` (L116): `new URL('')` is `/`. The `catch` returning undefined (L123) and the `firstPair` fallback (L145) are unreachable or implicit undefined: splitQuery skips empty segments, and every non-empty segment yields a pair.
+  - `gate.ts` `nowSeconds` emptied (L152): `preview-contract` defaults an undefined `now` to its own clock.
+  - `static.ts` path guard (L66): the realpath check in `isInsideRoot` refuses the same paths, so the early exit only saves a stat.
+  - `static.ts` `statSync` options (L92) and its catch (L93): `statOf` returns undefined for any error, so `throwIfNoEntry` is not observable. The realpath catch (L85-86) is unreachable after a successful stat.
+  - `static.ts` `req.url ?? '/'` as `''` (L37): same URL, as for gate.
+  - `settings.ts` split regex without `+` (L41): the empty items it adds are filtered out.
+  - `preview-config.ts` default `'utf8'` as `''` (L26): `readFileSync` returns a Buffer that `JSON.parse` reads as UTF-8; `parseJson`'s catch returning undefined (L48) is implicit.
+  - `exec.ts` L233 `<` to `<=` on 0x20: a space is already caught by `/\s/`.
+- **Open (serve):** gate.ts L121 (`mark === -1 ? '' : ...`): a hand-applied `query: false` fails 37 gate tests, but Stryker still reports the mutant Survived, though 54 tests cover it. Not resolved; check the sandbox run before trusting this score. static.ts L84 (the realpath check) also survives with an existing junction test; not analysed yet.
 
 #### 2.1h Stryker over the wave 4b code — after 2.1g · [build]
 
