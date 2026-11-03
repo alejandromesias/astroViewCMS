@@ -645,6 +645,23 @@ done. Item 6 of the design (the front server) is step 2.8.
   equivalent). `server.ts` is the bridge that 2.7a rewrites: do not add tests for it. If
   its survivors cannot be killed that way, say so in the Result and ask before touching
   `thresholds.break` (2.13c). 2.1f stays DONE with this open.
+- Gaps settled (calls, 2026-11-02, supersede the heads-up above where they differ):
+  - **`server.ts` is final.** 2.7a already made `toRequest` stream the body, so the
+    "do not add tests for it" line is void: kill its survivors like any other file.
+  - **Done when (replaces the one above):** every survivor in scope is killed or written
+    down as equivalent, and the Result gives the score per folder plus one full-run
+    score. Getting `npm run check -- --all` green moves to 2.1h, which already ends
+    green or raises the `break` question with the user. 2.1g does not wait for 2.1h.
+  - **Method:** triage with `npx stryker run --mutate "<files>"` (TESTING 7). `stryker.config.json`
+    mutates all of `cms-server/src/**`, so a full run also covers the wave 4b files
+    (2.1h's); they are not triaged here. Do one full run at the end for the score.
+  - **Order:** `codecs` first, then `server.ts`, then `preview-contract/src/token.ts` (the
+    preview-token code, weakest package at 83.1%), then `src/git`, `src/config`,
+    `preview-render-server/src/serve/` and `preview-config.ts`, `src/log.ts`.
+  - **After 2.3c merges,** re-run `--mutate "cms-server/src/git/**"` before closing, so the
+    git scores include 2.3c's files. Do not touch `thresholds.break` (2.13c).
+  - **Machine:** `[build]`, alone. 2.1i's code may be written meanwhile, but its e2e must
+    not run during the Stryker run.
 
 #### 2.1h Stryker over the wave 4b code — after 2.1g · [build]
 
@@ -657,7 +674,8 @@ done. Item 6 of the design (the front server) is step 2.8.
   is the costly survivor.
 - Runs before 2.9c, which builds on the supervisor and the bundle reader.
 - **Done when:** as 2.1g, with the score per folder; `npm run check -- --all`
-  green, or the `break` question raised with the user (2.13c).
+  green, or the `break` question raised with the user (2.13c). The `--all`
+  outcome is owned here, not by 2.1g (call, 2026-11-02).
 
 #### 2.1i Start code — after 2.3b, 2.4a, 2.7a, 2.9b, 2.11a
 
@@ -686,6 +704,45 @@ done. Item 6 of the design (the front server) is step 2.8.
   starts `main.ts` against a harness repo and a built bundle, gets
   `/api/status`, `/api/schema` and `/`, then stops it and finds no child
   process left. A manual `npm start -w cms-server` opens the editor page.
+- Gaps settled (calls, 2026-11-02):
+  - **Shape:** `src/main.ts` is thin: it calls `run(argv, env, deps?)` and wires signals.
+    `run` (own file, own test) returns `{ server, supervisor, stop() }`; `stop()` closes the
+    server and calls `supervisor.stop()`. Killing a process on Windows never runs a `SIGTERM`
+    handler, so the e2e calls `run` in-process (the preview node is still a real child) and
+    asserts the preview port is free after `stop()`. A unit test covers the signal wiring with
+    an injected emitter.
+  - **No orphan node:** the preview node exits when its stdin closes (a few lines in the
+    renderer's `start.ts`, with a test), and the supervisor keeps stdin open as a pipe. A
+    hard-killed cms-server then leaves no node behind on Windows. If this grows, move it to
+    2.9c and say so in the Result.
+  - **Ports:** the CMS listens on the port of `origins.cms`, the node on the port of
+    `origins.preview`, both bound to `127.0.0.1` (design 5.1). A missing or non-numeric port
+    fails at start with a plain message. Known limit for the Result: a proxied deployment
+    (phase 4) needs separate listen fields.
+  - **Paths:** `cmsDir` is `dirname(configPath)/.cms`; the config sits inside the workspace
+    (`.cms/` is gitignored there, and builds need the workspace packages, design section 3).
+    `previewSiteConfig` is a workspace path, resolved against the config's folder (the
+    design's example is `preview-render-server/sites/...`). Change the schema message
+    (`config/schema.ts`, `previewSiteConfig`) from "inside the repo" to "inside the workspace"
+    and its test. Confirm the resolution against `start.ts` (2.0e).
+  - **Bundle types:** the supervisor's `BundleRef` is `{ bundleId, dir }`, the bundle
+    source's is `{ dir, identity }`; `main` maps one to the other. Without `--bundle`, the source
+    returns `null` (the 503 `no-bundle` and `bundle: null` behaviour exists).
+  - **Failures:** `ensureRepo` fails: nothing listens, a plain message, exit code 1. The node
+    fails to start: log it and keep listening (2.9c reports it in `/api/status`).
+  - **Order:** config, secrets, `ensureRepo`, media deps, editor page, bundle source, listen,
+    then the supervisor on the bundle. One log line at start with origins and ports.
+  - **`start` script:** `"start": "node src/main.ts"` in `cms-server/package.json` (type
+    stripping, no build).
+  - **Manual run (user call):** a local bare repo, not GitHub. A script
+    (`cms-server/scripts/dev-remote.ts`, run through an npm script) seeds a bare repo from
+    `sample-site` into `.dev/remote.git` (gitignored, outside `.cms/`, which is the CMS's own
+    state) and writes a gitignored `cms.config.ts` with that `file://` remote, built from a
+    committed `cms.config.example.ts`. Add `.dev/` and `cms.config.ts` to `.gitignore`. The e2e
+    reuses the harness seeding, not this script. A real GitHub remote is a manual smoke check
+    in 2.10a and 2.10d.
+  - **E2e:** reuse the bundle `supervisor.e2e` builds; only this e2e run is `[build]`. Run it
+    after 2.1g's Stryker run.
 
 ### 2.2 Format codecs — after 2.1a · ∥ 2.3, 2.1b to 2.1d, 2.0
 
@@ -1137,6 +1194,40 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   repeat it.
 - **Done when:** tests with the harness, including a `siteDir` variant and
   two operations racing for the mutex.
+- Gaps settled (calls, 2026-11-02): files in `cms-server/src/git/` (`mutex.ts` and the repo
+  operations file), one test file each.
+  - **Lock API:** `repo.locked(holder, tx => ...)`. The mutating methods (`commitSave`,
+    `worktreeAdd`, `worktreeRemove`) exist only on `tx`, so they cannot re-lock and deadlock;
+    the lock is not re-entrant. 2.5c takes the revision check, the writes and the commit inside
+    one `locked` call. Keep `tx` open to extension: 2.10a and 2.10b add `fetch` and the
+    re-apply as further `tx` methods. `showAt` and `changedPaths` work outside the lock: they
+    compare commits and do not touch the index.
+  - **Timeout:** only waiters time out, with a typed error that names the holder; the holder
+    is never killed. The timeout is a parameter, default about 30 s, sized for saves and syncs.
+    Publish must not hold the lock for minutes: 2.10d and 2.10e take it, note the commit,
+    release it, build on a worktree, then take it again and push only if `cms/work` has not
+    moved. This task only provides the lock; that design belongs to them.
+  - **`changedPaths`:** the plan text's `origin/<branch>..cms/work` is wrong for a diff.
+    After a fetch it would list upstream's changes as reversed edits. Use the merge-base form,
+    `git diff --name-status -z --no-renames origin/<branch>...cms/work`, limited to `siteDir`.
+    Returns `{ path, status }` with `status` created, modified or deleted; a type change (`T`)
+    maps to modified.
+  - **Paths:** callers pass site-relative paths and get them back site-relative. `siteDir` is
+    joined and stripped only here. `assertRelativePath` runs on every path.
+  - **`commitSave(paths, message)`:** the message is passed unchanged (2.10b adds trailers).
+    Stage with `add -A -- <paths>` (covers deletions) and commit those paths only. Assert HEAD
+    is on `cms/work`. Returns the new sha, or `null` when nothing changed. Hooks and signing
+    are already off in the repo config (2.3b).
+  - **`showAt(ref, path)`:** text, or `null` when the path is missing in that ref. Binary files
+    (images) are 2.7b's concern.
+  - **Worktrees:** in `.cms/<site>/worktrees/`; the directory must resolve inside that folder
+    (checked). `worktree add --detach`. `worktreeRemove` uses `--force`, then `worktree prune`.
+    Leftovers from a crash are pruned inside `ensureRepo`'s recovery (`repo.ts`), so it
+    happens in one place.
+  - **Tests:** two operations racing, FIFO order, a waiter timeout with an injected clock
+    (the error names the holder), release when the callback throws, a `siteDir` variant,
+    deleted and type-changed paths, a ref missing in `showAt`, a traversal path refused, and
+    a worktree added, removed and a crashed one pruned.
 
 ### 2.4 Bundle reader and read API — after 2.0b, 2.0c, 2.0d, 2.1c · ∥ 2.2, 2.3
 
