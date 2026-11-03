@@ -137,3 +137,45 @@ describe('bundleIdentity', () => {
     );
   });
 });
+
+describe('bundleIdentity read errors', () => {
+  it('rethrows an error that has no code, instead of answering nulls', () => {
+    const failure = new Error('boom');
+    let caught: unknown;
+    try {
+      bundleIdentity('/unused', () => {
+        throw failure;
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBe(failure);
+  });
+
+  it('rethrows a non-Error value with code ENOENT', () => {
+    const failure = { code: 'ENOENT' };
+    let caught: unknown;
+    try {
+      bundleIdentity('/unused', () => {
+        throw failure;
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBe(failure);
+  });
+
+  it('rethrows a bundle.json that is a folder (EISDIR), instead of answering nulls', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preview-config-'));
+    fs.mkdirSync(path.join(dir, 'bundle.json'));
+    let caught: unknown;
+    try {
+      bundleIdentity(dir);
+    } catch (error) {
+      caught = error;
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+    expect((caught as NodeJS.ErrnoException).code).toBe('EISDIR');
+  });
+});

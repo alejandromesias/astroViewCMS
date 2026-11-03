@@ -165,3 +165,26 @@ describe('readServeSettings', () => {
     },
   );
 });
+
+describe('readServeSettings, empty values', () => {
+  const secrets = {
+    PREVIEW_TOKEN_SECRET: SECRET_A,
+    PREVIEW_INTERNAL_SECRET: SECRET_B,
+  };
+
+  it('treats an empty token secret as unset, so the two must be given together', () => {
+    expect(() =>
+      readServeSettings({ ...secrets, PREVIEW_TOKEN_SECRET: '' }),
+    ).toThrow(
+      new Error(
+        'PREVIEW_TOKEN_SECRET and PREVIEW_INTERNAL_SECRET must be set together',
+      ),
+    );
+  });
+
+  it('treats an empty PREVIEW_SITE as unset when the gate is on', () => {
+    expect(() => readServeSettings({ ...secrets, PREVIEW_SITE: '' })).toThrow(
+      new Error('PREVIEW_SITE must be set when the gate is on'),
+    );
+  });
+});

@@ -1,16 +1,31 @@
 import {
+  createReadStream,
   mkdirSync,
   mkdtempSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { createServer, request, type Server } from 'node:http';
+import {
+  createServer,
+  type IncomingMessage,
+  request,
+  type Server,
+  type ServerResponse,
+} from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Readable } from 'node:stream';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { serveStatic } from './static.ts';
+
+// createReadStream is spied on, not replaced: the tests can see whether a file was opened, and
+// can make one read fail. Every other call runs the real function.
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return { ...actual, createReadStream: vi.fn(actual.createReadStream) };
+});
 
 // Each test gets its own tree: <base>/client is the served folder, and
 // <base>/secret.txt and <base>/client2/ sit next to it, where a traversal would land.
@@ -247,5 +262,61 @@ describe('serveStatic', () => {
       status: 418,
       body: 'miss',
     });
+  });
+});
+
+describe('serveStatic edge cases', () => {
+  it('serves the root for a request with no URL, which is a HEAD here so no stream is needed', () => {
+    const res = { writeHead: vi.fn(), end: vi.fn() };
+    const served = serveStatic(
+      clientDir,
+      { method: 'HEAD' } as IncomingMessage,
+      res as unknown as ServerResponse,
+    );
+    expect(served).toBe(true);
+    expect(res.writeHead).toHaveBeenCalledWith(200, {
+      'content-type': 'text/html; charset=utf-8',
+      'content-length': 13,
+    });
+  });
+
+  it('opens no file for a HEAD request', async () => {
+    vi.mocked(createReadStream).mockClear();
+    const { port } = await start();
+    expect(await send(port, '/app.js', 'HEAD')).toMatchObject({ status: 200 });
+    expect(createReadStream).not.toHaveBeenCalled();
+  });
+
+  it('does not serve a file named .undefined for a malformed path', async () => {
+    // A malformed path must be refused before any file is looked up.
+    writeFileSync(path.join(clientDir, '.undefined'), 'LEAK');
+    const { port } = await start();
+    expect(await send(port, '/%E0%A4%A')).toMatchObject({
+      status: 418,
+      body: 'miss',
+    });
+  });
+
+  it('ends the response when the file cannot be read after the headers are sent', async () => {
+    vi.mocked(createReadStream).mockImplementationOnce(() => {
+      const broken = new Readable({ read() {} });
+      setImmediate(() => broken.destroy(new Error('EIO')));
+      return broken as ReturnType<typeof createReadStream>;
+    });
+    const { port } = await start();
+    const outcome = await new Promise<string>((resolve) => {
+      const req = request(
+        { host: '127.0.0.1', port, path: '/app.js' },
+        (res) => {
+          res.on('error', () => resolve('error'));
+          res.on('aborted', () => resolve('aborted'));
+          res.on('end', () => resolve('ended'));
+          res.resume();
+        },
+      );
+      req.on('error', () => resolve('request-error'));
+      req.end();
+    });
+    expect(outcome).toBe('request-error');
   });
 });
