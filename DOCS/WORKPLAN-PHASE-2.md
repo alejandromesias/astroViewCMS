@@ -25,7 +25,7 @@ before writing tests, [TESTING-RECOMMENDATIONS.md](TESTING-RECOMMENDATIONS.md).
 |---|---|
 | Phase 2 design | approved by the user, 2026-10-31 |
 | Decisions D17 to D22 | logged in SYSTEM-DESIGN section 11 |
-| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); next: wave 5 (2.1g first, it gates 2.5a; 2.1i, the start code, alongside); the rest not started |
+| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); next: wave 5 (2.1g first, narrowed 2026-11-03 to the codecs `frontmatter.ts`, `file-entries.ts`, `yaml.ts`, it gates 2.5a; the rest of its scope moved to 2.1h with deadlines before 2.5b and 2.5c; 2.1i done 2026-11-03); the rest not started |
 
 **Done when:** every row of PHASE-2-DESIGN.md section 1 passes. Section 5
 below maps each row to the test that proves it.
@@ -88,9 +88,15 @@ Rules for running tasks in parallel:
 | 2 | 2.0b, 2.0c, 2.1a, 2.8b |
 | 3 | 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8c, 2.8d |
 | 4 | 2.1f (alone, first), 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a |
-| 5 | 2.1g, 2.1i, 2.3c, 2.4b, 2.4c, 2.5a (after 2.1g) |
-| 6 | 2.1h, 2.5b, 2.6a, 2.9a, 2.10a |
-| 7 | 2.5c, 2.9c, 2.10b |
+| 5 | 2.1g (codecs only, 2026-11-03), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a (after 2.1g) |
+
+Wave 5 order (2026-11-03): the orchestrator writes `codecs/by-format.ts`, rebuilds `sample-site`
+alone in the main checkout and refreshes `cms-server/test/fixtures/bundle/` **before** 2.4b or 2.4c
+starts (2.4b's revision-equality test compares against today's files). Then 2.4b and 2.4c run in
+parallel; 2.5a waits for 2.1g.
+
+| 6 | 2.1h (now also `repo.ts`, before 2.5b), 2.5b, 2.6a, 2.9a, 2.10a |
+| 7 | 2.5c (`server.ts` survivors from 2.1h first), 2.9c, 2.10b |
 | 8 | 2.6b, 2.7b, 2.7c, 2.9d |
 | 9 | 2.9e, 2.10c |
 | 10 | 2.10d, 2.10g, 2.11b |
@@ -194,12 +200,16 @@ done. Item 6 of the design (the front server) is step 2.8.
 
 - `revisionOf(text)` in the contract package: SHA-256, hex, first 16
   characters.
-- What gets hashed **(call, refines design 5.3)**: a document with a file
-  of its own: the file's bytes. A `file()` entry: the canonical form of the
-  entry's parsed value (JSON with sorted keys, dates as ISO strings), so the
-  build and `cms-server` agree without sharing a codec, and formatting
+- What gets hashed **(call, refines design 5.3; corrected 2026-11-03)**: a
+  document with a file of its own: the file's bytes. A `file()` entry: the
+  raw value of the entry, as its file's parser reads it, without its id, in
+  canonical JSON (`revisionOfEntry`, preview-contract). Not the value after
+  the collection schema: the store's data has the schema applied, so it can
+  hold defaults the file lacks and lacks keys the schema drops (`id`, in the
+  sample). The build and `cms-server` each parse the file with the same
+  Astro options, so they agree without sharing a codec, and formatting
   changes in the shared file don't touch other entries' revisions. Export
-  `canonicalEntryText(value)` next to `revisionOf`.
+  `canonicalEntryText(value)` and `revisionOfEntry(entry)` next to `revisionOf`.
 - `documents.json` gets `revision` per document. The manifest also lists the
   images under `src/` as `{ path, hash }` (`images.json`), so `cms-server`
   can tell which saved images the bundle lacks (D12).
@@ -215,6 +225,15 @@ done. Item 6 of the design (the front server) is step 2.8.
   documents are hashed raw; an entry with no file of its own hashes
   `canonicalEntryText` of its data from Astro's data store. Evidence: the four
   `testimonials` revisions are distinct; the reflow unit test passes.
+- **Correction (2026-11-03):** the build hashed the store's data for `file()`
+  entries, which is the schema-applied value. The cause, found by diffing
+  `testimonials/t-ana`: the store drops `id`, which the schema does not declare.
+  The fix: `withRevisions` reads each `file()` document's file with Astro's
+  options and hashes `revisionOfEntry` of the raw entry (without its id). The
+  store's data is used only for a document with no file. Unit tests: a schema
+  default does not move a revision; an unquoted YAML date hashes as a `Date`;
+  a missing entry is a build error that names the file and the entry. Two
+  earlier `testimonials` revisions in the fixture (`t-ana`) changed with it.
 
 #### 2.0d Manifests inside `outDir`, relative paths — start now · DONE 2026-11-01
 
@@ -663,6 +682,30 @@ done. Item 6 of the design (the front server) is step 2.8.
   - **Machine:** `[build]`, alone. 2.1i's code may be written meanwhile, but its e2e must
     not run during the Stryker run.
 
+- **Scope split (2026-11-03, supersedes "Done when" and "Order" above):** the triage did not
+  finish, and most of what is left does not touch 2.5a. 2.1g shrinks to what 2.5a writes
+  through; the rest moves to 2.1h with a deadline each (below). Nothing leaves `mutate`:
+  a file is only excluded with the user's approval.
+  - **2.1g now covers:** `codecs/frontmatter.ts` and `codecs/file-entries.ts` (never mutated
+    yet), and the 33 survivors in `codecs/yaml.ts`. Use the scoped config
+    (`stryker.cms-server.config.mjs`, one run per file). For yaml, prefer round-trip tests
+    (`write(original, parse(original))` returns `original`; parse after write gives the value)
+    over one test per mutant. A property-test library (`fast-check`) is a new dev dependency:
+    ask the user first.
+  - **Done when (final):** every survivor in those three files is killed or written down as
+    equivalent, and the Result gives their scores. The full-run score is read in 2.1h.
+  - **What gates what** (scores from the 2026-11-03 triage; "never mutated" means in no report):
+
+    | File | State | Gates |
+    |---|---|---|
+    | `codecs/frontmatter.ts`, `file-entries.ts` | never mutated | **2.5a (this task)** |
+    | `codecs/yaml.ts` | 90.8%, 33 survivors | **2.5a (this task)**: every YAML and frontmatter write |
+    | `codecs/json.ts` | 98.3%, `setOp` fixed | done |
+    | `server.ts` | 31.7% (18 survived, 10 uncovered) | 2.5c, the first saving route (2.1h) |
+    | `git/repo.ts` | run blocked | 2.5b (2.1h) |
+    | `config/load.ts` | 53.8% | startup only (2.1h) |
+    | `gate.ts` L121, `static.ts` L84 | open | none, but security code (2.1h) |
+    | git `ops`/`mutex`/`exec`, `config/schema`, `log`, `token.ts` | 96 to 100% | done |
 - **Result, serve scope (2026-11-03, scoped config, `--force`):** static.ts 80.0 to 88.7 (HEAD opens no file, a stream error ends the response, a malformed path is refused and a file named `.undefined` is not served); gate.ts 90.9 (unchanged in Stryker, see open); settings.ts 97.6; preview-config.ts 88.9 to 94.4 (only ENOENT is swallowed; EISDIR and errors without a code propagate). Equivalent, not tested on purpose:
   - `gate.ts` `eq !== -1` and its unary mutant (L104): a pair without `=` reaches the real verifier with the whole pair, which no signed token can be; the name check already needs `eq >= 13`.
   - `gate.ts` `url ?? '/'` as `''` (L116): `new URL('')` is `/`. The `catch` returning undefined (L123) and the `firstPair` fallback (L145) are unreachable or implicit undefined: splitQuery skips empty segments, and every non-empty segment yields a pair.
@@ -687,9 +730,21 @@ done. Item 6 of the design (the front server) is step 2.8.
   Media and `fs/atomic.ts` first: a wrong cap or a lost `media.json` update
   is the costly survivor.
 - Runs before 2.9c, which builds on the supervisor and the bundle reader.
+- **Moved here from 2.1g (2026-11-03), each with its deadline:**
+  - `cms-server/src/server.ts` (31.7%): **before 2.5c.** Kill its survivors like any other file.
+  - `git/repo.ts`: **before 2.5b.** The Stryker run is blocked because `stryker.config.json` ignores
+    `sample-site`, which some repo tests need. Fix the cause first: seed those tests from a
+    small fixture under `cms-server/test/fixtures/`. The other option, letting `sample-site` into
+    the sandbox, copies a whole site into every sandbox.
+  - `config/load.ts` (53.8%), `config/secrets.ts` (2 survivors), `git/exec.ts` (1 survivor), the
+    remaining `ops.ts`/`mutex.ts` survivors, `serve/` and `preview-config.ts`, `log.ts`: with the rest of 2.1h.
+  - `serve/gate.ts` L121: Stryker says Survived, but a hand-applied mutant fails 37 tests. Run that
+    one file once with `coverageAnalysis: "off"`. If the mutant is then killed, the per-test coverage
+    mapping was wrong: write it down as a tool artifact, with that evidence, and stop. `serve/static.ts`
+    L84 (realpath check): analyse it here.
 - **Done when:** as 2.1g, with the score per folder; `npm run check -- --all`
   green, or the `break` question raised with the user (2.13c). The `--all`
-  outcome is owned here, not by 2.1g (call, 2026-11-02).
+  outcome is owned here, not by 2.1g (call, 2026-11-02). The moved items above are in scope.
 
 #### 2.1i Start code — after 2.3b, 2.4a, 2.7a, 2.9b, 2.11a · DONE 2026-11-03
 
@@ -1373,12 +1428,13 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   copy through the codecs; Markdown and MDX answer `{ data, body }` (D2);
   `file()` entries by `entryKey`. The revision is computed from the
   working copy, never copied from the manifest, **with the same rule the
-  build used (2.0c; corrected 2026-11-02)**: a document that is one file
+  build uses (2.0c; corrected 2026-11-03)**: a document that is one file
   is `revisionOf(file bytes)`; a `file()` entry is
-  `revisionOf(canonicalEntryText(entry value))`, the entry's parsed value,
-  not the shared file's text. The parse must give the values Astro's data
-  store holds (the YAML codec's Astro options, so dates are `Date`), or
-  every entry looks changed. Put the rule in one function
+  `revisionOfEntry(raw entry)` (preview-contract), where the raw entry is
+  read from the file with the codec's Astro options (dates are `Date`) and
+  is not the store's schema-applied data. Without the same options every
+  entry looks changed. The 2.4b done-when test checks this against the
+  fixture. Put the rule in one function
   (`revisionOfDocument`) that 2.5b and 2.5c reuse. Read-only formats answer
   their flags without a `value`, as the stopgap route does. `404` for an
   unknown key.
@@ -1389,6 +1445,46 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   bundle fixture with its file unchanged, the route's revision equals the
   manifest's (JSON, YAML, Markdown, MDX and `file()` entries of both
   formats).
+- Gaps settled (calls, 2026-11-03):
+  - **Before the agent:** the orchestrator adds `cms-server/src/codecs/by-format.ts` (`json`, `yaml`,
+    `md`, `mdx` to their codecs, `null` for `toml` and `other`, with its own test; the YAML codec must
+    give `Date` for unquoted dates, as Astro does) and refreshes the bundle fixture (see 2.4c).
+  - **`revisionOfDocument`** lives in `cms-server/src/documents/`; only `revisionOf` and
+    `revisionOfEntry` stay in `preview-contract`. The working-copy root is the repo path that
+    2.1i's `run.ts` builds, joined with `siteDir`, passed in as an injected dep (no second way to find it).
+  - **Read once.** Read a file's bytes once, hash them, and decode the same buffer for the parse.
+  - **Unknown or missing.** A key not in the bundle is `404 unknown-document`; a bundle document whose
+    file is gone is `404 document-missing`. A document created by a save is not in the bundle: 2.5c
+    makes `?key=` check the changeset (2.5b may also report a missing file as deleted).
+  - **Codec error on read.** Answer `200` with `editable: false` forced (a `.md` with TOML frontmatter
+    has format `md`, which the manifest does not mark read-only), no `value`, and
+    `error: { code, message, line?, column? }` from `CodecError`. Keep `revision` when it can be
+    computed: a one-file document hashes its bytes even if they do not parse; a `file()` entry in a
+    broken shared file gets `revision: null` (so the list item's `revision` is nullable).
+  - **List route.** `revision` comes from `revisionOfDocument` over the working copy, so the list and
+    `?key=` agree. `title` from `title` or `name`. A parse error in one file never fails the list: that
+    document has no `title` and carries the error flag. Read each shared `file()` file once per
+    request; skip `editable: false` documents. No cache across requests.
+  - **Tests.** Edit the `key` branch of `http/bundle-routes.ts` (it answers `501` today). The
+    revision-equality test compares the refreshed fixture `documents.json` to today's `sample-site` files.
+- **Result (2026-11-03):** `GET /api/documents?key=` and the list route's revisions, from one function.
+  - **Built:** `cms-server/src/documents/revision.ts` (`revisionOfDocument`, used by the list and `?key=`
+    routes, and reused by 2.5b and 2.5c) and `read.ts` (the document reader), each with its test. The
+    working-copy dep is `RepoState.siteFolder` (repo path joined with `siteDir`), wired in `run.ts` as
+    `workingCopy`. `bundle-routes.ts` registers the document routes only when the bundle and the working
+    copy are both given. `test/helpers/working-copy.ts` is a temp-copy helper.
+  - **Decisions beyond the text:**
+    - A document with no file lists `revision: null` and the error flag; `?key=` answers
+      `404 document-missing`. Three existing list expectations changed for this.
+    - A codec error on read uses the error code `parse-error`, answered `200` with `editable: false`
+      forced and no `value`.
+    - A missing entry is `404 document-missing`. Only `ENOENT` counts as a missing file. A path that
+      leaves the working copy counts as missing.
+    - Read-only documents get their revision hashed but are never parsed.
+    - `?key=` with an empty value is `404 unknown-document`.
+  - **Evidence:** 225 tests pass across 14 files (`cms-server` documents, http, bundle, run, codecs, schema),
+    including the revision-equality test against the six fixture documents. Biome and `tsc` clean on the
+    touched files. The subagent's own count was 126 across 8 files.
 
 #### 2.4c Schema walker — after 2.4a
 
@@ -1403,10 +1499,37 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
 - **Done when:** tests on the sample's real `schema.json`: the landing
   blocks' `discriminatedUnion` with testimonial references, `authors`
   avatars, nested arrays.
+- Gaps settled (calls, 2026-11-03):
+  - **Fixture refresh is the orchestrator's**, run alone in the main checkout before 2.4b and 2.4c
+    start; 2.4a's tests must still pass on the new fixture. The agent runs no build.
+  - **Visit.** `visit({ path: (string | number)[], marker, value })`, read-only. The value is passed
+    untouched (2.6a parses string or `{ id }`). A reference array yields one result per item, at the
+    item's path.
+  - **`oneOf` / `anyOf`.** If the union has a `const` discriminator, walk only the branch whose `const`
+    matches the value; if none matches, yield nothing (validation reports it, and 2.6a must not see
+    phantom references). With no discriminator, walk every branch whose `type` fits, after resolving
+    `$ref`, and accept `type` as an array (`[X, 'null']`). Deduplicate on path plus marker.
+  - **Not in the real schema.** The sample's `schema.json` has no `$ref`, `$defs` or `anyOf`: test them
+    with synthetic schemas, including a cyclic `$ref`. Also `additionalProperties` (records) and
+    `prefixItems` (tuples), if the walker supports them.
+  - **Location.** A new file under `cms-server/src/schema/` (the agent names it); no existing file edited.
+- **Result (2026-11-03):** `cms-server/src/schema/walk.ts` (`walkMarkers`, `CmsMarker`, `MarkerHit`,
+  `MarkerVisitor`, `SchemaNode`, `PathSegment`) and `walk.test.ts` (19 tests). Real-schema tests use the
+  landing testimonials union (4 references) and the authors avatar image. Verified by the orchestrator:
+  19 walker tests and the 2.4a bundle tests pass; `tsc` and Biome clean.
+  - **Choices beyond the text:** the cycle guard is per value position, so a `$ref` cycle that consumes
+    no value stops, and a recursive `$ref` through data (a tree) walks the data. A missing or null value
+    is not reported. A schema with no `type` fits any value. An unresolved `$ref`, or one not of the form
+    `#/$defs/<name>`, throws. A marker on an array reports each item.
 
 ### 2.5 Saving — after 2.2, 2.3c, 2.4 · ∥ 2.6a, 2.7a, 2.8, 2.9a
 
 #### 2.5a Write planner — after 2.2, 2.4a, 2.1g
+
+- **Scope of the 2.1g gate (2026-11-03):** "after 2.1g" means 2.1g's final done-when: the Stryker
+  triage of `frontmatter.ts`, `file-entries.ts` and `yaml.ts`, the files this planner writes through.
+  It does not wait for `server.ts` (2.5c), `repo.ts` (2.5b) or the other items moved to 2.1h.
+  See "What gates what" in 2.1g.
 
 - A pure function from a change (`update`, `create` or `delete`, with its
   value) and the document's record to file operations (write text, delete
@@ -1454,6 +1577,8 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
      restore from git), commit on `cms/work` under the mutex;
   7. answer `200 { revisions, warnings, rebuild }`. `rebuild: true` when a
      changed field is listed in the document's `buildTimeFields` (D1).
+- Note (2026-11-03): `GET /api/documents?key=` (2.4b) only knows documents in the bundle. This task
+  makes it also answer for documents created by a save, by checking the changeset (2.5b).
 - **Done when:** tests for a good save, two documents in one save, a stale
   revision (`409`), a `422`, a refinement that threw, a failed rename
   restoring the tree, and a build-time field.
@@ -2409,8 +2534,9 @@ Design 5.8. This is still a test tool, not the phase 3 editor.
 D17 to D22 are logged in SYSTEM-DESIGN section 11. Refinements made while
 planning (they stay here until the design is next edited):
 
-- Revisions of `file()` entries hash the canonical value of the entry, not
-  the codec's serialization (2.0c; refines design 5.3).
+- Revisions of `file()` entries hash the raw value of the entry, without its
+  id, not the store's schema-applied data nor the codec's serialization (2.0c,
+  corrected 2026-11-03; refines design 5.3).
 - The contract package is a new `preview-contract`, so `preview-protocol`
   stays free of Zod (2.0a).
 - `collections.<name>.newEntryFormat` lives in `cms.config.ts` (2.1c).

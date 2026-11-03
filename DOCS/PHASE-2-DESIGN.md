@@ -367,12 +367,16 @@ as static files on the CMS origin (section 5.8).
   included, into the codecs.
 - **Revision** **(call)**: a SHA-256 of the document's canonical text,
   shortened. For a document that has a file to itself, the file's bytes.
-  For a `file()` entry, the canonical form of that entry's parsed value alone
-  (JSON with sorted keys, dates as ISO strings; refined in the work plan,
-  task 2.0c, so the build and `cms-server` agree without sharing a codec). So
-  editing two different entries of `testimonials.json` doesn't conflict.
-  The same function runs in the build (5.1 item 3) and in `cms-server`, so
-  it lives in the shared contract package.
+  For a `file()` entry, the **raw value**: the entry as the file's own parser
+  reads it (Astro's loader options, so unquoted dates are `Date`), without its
+  `id` (or `slug`), canonical JSON (sorted keys, dates as ISO strings). It is
+  **not** the value after the collection schema: the schema can add defaults
+  or drop keys it doesn't declare (Astro's store drops `id`), and then the
+  build and `cms-server` would disagree (corrected 2026-11-03, WORKPLAN 2.0c).
+  So editing two different entries of `testimonials.json` doesn't conflict.
+  The same function, `revisionOfEntry` in the shared contract package, runs
+  in the build (5.1 item 3) and in `cms-server`; each side parses the file
+  with the same options.
 - **`PUT /api/changes`** (SYSTEM-DESIGN section 4), in this order:
   1. parse the body with Zod;
   2. check every `baseRevision` against the working copy. Any mismatch:
