@@ -673,7 +673,9 @@ done. Item 6 of the design (the front server) is step 2.8.
   - `settings.ts` split regex without `+` (L41): the empty items it adds are filtered out.
   - `preview-config.ts` default `'utf8'` as `''` (L26): `readFileSync` returns a Buffer that `JSON.parse` reads as UTF-8; `parseJson`'s catch returning undefined (L48) is implicit.
   - `exec.ts` L233 `<` to `<=` on 0x20: a space is already caught by `/\s/`.
-- **Open (serve):** gate.ts L121 (`mark === -1 ? '' : ...`): a hand-applied `query: false` fails 37 gate tests, but Stryker still reports the mutant Survived, though 54 tests cover it. Not resolved; check the sandbox run before trusting this score. static.ts L84 (the realpath check) also survives with an existing junction test; not analysed yet.
+- **Open (serve), logged 2026-11-03, not chased:** gate.ts L121 (`mark === -1 ? '' : ...`): a hand-applied `query: false` fails 37 gate tests, but Stryker still reports the mutant Survived although 54 tests cover it. The gate score (90.9%) may understate the tests. Re-check the sandbox run when the gate scope is next triaged. static.ts L84 (the realpath check) survives with an existing junction test; not analysed.
+
+- **Result, git scope (2026-11-03, scoped config, 2.3c code):** ops.ts 96.5% (136 mutants), mutex.ts 97.1%. Added: a `showAt` refusal of a ref that starts with a dash (`invalid-argument`), and a site folder with a trailing slash. Equivalent, not tested on purpose: `worktreeAdd`'s `mkdir` (L104): `git worktree add` creates the folder, which the existing worktree test shows without it; `parseNameStatus`'s `?? ''` fallbacks (L151-152): git always outputs status and path pairs; the trailing-slash regex as `/\/$/` (L70): `posix.normalize` leaves at most one trailing slash; the `LockTimeoutError` and waiter-timeout bodies in mutex.ts are Stryker Timeouts, which count as detected. `repo.test.ts` is still outside the scoped config (it seeds from `sample-site`); the full Stryker run is still blocked by that.
 
 #### 2.1h Stryker over the wave 4b code — after 2.1g · [build]
 

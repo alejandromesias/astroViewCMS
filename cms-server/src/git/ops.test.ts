@@ -485,3 +485,27 @@ describe('openRepo: the lock', () => {
     await holding;
   });
 });
+
+describe('openRepo: showAt refs', () => {
+  it('refuses a ref that starts with a dash before git sees it', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site');
+    await expect(
+      repoOf(fixture).showAt('-x', 'notes/a.md'),
+    ).rejects.toMatchObject({
+      name: 'GitError',
+      kind: 'invalid-argument',
+    });
+  });
+});
+
+describe('openRepo: site folder with a trailing slash', () => {
+  it('strips the trailing slash, so the paths come back site-relative', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site/');
+    await edit(fixture, 'notes/a.md', 'alpha 2\n');
+    const repo = repoOf(fixture);
+    await save(repo, ['notes/a.md'], 'save');
+    await expect(repo.changedPaths()).resolves.toEqual([
+      { path: 'notes/a.md', status: 'modified' },
+    ]);
+  });
+});
