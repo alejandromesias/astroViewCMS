@@ -1,7 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { canonicalEntryText, revisionOf } from 'preview-contract';
 import { parse } from 'devalue';
+import {
+  canonicalEntryText,
+  revisionOf,
+  revisionOfEntry,
+  revisionOfKeyedEntry,
+} from 'preview-contract';
+import { parseDocument } from 'yaml';
 import type { ProjectScan } from './import-scan.ts';
 import type { BuildTimeFields, DocumentRecord } from './types.ts';
 
@@ -115,8 +121,11 @@ export function shapeDocuments({
 
 /** Adds each document's `revision` (WORKPLAN 2.0c, design 5.3). A document with
  *  a file of its own is hashed by the file's bytes. A `file()` entry is hashed
- *  by the canonical form of its own data, so editing one entry of a shared file
- *  leaves the other entries' revisions alone. Reads the files under `root`. */
+ *  by its raw value, read from the file as Astro's loader reads it and without
+ *  the schema (revisionOfEntry, WORKPLAN 2.4b), so editing one entry of a
+ *  shared file leaves the other entries' revisions alone and a schema default
+ *  never moves a revision. The store's data is used only for a document with
+ *  no file. Reads the files under `root`. */
 export function withRevisions(
   documents: DocumentDraft[],
   store: DataStore,
@@ -129,12 +138,72 @@ export function withRevisions(
     }
   }
   return documents.map((document) => {
-    const text =
-      document.entryKey !== undefined || document.file === undefined
-        ? canonicalEntryText(entries.get(document.key)?.data)
-        : fs.readFileSync(path.join(root, document.file));
-    return { ...document, revision: revisionOf(text) };
+    const revision =
+      document.file === undefined
+        ? revisionOf(canonicalEntryText(entries.get(document.key)?.data))
+        : document.entryKey !== undefined
+          ? fileEntryRevision(root, document.file, document.entryKey)
+          : revisionOf(fs.readFileSync(path.join(root, document.file)));
+    return { ...document, revision };
   });
+}
+
+/** The revision of one entry of a `file()` document, parsed as Astro's loader parses the file: JSON with
+ *  JSON.parse, YAML with the options of Astro's `parseYaml`. An array item is hashed without its id
+ *  (revisionOfEntry); a value of an object-keyed file whole (revisionOfKeyedEntry), as its key is the id.
+ *  Throws when the file, the format or the entry is missing, so the build says which one. */
+function fileEntryRevision(
+  root: string,
+  file: string,
+  entryKey: string,
+): string {
+  const text = fs.readFileSync(path.join(root, file), 'utf8');
+  const extension = path.extname(file).toLowerCase();
+  let whole: unknown;
+  if (extension === '.json') whole = JSON.parse(text);
+  else if (extension === '.yaml' || extension === '.yml')
+    whole = parseYamlAsAstro(text);
+  else throw new Error(`${file}: a file() entry must be JSON or YAML`);
+  const entry = findEntry(whole, entryKey);
+  if (entry === undefined)
+    throw new Error(`${file} has no entry '${entryKey}'`);
+  return Array.isArray(whole)
+    ? revisionOfEntry(entry)
+    : revisionOfKeyedEntry(entry);
+}
+
+/** YAML as Astro's loader reads it (`parseYaml` in @astrojs/internal-helpers): unquoted dates
+ *  are Date objects, `<<` merge keys are expanded, the core schema otherwise. cms-server's yaml
+ *  codec uses the same options; the two must not drift. */
+function parseYamlAsAstro(text: string): unknown {
+  const document = parseDocument(text, {
+    customTags: ['timestamp'],
+    merge: true,
+    schema: 'core',
+  });
+  if (document.errors.length > 0) throw document.errors[0];
+  if (document.contents === null) return undefined;
+  return document.toJS();
+}
+
+/** The entry with this id: in an array, the object whose `id` (or `slug`) names it, as Astro
+ *  takes it; in an object, the value under that key. */
+function findEntry(whole: unknown, entryKey: string): unknown {
+  if (Array.isArray(whole))
+    return whole.find((item: unknown) => {
+      if (typeof item !== 'object' || item === null) return false;
+      const raw =
+        (item as Record<string, unknown>).id ??
+        (item as Record<string, unknown>).slug;
+      return raw !== undefined && raw !== null && String(raw) === entryKey;
+    });
+  if (
+    typeof whole === 'object' &&
+    whole !== null &&
+    Object.hasOwn(whole, entryKey)
+  )
+    return (whole as Record<string, unknown>)[entryKey];
+  return undefined;
 }
 
 function formatOf(file: string | undefined): DocumentRecord['format'] {

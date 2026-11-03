@@ -101,7 +101,7 @@ const CmsConfigSchema = z
       'siteDir must be a relative path inside the repo',
     ).default('.'),
     previewSiteConfig: insideFolder(
-      'previewSiteConfig must be a relative path inside the repo',
+      'previewSiteConfig must be a relative path inside the workspace',
     ),
     origins: z.strictObject({ cms: origin, preview: origin }),
     publish: z

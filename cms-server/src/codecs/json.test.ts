@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -104,6 +105,82 @@ describe('jsonCodec.parse', () => {
       });
     },
   );
+});
+
+// Cases the mutation run found untested: unchanged bytes, root shape changes, undefined values, the
+// indent unit and line ending of a file, and the error for a value that is not JSON.
+describe('jsonCodec.write: mutation survivors', () => {
+  it('keeps the bytes of an unchanged value, such as 1.50 or an escape, when a sibling changes', () => {
+    expect(jsonCodec.write('{"a": 1.50, "b": 2}\n', { a: 1.5, b: 3 })).toBe(
+      '{"a": 1.50, "b": 3}\n',
+    );
+    expect(
+      jsonCodec.write('{"a": "\\u0041", "b": 2}\n', { a: 'A', b: 3 }),
+    ).toBe('{"a": "\\u0041", "b": 3}\n');
+  });
+
+  it('keeps the leading whitespace of an unchanged root scalar', () => {
+    expect(jsonCodec.write('  42\n', 42)).toBe('  42\n');
+  });
+
+  it('replaces a root object with an array as a whole document, LF', () => {
+    expect(jsonCodec.write('{"a": 1}\n', [1])).toBe('[\n  1\n]\n');
+  });
+
+  it('replaces a root object with an array as a whole document, CRLF and no final newline', () => {
+    expect(jsonCodec.write('{\r\n    "a": 1\r\n}', [1])).toBe(
+      '[\r\n    1\r\n]',
+    );
+  });
+
+  it('removes a key whose value is undefined, and does not add an absent one', () => {
+    expect(jsonCodec.write('{"a": 1, "b": 2}\n', { a: 1, b: undefined })).toBe(
+      '{\n  "a": 1\n}\n',
+    );
+    expect(jsonCodec.write('{"a": 1}\n', { a: 1, c: undefined })).toBe(
+      '{"a": 1}\n',
+    );
+  });
+
+  it('uses the line ending of a single-line file, LF, for the lines it adds', () => {
+    expect(jsonCodec.write('{"a": 1}', { a: 1, b: 2 })).toBe(
+      '{\n  "a": 1,\n  "b": 2\n}',
+    );
+  });
+
+  it('writes a replaced root of a one-line file with LF lines', () => {
+    expect(jsonCodec.write('{"a": 1}', [1])).toBe('[\n  1\n]');
+  });
+
+  it('writes a replaced root of a mixed-ending file with the first line break', () => {
+    expect(jsonCodec.write('{\n  "a": 1,\r\n  "b": 2\r\n}\n', [1])).toBe(
+      '[\n  1\n]\n',
+    );
+  });
+
+  it('takes the line ending of the first line break for the lines it adds', () => {
+    expect(
+      jsonCodec.write('{\n  "a": 1,\r\n  "b": 2\r\n}\n', { a: 1, b: 2, c: 3 }),
+    ).toBe('{\n  "a": 1,\r\n  "b": 2,\n  "c": 3\r\n}\n');
+  });
+
+  it('indents with tabs when the first whitespace in the file is not the indent', () => {
+    expect(
+      jsonCodec.write('{"x": 1,\n\t"a": 1\n}\n', { x: 1, a: 1, b: 2 }),
+    ).toBe('{"x": 1,\n\t"a": 1,\n\t"b": 2\n}\n');
+  });
+
+  it('keeps a space-then-tab indent unit as it is, without turning it into tabs', () => {
+    expect(jsonCodec.write('{\n \t"a": 1\n}\n', { a: 1, b: 2 })).toBe(
+      '{\n  "a": 1,\n  "b": 2\n}\n',
+    );
+  });
+
+  it('refuses a root value that cannot be JSON, with the json format', () => {
+    const error = codecErrorOf(() => jsonCodec.write('{"a": 1}\n', () => 1));
+    expect(error.message).toBe('Value cannot be written as JSON');
+    expect(error.format).toBe('json');
+  });
 });
 
 describe('jsonCodec.write', () => {
@@ -285,6 +362,46 @@ describe('jsonCodec.write', () => {
     expect(
       codecErrorOf(() => jsonCodec.write('[1]\n', [1, undefined])).message,
     ).toBe(notJson);
+  });
+
+  it('refuses a function, symbol or bigint at any depth with a CodecError, not a TypeError', () => {
+    const original = '{\n  "k": 1\n}\n';
+    const notJson = 'Value cannot be written as JSON';
+    const refused = [
+      { k: () => 1 },
+      { k: 1, x: { a: () => 1 } },
+      { k: 1, x: [() => 1] },
+      { k: 1, x: [1, () => 1] },
+      { k: 1, x: { a: 1, b: () => 1 } },
+      { k: 1, x: Symbol('s') },
+      { k: 1, x: 1n },
+    ];
+    for (const value of refused) {
+      const error = codecErrorOf(() => jsonCodec.write(original, value));
+      expect({ message: error.message, format: error.format }).toEqual({
+        message: notJson,
+        format: 'json',
+      });
+    }
+  });
+
+  it('replaces a root with a new one under the first line break, not the CRLF at the end', () => {
+    expect(jsonCodec.write('{\n\t"k": 1\n}\r\n', [])).toBe('[]\n');
+    expect(jsonCodec.write('{\n\t"k": 1\n}\r\n', [null, 'x'])).toBe(
+      '[\n\tnull,\n\t"x"\n]\n',
+    );
+  });
+
+  it('accepts a null nested in a value, and writes it', () => {
+    expect(jsonCodec.write('{\n  "k": 1\n}\n', { k: 1, x: null })).toBe(
+      '{\n  "k": 1,\n  "x": null\n}\n',
+    );
+  });
+
+  it('still drops a nested undefined as an absent key', () => {
+    expect(
+      jsonCodec.write('{\n  "k": 1\n}\n', { k: 1, x: { a: undefined } }),
+    ).toBe('{\n  "k": 1,\n  "x": {}\n}\n');
   });
 
   it('refuses an original that is not JSON, with its position', () => {

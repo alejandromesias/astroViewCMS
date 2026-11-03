@@ -110,6 +110,9 @@ export async function runGit(
     GCM_INTERACTIVE: 'never',
     LC_ALL: 'C',
     GIT_ASKPASS: '',
+    // Paths are literal: without this, Git reads `*`, `?` and `[]` in a path as patterns, so one save
+    // could stage or commit other files that match. Every path argument is literal.
+    GIT_LITERAL_PATHSPECS: '1',
     // An SSH passphrase prompt would hang the server (GIT_TERMINAL_PROMPT does not stop it).
     // A user's own SSH command is kept.
     GIT_SSH_COMMAND: inherited.GIT_SSH_COMMAND || 'ssh -o BatchMode=yes',

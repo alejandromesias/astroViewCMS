@@ -4,8 +4,9 @@
 // will use, and envelope.test.ts holds both to the same cases (the point is
 // that two readers can't drift). Messages match the renderer's, so a 400 body
 // reads the same whichever side produced it.
-import { z } from 'zod';
+
 import type { MediaInfo } from 'preview-protocol';
+import { z } from 'zod';
 import { objectOf } from './json.ts';
 
 // The formats of Astro's ImageMetadata.

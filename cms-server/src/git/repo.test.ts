@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   afterAll,
@@ -295,6 +295,22 @@ describe('ensureRepo with a real remote', () => {
         level: 'warn',
         message: RECOVERED_MESSAGE,
       });
+    });
+
+    it('prunes the record of a worktree whose folder a crash removed', async () => {
+      const root = await newRoot();
+      const config = configFor(remote);
+      const cmsDir = cmsDirOf(root);
+      const repoDir = repoDirOf(root);
+      await ensureRepo({ config, cmsDir, log: spyLog() });
+      const crashed = join(cmsDir, 'demo', 'worktrees', 'crashed');
+      await git(repoDir, ['worktree', 'add', '--detach', crashed, 'cms/work']);
+      await rm(crashed, { recursive: true, force: true });
+      await ensureRepo({ config, cmsDir, log: spyLog() });
+      const records = (await git(repoDir, ['worktree', 'list', '--porcelain']))
+        .split('\n')
+        .filter((line) => line.startsWith('worktree '));
+      expect(records).toHaveLength(1);
     });
   });
 

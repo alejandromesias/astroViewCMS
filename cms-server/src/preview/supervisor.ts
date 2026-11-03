@@ -429,7 +429,8 @@ function exitMessage(exit: ExitInfo): string {
     : `The preview node exited (${how}): ${lastLine}`;
 }
 
-/** The real child process. Its stdout is drained, its stderr kept at the end. */
+/** The real child process. Its stdout is drained, its stderr kept at the end. Its stdin is a pipe that
+ *  stays open while this process lives: the child exits when it closes (stdin-exit.ts, WORKPLAN 2.1i). */
 function defaultSpawn(
   command: string,
   args: readonly string[],
@@ -438,7 +439,7 @@ function defaultSpawn(
   const proc = spawn(command, args, {
     cwd: options.cwd,
     env: options.env,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'],
   });
   let stderr = '';
   proc.stdout.resume();

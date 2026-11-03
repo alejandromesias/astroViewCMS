@@ -1,9 +1,9 @@
 # Phase 2 design: `cms-server`, single tenant
 
-Written 2026-10-31. Status: **approved by the user on 2026-10-31**, with every call below. [WORKPLAN-PHASE-2.md](WORKPLAN-PHASE-2.md) turns it into steps and tasks, and the
+Written 2026-10-31. Status: **approved by the user on 2026-10-31**, with every call below. [WORKPLAN-PHASE-2.md](../Workplans/WORKPLAN-PHASE-2.md) turns it into steps and tasks, and the
 decisions in section 4 are SYSTEM-DESIGN.md's D17 to D22.
 
-[SYSTEM-DESIGN.md](SYSTEM-DESIGN.md) stays the authority; its roadmap (section 9) links here, and [README.md](README.md) maps every document. This document adds
+[SYSTEM-DESIGN.md](SYSTEM-DESIGN.md) stays the authority; its roadmap (section 9) links here, and [README.md](../README.md) maps every document. This document adds
 what phase 2 needs and the design left open. Where they disagree, this one
 says so and points to the decision.
 
@@ -87,11 +87,11 @@ From the repo and SYSTEM-DESIGN, unchanged:
 - TypeScript without a build step (Node 26 type stripping, `.ts` imports, no
   `enum` or `namespace`). One `*.test.ts` per source file. Comments on every
   function and route. LF only.
-- [IMPLEMENTATION-RECOMMENDATIONS.md](IMPLEMENTATION-RECOMMENDATIONS.md):
+- [IMPLEMENTATION-RECOMMENDATIONS.md](../Guidelines/IMPLEMENTATION-RECOMMENDATIONS.md):
   hostile keys (`Map`, `Object.hasOwn`, `Object.fromEntries`), validate the
   shape of everything read, guards with visible effects, dependency
   injection with real defaults.
-- [QUALITY-TOOLING.md, "Adding a workspace package"](QUALITY-TOOLING.md#adding-a-workspace-package):
+- [QUALITY-TOOLING.md, "Adding a workspace package"](../Guidelines/QUALITY-TOOLING.md#adding-a-workspace-package):
   every line of the checklist from the first commit. The guardrails list
   their scope by path, so a package they don't list is unchecked
   (quality-tooling review, 2026-10-29, QUALITY-TOOLING-PLAN.md step 10; this
@@ -103,7 +103,7 @@ From the repo and SYSTEM-DESIGN, unchanged:
 - `cms-server` starts the renderer's `build.ts` and the preview node as
   **child processes**, never by import. A process boundary is the only way
   the CMS app touches site code.
-- **The build folder must be inside the workspace** ([README.md](README.md) section 4, gotchas):
+- **The build folder must be inside the workspace** ([README.md](../README.md) section 4, gotchas):
   builds resolve packages from `astroViewCMS/node_modules`. So in phase 2
   the site's working copy lives in the workspace, in a gitignored `.cms/`
   folder, and uses the workspace's packages. Installing a site's own
@@ -367,12 +367,17 @@ as static files on the CMS origin (section 5.8).
   included, into the codecs.
 - **Revision** **(call)**: a SHA-256 of the document's canonical text,
   shortened. For a document that has a file to itself, the file's bytes.
-  For a `file()` entry, the canonical form of that entry's parsed value alone
-  (JSON with sorted keys, dates as ISO strings; refined in the work plan,
-  task 2.0c, so the build and `cms-server` agree without sharing a codec). So
-  editing two different entries of `testimonials.json` doesn't conflict.
-  The same function runs in the build (5.1 item 3) and in `cms-server`, so
-  it lives in the shared contract package.
+  For a `file()` entry, the **raw value**: the entry as the file's own parser
+  reads it (Astro's loader options, so unquoted dates are `Date`), without its
+  `id` (or `slug`), canonical JSON (sorted keys, dates as ISO strings). It is
+  **not** the value after the collection schema: the schema can add defaults
+  or drop keys it doesn't declare (Astro's store drops `id`), and then the
+  build and `cms-server` would disagree (corrected 2026-11-03, WORKPLAN 2.0c).
+  So editing two different entries of `testimonials.json` doesn't conflict.
+  The same function, `revisionOfEntry` in the shared contract package, runs
+  in the build (5.1 item 3) and in `cms-server`; each side parses the file
+  with the same options. For an object-keyed file, `revisionOfKeyedEntry` hashes
+  the whole value (the key is the id; review fix 2026-11-03).
 - **`PUT /api/changes`** (SYSTEM-DESIGN section 4), in this order:
   1. parse the body with Zod;
   2. check every `baseRevision` against the working copy. Any mismatch:
@@ -647,8 +652,9 @@ the git credential helper.
   as the remote, seeded from `sample-site`, with a second clone playing the
   developer who pushes. Every row of "Done when" (section 1) has an e2e
   test.
-- Stryker and coverage floors as for the renderer. Floors are set after
-  the first full run, not guessed.
+- Stryker and coverage floors are the same for every package: coverage 80 lines,
+  90 functions, 80 branches, 80 statements (decided 2026-11-02, root `vitest.config.ts`);
+  Stryker `high` 90, `low` 80, `break` 75 (decided 2026-11-03, `stryker.config.json`).
 
 ## 6. Measured at the end of phase 2
 

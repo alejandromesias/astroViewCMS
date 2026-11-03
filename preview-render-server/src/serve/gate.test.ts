@@ -308,3 +308,23 @@ describe('the token exchange', () => {
     ).toEqual({ action: 'allow' });
   });
 });
+
+describe('the gate, edge cases', () => {
+  it('reads the real clock by default, so an expired token is refused', () => {
+    const expired = mintPreviewToken({
+      secret: TOKEN_SECRET,
+      site: SITE,
+      ttlSeconds: 60,
+      now: Math.floor(Date.now() / 1000) - 3600,
+    });
+    expect(
+      createGate(SETTINGS).check(get(`/index.html?preview_token=${expired}`)),
+    ).toEqual({ action: 'deny' });
+  });
+
+  it('reads a path that only spells the token parameter as a path, not as a token', () => {
+    expect(
+      gateAt().check(get('/preview_token', { cookie: cookieFor() })),
+    ).toEqual({ action: 'allow' });
+  });
+});

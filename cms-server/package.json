@@ -5,6 +5,8 @@
   "private": true,
   "scripts": {
     "typecheck": "tsc",
+    "start": "node src/main.ts ../cms.config.ts",
+    "dev:remote": "node scripts/dev-remote.ts",
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },

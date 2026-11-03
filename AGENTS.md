@@ -4,7 +4,7 @@ Guidance for AI agents and human reviewers working in this repo. `claude.md` has
 
 ## What this repo is
 
-A Tina-style in-memory preview renderer for Astro sites. Two first-party packages (`preview-render-server`, `preview-protocol`), plus two sample Astro sites used only as test inputs. See `DOCS/SYSTEM-DESIGN.md` and `DOCS/PREVIEW-RENDER-SERVER.md`.
+A Tina-style in-memory preview renderer for Astro sites. Two first-party packages (`preview-render-server`, `preview-protocol`), plus two sample Astro sites used only as test inputs. See `DOCS/Designs/SYSTEM-DESIGN.md` and `DOCS/PREVIEW-RENDER-SERVER.md`.
 
 ## Code Review Rules
 
@@ -53,7 +53,7 @@ Unit tests sit beside their source as `*.test.ts`. Review them with the code the
 ### Notes, not code
 
 - `HANDOFF.md`, `DOCS/Handoffs/`: session handoff notes.
-- `DOCS/MUTATION-WEAK-SPOTS.md`, `DOCS/MODULE-GRAPH.md`, `DOCS/VISUAL-CHECKS-ON-SAMPLE-SITE.md`, `DOCS/QUALITY-TOOLING-PLAN.md`: working notes and generated analysis. Skim only if the review touches their subject.
+- `DOCS/Historic/MUTATION-WEAK-SPOTS.md`, `DOCS/MODULE-GRAPH.md`, `DOCS/Guidelines/VISUAL-CHECKS-ON-SAMPLE-SITE.md`, `DOCS/Historic/QUALITY-TOOLING-PLAN.md`: working notes and generated analysis. Skim only if the review touches their subject.
 
 ### Excluded from coverage and mutation on purpose
 
@@ -67,4 +67,4 @@ Glue files with top-level side effects, covered by the e2e suite rather than uni
 - Do not flag style that Biome already enforces; run `npm run check` instead.
 - Run targeted tests only. Never run the full Vitest suite.
 - Never commit without being asked.
-- `npm run check` (fast), `-- --e2e`, `-- --mutation`, `-- --all`: see `DOCS/QUALITY-TOOLING.md`.
+- `npm run check` (fast), `-- --e2e`, `-- --mutation`, `-- --all`: see `DOCS/Guidelines/QUALITY-TOOLING.md`.

@@ -3,7 +3,7 @@
 > **Historical (task 0.3, 2026-10-27).** Kept as a manual checklist for the
 > sample's additions. The automated checks that replaced most of it are the
 > end-to-end and browser suites of task 1.8 (see
-> [WORKPLAN-PHASE-0-1.md](WORKPLAN-PHASE-0-1.md) and [QUALITY-TOOLING.md](QUALITY-TOOLING.md)).
+> [WORKPLAN-PHASE-0-1.md](../Workplans/WORKPLAN-PHASE-0-1.md) and [QUALITY-TOOLING.md](QUALITY-TOOLING.md)).
 
 Working notes, written while doing WORKPLAN-PHASE-0-1.md task 0.3. Every addition was smoke-tested with
 `astro build` in `sample-site/` (page count noted per step).

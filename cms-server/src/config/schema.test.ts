@@ -33,7 +33,8 @@ function rejection(raw: unknown): Array<{ path: string; message: string }> {
 
 const ORIGIN = 'must be an http or https origin: scheme, host and port only';
 const SITE_DIR = 'siteDir must be a relative path inside the repo';
-const PREVIEW_DIR = 'previewSiteConfig must be a relative path inside the repo';
+const PREVIEW_DIR =
+  'previewSiteConfig must be a relative path inside the workspace';
 const MEDIA_DIR = 'media.folder must be a relative path inside the site';
 
 describe('parseConfig defaults', () => {
@@ -232,6 +233,63 @@ describe('parseConfig rejections', () => {
         origins: { cms, preview: 'http://localhost:4401' },
       }),
     ).toEqual([{ path: 'origins.cms', message: ORIGIN }]);
+  });
+
+  it('refuses an origin that carries a password', () => {
+    expect(
+      rejection({
+        ...minimal(),
+        origins: {
+          cms: 'https://:secret@example.com',
+          preview: 'https://preview.example',
+        },
+      }),
+    ).toEqual([
+      {
+        path: 'origins.cms',
+        message: 'must be an http or https origin: scheme, host and port only',
+      },
+    ]);
+  });
+
+  it('accepts a previewSiteConfig with a colon that is not after a drive letter', () => {
+    expect(() =>
+      parseConfig({ ...minimal(), previewSiteConfig: 'sites/a:b.ts' }),
+    ).not.toThrow();
+  });
+
+  it('reports each refusal of an origin, a folder or a nested group as a custom issue', () => {
+    const codesOf = (raw: unknown): string[] => {
+      try {
+        parseConfig(raw);
+      } catch (error) {
+        if (error instanceof ZodError)
+          return error.issues.map((issue) => issue.code);
+        throw error;
+      }
+      throw new Error('expected a rejection');
+    };
+    expect(
+      codesOf({
+        ...minimal(),
+        origins: { cms: 'https://a.example/x', preview: 'https://b.example' },
+      }),
+    ).toEqual(['custom']);
+    expect(
+      codesOf({
+        ...minimal(),
+        origins: { cms: 'https://a.example', preview: 'https://a.example' },
+      }),
+    ).toEqual(['custom']);
+    expect(codesOf({ ...minimal(), previewSiteConfig: '../x.ts' })).toEqual([
+      'custom',
+    ]);
+    expect(
+      codesOf({
+        ...minimal(),
+        collections: { posts: { newEntryFormat: 'toml' } },
+      }),
+    ).toEqual(['custom']);
   });
 
   it('refuses a missing origin', () => {

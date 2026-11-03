@@ -150,8 +150,22 @@ function collectArray(
 }
 
 function setOp(path: JSONPath, value: unknown): Op {
-  if (value === undefined) throw notJson();
+  if (value === undefined || !isJsonValue(value)) throw notJson();
   return { kind: 'set', path, value };
+}
+
+// Functions, symbols and bigints have no JSON form. jsonc-parser writes a nested one as an empty value
+// and a top-level one as invalid text, or throws a TypeError, so they are refused at any depth here.
+function isJsonValue(value: unknown): boolean {
+  if (
+    typeof value === 'function' ||
+    typeof value === 'symbol' ||
+    typeof value === 'bigint'
+  )
+    return false;
+  if (Array.isArray(value)) return value.every(isJsonValue);
+  if (isRecord(value)) return Object.values(value).every(isJsonValue);
+  return true;
 }
 
 function applyOp(text: string, op: Op, style: Style): string {

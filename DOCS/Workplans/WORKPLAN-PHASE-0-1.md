@@ -3,12 +3,12 @@
 Written 2026-10-26, closed 2026-10-31. **This is the record of phases 0 and 1;
 don't add tasks to it.** The current plan is
 [WORKPLAN-PHASE-2.md](WORKPLAN-PHASE-2.md), and the map of all documents is
-[README.md](README.md). It was named `WORKPLAN.md` until 2026-10-31, so older
+[README.md](../README.md). It was named `WORKPLAN.md` until 2026-10-31, so older
 code comments and handoffs say "WORKPLAN task 1.x": they mean this file.
 
-[SYSTEM-DESIGN.md](SYSTEM-DESIGN.md) is the authority. Sections 2, 3, 4 and 9
-moved to [README.md](README.md), and section 8 to SYSTEM-DESIGN.md section 12
-and [PHASE-2-DESIGN.md](PHASE-2-DESIGN.md). Their headings stay here, so
+[SYSTEM-DESIGN.md](../Designs/SYSTEM-DESIGN.md) is the authority. Sections 2, 3, 4 and 9
+moved to [README.md](../README.md), and section 8 to SYSTEM-DESIGN.md section 12
+and [PHASE-2-DESIGN.md](../Designs/PHASE-2-DESIGN.md). Their headings stay here, so
 references by section number still land.
 
 ## 1. Where we are
@@ -17,7 +17,7 @@ references by section number still land.
 |---|---|
 | Preview render server: build once, render in memory, page render route, bridge v2 (1.6), test editor v2 (1.7) | done |
 | TypeScript without a build step, Vitest unit tests (counts in each task's status) and end-to-end suite with budget tests on `sample-site` (`preview-render-server/test/e2e/`) | done |
-| Quality tooling: strict `tsc`, Biome, Knip, dependency-cruiser, osv-scanner, Stryker, pre-commit hook ([QUALITY-TOOLING.md](QUALITY-TOOLING.md)) | done; browser tests are part of it (1.8); Skott replaced by dependency-cruiser (1.8b) |
+| Quality tooling: strict `tsc`, Biome, Knip, dependency-cruiser, osv-scanner, Stryker, pre-commit hook ([QUALITY-TOOLING.md](../Guidelines/QUALITY-TOOLING.md)) | done; browser tests are part of it (1.8); Skott replaced by dependency-cruiser (1.8b) |
 | System design | done, agreed by the user on 2026-10-26 |
 | Per-island save | parked and removed (0.1, 1.1) |
 | Richer sample site | `sample-site/` in the workspace with the 0.3 additions; preview-built unchanged (0.4) |
@@ -41,15 +41,15 @@ astroViewCMS/
 
 ## 2. Working rules
 
-Moved to [README.md section 2](README.md#2-working-rules) on 2026-10-31.
+Moved to [README.md section 2](../README.md#2-working-rules) on 2026-10-31.
 
 ## 3. Environment notes
 
-Moved to [README.md section 3](README.md#3-environment-notes-windows-11-node-26-16-gb-ram).
+Moved to [README.md section 3](../README.md#3-environment-notes-windows-11-node-26-16-gb-ram).
 
 ## 4. Gotchas already hit
 
-Moved to [README.md section 4](README.md#4-gotchas-already-hit).
+Moved to [README.md section 4](../README.md#4-gotchas-already-hit).
 
 ## 5. The new sample site
 
@@ -347,7 +347,7 @@ covered before the overlay is built. As in task 0.3, add rather than replace.
 | **YAML comments** in each new file, including one inside a list | round-trip writing in phase 2 |
 | Both new blocks on `landing/home-v2` | the blocks render on a page |
 
-- Add the visual checks to `DOCS/VISUAL-CHECKS-ON-SAMPLE-SITE.md`.
+- Add the visual checks to `DOCS/Guidelines/VISUAL-CHECKS-ON-SAMPLE-SITE.md`.
 - **Done when:** `astro build` passes, and `documents.json` lists the new
   documents with format `yaml`, the `stats` entries with their `entryKey`, and
   the authors collection with both formats.
@@ -815,10 +815,10 @@ and 1.6a found.
 
 ### 1.8 Tests
 
-Read [TESTING-RECOMMENDATIONS.md](TESTING-RECOMMENDATIONS.md) before writing
+Read [TESTING-RECOMMENDATIONS.md](../Guidelines/TESTING-RECOMMENDATIONS.md) before writing
 any test here: fixtures per test, exact values, near-miss negatives,
 whole-table `it.each`, one test file per source file. Every test this task adds
-joins the quality flow in [QUALITY-TOOLING.md](QUALITY-TOOLING.md) (step 5
+joins the quality flow in [QUALITY-TOOLING.md](../Guidelines/QUALITY-TOOLING.md) (step 5
 below); a test that no gate runs doesn't count as done.
 
 **Order of work.** The steps below are grouped by kind, not by order. Work in
@@ -1257,10 +1257,10 @@ old mentions.
 Moved on 2026-10-31:
 
 - "Work already decided for phase 2" is part of
-  [PHASE-2-DESIGN.md](PHASE-2-DESIGN.md) (media, editor origins, build-time
+  [PHASE-2-DESIGN.md](../Designs/PHASE-2-DESIGN.md) (media, editor origins, build-time
   flags, protocol mismatch, codecs, the guardrails).
 - "Work already decided for phase 3" and "Known issues to carry" are in
-  [SYSTEM-DESIGN.md section 12](SYSTEM-DESIGN.md#12-annex-later-phases-decided-work-and-known-issues).
+  [SYSTEM-DESIGN.md section 12](../Designs/SYSTEM-DESIGN.md#12-annex-later-phases-decided-work-and-known-issues).
 - "Decisions waiting for the user" were settled on 2026-10-31: deleting a
   referenced document is blocked unless the same save fixes the referrers
   (PHASE-2-DESIGN.md 4.3, moved from phase 3 to phase 2), and collections
@@ -1268,7 +1268,7 @@ Moved on 2026-10-31:
 
 ## 9. Running things
 
-Moved to [README.md section 5](README.md#5-running-things).
+Moved to [README.md section 5](../README.md#5-running-things).
 
 ## 10. Measurements
 

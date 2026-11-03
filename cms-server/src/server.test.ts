@@ -1,12 +1,19 @@
 import { once } from 'node:events';
 import fs from 'node:fs';
-import type { Server } from 'node:http';
+import { request as httpRequest, type Server } from 'node:http';
 import net, { type AddressInfo } from 'node:net';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { fakeAppDeps } from '../test/helpers/app-deps.ts';
 import { makeTestRoot, removeTestRoot } from '../test/helpers/git.ts';
+import { createApp } from './http/app.ts';
 import { startServer } from './server.ts';
+
+// createApp is a spy that calls the real one, so a test can hand the server a fake app for one call.
+vi.mock('./http/app.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./http/app.ts')>();
+  return { ...actual, createApp: vi.fn(actual.createApp) };
+});
 
 function close(server: Server): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -80,6 +87,143 @@ async function uploadServer() {
   };
   return { root, stagingDir, server: await startServer(deps, 0) };
 }
+
+// The bridge's own branches: the listen error path, the response copy, the 500 answer, and the Request
+// built from the Node request (method, URL, headers, a repeated header). Each test gives the server a
+// fake app for one call, so the bridge is what runs.
+function fakeAppOnce(
+  fetch: (request: Request) => Response | Promise<Response>,
+): void {
+  vi.mocked(createApp).mockReturnValueOnce({
+    fetch,
+  } as unknown as ReturnType<typeof createApp>);
+}
+
+describe('startServer: bridge edge cases', () => {
+  it('rejects when the port is already in use, with its error code', async () => {
+    const first = await startServer(fakeAppDeps(), 0);
+    try {
+      const { port } = first.address() as AddressInfo;
+      await expect(startServer(fakeAppDeps(), port)).rejects.toMatchObject({
+        code: 'EADDRINUSE',
+      });
+    } finally {
+      await close(first);
+    }
+  });
+
+  it('keeps no error listener once it is listening, so a later server error is not swallowed', async () => {
+    const server = await startServer(fakeAppDeps(), 0);
+    try {
+      const later = new Error('later');
+      expect(() => server.emit('error', later)).toThrow(later);
+    } finally {
+      await close(server);
+    }
+  });
+
+  it('copies the status, headers and body of the app response', async () => {
+    fakeAppOnce(
+      () => new Response('ok', { status: 201, headers: { 'x-app': 'yes' } }),
+    );
+    const server = await startServer(fakeAppDeps(), 0);
+    try {
+      const { port } = server.address() as AddressInfo;
+      const response = await fetch(`http://127.0.0.1:${port}/x`);
+      expect(response.status).toBe(201);
+      expect(response.headers.get('x-app')).toBe('yes');
+      expect(await response.text()).toBe('ok');
+    } finally {
+      await close(server);
+    }
+  });
+
+  it('answers a JSON 500 and logs the error when the app throws', async () => {
+    const error = new Error('boom');
+    fakeAppOnce(() => {
+      throw error;
+    });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const server = await startServer(fakeAppDeps(), 0);
+    try {
+      const { port } = server.address() as AddressInfo;
+      const response = await fetch(`http://127.0.0.1:${port}/x`);
+      expect(response.status).toBe(500);
+      expect(response.headers.get('content-type')).toBe('application/json');
+      expect(await response.json()).toEqual({ error: 'internal_error' });
+      expect(log).toHaveBeenCalledWith(error);
+    } finally {
+      log.mockRestore();
+      await close(server);
+    }
+  });
+
+  it('gives the app the method, the URL on the loopback base, and the headers of a GET', async () => {
+    let seen: Request | undefined;
+    fakeAppOnce((request) => {
+      seen = request;
+      return new Response('ok');
+    });
+    const server = await startServer(fakeAppDeps(), 0);
+    try {
+      const { port } = server.address() as AddressInfo;
+      await fetch(`http://127.0.0.1:${port}/a/b?q=1`, {
+        headers: { 'x-test': 'yes' },
+      });
+      expect(seen?.method).toBe('GET');
+      // The URL base is the fixed loopback address, never the Host header, and has no port.
+      expect(seen?.url).toBe('http://127.0.0.1/a/b?q=1');
+      expect(seen?.headers.get('x-test')).toBe('yes');
+    } finally {
+      await close(server);
+    }
+  });
+
+  it('gives the app a HEAD request, which has no body to stream', async () => {
+    let seenMethod: string | undefined;
+    fakeAppOnce((request) => {
+      seenMethod = request.method;
+      return new Response(null, { status: 200 });
+    });
+    const server = await startServer(fakeAppDeps(), 0);
+    try {
+      const { port } = server.address() as AddressInfo;
+      const response = await fetch(`http://127.0.0.1:${port}/x`, {
+        method: 'HEAD',
+      });
+      expect(response.status).toBe(200);
+      expect(seenMethod).toBe('HEAD');
+    } finally {
+      await close(server);
+    }
+  });
+
+  it('passes every value of a repeated request header to the app, as separate values', async () => {
+    let seen: string[] = [];
+    fakeAppOnce((request) => {
+      seen = request.headers.getSetCookie();
+      return new Response('ok');
+    });
+    const server = await startServer(fakeAppDeps(), 0);
+    try {
+      const { port } = server.address() as AddressInfo;
+      // An array-valued header is sent as one line per value.
+      const req = httpRequest({
+        host: '127.0.0.1',
+        port,
+        path: '/c',
+        headers: { 'Set-Cookie': ['a=1', 'b=2'] },
+      });
+      req.end();
+      const [res] = await once(req, 'response');
+      res.resume();
+      await once(res, 'end');
+      expect(seen).toEqual(['a=1', 'b=2']);
+    } finally {
+      await close(server);
+    }
+  });
+});
 
 describe('startServer: uploads stream through the bridge', () => {
   it('stores a PNG upload and answers 201', async () => {

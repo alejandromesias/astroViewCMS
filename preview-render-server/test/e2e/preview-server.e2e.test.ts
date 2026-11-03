@@ -6,11 +6,11 @@ import { describe, expect, inject, it } from 'vitest';
 import {
   BASE,
   CLIENT,
-  type Rendered,
-  SITE,
   post,
+  type Rendered,
   readJson,
   render,
+  SITE,
 } from './client.ts';
 
 // Three expected differences from the prerendered page; everything else must

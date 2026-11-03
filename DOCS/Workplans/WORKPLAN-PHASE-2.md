@@ -1,23 +1,23 @@
 # Work plan, phase 2: `cms-server`, single tenant
 
 Written 2026-10-31, after the user approved
-[PHASE-2-DESIGN.md](PHASE-2-DESIGN.md). Steps 2.0 to 2.13 below turn that
+[PHASE-2-DESIGN.md](../Designs/PHASE-2-DESIGN.md). Steps 2.0 to 2.13 below turn that
 design into tasks. The step numbers differ from the first scaffold of the
 same day: git core, the read API and the front server became steps of their
 own once the dependencies were worked out.
 
 Read in this order:
 
-1. [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md), the authority (sections 1 to 6, 9,
+1. [SYSTEM-DESIGN.md](../Designs/SYSTEM-DESIGN.md), the authority (sections 1 to 6, 9,
    11; D17 to D22 are this phase's decisions).
-2. [PHASE-2-DESIGN.md](PHASE-2-DESIGN.md): what phase 2 builds and why. If
+2. [PHASE-2-DESIGN.md](../Designs/PHASE-2-DESIGN.md): what phase 2 builds and why. If
    this plan and the design disagree, fix this plan.
 3. This file: steps, tasks, status, measurements.
 
 Working rules, environment notes, gotchas and commands are in
-[README.md](README.md) and apply here unchanged. Before writing code, read
-[IMPLEMENTATION-RECOMMENDATIONS.md](IMPLEMENTATION-RECOMMENDATIONS.md);
-before writing tests, [TESTING-RECOMMENDATIONS.md](TESTING-RECOMMENDATIONS.md).
+[README.md](../README.md) and apply here unchanged. Before writing code, read
+[IMPLEMENTATION-RECOMMENDATIONS.md](../Guidelines/IMPLEMENTATION-RECOMMENDATIONS.md);
+before writing tests, [TESTING-RECOMMENDATIONS.md](../Guidelines/TESTING-RECOMMENDATIONS.md).
 
 ## 1. Where we are
 
@@ -25,7 +25,7 @@ before writing tests, [TESTING-RECOMMENDATIONS.md](TESTING-RECOMMENDATIONS.md).
 |---|---|
 | Phase 2 design | approved by the user, 2026-10-31 |
 | Decisions D17 to D22 | logged in SYSTEM-DESIGN section 11 |
-| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); next: wave 5 (2.1g first, it gates 2.5a; 2.1i, the start code, alongside); the rest not started |
+| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); 2.1g (codecs scope; the rest of its scope moved to 2.1h with deadlines), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a done 2026-11-03 (wave 5 complete, branch `phase-2-wave-5`); next: wave 6 (see the wave order note); the rest not started |
 
 **Done when:** every row of PHASE-2-DESIGN.md section 1 passes. Section 5
 below maps each row to the test that proves it.
@@ -88,9 +88,9 @@ Rules for running tasks in parallel:
 | 2 | 2.0b, 2.0c, 2.1a, 2.8b |
 | 3 | 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8c, 2.8d |
 | 4 | 2.1f (alone, first), 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a |
-| 5 | 2.1g, 2.1i, 2.3c, 2.4b, 2.4c, 2.5a (after 2.1g) |
-| 6 | 2.1h, 2.5b, 2.6a, 2.9a, 2.10a |
-| 7 | 2.5c, 2.9c, 2.10b |
+| 5 | 2.1g (codecs only, 2026-11-03), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a (after 2.1g) |
+| 6 | 2.0j (alone, `[build]`), 2.1h (now also `repo.ts`, before 2.5b), 2.5b, 2.6a, 2.9a, 2.10a |
+| 7 | 2.5c (`server.ts` survivors from 2.1h first), 2.9c, 2.10b |
 | 8 | 2.6b, 2.7b, 2.7c, 2.9d |
 | 9 | 2.9e, 2.10c |
 | 10 | 2.10d, 2.10g, 2.11b |
@@ -98,6 +98,13 @@ Rules for running tasks in parallel:
 | 12 | 2.10f, 2.11d |
 | 13 | 2.12b |
 | 14 | 2.12c [user], 2.13a, 2.13b, 2.13c |
+
+Wave 5 order (2026-11-03): the orchestrator writes `codecs/by-format.ts`, rebuilds `sample-site`
+alone in the main checkout and refreshes `cms-server/test/fixtures/bundle/` **before** 2.4b or 2.4c
+starts (2.4b's revision-equality test compares against today's files). Then 2.4b and 2.4c run in
+parallel; 2.5a waits for 2.1g.
+
+Wave 6 order (2026-11-03): 2.1h comes first in the wave for the `repo.ts` part (seed `repo.test.ts` from a small fixture, then mutate `repo.ts` and `documents/`), because 2.1h must finish those before 2.5b. 2.5b may start in parallel with the tests, but is not closed before `repo.ts` has a score. 2.6a, 2.9a and 2.10a do not wait for 2.1h.
 
 **Critical path** (the longest chain; it decides the elapsed time): 2.0a →
 2.1a → 2.3a → 2.3b → 2.3c → 2.5b → 2.5c → 2.9d → 2.9e → 2.10d → 2.10e →
@@ -194,12 +201,18 @@ done. Item 6 of the design (the front server) is step 2.8.
 
 - `revisionOf(text)` in the contract package: SHA-256, hex, first 16
   characters.
-- What gets hashed **(call, refines design 5.3)**: a document with a file
-  of its own: the file's bytes. A `file()` entry: the canonical form of the
-  entry's parsed value (JSON with sorted keys, dates as ISO strings), so the
-  build and `cms-server` agree without sharing a codec, and formatting
+- What gets hashed **(call, refines design 5.3; corrected 2026-11-03)**: a
+  document with a file of its own: the file's bytes. A `file()` entry: the
+  raw value of the entry, as its file's parser reads it, without its id, in
+  canonical JSON (`revisionOfEntry`, preview-contract). Only for an array file:
+  in an object-keyed file the key is the id, so the value is hashed whole
+  (`revisionOfKeyedEntry`; review fix 2026-11-03, an `id` or `slug` field there is data). Not the value after
+  the collection schema: the store's data has the schema applied, so it can
+  hold defaults the file lacks and lacks keys the schema drops (`id`, in the
+  sample). The build and `cms-server` each parse the file with the same
+  Astro options, so they agree without sharing a codec, and formatting
   changes in the shared file don't touch other entries' revisions. Export
-  `canonicalEntryText(value)` next to `revisionOf`.
+  `canonicalEntryText(value)` and `revisionOfEntry(entry)` next to `revisionOf`.
 - `documents.json` gets `revision` per document. The manifest also lists the
   images under `src/` as `{ path, hash }` (`images.json`), so `cms-server`
   can tell which saved images the bundle lacks (D12).
@@ -215,6 +228,15 @@ done. Item 6 of the design (the front server) is step 2.8.
   documents are hashed raw; an entry with no file of its own hashes
   `canonicalEntryText` of its data from Astro's data store. Evidence: the four
   `testimonials` revisions are distinct; the reflow unit test passes.
+- **Correction (2026-11-03):** the build hashed the store's data for `file()`
+  entries, which is the schema-applied value. The cause, found by diffing
+  `testimonials/t-ana`: the store drops `id`, which the schema does not declare.
+  The fix: `withRevisions` reads each `file()` document's file with Astro's
+  options and hashes `revisionOfEntry` of the raw entry (without its id). The
+  store's data is used only for a document with no file. Unit tests: a schema
+  default does not move a revision; an unquoted YAML date hashes as a `Date`;
+  a missing entry is a build error that names the file and the entry. Two
+  earlier `testimonials` revisions in the fixture (`t-ana`) changed with it.
 
 #### 2.0d Manifests inside `outDir`, relative paths — start now · DONE 2026-11-01
 
@@ -360,6 +382,20 @@ done. Item 6 of the design (the front server) is step 2.8.
   was already covered by `integration.test.ts` ('writes schema.json for a
   collection that has no loader'). A temporary `notes/ghost` document made
   the test fail, then was reverted. Production code unchanged.
+
+#### 2.0j Read-only flag per collection in `schema.json` — after 2.5a · [build]
+
+- Added 2026-11-03 (user approved), from the 2.5a open item. `planWrite` cannot tell that a *new* key
+  belongs to a read-only collection: `documents.json` carries `editable: false` only per existing
+  document, and the `readOnlyCollections` list stays in the preview site config.
+- Add `readOnly?: boolean` to `collectionSchemaJson` (`preview-contract/src/schema.ts`; the object is
+  strict, so the reader would otherwise reject it). `integration.ts` writes it as `true` for each name in
+  `site.readOnlyCollections`, and leaves it out otherwise. `cms-server` passes it to `planWrite`, which
+  refuses a create in such a collection with `read-only`.
+- **Done when:** a contract test (flag accepted, absent flag still valid), an `integration.test.ts` case
+  (`fixtures` carries `readOnly: true`, another collection does not), a `plan-write.test.ts` case, and
+  the `cms-server/test/fixtures/bundle/` `schema.json` refreshed after a `sample-site` build (run alone,
+  as for 2.4c). Runs before 2.5c; it shares `integration.ts` with nothing else open.
 
 ### 2.1 Package scaffold and guardrails — after 2.0a, 2.0f
 
@@ -621,7 +657,7 @@ done. Item 6 of the design (the front server) is step 2.8.
     unchanged. 2.1g owns this. Nothing committed. Logs: `/tmp/check-e2e-1.log`,
     `/tmp/check-all-1.log`.
 
-#### 2.1g Stryker over the new code — after 2.1f, 2.2c, 2.2d, 2.3b · [build]
+#### 2.1g Stryker over the new code — after 2.1f, 2.2c, 2.2d, 2.3b · [build] · DONE 2026-11-03 (codecs scope; the rest is 2.1h)
 
 - **Scope narrowed (2026-11-02):** this task covers the code that saves and
   the code from waves 1 to 3; the wave 4b code (bundle reader, media,
@@ -635,9 +671,9 @@ done. Item 6 of the design (the front server) is step 2.8.
   round trip could notice. Add the missing tests; do not change the global
   `break` threshold here (2.13c).
 - Runs before 2.5a, which is the first task to save through the codecs.
-- **Done when:** the survivors are killed or each is written down as
+- **Done when (superseded by the 2026-11-03 split below):** the survivors are killed or each is written down as
   equivalent, and the Result block gives the score per folder.
-- **Heads-up, look at this first (2026-11-02):** `npm run check -- --all` is red on Stryker
+- **Heads-up (2026-11-02, superseded by the 2026-11-03 split below):** `npm run check -- --all` is red on Stryker
   alone: 88.88% against the `break: 90` (found in 2.1f; no `src` file changed in that task).
   The drop comes from `cms-server` code from waves 1 to 3 (`server.ts` about 36%, `codecs`
   about 73%). Before the new-code triage above, read the per-file report, find where the
@@ -645,6 +681,66 @@ done. Item 6 of the design (the front server) is step 2.8.
   equivalent). `server.ts` is the bridge that 2.7a rewrites: do not add tests for it. If
   its survivors cannot be killed that way, say so in the Result and ask before touching
   `thresholds.break` (2.13c). 2.1f stays DONE with this open.
+- Gaps settled (calls, 2026-11-02, supersede the heads-up above where they differ):
+  - **`server.ts` is final.** 2.7a already made `toRequest` stream the body, so the
+    "do not add tests for it" line is void: kill its survivors like any other file.
+  - **Done when (replaces the one above):** every survivor in scope is killed or written
+    down as equivalent, and the Result gives the score per folder plus one full-run
+    score. Getting `npm run check -- --all` green moves to 2.1h, which already ends
+    green or raises the `break` question with the user. 2.1g does not wait for 2.1h.
+  - **Method:** triage with `npx stryker run --mutate "<files>"` (TESTING 7). `stryker.config.json`
+    mutates all of `cms-server/src/**`, so a full run also covers the wave 4b files
+    (2.1h's); they are not triaged here. Do one full run at the end for the score.
+  - **Order:** `codecs` first, then `server.ts`, then `preview-contract/src/token.ts` (the
+    preview-token code, weakest package at 83.1%), then `src/git`, `src/config`,
+    `preview-render-server/src/serve/` and `preview-config.ts`, `src/log.ts`.
+  - **After 2.3c merges,** re-run `--mutate "cms-server/src/git/**"` before closing, so the
+    git scores include 2.3c's files. Do not touch `thresholds.break` (2.13c).
+  - **Machine:** `[build]`, alone. 2.1i's code may be written meanwhile, but its e2e must
+    not run during the Stryker run.
+
+- **Scope split (2026-11-03, supersedes "Done when" and "Order" above):** the triage did not
+  finish, and most of what is left does not touch 2.5a. 2.1g shrinks to what 2.5a writes
+  through; the rest moves to 2.1h with a deadline each (below). Nothing leaves `mutate`:
+  a file is only excluded with the user's approval.
+  - **2.1g now covers:** `codecs/frontmatter.ts` and `codecs/file-entries.ts` (never mutated
+    yet), and the 33 survivors in `codecs/yaml.ts`. Use the scoped config
+    (`stryker.cms-server.config.mjs`, one run per file). For yaml, prefer round-trip tests
+    (`write(original, parse(original))` returns `original`; parse after write gives the value)
+    over one test per mutant. A property-test library (`fast-check`) is a new dev dependency:
+    ask the user first.
+  - **Done when (final):** every survivor in those three files is killed or written down as
+    equivalent, and the Result gives their scores. The full-run score is read in 2.1h.
+  - **Start (2026-11-03):** run `yaml.ts` alone first and record the survivor count before writing
+    tests. The 33 predates `d0a4999`'s new tests, which may already have killed some of them.
+  - **No new dependency:** `fast-check` is not added. Round-trip tests on the sample files and
+    targeted cases cover the 33 survivors. Ask again only if the yaml score stalls.
+  - **What gates what** (scores from the 2026-11-03 triage; "never mutated" means in no report):
+
+    | File | State | Gates |
+    |---|---|---|
+    | `codecs/frontmatter.ts`, `file-entries.ts` | never mutated | **2.5a (this task)** |
+    | `codecs/yaml.ts` | 90.8%, 33 survivors | **2.5a (this task)**: every YAML and frontmatter write |
+    | `codecs/json.ts` | 98.3%, `setOp` fixed | done |
+    | `server.ts` | 31.7% (18 survived, 10 uncovered) | 2.5c, the first saving route (2.1h) |
+    | `git/repo.ts` | run blocked | 2.5b (2.1h) |
+    | `config/load.ts` | 53.8% | startup only (2.1h) |
+    | `gate.ts` L121, `static.ts` L84 | open | none, but security code (2.1h) |
+    | git `ops`/`mutex`/`exec`, `config/schema`, `log`, `token.ts` | 96 to 100% | done |
+- **Result, codecs (2026-11-03, 2.1g, scoped config):** `yaml.ts` 90.8 (33 survived, 1 no coverage) to 92.95 (26 survived, 0 no coverage); `frontmatter.ts` 99.41 (1 survived, no test added); `file-entries.ts` 98.75 (2 survived, no test added). Eight yaml mutants are now killed: three tests in `yaml.test.ts` (a root list's header stays on top when a commented item moves to the front; a string becomes a map or list and reads back; a binary value is replaced as a whole node), and one for line 134 (an inline comment is dropped when a scalar becomes a map). Line 134's comment said the comment moves to the new node, but the code moves it only to a new scalar, and a comment on a map prints inside the map; the comment now says it is dropped, and the test pins that. Equivalent, not tested on purpose (current line numbers): yaml L44, L78 (an empty schema name reads as core); L47 (eol matters only for CRLF or a missing final newline); L83-85 (linePos fallbacks; they rely on yaml setting linePos on every parse error, a library contract not proven here); L118 (3), L187, L193, L198, L237, L239, L241, L242, L244, L250, L253 (3), L256, L277 (2), L338, L343 (guards, loop bounds, or operand cases that never change output); frontmatter L180 (CodecError stores column undefined either way); file-entries L115 (2) (a removed key stays undefined; JSON drops it, YAML treats it as removal). Unresolved: none in scope. Config: `vitest.mutation.cms-server.config.ts` now also excludes `**/http/bundle-routes.test.ts`, which copies `sample-site` and fails the Stryker dry run in the sandbox (the same reason as `repo.test.ts`). Its tests no longer count toward kills in scoped runs, so 2.1h must check the scores of the files they cover. Checks: `cms-server/src/codecs` 6 files, 235 passed; biome and tsc clean. Thresholds unchanged. Nothing committed.
+- **Result, serve scope (2026-11-03, scoped config, `--force`):** static.ts 80.0 to 88.7 (HEAD opens no file, a stream error ends the response, a malformed path is refused and a file named `.undefined` is not served); gate.ts 90.9 (unchanged in Stryker, see open); settings.ts 97.6; preview-config.ts 88.9 to 94.4 (only ENOENT is swallowed; EISDIR and errors without a code propagate). Equivalent, not tested on purpose:
+  - `gate.ts` `eq !== -1` and its unary mutant (L104): a pair without `=` reaches the real verifier with the whole pair, which no signed token can be; the name check already needs `eq >= 13`.
+  - `gate.ts` `url ?? '/'` as `''` (L116): `new URL('')` is `/`. The `catch` returning undefined (L123) and the `firstPair` fallback (L145) are unreachable or implicit undefined: splitQuery skips empty segments, and every non-empty segment yields a pair.
+  - `gate.ts` `nowSeconds` emptied (L152): `preview-contract` defaults an undefined `now` to its own clock.
+  - `static.ts` path guard (L66): the realpath check in `isInsideRoot` refuses the same paths, so the early exit only saves a stat.
+  - `static.ts` `statSync` options (L92) and its catch (L93): `statOf` returns undefined for any error, so `throwIfNoEntry` is not observable. The realpath catch (L85-86) is unreachable after a successful stat.
+  - `static.ts` `req.url ?? '/'` as `''` (L37): same URL, as for gate.
+  - `settings.ts` split regex without `+` (L41): the empty items it adds are filtered out.
+  - `preview-config.ts` default `'utf8'` as `''` (L26): `readFileSync` returns a Buffer that `JSON.parse` reads as UTF-8; `parseJson`'s catch returning undefined (L48) is implicit.
+  - `exec.ts` L233 `<` to `<=` on 0x20: a space is already caught by `/\s/`.
+- **Open (serve), logged 2026-11-03, not chased:** gate.ts L121 (`mark === -1 ? '' : ...`): a hand-applied `query: false` fails 37 gate tests, but Stryker still reports the mutant Survived although 54 tests cover it. The gate score (90.9%) may understate the tests. Re-check the sandbox run when the gate scope is next triaged. static.ts L84 (the realpath check) survives with an existing junction test; not analysed.
+
+- **Result, git scope (2026-11-03, scoped config, 2.3c code):** ops.ts 96.5% (136 mutants), mutex.ts 97.1%. Added: a `showAt` refusal of a ref that starts with a dash (`invalid-argument`), and a site folder with a trailing slash. Equivalent, not tested on purpose: `worktreeAdd`'s `mkdir` (L104): `git worktree add` creates the folder, which the existing worktree test shows without it; `parseNameStatus`'s `?? ''` fallbacks (L151-152): git always outputs status and path pairs; the trailing-slash regex as `/\/$/` (L70): `posix.normalize` leaves at most one trailing slash; the `LockTimeoutError` and waiter-timeout bodies in mutex.ts are Stryker Timeouts, which count as detected. `repo.test.ts` is still outside the scoped config (it seeds from `sample-site`); the full Stryker run is still blocked by that.
 
 #### 2.1h Stryker over the wave 4b code — after 2.1g · [build]
 
@@ -656,10 +752,32 @@ done. Item 6 of the design (the front server) is step 2.8.
   Media and `fs/atomic.ts` first: a wrong cap or a lost `media.json` update
   is the costly survivor.
 - Runs before 2.9c, which builds on the supervisor and the bundle reader.
+- **Wave 5 code, added to this task (2026-11-03), each with its deadline:**
+  - `cms-server/src/documents/` (`read.ts`, `revision.ts`): **before 2.5b and 2.5c.** Run again
+    after any change to the revision rule, since its revision tests depend on it.
+  - `cms-server/src/documents/plan-write.ts` (added 2026-11-03; 2.5a built it after this list was written): **before 2.5c**, the first caller. Its 43 tests were written with the code, so expect survivors in the path and error branches.
+  - `cms-server/src/schema/walk.ts`: **before 2.6a and 2.7b.**
+  - `cms-server/src/codecs/by-format.ts`: with the codec batch (it was not mutated before 2.5a; do it with `documents/`).
+  - `preview-render-server/src/manifest/documents.ts` (`withRevisions`) and
+    `preview-contract/src/revision.ts` (`revisionOfEntry`): **once, now.** The 2.0c fix has landed
+    (`b137063`), so mutating them now avoids a second pass.
+- **Moved here from 2.1g (2026-11-03), each with its deadline:**
+  - `cms-server/src/server.ts` (31.7%): **before 2.5c.** Kill its survivors like any other file.
+  - `git/repo.ts`: **before 2.5b.** The Stryker run is blocked because `stryker.config.json` ignores
+    `sample-site`, which some repo tests need. Fix the cause first: seed those tests from a
+    small fixture under `cms-server/test/fixtures/`. The other option, letting `sample-site` into
+    the sandbox, copies a whole site into every sandbox.
+  - `config/load.ts` (53.8%), `config/secrets.ts` (2 survivors), `git/exec.ts` (1 survivor), the
+    remaining `ops.ts`/`mutex.ts` survivors, `serve/` and `preview-config.ts`, `log.ts`: with the rest of 2.1h.
+  - `serve/gate.ts` L121: Stryker says Survived, but a hand-applied mutant fails 37 tests. Run that
+    one file once with `coverageAnalysis: "off"`. If the mutant is then killed, the per-test coverage
+    mapping was wrong: write it down as a tool artifact, with that evidence, and stop. `serve/static.ts`
+    L84 (realpath check): analyse it here.
 - **Done when:** as 2.1g, with the score per folder; `npm run check -- --all`
-  green, or the `break` question raised with the user (2.13c).
+  green, or the `break` question raised with the user (2.13c). The `--all`
+  outcome is owned here, not by 2.1g (call, 2026-11-02). The moved items above are in scope.
 
-#### 2.1i Start code — after 2.3b, 2.4a, 2.7a, 2.9b, 2.11a
+#### 2.1i Start code — after 2.3b, 2.4a, 2.7a, 2.9b, 2.11a · DONE 2026-11-03
 
 - Added 2026-11-02. Wave 4 left every part injectable and nothing that
   builds the real server: `startServer(deps)` exists, but no code makes
@@ -686,6 +804,78 @@ done. Item 6 of the design (the front server) is step 2.8.
   starts `main.ts` against a harness repo and a built bundle, gets
   `/api/status`, `/api/schema` and `/`, then stops it and finds no child
   process left. A manual `npm start -w cms-server` opens the editor page.
+- Gaps settled (calls, 2026-11-02):
+  - **Shape:** `src/main.ts` is thin: it calls `run(argv, env, deps?)` and wires signals.
+    `run` (own file, own test) returns `{ server, supervisor, stop() }`; `stop()` closes the
+    server and calls `supervisor.stop()`. Killing a process on Windows never runs a `SIGTERM`
+    handler, so the e2e calls `run` in-process (the preview node is still a real child) and
+    asserts the preview port is free after `stop()`. A unit test covers the signal wiring with
+    an injected emitter.
+  - **No orphan node:** the preview node exits when its stdin closes (a few lines in the
+    renderer's `start.ts`, with a test), and the supervisor keeps stdin open as a pipe. A
+    hard-killed cms-server then leaves no node behind on Windows. If this grows, move it to
+    2.9c and say so in the Result.
+  - **Ports:** the CMS listens on the port of `origins.cms`, the node on the port of
+    `origins.preview`, both bound to `127.0.0.1` (design 5.1). A missing or non-numeric port
+    fails at start with a plain message. Known limit for the Result: a proxied deployment
+    (phase 4) needs separate listen fields.
+  - **Paths:** `cmsDir` is `dirname(configPath)/.cms`; the config sits inside the workspace
+    (`.cms/` is gitignored there, and builds need the workspace packages, design section 3).
+    `previewSiteConfig` is a workspace path, resolved against the config's folder (the
+    design's example is `preview-render-server/sites/...`). Change the schema message
+    (`config/schema.ts`, `previewSiteConfig`) from "inside the repo" to "inside the workspace"
+    and its test. Confirm the resolution against `start.ts` (2.0e).
+  - **Bundle types:** the supervisor's `BundleRef` is `{ bundleId, dir }`, the bundle
+    source's is `{ dir, identity }`; `main` maps one to the other. Without `--bundle`, the source
+    returns `null` (the 503 `no-bundle` and `bundle: null` behaviour exists).
+  - **Failures:** `ensureRepo` fails: nothing listens, a plain message, exit code 1. The node
+    fails to start: log it and keep listening (2.9c reports it in `/api/status`).
+  - **Order:** config, secrets, `ensureRepo`, media deps, editor page, bundle source, listen,
+    then the supervisor on the bundle. One log line at start with origins and ports.
+  - **`start` script:** `"start": "node src/main.ts"` in `cms-server/package.json` (type
+    stripping, no build).
+  - **Manual run (user call):** a local bare repo, not GitHub. A script
+    (`cms-server/scripts/dev-remote.ts`, run through an npm script) seeds a bare repo from
+    `sample-site` into `.dev/remote.git` (gitignored, outside `.cms/`, which is the CMS's own
+    state) and writes a gitignored `cms.config.ts` with that `file://` remote, built from a
+    committed `cms.config.example.ts`. Add `.dev/` and `cms.config.ts` to `.gitignore`. The e2e
+    reuses the harness seeding, not this script. A real GitHub remote is a manual smoke check
+    in 2.10a and 2.10d.
+  - **E2e:** reuse the bundle `supervisor.e2e` builds; only this e2e run is `[build]`. Run it
+    after 2.1g's Stryker run.
+- **Result (2026-11-03, Haiku agent, reviewed by the lead):** done; not committed.
+  - **Files added:** `cms-server/src/run.ts` (+ `run.test.ts`, 21 tests), `signals.ts` (+
+    test), `main.ts` (thin), `scripts/dev-remote.ts` (+ `test/dev-remote.test.ts`),
+    `cms.config.example.ts`, `preview-render-server/src/stdin-exit.ts` (+ test),
+    `cms-server/test/e2e/start.e2e.test.ts`.
+  - **Files changed:** `cms-server/package.json` (`start`, `dev:remote`), `.gitignore`
+    (`.dev/`, `cms.config.ts`), `config/schema.ts` and its test (message "inside the
+    workspace"), `preview/supervisor.ts` (node's stdin is a pipe), `preview-render-server/src/start.ts`
+    (exits when stdin closes), and the renderer test spawns that had `stdin: 'ignore'`, now `'pipe'`
+    (with `'ignore'` the node would exit at once).
+  - **Deviations:**
+    - `--bundle <dir>` is the renderer's build folder. The bundle source reads `<dir>/manifest`;
+      the supervisor gets `<dir>`.
+    - The start script is `node src/main.ts ../cms.config.ts`, so `npm start -w cms-server`
+      finds the repo-root config (npm runs scripts from `cms-server/`). Run with another config:
+      `node src/main.ts <path>`. Without an argument, the default is `cms.config.ts` in the
+      working folder, as the spec says.
+    - The e2e injects `loadConfig`. The real loader rejects the `..` in `previewSiteConfig`.
+      Only that path differs.
+  - **Evidence:** `tsc -p cms-server` and `tsc -p preview-render-server` clean. Biome clean on
+    the changed files (import order fixed in `run.ts`, `run.test.ts` and `start.ts`). Unit:
+    run, signals, dev-remote, schema, supervisor (136 passed) and stdin-exit (3). E2e
+    `start.e2e` (`run` in-process, a real preview child): 1 passed, run alone with no Stryker.
+    Manual: `npm run dev:remote -w cms-server`, then `npm start -w cms-server`: `/` answers
+    200 `text/html`, `/api/status` answers `{"bundle":null}`, `/api/schema` answers 503. Killed;
+    the port is free afterwards.
+  - **Known limits:** a proxied deployment (phase 4) needs separate listen fields. On Windows a
+    hard kill sends no SIGTERM, so the preview node ends through its stdin pipe. The e2e checks
+    the ports, not the process table. The bundle is read once at start (2.9c replaces the
+    source). A node that fails to start is logged, not reported in `/api/status` (2.9c). A hard
+    kill makes npm print "Lifecycle script `start` failed"; that is expected.
+  - **Left on disk (gitignored, from the manual run):** `.dev/`, `cms.config.ts`, `.cms/` at the
+    repo root.
 
 ### 2.2 Format codecs — after 2.1a · ∥ 2.3, 2.1b to 2.1d, 2.0
 
@@ -832,6 +1022,12 @@ fixtures.
     first place. A changed string keeps its quote style. Other changed scalars
     are replaced, carrying the inline comment: an in-place update kept `0x1F`'s
     hex format. After patching, `toJS()` must equal the value, else CodecError.
+  - **Known limit (found in 2.1g, accepted by the user 2026-11-03):** the inline
+    comment moves to a replacement node only when both the old and the new node
+    are scalars. Replacing a scalar that has an inline comment with a map or a
+    sequence drops that comment. Not pinned by a test (a test would fix the
+    behaviour in place); `yaml.ts` lines 134-137 survive Stryker for that reason.
+    Revisit if a real site needs it.
   - **Layout:** indent, `indentSeq`, line ending and final newline are read from
     the original. Known limit: 4-space indent with unindented sequences is not
     reproduced (the library indents them). Not in the sample; the tests cover
@@ -1124,7 +1320,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
     `npm run check` was not run, as instructed. `cmsDir` is injected and has no caller yet
     (2.3c, 2.9). A leftover `cms/work-next` is left to 2.10b, as the block says.
 
-#### 2.3c Mutex, commits, diffs, worktrees — after 2.3b
+#### 2.3c Mutex, commits, diffs, worktrees — after 2.3b · DONE 2026-11-03
 
 - One in-process async mutex around every repo operation (save, sync,
   publish) **(call; the design leaves locking to the builder)**, FIFO, with
@@ -1137,6 +1333,41 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   repeat it.
 - **Done when:** tests with the harness, including a `siteDir` variant and
   two operations racing for the mutex.
+- Gaps settled (calls, 2026-11-02): files in `cms-server/src/git/` (`mutex.ts` and the repo
+  operations file), one test file each.
+  - **Lock API:** `repo.locked(holder, tx => ...)`. The mutating methods (`commitSave`,
+    `worktreeAdd`, `worktreeRemove`) exist only on `tx`, so they cannot re-lock and deadlock;
+    the lock is not re-entrant. 2.5c takes the revision check, the writes and the commit inside
+    one `locked` call. Keep `tx` open to extension: 2.10a and 2.10b add `fetch` and the
+    re-apply as further `tx` methods. `showAt` and `changedPaths` work outside the lock: they
+    compare commits and do not touch the index.
+  - **Timeout:** only waiters time out, with a typed error that names the holder; the holder
+    is never killed. The timeout is a parameter, default about 30 s, sized for saves and syncs.
+    Publish must not hold the lock for minutes: 2.10d and 2.10e take it, note the commit,
+    release it, build on a worktree, then take it again and push only if `cms/work` has not
+    moved. This task only provides the lock; that design belongs to them.
+  - **`changedPaths`:** the plan text's `origin/<branch>..cms/work` is wrong for a diff.
+    After a fetch it would list upstream's changes as reversed edits. Use the merge-base form,
+    `git diff --name-status -z --no-renames origin/<branch>...cms/work`, limited to `siteDir`.
+    Returns `{ path, status }` with `status` created, modified or deleted; a type change (`T`)
+    maps to modified.
+  - **Paths:** callers pass site-relative paths and get them back site-relative. `siteDir` is
+    joined and stripped only here. `assertRelativePath` runs on every path.
+  - **`commitSave(paths, message)`:** the message is passed unchanged (2.10b adds trailers).
+    Stage with `add -A -- <paths>` (covers deletions) and commit those paths only. Assert HEAD
+    is on `cms/work`. Returns the new sha, or `null` when nothing changed. Hooks and signing
+    are already off in the repo config (2.3b).
+  - **`showAt(ref, path)`:** text, or `null` when the path is missing in that ref. Binary files
+    (images) are 2.7b's concern.
+  - **Worktrees:** in `.cms/<site>/worktrees/`; the directory must resolve inside that folder
+    (checked). `worktree add --detach`. `worktreeRemove` uses `--force`, then `worktree prune`.
+    Leftovers from a crash are pruned inside `ensureRepo`'s recovery (`repo.ts`), so it
+    happens in one place.
+  - **Tests:** two operations racing, FIFO order, a waiter timeout with an injected clock
+    (the error names the holder), release when the callback throws, a `siteDir` variant,
+    deleted and type-changed paths, a ref missing in `showAt`, a traversal path refused, and
+    a worktree added, removed and a crashed one pruned.
+- **Result (2026-11-03, closed out after the fact):** `cms-server/src/git/mutex.ts`, `ops.ts` and `repo.ts`, one test file each (first committed as WIP in `9c4875d`, reviewed with wave 5). Stryker (2.1g, git scope): `ops.ts` 96.5%, `mutex.ts` 97.1%; `repo.ts` has not been mutated (blocked, moved to 2.1h, before 2.5b). Re-checked 2026-11-03 on `phase-2-wave-5`: `cms-server/src/git` tests pass with the rest of the wave 5 scope (595 passed, 1 skipped, 21 files).
 
 ### 2.4 Bundle reader and read API — after 2.0b, 2.0c, 2.0d, 2.1c · ∥ 2.2, 2.3
 
@@ -1222,19 +1453,20 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
 
 - **Review fix (2026-11-02):** the build wrote `schema.json` only when the site had a content config, so a site without one gave a bundle the reader refused. The build now writes an empty `{}` in that case (`integration.ts`, test updated).
 
-#### 2.4b Read one document — after 2.4a, 2.2
+#### 2.4b Read one document — after 2.4a, 2.2 · DONE 2026-11-03
 
 - `GET /api/documents?key=` (design 5.3): `{ key, value, revision, file,
   format, editable, buildTime, buildTimeFields }`. Reads from the working
   copy through the codecs; Markdown and MDX answer `{ data, body }` (D2);
   `file()` entries by `entryKey`. The revision is computed from the
   working copy, never copied from the manifest, **with the same rule the
-  build used (2.0c; corrected 2026-11-02)**: a document that is one file
+  build uses (2.0c; corrected 2026-11-03)**: a document that is one file
   is `revisionOf(file bytes)`; a `file()` entry is
-  `revisionOf(canonicalEntryText(entry value))`, the entry's parsed value,
-  not the shared file's text. The parse must give the values Astro's data
-  store holds (the YAML codec's Astro options, so dates are `Date`), or
-  every entry looks changed. Put the rule in one function
+  `revisionOfEntry(raw entry)` (preview-contract), where the raw entry is
+  read from the file with the codec's Astro options (dates are `Date`) and
+  is not the store's schema-applied data. Without the same options every
+  entry looks changed. The 2.4b done-when test checks this against the
+  fixture. Put the rule in one function
   (`revisionOfDocument`) that 2.5b and 2.5c reuse. Read-only formats answer
   their flags without a `value`, as the stopgap route does. `404` for an
   unknown key.
@@ -1245,8 +1477,48 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   bundle fixture with its file unchanged, the route's revision equals the
   manifest's (JSON, YAML, Markdown, MDX and `file()` entries of both
   formats).
+- Gaps settled (calls, 2026-11-03):
+  - **Before the agent:** the orchestrator adds `cms-server/src/codecs/by-format.ts` (`json`, `yaml`,
+    `md`, `mdx` to their codecs, `null` for `toml` and `other`, with its own test; the YAML codec must
+    give `Date` for unquoted dates, as Astro does) and refreshes the bundle fixture (see 2.4c).
+  - **`revisionOfDocument`** lives in `cms-server/src/documents/`; only `revisionOf` and
+    `revisionOfEntry` stay in `preview-contract`. The working-copy root is the repo path that
+    2.1i's `run.ts` builds, joined with `siteDir`, passed in as an injected dep (no second way to find it).
+  - **Read once.** Read a file's bytes once, hash them, and decode the same buffer for the parse.
+  - **Unknown or missing.** A key not in the bundle is `404 unknown-document`; a bundle document whose
+    file is gone is `404 document-missing`. A document created by a save is not in the bundle: 2.5c
+    makes `?key=` check the changeset (2.5b may also report a missing file as deleted).
+  - **Codec error on read.** Answer `200` with `editable: false` forced (a `.md` with TOML frontmatter
+    has format `md`, which the manifest does not mark read-only), no `value`, and
+    `error: { code, message, line?, column? }` from `CodecError`. Keep `revision` when it can be
+    computed: a one-file document hashes its bytes even if they do not parse; a `file()` entry in a
+    broken shared file gets `revision: null` (so the list item's `revision` is nullable).
+  - **List route.** `revision` comes from `revisionOfDocument` over the working copy, so the list and
+    `?key=` agree. `title` from `title` or `name`. A parse error in one file never fails the list: that
+    document has no `title` and carries the error flag. Read each shared `file()` file once per
+    request; skip `editable: false` documents. No cache across requests.
+  - **Tests.** Edit the `key` branch of `http/bundle-routes.ts` (it answers `501` today). The
+    revision-equality test compares the refreshed fixture `documents.json` to today's `sample-site` files.
+- **Result (2026-11-03):** `GET /api/documents?key=` and the list route's revisions, from one function.
+  - **Built:** `cms-server/src/documents/revision.ts` (`revisionOfDocument`, used by the list and `?key=`
+    routes, and reused by 2.5b and 2.5c) and `read.ts` (the document reader), each with its test. The
+    working-copy dep is `RepoState.siteFolder` (repo path joined with `siteDir`), wired in `run.ts` as
+    `workingCopy`. `bundle-routes.ts` registers the document routes only when the bundle and the working
+    copy are both given. `test/helpers/working-copy.ts` is a temp-copy helper.
+  - **Decisions beyond the text:**
+    - A document with no file lists `revision: null` and the error flag; `?key=` answers
+      `404 document-missing`. Three existing list expectations changed for this.
+    - A codec error on read uses the error code `parse-error`, answered `200` with `editable: false`
+      forced and no `value`.
+    - A missing entry is `404 document-missing`. Only `ENOENT` counts as a missing file. A path that
+      leaves the working copy counts as missing.
+    - Read-only documents get their revision hashed but are never parsed.
+    - `?key=` with an empty value is `404 unknown-document`.
+  - **Evidence:** 225 tests pass across 14 files (`cms-server` documents, http, bundle, run, codecs, schema),
+    including the revision-equality test against the six fixture documents. Biome and `tsc` clean on the
+    touched files. The subagent's own count was 126 across 8 files.
 
-#### 2.4c Schema walker — after 2.4a
+#### 2.4c Schema walker — after 2.4a · DONE 2026-11-03
 
 - `walkMarkers(collectionSchema, value, visit)` yields `{ path, marker }`
   for `cms: 'reference'` and `cms: 'image'` fields through objects, arrays,
@@ -1259,10 +1531,78 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
 - **Done when:** tests on the sample's real `schema.json`: the landing
   blocks' `discriminatedUnion` with testimonial references, `authors`
   avatars, nested arrays.
+- Gaps settled (calls, 2026-11-03):
+  - **Fixture refresh is the orchestrator's**, run alone in the main checkout before 2.4b and 2.4c
+    start; 2.4a's tests must still pass on the new fixture. The agent runs no build.
+  - **Visit.** `visit({ path: (string | number)[], marker, value })`, read-only. The value is passed
+    untouched (2.6a parses string or `{ id }`). A reference array yields one result per item, at the
+    item's path.
+  - **`oneOf` / `anyOf`.** If the union has a `const` discriminator, walk only the branch whose `const`
+    matches the value; if none matches, yield nothing (validation reports it, and 2.6a must not see
+    phantom references). With no discriminator, walk every branch whose `type` fits, after resolving
+    `$ref`, and accept `type` as an array (`[X, 'null']`). Deduplicate on path plus marker.
+  - **Not in the real schema.** The sample's `schema.json` has no `$ref`, `$defs` or `anyOf`: test them
+    with synthetic schemas, including a cyclic `$ref`. Also `additionalProperties` (records) and
+    `prefixItems` (tuples), if the walker supports them.
+  - **Location.** A new file under `cms-server/src/schema/` (the agent names it); no existing file edited.
+- **Result (2026-11-03):** `cms-server/src/schema/walk.ts` (`walkMarkers`, `CmsMarker`, `MarkerHit`,
+  `MarkerVisitor`, `SchemaNode`, `PathSegment`) and `walk.test.ts` (19 tests). Real-schema tests use the
+  landing testimonials union (4 references) and the authors avatar image. Verified by the orchestrator:
+  19 walker tests and the 2.4a bundle tests pass; `tsc` and Biome clean.
+  - **Choices beyond the text:** the cycle guard is per value position, so a `$ref` cycle that consumes
+    no value stops, and a recursive `$ref` through data (a tree) walks the data. A missing or null value
+    is not reported. A schema with no `type` fits any value. An unresolved `$ref`, or one not of the form
+    `#/$defs/<name>`, throws. A marker on an array reports each item.
 
 ### 2.5 Saving — after 2.2, 2.3c, 2.4 · ∥ 2.6a, 2.7a, 2.8, 2.9a
 
-#### 2.5a Write planner — after 2.2, 2.4a, 2.1g
+#### 2.5a Write planner — after 2.2, 2.4a, 2.1g · DONE 2026-11-03
+
+- **Scope of the 2.1g gate (2026-11-03):** "after 2.1g" means 2.1g's final done-when: the Stryker
+  triage of `frontmatter.ts`, `file-entries.ts` and `yaml.ts`, the files this planner writes through.
+  It does not wait for `server.ts` (2.5c), `repo.ts` (2.5b) or the other items moved to 2.1h.
+  See "What gates what" in 2.1g.
+
+- **Gaps settled (calls, 2026-11-03).** These supersede the shape and error text below where they differ.
+  - **Shape.** `planWrite(changes, ctx)` takes the whole save. `changes` is a list of
+    `{ op: 'update' | 'delete', key, value }` or `{ op: 'create', collection, id, value }`.
+    `ctx` gives `readText(path)` (the working copy, relative to `siteDir`), the loader data from
+    `schema.json`, and `newEntryFormat` from the config. The planner keeps a map of path to running
+    text and returns one `FileOp` per path (`{ op: 'write', path, text }` or `{ op: 'delete', path }`).
+    Paths are relative to `siteDir`; 2.5c joins them to the repo root. Pure: no file access.
+  - **Create in a `file()` collection.** The loader pattern is the file itself (for example
+    `src/content/testimonials.json`, with no `base`). The new entry goes into that file through
+    `changeEntry` with `op: 'add'`. A missing file is refused with `file-missing`; the planner never
+    creates a shared file.
+  - **Create in a glob collection.** The path is `base/id.ext`. `ext` is `newEntryFormat`, or else the
+    first extension of the pattern. The path, relative to `base`, must match the pattern (`path.matchesGlob`,
+    which is Node's built-in). A mismatch is refused with `pattern-mismatch`. The homepage pattern
+    `**/-*.{md,mdx}` is checked: `-index.md` matches and `index.md` does not. The existing ids carry the
+    dash, so valid creates keep it.
+  - **Matcher.** `path.matchesGlob` is used, with no new dependency. `picomatch` is in `node_modules`
+    only through Astro and tinyglobby, so a direct import would need your approval. Node 26 prints no
+    warning for it.
+  - **Refusals.** `..` segments, absolute paths, backslashes and a leading `/` in an id are refused.
+    A create whose file already exists is `exists`. A path outside `siteDir` is `outside-site`. Two
+    changes to the same key in one save, or a delete and a create of the same key, are `duplicate-key`.
+    Several changes to one file are applied in order on the running text.
+  - **Delete.** A `file()` entry is removed with `changeEntry` `remove`; the file stays and may become
+    `[]` or `{}` (2.2d). Only a glob document that is a file of its own produces `{ op: 'delete' }`
+    for its file.
+  - **Format.** `codecFor(format)` supplies the codec. `toml` and `other` are refused with `unwritable`.
+    Read-only documents (`editable: false`, including documents in `readOnlyCollections`) are refused
+    with `read-only`.
+  - **Markdown create.** `markdownCodec.write('', { data, body })` writes the frontmatter and the body
+    (checked 2026-11-03: `---\ntitle: Hi\n---\nText\n`), and with empty data it writes only the body.
+  - **Errors.** One `WritePlanError` with `code` (`read-only`, `unreadable`, `outside-site`,
+    `pattern-mismatch`, `exists`, `file-missing`, `duplicate-key`, `unwritable`), the document `key`, and
+    `file`, `line` and `column` when a `CodecError` caused it. The planner converts `CodecError`, so 2.5c
+    maps one error type to `422`.
+  - **Done when (added):** tests for each code above; an `add` to `testimonials.json` and to
+    `stats.yaml`; a homepage create that matches and one that does not; a Markdown create from an empty
+    file; and two changes to one shared file in one save.
+  - **Resolved (2026-11-03):** the planner uses Node's `path.matchesGlob`, with no new dependency
+    (approved by the user).
 
 - A pure function from a change (`update`, `create` or `delete`, with its
   value) and the document's record to file operations (write text, delete
@@ -1279,7 +1619,12 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   `file()` documents, a new entry in a mixed JSON and YAML collection, and
   an id with slashes.
 
+- **Result (2026-11-03, 2.5a):** `cms-server/src/documents/plan-write.ts` and `plan-write.test.ts` (43 tests). Scoped runs over `documents` and `codecs`: 9 files, 310 passed; biome and tsc clean. Nothing committed. Choices where the gaps block was silent: `ctx` also carries `documents` (the bundle's records by key, for file, format and entryKey), `collections` (schema.json loaders) and `config` (`collections`, for `newEntryFormat`); `readText` is async, so `planWrite` is async; every CodecError becomes `unwritable` with file, line and column; an update or delete of a key the bundle lacks is `unwritable`; a `..`, absolute, backslash, or empty or `.` segment is `outside-site`; a `file()` create checks for an existing entry first, so a duplicate is `exists`; `yml` maps to yaml; a delete takes no value.
+  - **Open (for 2.5c):** a create into a read-only collection is not refused. The list is `readOnlyCollections` in the preview site config; `documents.json` carries it only per existing document, and a new key has no record. Options: a read-only flag per collection in `schema.json` (a small preview-render-server change), or cms-server reads the site config. Recommended: the `schema.json` flag, since the fixtures collection can be empty.
+
 #### 2.5b Changeset state from git — after 2.3c, 2.4b
+
+- **Also (2026-11-03, from 2.5a):** expose the changeset's created documents in the shape of a bundle document record (key, file, format, `entryKey`), so 2.5c can add them to `planWrite`'s `ctx.documents`. Without them, a second save that edits a document the first save created is refused. Add a test for it.
 
 - `GET /api/changes`: the documents that differ between `origin/<branch>`
   and `cms/work`, each with its saved value (or deleted) and its **base
@@ -1291,7 +1636,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   changeset has one entry with the original base revision; a deleted
   document and a created one appear.
 
-#### 2.5c `PUT /api/changes` — after 2.5a, 2.5b, 2.0h
+#### 2.5c `PUT /api/changes` — after 2.5a, 2.5b, 2.0h, 2.0j
 
 - The pipeline of design 5.3, as a list of stages sharing a context, so
   later tasks add stages without editing each other's code:
@@ -1310,9 +1655,14 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
      restore from git), commit on `cms/work` under the mutex;
   7. answer `200 { revisions, warnings, rebuild }`. `rebuild: true` when a
      changed field is listed in the document's `buildTimeFields` (D1).
+- Note (2026-11-03): `GET /api/documents?key=` (2.4b) only knows documents in the bundle. This task
+  makes it also answer for documents created by a save, by checking the changeset (2.5b).
 - **Done when:** tests for a good save, two documents in one save, a stale
   revision (`409`), a `422`, a refinement that threw, a failed rename
   restoring the tree, and a build-time field.
+- **From 2.5a (2026-11-03), to settle before the agent runs:**
+  - `planWrite` takes the bundle's documents in `ctx.documents` and refuses an update or delete of a key it lacks (`unwritable`). A second save that edits a document the first save created would be refused. 2.5c must add the changeset's created documents (2.5b) to `ctx.documents`, with a test.
+  - A create into a read-only collection is not refused: settled by 2.0j (flag per collection in `schema.json`, approved 2026-11-03). 2.5c passes it to `planWrite`.
 
 ### 2.6 Delete guard — after 2.2, 2.4c, 2.5c · ∥ 2.7, 2.8, 2.9
 
@@ -1690,9 +2040,9 @@ request-path rules apply (no `child_process`, no `fs` except the allowlist).
     `knip.json`, the coverage excludes and Stryker name the new route file.
   - **Docs still mentioning `editorOrigins` (not rewritten, for 2.13b):**
     `preview-render-server/README.md:49`, `DOCS/PREVIEW-RENDER-SERVER.md`
-    lines 67, 145, 160 and 310, `DOCS/QUALITY-TOOLING.md:355`, and
-    `DOCS/PHASE-2-DESIGN.md:510` (describes the removal, so it is current).
-    `DOCS/SYSTEM-DESIGN.md:1334` and `DOCS/WORKPLAN-PHASE-0-1.md` are history.
+    lines 67, 145, 160 and 310, `DOCS/Guidelines/QUALITY-TOOLING.md:355`, and
+    `DOCS/Designs/PHASE-2-DESIGN.md:510` (describes the removal, so it is current).
+    `DOCS/Designs/SYSTEM-DESIGN.md:1334` and `DOCS/Workplans/WORKPLAN-PHASE-0-1.md` are history.
   - **Evidence:** `preview-render-server` unit tests: `bridge.test.ts`,
     `integration.test.ts`, `preview-config.test.ts`, `serve/settings.test.ts`
     pass (176 tests). Typecheck clean. Browser suite (`npm run test:browser`):
@@ -2214,11 +2564,16 @@ Design 5.8. This is still a test tool, not the phase 3 editor.
 #### 2.13c Quality floors — after 2.12b
 
 - Set the coverage floors and the Stryker threshold for `cms-server` from
-  the first full run (not guessed), as for the renderer. Per-file Stryker
+  the first full run (not guessed), as for the renderer (superseded: the coverage floors are decided, see below). Per-file Stryker
   floors only if the user wants them.
 - **Coverage floors are decided (user, 2026-11-02):** 80 lines, 90 functions, 80 branches,
   80 statements for every package, until a further assessment (QUALITY-TOOLING). Only the
   Stryker threshold is open here.
+- **Stryker thresholds are decided (user, 2026-11-03):** `high` 90, `low` 80, `break` 75 in
+  `stryker.config.json` (were 80, 60, 90). This closes the Stryker `break` question here, and the
+  "do not touch `thresholds.break`" notes in 2.1g, 2.1h and the handoffs that cite 90. The
+  per-package question in the remark below is still open: it asks whether to add gates per
+  package, not what the global break is.
 - **Carried in (2026-11-01):** the first Stryker run over the new files
   (`cms-server/src/codecs`, `src/git`, `src/config`, and the token and gate
   code) has not happened; 2.2a, 2.2b and 2.3a each logged that. Run it before
@@ -2265,8 +2620,9 @@ Design 5.8. This is still a test tool, not the phase 3 editor.
 D17 to D22 are logged in SYSTEM-DESIGN section 11. Refinements made while
 planning (they stay here until the design is next edited):
 
-- Revisions of `file()` entries hash the canonical value of the entry, not
-  the codec's serialization (2.0c; refines design 5.3).
+- Revisions of `file()` entries hash the raw value of the entry, without its
+  id, not the store's schema-applied data nor the codec's serialization (2.0c,
+  corrected 2026-11-03; refines design 5.3).
 - The contract package is a new `preview-contract`, so `preview-protocol`
   stays free of Zod (2.0a).
 - `collections.<name>.newEntryFormat` lives in `cms.config.ts` (2.1c).

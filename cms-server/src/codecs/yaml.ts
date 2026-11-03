@@ -120,8 +120,9 @@ function patchNode(
       return node;
     }
   }
-  // A changed string keeps its quote style. Anything else becomes a new node, and an inline comment
-  // on the old scalar moves to it.
+  // A changed string keeps its quote style. Anything else becomes a new node. An inline comment moves
+  // to it only when it is a scalar too: a map or list would print the comment inside itself, so it
+  // is dropped.
   if (
     isScalar(node) &&
     typeof before === 'string' &&

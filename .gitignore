@@ -9,3 +9,7 @@ reports/
 # cms-server: working copies and bundles, and the temp folders its tests create
 .cms/
 .test-tmp/
+
+# the local dev remote (a bare repo seeded from sample-site) and the config that points at it (WORKPLAN 2.1i)
+.dev/
+cms.config.ts

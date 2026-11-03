@@ -1,6 +1,6 @@
 # Testing recommendations
 
-Rules for writing tests in this repo. They come from raising the Stryker mutation score from 77% to about 91%. The details and the original cases are in `DOCS/MUTATION-WEAK-SPOTS.md`, and the tools are described in `DOCS/QUALITY-TOOLING.md`.
+Rules for writing tests in this repo. They come from raising the Stryker mutation score from 77% to about 91%. The details and the original cases are in `DOCS/Historic/MUTATION-WEAK-SPOTS.md`, and the tools are described in `DOCS/Guidelines/QUALITY-TOOLING.md`.
 
 A good test fails when the code changes. Line coverage only shows that the code ran. The mutation score shows whether the tests would notice a change.
 
@@ -34,7 +34,7 @@ Many surviving mutants were in code whose effect the test could not see.
 - Regexes and matchers: add near-miss negatives (one character off, the wrong extension, a missing anchor). More positive cases do not kill regex mutants.
 - Lookup tables and alias maps: use `it.each` over the whole table, not one sample row.
 - Limits: test every value from 0 to the limit, and one past it.
-- User keys: include `__proto__`, `constructor` and `toString` as inputs wherever a key comes from content or config. See `DOCS/IMPLEMENTATION-RECOMMENDATIONS.md` §1.
+- User keys: include `__proto__`, `constructor` and `toString` as inputs wherever a key comes from content or config. See `DOCS/Guidelines/IMPLEMENTATION-RECOMMENDATIONS.md` §1.
 - Hand-kept lists: test them with real data (for example, every JS reserved word).
 
 ## 5. Dependencies, stubs and fakes
@@ -57,7 +57,7 @@ A file can score well only through other files' tests and still have no direct t
 - The result that counts is the Stryker re-run, not the green test run.
 - Read the surviving mutants from `reports/stryker-incremental.json`.
 - Mutants in module-level constants ("static" mutants) often survive under the Vitest runner, because modules are not reloaded for each mutant. Check them by hand and treat them as noise.
-- Floors: coverage floors are per package (root `vitest.config.ts`): 97% for the renderer, a little under the measured numbers for the others. Stryker breaks below 90%. Stryker breaks below 90%.
+- Floors: coverage floors are per package (root `vitest.config.ts`): 80 lines, 90 functions, 80 branches and 80 statements for every package (decided 2026-11-02; see QUALITY-TOOLING.md). Stryker fails the run below 75% (`break`); above 90% is healthy and below 80% needs attention (`high` 90, `low` 80; see QUALITY-TOOLING.md).
 
 ## 8. Agent and shell notes
 

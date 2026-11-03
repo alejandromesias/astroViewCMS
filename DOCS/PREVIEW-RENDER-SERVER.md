@@ -3,9 +3,9 @@
 Covers `preview-render-server/` and `preview-protocol/` as of the end of phase 1
 (2026-10-31). It describes the page-render model: the whole page is rendered
 in memory with a content overlay, and the bridge patches the result into the
-live page. The decisions behind it are in [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md)
+live page. The decisions behind it are in [SYSTEM-DESIGN.md](Designs/SYSTEM-DESIGN.md)
 (sections 3 and 11, D1 to D16); the tasks that built it are in
-[WORKPLAN-PHASE-0-1.md](WORKPLAN-PHASE-0-1.md). The first version, which rendered one component per
+[WORKPLAN-PHASE-0-1.md](Workplans/WORKPLAN-PHASE-0-1.md). The first version, which rendered one component per
 island, is gone; its build, bundling, image and performance findings are kept
 below and marked where they were measured on the old sample.
 
@@ -509,7 +509,7 @@ Full rows, with the method for each, are in WORKPLAN-PHASE-0-1.md section 10.
 | Everything | `npm run check` from the repo root | every gate, with `-- --e2e` and `-- --all` for the longer ones |
 
 The gates, thresholds and how to read them are in
-[QUALITY-TOOLING.md](QUALITY-TOOLING.md). How the unit tests are set up:
+[QUALITY-TOOLING.md](Guidelines/QUALITY-TOOLING.md). How the unit tests are set up:
 
 - **Real Astro rendering.** `vitest.config.ts` uses Astro's own Vite config, so
   tests compile real `.astro` fixtures and render them through the actual

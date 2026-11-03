@@ -1,5 +1,5 @@
 # Every entry needs a reason and an expiry (at most three months out). An
-# expired entry makes `npm run audit` fail again. See DOCS/QUALITY-TOOLING-PLAN.md step 5.
+# expired entry makes `npm run audit` fail again. See DOCS/Historic/QUALITY-TOOLING-PLAN.md step 5.
 
 # minimatch 10.2.6 <- @stryker-mutator/core 10.1.1, the latest Stryker, which pins ~10.2.4.
 # The only fix is minimatch 11.0.1 (major, outside Stryker's range); no 10.x release is patched,

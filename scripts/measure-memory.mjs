@@ -6,7 +6,7 @@
 // pattern as the budget test). rss is process.memoryUsage().rss from
 // /__dev/memory, as in the figures of SYSTEM-DESIGN.md. Private memory comes from
 // the OS: the private working set on Windows, Private_Clean + Private_Dirty in
-// /proc/<pid>/smaps_rollup on Linux. DOCS/QUALITY-TOOLING.md says how to run it.
+// /proc/<pid>/smaps_rollup on Linux. DOCS/Guidelines/QUALITY-TOOLING.md says how to run it.
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';

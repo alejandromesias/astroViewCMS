@@ -1,4 +1,4 @@
-// Module-graph rules. DOCS/QUALITY-TOOLING-PLAN.md step 9 has the reasoning;
+// Module-graph rules. DOCS/Historic/QUALITY-TOOLING-PLAN.md step 9 has the reasoning;
 // DOCS/MODULE-GRAPH.md lists the hand checks these rules replaced.
 const SRC = '^preview-render-server/src/';
 const TESTS = '(\\.test\\.ts$|/test/)';

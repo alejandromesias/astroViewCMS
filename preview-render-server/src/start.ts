@@ -5,12 +5,13 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { choosePort, parseCliOptions } from './cli-options.ts';
 import {
-  createFrontServer,
   type AdapterHandler,
+  createFrontServer,
 } from './serve/front-server.ts';
 import { createGate } from './serve/gate.ts';
 import { readServeSettings } from './serve/settings.ts';
 import { loadSiteConfig } from './site-config.ts';
+import { exitWhenStdinCloses } from './stdin-exit.ts';
 
 // --root and --out pick the site folder and the output folder (see
 // resolveSiteConfig). --port sets the port ahead of PORT and the config's port.
@@ -49,3 +50,5 @@ const server = createFrontServer({
   gate,
 });
 server.listen(Number(process.env.PORT), process.env.HOST);
+// cms-server holds the other end of stdin, so this node ends with cms-server (stdin-exit.ts, 2.1i).
+exitWhenStdinCloses(process.stdin, () => process.exit(0));
