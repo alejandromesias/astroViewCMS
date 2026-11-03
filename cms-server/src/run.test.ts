@@ -226,6 +226,7 @@ describe('run', () => {
             cmsOrigin: CMS_ORIGIN,
           },
           bundle: expect.any(Object) as BundleSource,
+          workingCopy: 'repo',
         },
         4400,
       );

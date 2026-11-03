@@ -37,7 +37,7 @@
     "format": "yaml",
     "entryKey": "editors",
     "buildTime": false,
-    "revision": "05a0f951dd049418"
+    "revision": "b877e991d4201f6c"
   },
   {
     "key": "testimonials/t-ana",
@@ -45,6 +45,6 @@
     "format": "json",
     "entryKey": "t-ana",
     "buildTime": false,
-    "revision": "83fc1b9775cfcc6c"
+    "revision": "91997968fd19352c"
   }
 ]

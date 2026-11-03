@@ -21,7 +21,11 @@ export {
 } from './manifest.ts';
 export type { PreviewConfig } from './preview-config.ts';
 export { previewConfigSchema } from './preview-config.ts';
-export { canonicalEntryText, revisionOf } from './revision.ts';
+export {
+  canonicalEntryText,
+  revisionOf,
+  revisionOfEntry,
+} from './revision.ts';
 export type { CollectionSchemaJson } from './schema.ts';
 export {
   collectionSchemaJson,

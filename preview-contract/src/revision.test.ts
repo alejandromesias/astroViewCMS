@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalEntryText, revisionOf } from './revision.ts';
+import { canonicalEntryText, revisionOf, revisionOfEntry } from './revision.ts';
 
 describe('revisionOf', () => {
   it('is the first 16 hex characters of SHA-256 (known vectors)', () => {
@@ -46,5 +46,42 @@ describe('canonicalEntryText', () => {
   it('leaves primitives and arrays in their order', () => {
     expect(canonicalEntryText([3, 'x', null, true])).toBe('[3,"x",null,true]');
     expect(canonicalEntryText('text')).toBe('"text"');
+  });
+});
+
+describe('revisionOfEntry', () => {
+  it('does not count the id, which Astro takes out of the data', () => {
+    const withId = { id: 't-ana', name: 'Ana', quote: 'Great' };
+    expect(revisionOfEntry(withId)).toBe(
+      revisionOfEntry({ name: 'Ana', quote: 'Great' }),
+    );
+  });
+
+  it('takes the id from slug when there is no id', () => {
+    const withSlug = { slug: 'about', title: 'About' };
+    expect(revisionOfEntry(withSlug)).toBe(revisionOfEntry({ title: 'About' }));
+  });
+
+  it('keeps slug when the id is set', () => {
+    // Only `id` is dropped here, so the slug stays as content.
+    expect(revisionOfEntry({ id: 'a', slug: 'b' })).toBe(
+      revisionOf(canonicalEntryText({ slug: 'b' })),
+    );
+  });
+
+  it('does not depend on the key order or on dates as strings', () => {
+    const date = new Date('2026-09-01T00:00:00Z');
+    expect(revisionOfEntry({ id: 'x', at: date, n: 1 })).toBe(
+      revisionOfEntry({ n: 1, at: new Date('2026-09-01T00:00:00Z') }),
+    );
+    expect(revisionOfEntry({ at: date })).not.toBe(
+      revisionOfEntry({ at: '2026-09-01' }),
+    );
+  });
+
+  it('changes when a field changes', () => {
+    expect(revisionOfEntry({ id: 'x', n: 1 })).not.toBe(
+      revisionOfEntry({ id: 'x', n: 2 }),
+    );
   });
 });

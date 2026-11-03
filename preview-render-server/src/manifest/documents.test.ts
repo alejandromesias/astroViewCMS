@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { stringify } from 'devalue';
-import { canonicalEntryText, revisionOf } from 'preview-contract';
+import { revisionOf, revisionOfEntry } from 'preview-contract';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { DataStore } from './documents.ts';
 import { readDataStore, shapeDocuments, withRevisions } from './documents.ts';
@@ -357,16 +357,14 @@ describe('withRevisions (WORKPLAN 2.0c)', () => {
   it('gives a file() entry the hash of its own data, not of the shared file', () => {
     const root = siteWith({
       'src/content/testimonials.json':
-        '[{"name":"Ana","quote":"Great"},{"name":"Kofi","quote":"Good"}]',
+        '[{"id":"t-ana","name":"Ana","quote":"Great"},{"id":"t-kofi","name":"Kofi","quote":"Good"}]',
     });
     const ana = { name: 'Ana', quote: 'Great' };
     const revisions = revisionsOf(
       root,
       testimonialsStore(ana, { name: 'Kofi', quote: 'Good' }),
     );
-    expect(revisions['testimonials/t-ana']).toBe(
-      revisionOf(canonicalEntryText(ana)),
-    );
+    expect(revisions['testimonials/t-ana']).toBe(revisionOfEntry(ana));
     expect(revisions['testimonials/t-ana']).not.toBe(
       revisions['testimonials/t-kofi'],
     );
@@ -375,32 +373,98 @@ describe('withRevisions (WORKPLAN 2.0c)', () => {
   it('keeps every revision when the shared file is only reformatted', () => {
     const root = siteWith({
       'src/content/testimonials.json':
-        '[{"name":"Ana","quote":"Great"},{"name":"Kofi","quote":"Good"}]',
+        '[{"id":"t-ana","name":"Ana","quote":"Great"},{"id":"t-kofi","name":"Kofi","quote":"Good"}]',
     });
     const ana = { name: 'Ana', quote: 'Great' };
     const kofi = { name: 'Kofi', quote: 'Good' };
     const before = revisionsOf(root, testimonialsStore(ana, kofi));
     fs.writeFileSync(
       path.join(root, 'src/content/testimonials.json'),
-      '[\n  {\n    "quote": "Great",\n    "name": "Ana"\n  },\n  {"name": "Kofi", "quote": "Good"}\n]\n',
+      '[\n  {\n    "quote": "Great",\n    "id": "t-ana",\n    "name": "Ana"\n  },\n  {"id": "t-kofi", "name": "Kofi", "quote": "Good"}\n]\n',
     );
     expect(revisionsOf(root, testimonialsStore(ana, kofi))).toEqual(before);
   });
 
-  it('moves only the revision of the entry whose data changed', () => {
+  it('moves only the revision of the entry whose value in the file changed', () => {
+    const kofi = '{"id":"t-kofi","name":"Kofi","quote":"Good"}';
     const root = siteWith({
-      'src/content/testimonials.json': '[]',
+      'src/content/testimonials.json': `[{"id":"t-ana","name":"Ana","quote":"Great"},${kofi}]`,
     });
-    const kofi = { name: 'Kofi', quote: 'Good' };
-    const before = revisionsOf(
-      root,
-      testimonialsStore({ name: 'Ana', quote: 'Great' }, kofi),
+    const before = revisionsOf(root, testimonialsStore({}, {}));
+    fs.writeFileSync(
+      path.join(root, 'src/content/testimonials.json'),
+      `[{"id":"t-ana","name":"Ana","quote":"Excellent"},${kofi}]`,
     );
-    const after = revisionsOf(
-      root,
-      testimonialsStore({ name: 'Ana', quote: 'Excellent' }, kofi),
-    );
+    const after = revisionsOf(root, testimonialsStore({}, {}));
     expect(after['testimonials/t-ana']).not.toBe(before['testimonials/t-ana']);
     expect(after['testimonials/t-kofi']).toBe(before['testimonials/t-kofi']);
+  });
+
+  it('takes a file() entry from the file, not from the store data', () => {
+    // The store's data has a default the file lacks, as a schema would add it.
+    const root = siteWith({
+      'src/content/testimonials.json':
+        '[{"id":"t-ana","name":"Ana","quote":"Great"}]',
+    });
+    const withDefault = { name: 'Ana', quote: 'Great', role: 'Guest' };
+    const revisions = revisionsOf(
+      root,
+      new Map([
+        [
+          'testimonials',
+          new Map([
+            [
+              't-ana',
+              {
+                id: 't-ana',
+                filePath: 'src/content/testimonials.json',
+                data: withDefault,
+              },
+            ],
+          ]),
+        ],
+      ]),
+    );
+    expect(revisions['testimonials/t-ana']).toBe(
+      revisionOfEntry({ name: 'Ana', quote: 'Great' }),
+    );
+  });
+
+  it('hashes an unquoted YAML date as a Date, as Astro reads it', () => {
+    const root = siteWith({
+      'src/content/stats.yaml': '- id: editors\n  since: 2026-09-01\n',
+    });
+    const store: DataStore = new Map([
+      [
+        'stats',
+        new Map([
+          [
+            'editors',
+            { id: 'editors', filePath: 'src/content/stats.yaml', data: {} },
+          ],
+        ]),
+      ],
+    ]);
+    const [document] = withRevisions(
+      shapeDocuments({
+        store,
+        loaderKinds: { stats: 'file' },
+        scan: { buildTimeFiles: [], dataModules: [] },
+      }),
+      store,
+      root,
+    );
+    expect(document?.revision).toBe(
+      revisionOfEntry({ since: new Date('2026-09-01T00:00:00Z') }),
+    );
+  });
+
+  it('throws naming the entry when the shared file does not hold it', () => {
+    const root = siteWith({
+      'src/content/testimonials.json': '[{"id":"t-kofi","name":"Kofi"}]',
+    });
+    expect(() => revisionsOf(root, testimonialsStore({}, {}))).toThrow(
+      "src/content/testimonials.json has no entry 't-ana'",
+    );
   });
 });

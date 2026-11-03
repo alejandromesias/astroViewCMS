@@ -152,6 +152,8 @@ export async function run(
       cmsOrigin: config.origins.cms,
     },
     bundle: source,
+    // The repo's site folder (repoDir joined with the config's siteDir): where the bundle's document files are.
+    workingCopy: repo.siteFolder,
   };
   const supervisor = deps.createSupervisor({
     port: previewPort,

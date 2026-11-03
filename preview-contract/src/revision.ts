@@ -18,6 +18,28 @@ export function canonicalEntryText(value: unknown): string {
   return JSON.stringify(canonical(value));
 }
 
+/** The revision of one `file()` entry, from its raw value as the file's parser
+ *  reads it: the value without its id (`id`, or `slug` when there is no `id`,
+ *  as Astro's file loader takes the id). The schema is not applied, so a
+ *  default or a key the schema drops can't change the revision (WORKPLAN 2.4b). */
+export function revisionOfEntry(entry: unknown): string {
+  return revisionOf(canonicalEntryText(withoutId(entry)));
+}
+
+/** A copy of `entry` without the key its id came from: `id` when it is set,
+ *  otherwise `slug`. Non-objects are returned as they are. */
+function withoutId(entry: unknown): unknown {
+  if (typeof entry !== 'object' || entry === null || Array.isArray(entry))
+    return entry;
+  const record = entry as Record<string, unknown>;
+  if (record.id !== undefined && record.id !== null) {
+    const { id: _id, ...rest } = record;
+    return rest;
+  }
+  const { slug: _slug, ...rest } = record;
+  return rest;
+}
+
 function canonical(value: unknown): unknown {
   if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) return value.map(canonical);
