@@ -209,6 +209,36 @@ describe('yamlCodec.write: mutation survivors', () => {
     ).toBe('items:\n  # header\n  # about b\n  - b\n  - a\n');
   });
 
+  it('keeps the header of a root list on top when a commented item moves to the front', () => {
+    const text = yamlCodec.write('# header\n- a\n# about b\n- b\n', ['b', 'a']);
+    expect(text).toBe('# header\n# about b\n- b\n- a\n');
+    expect(yamlCodec.parse(text)).toEqual(['b', 'a']);
+  });
+
+  it('turns a string into a map or a list, and reads back as given', () => {
+    const asMap = yamlCodec.write('a: x\n', { a: { k: 1 } });
+    expect(asMap).toBe('a:\n  k: 1\n');
+    expect(yamlCodec.parse(asMap)).toEqual({ a: { k: 1 } });
+    const asList = yamlCodec.write('a: x\n', { a: [1] });
+    expect(asList).toBe('a:\n  - 1\n');
+    expect(yamlCodec.parse(asList)).toEqual({ a: [1] });
+  });
+
+  it('replaces a binary value with a map or a list, as a whole node', () => {
+    const asMap = yamlCodec.write('a: !!binary aGk=\n', { a: { k: 1 } });
+    expect(asMap).toBe('a:\n  k: 1\n');
+    expect(yamlCodec.parse(asMap)).toEqual({ a: { k: 1 } });
+    const asList = yamlCodec.write('a: !!binary aGk=\n', { a: [1] });
+    expect(asList).toBe('a:\n  - 1\n');
+    expect(yamlCodec.parse(asList)).toEqual({ a: [1] });
+  });
+
+  it('drops an inline comment when a scalar becomes a map, as it has no line to sit on', () => {
+    expect(yamlCodec.write('a: x # note\n', { a: { k: 1 } })).toBe(
+      'a:\n  k: 1\n',
+    );
+  });
+
   it('keeps the comment above a changed item that is not the first', () => {
     expect(yamlCodec.write('- a\n# about 1\n- 1\n', ['a', 'one'])).toBe(
       '- a\n# about 1\n- one\n',
