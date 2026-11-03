@@ -25,6 +25,7 @@ export {
   canonicalEntryText,
   revisionOf,
   revisionOfEntry,
+  revisionOfKeyedEntry,
 } from './revision.ts';
 export type { CollectionSchemaJson } from './schema.ts';
 export {

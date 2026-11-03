@@ -135,6 +135,18 @@ async function worktreeRecords(fixture: Fixture): Promise<number> {
 }
 
 describe('openRepo: commitSave', () => {
+  it('treats glob characters in a path as literal: a save never commits the files that match them', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site');
+    const repo = repoOf(fixture);
+    await edit(fixture, 'notes/a.md', 'alpha 2\n');
+    await edit(fixture, 'notes/b.md', 'beta 2\n');
+    // Git would match both files as a pattern; as a literal path nothing matches and the save is refused.
+    await save(repo, ['notes/*.md'], 'save all').catch(() => undefined);
+    expect(await git(fixture.state.repoDir, ['status', '--porcelain'])).toBe(
+      ' M site/notes/a.md\n M site/notes/b.md\n',
+    );
+  });
+
   it('commits only the given paths and returns the new sha', async () => {
     const fixture = await fixtureIn(await newRoot(), 'site');
     const repo = repoOf(fixture);

@@ -1,6 +1,10 @@
 // The revision of a document in the working copy (WORKPLAN 2.0c, 2.4b): the rule the build uses, in one function,
 // so the list, GET /api/documents?key= and the save code (2.5b, 2.5c) agree on it.
-import { revisionOf, revisionOfEntry } from 'preview-contract';
+import {
+  revisionOf,
+  revisionOfEntry,
+  revisionOfKeyedEntry,
+} from 'preview-contract';
 import type { DocumentEntry } from '../bundle/read.ts';
 import type { CodecError } from '../codecs/types.ts';
 import {
@@ -61,6 +65,9 @@ function entryFacts(
   if ('error' in outcome) return { revision: null, error: outcome.error };
   const entry = entryOf(outcome.value, key);
   if (entry === undefined) return null;
-  const revision = revisionOfEntry(entry);
+  // An array item is hashed without its id; an object-keyed value whole, as its key is the id (as preview-render-server).
+  const revision = Array.isArray(outcome.value)
+    ? revisionOfEntry(entry)
+    : revisionOfKeyedEntry(entry);
   return wantValue ? { revision, value: entry } : { revision };
 }

@@ -5,6 +5,7 @@ import {
   canonicalEntryText,
   revisionOf,
   revisionOfEntry,
+  revisionOfKeyedEntry,
 } from 'preview-contract';
 import { parseDocument } from 'yaml';
 import type { ProjectScan } from './import-scan.ts';
@@ -141,18 +142,21 @@ export function withRevisions(
       document.file === undefined
         ? revisionOf(canonicalEntryText(entries.get(document.key)?.data))
         : document.entryKey !== undefined
-          ? revisionOfEntry(
-              readFileEntry(root, document.file, document.entryKey),
-            )
+          ? fileEntryRevision(root, document.file, document.entryKey)
           : revisionOf(fs.readFileSync(path.join(root, document.file)));
     return { ...document, revision };
   });
 }
 
-/** One entry of a `file()` document, parsed as Astro's loader parses the file: JSON with
- *  JSON.parse, YAML with the options of Astro's `parseYaml`. Throws when the file, the
- *  format or the entry is missing, so the build says which one. */
-function readFileEntry(root: string, file: string, entryKey: string): unknown {
+/** The revision of one entry of a `file()` document, parsed as Astro's loader parses the file: JSON with
+ *  JSON.parse, YAML with the options of Astro's `parseYaml`. An array item is hashed without its id
+ *  (revisionOfEntry); a value of an object-keyed file whole (revisionOfKeyedEntry), as its key is the id.
+ *  Throws when the file, the format or the entry is missing, so the build says which one. */
+function fileEntryRevision(
+  root: string,
+  file: string,
+  entryKey: string,
+): string {
   const text = fs.readFileSync(path.join(root, file), 'utf8');
   const extension = path.extname(file).toLowerCase();
   let whole: unknown;
@@ -163,7 +167,9 @@ function readFileEntry(root: string, file: string, entryKey: string): unknown {
   const entry = findEntry(whole, entryKey);
   if (entry === undefined)
     throw new Error(`${file} has no entry '${entryKey}'`);
-  return entry;
+  return Array.isArray(whole)
+    ? revisionOfEntry(entry)
+    : revisionOfKeyedEntry(entry);
 }
 
 /** YAML as Astro's loader reads it (`parseYaml` in @astrojs/internal-helpers): unquoted dates

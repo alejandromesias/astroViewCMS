@@ -1,7 +1,7 @@
 // Reads one document's file from the working copy and parses it with the codec of its format (WORKPLAN 2.4b).
 // A request passes one `FileReads` memo to every read it makes, so a file shared by several `file()` documents is
 // read once for the request. Nothing is kept across requests.
-import { readFile } from 'node:fs/promises';
+import { readFile, realpath } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { DocumentRecord } from 'preview-contract';
 import { codecFor } from '../codecs/by-format.ts';
@@ -36,7 +36,7 @@ export function readFileOnce(
   if (!isInside(root, path)) return Promise.resolve(null);
   const memo = reads.get(path);
   if (memo !== undefined) return memo;
-  const read = readFromDisk(path, format);
+  const read = readFromDisk(root, path, format);
   reads.set(path, read);
   return read;
 }
@@ -47,13 +47,17 @@ function isInside(root: string, path: string): boolean {
   return rel !== '' && !isAbsolute(rel) && rel.split(sep)[0] !== '..';
 }
 
-/** Reads the file at `path`. A file that does not exist is null; any other read error is thrown. */
+/** Reads the file at `path`, following symlinks: its real path must be inside the real `root`, else it is null
+ *  (a symlink can point outside the working copy). A file that does not exist is null; any other read error is thrown. */
 async function readFromDisk(
+  root: string,
   path: string,
   format: DocumentRecord['format'],
 ): Promise<FileRead | null> {
   try {
-    return fileRead(await readFile(path), format);
+    const real = await realpath(path);
+    if (!isInside(await realpath(root), real)) return null;
+    return fileRead(await readFile(real), format);
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT')
       return null;

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalEntryText, revisionOf, revisionOfEntry } from './revision.ts';
+import {
+  canonicalEntryText,
+  revisionOf,
+  revisionOfEntry,
+  revisionOfKeyedEntry,
+} from './revision.ts';
 
 describe('revisionOf', () => {
   it('is the first 16 hex characters of SHA-256 (known vectors)', () => {
@@ -46,6 +51,23 @@ describe('canonicalEntryText', () => {
   it('leaves primitives and arrays in their order', () => {
     expect(canonicalEntryText([3, 'x', null, true])).toBe('[3,"x",null,true]');
     expect(canonicalEntryText('text')).toBe('"text"');
+  });
+});
+
+describe('revisionOfKeyedEntry', () => {
+  it('counts an id field, since an object-keyed file takes the id from its key', () => {
+    expect(revisionOfKeyedEntry({ id: 'x', n: 1 })).not.toBe(
+      revisionOfKeyedEntry({ id: 'y', n: 1 }),
+    );
+    expect(revisionOfKeyedEntry({ slug: 'x', n: 1 })).not.toBe(
+      revisionOfKeyedEntry({ slug: 'y', n: 1 }),
+    );
+  });
+
+  it('does not depend on the key order', () => {
+    expect(revisionOfKeyedEntry({ id: 'x', n: 1 })).toBe(
+      revisionOfKeyedEntry({ n: 1, id: 'x' }),
+    );
   });
 });
 

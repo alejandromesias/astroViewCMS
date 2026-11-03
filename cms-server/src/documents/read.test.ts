@@ -1,4 +1,4 @@
-import { rm, writeFile } from 'node:fs/promises';
+import { rm, symlink, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -53,6 +53,24 @@ describe('readFileOnce', () => {
     ]) {
       expect(await readFileOnce(root, file, 'json', new Map())).toBeNull();
     }
+  });
+
+  it('resolves null for a symlink in the root that points outside it', async (ctx) => {
+    const root = await tempWorkingCopy({ 'ok.json': '{}' });
+    const outside = await tempWorkingCopy({ 'secret.json': '{"secret":true}' });
+    try {
+      await symlink(
+        join(outside, 'secret.json'),
+        join(root, 'link.json'),
+        'file',
+      );
+    } catch (error) {
+      // Creating a symlink needs a privilege some Windows accounts lack; the check cannot run there.
+      if (error instanceof Error && 'code' in error && error.code === 'EPERM')
+        return ctx.skip();
+      throw error;
+    }
+    expect(await readFileOnce(root, 'link.json', 'json', new Map())).toBeNull();
   });
 
   it('reads a file once per request: a later read gives the same read, even after the file is gone', async () => {

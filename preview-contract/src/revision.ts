@@ -18,12 +18,19 @@ export function canonicalEntryText(value: unknown): string {
   return JSON.stringify(canonical(value));
 }
 
-/** The revision of one `file()` entry, from its raw value as the file's parser
+/** The revision of one item of an array `file()`, from its raw value as the file's parser
  *  reads it: the value without its id (`id`, or `slug` when there is no `id`,
  *  as Astro's file loader takes the id). The schema is not applied, so a
  *  default or a key the schema drops can't change the revision (WORKPLAN 2.4b). */
 export function revisionOfEntry(entry: unknown): string {
   return revisionOf(canonicalEntryText(withoutId(entry)));
+}
+
+/** The revision of one value of an object-keyed `file()`. Astro takes the id from
+ *  the object key, so an `id` or `slug` field in the value is data and stays in the
+ *  hash: changing it changes the revision. */
+export function revisionOfKeyedEntry(value: unknown): string {
+  return revisionOf(canonicalEntryText(value));
 }
 
 /** A copy of `entry` without the key its id came from: `id` when it is set,

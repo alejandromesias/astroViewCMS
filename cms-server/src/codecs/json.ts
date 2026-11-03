@@ -1,4 +1,3 @@
-// @ts-nocheck
 // The JSON codec (PHASE-2-DESIGN 5.4). Parsing is strict JSON, with the rules of Astro's JSON.parse:
 // comments and trailing commas are errors. Writing diffs the old and new values, then edits the
 // original text with jsonc-parser's `modify`, one change at a time, so every byte outside a change
