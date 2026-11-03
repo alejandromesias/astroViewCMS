@@ -691,7 +691,7 @@ done. Item 6 of the design (the front server) is step 2.8.
   green, or the `break` question raised with the user (2.13c). The `--all`
   outcome is owned here, not by 2.1g (call, 2026-11-02).
 
-#### 2.1i Start code — after 2.3b, 2.4a, 2.7a, 2.9b, 2.11a
+#### 2.1i Start code — after 2.3b, 2.4a, 2.7a, 2.9b, 2.11a · DONE 2026-11-03
 
 - Added 2026-11-02. Wave 4 left every part injectable and nothing that
   builds the real server: `startServer(deps)` exists, but no code makes
@@ -757,6 +757,39 @@ done. Item 6 of the design (the front server) is step 2.8.
     in 2.10a and 2.10d.
   - **E2e:** reuse the bundle `supervisor.e2e` builds; only this e2e run is `[build]`. Run it
     after 2.1g's Stryker run.
+- **Result (2026-11-03, Haiku agent, reviewed by the lead):** done; not committed.
+  - **Files added:** `cms-server/src/run.ts` (+ `run.test.ts`, 21 tests), `signals.ts` (+
+    test), `main.ts` (thin), `scripts/dev-remote.ts` (+ `test/dev-remote.test.ts`),
+    `cms.config.example.ts`, `preview-render-server/src/stdin-exit.ts` (+ test),
+    `cms-server/test/e2e/start.e2e.test.ts`.
+  - **Files changed:** `cms-server/package.json` (`start`, `dev:remote`), `.gitignore`
+    (`.dev/`, `cms.config.ts`), `config/schema.ts` and its test (message "inside the
+    workspace"), `preview/supervisor.ts` (node's stdin is a pipe), `preview-render-server/src/start.ts`
+    (exits when stdin closes), and the renderer test spawns that had `stdin: 'ignore'`, now `'pipe'`
+    (with `'ignore'` the node would exit at once).
+  - **Deviations:**
+    - `--bundle <dir>` is the renderer's build folder. The bundle source reads `<dir>/manifest`;
+      the supervisor gets `<dir>`.
+    - The start script is `node src/main.ts ../cms.config.ts`, so `npm start -w cms-server`
+      finds the repo-root config (npm runs scripts from `cms-server/`). Run with another config:
+      `node src/main.ts <path>`. Without an argument, the default is `cms.config.ts` in the
+      working folder, as the spec says.
+    - The e2e injects `loadConfig`. The real loader rejects the `..` in `previewSiteConfig`.
+      Only that path differs.
+  - **Evidence:** `tsc -p cms-server` and `tsc -p preview-render-server` clean. Biome clean on
+    the changed files (import order fixed in `run.ts`, `run.test.ts` and `start.ts`). Unit:
+    run, signals, dev-remote, schema, supervisor (136 passed) and stdin-exit (3). E2e
+    `start.e2e` (`run` in-process, a real preview child): 1 passed, run alone with no Stryker.
+    Manual: `npm run dev:remote -w cms-server`, then `npm start -w cms-server`: `/` answers
+    200 `text/html`, `/api/status` answers `{"bundle":null}`, `/api/schema` answers 503. Killed;
+    the port is free afterwards.
+  - **Known limits:** a proxied deployment (phase 4) needs separate listen fields. On Windows a
+    hard kill sends no SIGTERM, so the preview node ends through its stdin pipe. The e2e checks
+    the ports, not the process table. The bundle is read once at start (2.9c replaces the
+    source). A node that fails to start is logged, not reported in `/api/status` (2.9c). A hard
+    kill makes npm print "Lifecycle script `start` failed"; that is expected.
+  - **Left on disk (gitignored, from the manual run):** `.dev/`, `cms.config.ts`, `.cms/` at the
+    repo root.
 
 ### 2.2 Format codecs — after 2.1a · ∥ 2.3, 2.1b to 2.1d, 2.0
 

@@ -30,7 +30,8 @@ async function startEntry(
         PORT: String(port),
         PREVIEW_INSECURE: '1',
       }),
-      stdio: ['ignore', 'pipe', 'pipe'],
+      // stdin stays a pipe: start.ts exits when it closes (stdin-exit.ts).
+      stdio: ['pipe', 'pipe', 'pipe'],
     },
   );
   let output = '';

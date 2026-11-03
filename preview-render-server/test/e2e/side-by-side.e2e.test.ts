@@ -39,7 +39,8 @@ async function startNode(outDir: string, port: number): Promise<ChildProcess> {
     {
       cwd: SERVER_DIR,
       env: childEnv({ HOST: '127.0.0.1', PREVIEW_INSECURE: '1' }),
-      stdio: ['ignore', 'pipe', 'pipe'],
+      // stdin stays a pipe: start.ts exits when it closes (stdin-exit.ts).
+      stdio: ['pipe', 'pipe', 'pipe'],
     },
   );
   let output = '';

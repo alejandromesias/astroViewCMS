@@ -33,7 +33,8 @@ function rejection(raw: unknown): Array<{ path: string; message: string }> {
 
 const ORIGIN = 'must be an http or https origin: scheme, host and port only';
 const SITE_DIR = 'siteDir must be a relative path inside the repo';
-const PREVIEW_DIR = 'previewSiteConfig must be a relative path inside the repo';
+const PREVIEW_DIR =
+  'previewSiteConfig must be a relative path inside the workspace';
 const MEDIA_DIR = 'media.folder must be a relative path inside the site';
 
 describe('parseConfig defaults', () => {

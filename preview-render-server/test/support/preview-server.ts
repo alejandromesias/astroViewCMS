@@ -75,7 +75,8 @@ export async function startPreviewServer(
         PORT: String(port),
         PREVIEW_INSECURE: '1',
       },
-      stdio: ['ignore', 'pipe', 'pipe'],
+      // stdin stays a pipe: start.ts exits when it closes (stdin-exit.ts).
+      stdio: ['pipe', 'pipe', 'pipe'],
     },
   );
   let output = '';
@@ -116,7 +117,8 @@ export async function startBuiltNode(
     {
       cwd: SERVER_DIR,
       env: { ...inherited, ...env, HOST: '127.0.0.1', PORT: String(port) },
-      stdio: ['ignore', 'pipe', 'pipe'],
+      // stdin stays a pipe: start.ts exits when it closes (stdin-exit.ts).
+      stdio: ['pipe', 'pipe', 'pipe'],
     },
   );
   let output = '';
