@@ -209,6 +209,29 @@ describe('runGit', () => {
     });
   });
 
+  it('sets an empty askpass and a non-interactive SSH command when the environment sets no SSH command', async () => {
+    vi.stubEnv('GIT_SSH_COMMAND', '');
+    const { exec, calls } = fakeExec({ stdout: '', stderr: '' });
+    await runGit(['fetch'], {
+      cwd: '/repo',
+      env: { GIT_ASKPASS: '/bin/askpass' },
+      exec,
+    });
+    expect(calls[0]?.options.env).toMatchObject({
+      GIT_ASKPASS: '',
+      GIT_SSH_COMMAND: 'ssh -o BatchMode=yes',
+    });
+  });
+
+  it('keeps the SSH command that the environment already sets', async () => {
+    vi.stubEnv('GIT_SSH_COMMAND', 'ssh -i /keys/cms');
+    const { exec, calls } = fakeExec({ stdout: '', stderr: '' });
+    await runGit(['fetch'], { cwd: '/repo', exec });
+    expect(calls[0]?.options.env).toMatchObject({
+      GIT_SSH_COMMAND: 'ssh -i /keys/cms',
+    });
+  });
+
   it('refuses a NUL in an argument before spawning anything', async () => {
     const { exec, calls } = fakeExec({ stdout: '', stderr: '' });
     const error = await gitErrorOfAsync(() =>

@@ -578,6 +578,16 @@ describe('handleDocument: details', () => {
     expect(await response.text()).toMatch(/^Cannot parse one\.json: \S/);
   });
 
+  it('answers 500 with the thrown string when the parser throws a non-Error', async () => {
+    // The parser is JSON.parse here; make it throw a string, as a hostile parser could.
+    vi.spyOn(JSON, 'parse').mockImplementationOnce(() => {
+      throw 'bad json';
+    });
+    const response = call('?key=a/one', undefined, () => '{}');
+    expect(response.status).toBe(500);
+    expect(await response.text()).toBe('Cannot parse one.json: bad json');
+  });
+
   it('checks the method and the origin before the key', () => {
     expect(call('', { method: 'POST' }).status).toBe(405);
     expect(

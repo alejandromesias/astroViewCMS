@@ -38,6 +38,8 @@ const FAST: Step[] = [
 ];
 
 const E2E: Step[] = [
+  // cms-server's supervisor against the real preview node (WORKPLAN 2.9b); its global setup builds sample-site.
+  { name: 'cms-server e2e', command: 'npm run test:e2e -w cms-server', kind: 'gate' },
   { name: 'e2e + budgets', command: 'npm run test:e2e -w preview-render-server', kind: 'gate' },
   // Browser suite (Vitest browser mode, Chromium): one file at a time, after e2e (tools run one at a time).
   { name: 'browser', command: 'npm run test:browser -w preview-render-server', kind: 'gate' },

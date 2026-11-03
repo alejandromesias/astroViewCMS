@@ -457,7 +457,12 @@ Round-trip tests run on copies of the sample's own files.
   - `PREVIEW_EDITOR_ORIGINS`: the CMS origin;
   - `PREVIEW_TOKEN_SECRET`: shared with `cms-server`, never with the browser;
   - `PREVIEW_INTERNAL_SECRET`: for `cms-server`'s own calls (below);
-  - none of `cms-server`'s other secrets.
+  - `PREVIEW_SITE`: the site name the token is checked against (2.8c);
+  - `PORT`, and `HOST=127.0.0.1` (the renderer's default `localhost` may
+    bind IPv6 only, and readiness polls IPv4);
+  - from `cms-server`'s own environment only `PATH`, the temp folders and,
+    on Windows, `SystemRoot` and `windir`;
+  - none of `cms-server`'s other secrets or variables.
 - **Readiness:** poll `GET /__preview/config` until it answers, with a
   timeout. **Crashes:** restart with backoff (1 s, 2 s, 4 s, then up to
   30 s). After 5 failures in a row, show the error in `GET /api/status`.
@@ -506,7 +511,8 @@ fronts it:
 - **Token** **(call):** `base64url(payload).base64url(HMAC-SHA256)`, where
   the payload is `{ site, exp }` and `exp` is 60 s ahead. `cms-server` mints
   it in `GET /api/preview-url?path=`, which answers the iframe URL.
-- **`GET /__preview/config`** answers `{ editorOrigins }`. The bridge
+- **`GET /__preview/config`** answers `{ editorOrigins, bundleId, protocolVersion }`
+  (the last two so the supervisor can confirm which bundle answers). The bridge
   fetches it before its first `ready`. `SiteConfig.editorOrigins` and the
   build-time argument of `bridgeScript()` go away.
 - The bridge drops a `preview_token` parameter from the `path` it sends,
@@ -599,7 +605,8 @@ end of phase 2, with their tests moved or rewritten against the new routes.
 - Keys travel as query parameters (D10), and every key-indexed table uses
   `Map` or `Object.hasOwn` (D15).
 - Write routes need `Content-Type: application/json` (or multipart for
-  media) and refuse `Sec-Fetch-Site: cross-site`, as the preview routes do.
+  media: a raw image body with `image/*`, which forces a CORS preflight) and
+  refuse `Sec-Fetch-Site: cross-site`, as the preview routes do.
   With no auth until phase 4, this and the `127.0.0.1` bind are the only
   protection, so the README says so.
 

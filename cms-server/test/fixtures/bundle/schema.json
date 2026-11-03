@@ -1,0 +1,1050 @@
+{
+  "fixtures": {
+    "loader": {
+      "kind": "glob",
+      "pattern": "**/*.json",
+      "base": "src/content/fixtures"
+    },
+    "schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "label",
+        "name"
+      ]
+    }
+  },
+  "homepage": {
+    "loader": {
+      "kind": "glob",
+      "pattern": "**/-*.{md,mdx}",
+      "base": "src/content/homepage"
+    },
+    "schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "banner": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            },
+            "image": {
+              "type": "string"
+            },
+            "button": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "link": {
+                  "default": "/contact",
+                  "type": "string"
+                },
+                "enable": {
+                  "default": true,
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "label"
+              ]
+            }
+          }
+        },
+        "feature": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "features": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "icon": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          },
+          "required": [
+            "title",
+            "features"
+          ]
+        },
+        "services": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "content": {
+                "type": "string"
+              },
+              "images": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "button": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "link": {
+                    "default": "/contact",
+                    "type": "string"
+                  },
+                  "enable": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "label"
+                ]
+              }
+            }
+          }
+        },
+        "workflow": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "image": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "image"
+          ]
+        },
+        "call_to_action": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            },
+            "image": {
+              "type": "string"
+            },
+            "button": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "link": {
+                  "default": "/contact",
+                  "type": "string"
+                },
+                "enable": {
+                  "default": true,
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "label"
+              ]
+            }
+          },
+          "required": [
+            "image"
+          ]
+        }
+      },
+      "required": [
+        "feature"
+      ]
+    }
+  },
+  "authors": {
+    "loader": {
+      "kind": "glob",
+      "pattern": "**/*.{json,yaml}",
+      "base": "src/content/authors"
+    },
+    "schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "bio": {
+          "type": "string"
+        },
+        "avatar": {
+          "type": "string",
+          "cms": "image"
+        }
+      },
+      "required": [
+        "name",
+        "role",
+        "bio",
+        "avatar"
+      ]
+    }
+  },
+  "testimonials": {
+    "loader": {
+      "kind": "file",
+      "pattern": "src/content/testimonials.json"
+    },
+    "schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "quote": {
+          "type": "string"
+        },
+        "avatar": {
+          "type": "string",
+          "cms": "image"
+        }
+      },
+      "required": [
+        "name",
+        "role",
+        "quote"
+      ]
+    }
+  },
+  "partners": {
+    "loader": {
+      "kind": "glob",
+      "pattern": "**/*.yaml",
+      "base": "src/content/partners"
+    },
+    "schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "logo": {
+          "type": "string",
+          "cms": "image"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "order": {
+          "type": "number"
+        },
+        "since": {}
+      },
+      "required": [
+        "name",
+        "logo",
+        "url",
+        "order",
+        "since"
+      ]
+    }
+  },
+  "stats": {
+    "loader": {
+      "kind": "file",
+      "pattern": "src/content/stats.yaml"
+    },
+    "schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "updated": {}
+      },
+      "required": [
+        "label",
+        "value",
+        "updated"
+      ]
+    }
+  },
+  "landing": {
+    "loader": {
+      "kind": "glob",
+      "pattern": "**/*.json",
+      "base": "src/content/landing"
+    },
+    "schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "banner"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "image": {
+                    "type": "string"
+                  },
+                  "button": {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string"
+                      },
+                      "link": {
+                        "default": "/contact",
+                        "type": "string"
+                      },
+                      "enable": {
+                        "default": true,
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "label"
+                    ]
+                  }
+                },
+                "required": [
+                  "type",
+                  "title"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "features"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "icon": {
+                          "type": "string"
+                        },
+                        "content": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "items"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "services"
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "title": {
+                          "type": "string"
+                        },
+                        "content": {
+                          "type": "string"
+                        },
+                        "images": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "button": {
+                          "type": "object",
+                          "properties": {
+                            "label": {
+                              "type": "string"
+                            },
+                            "link": {
+                              "default": "/contact",
+                              "type": "string"
+                            },
+                            "enable": {
+                              "default": true,
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "label"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "title",
+                        "content",
+                        "images"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "type",
+                  "items"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "workflow"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "image": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "image"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "cta"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "image": {
+                    "type": "string"
+                  },
+                  "button": {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string"
+                      },
+                      "link": {
+                        "default": "/contact",
+                        "type": "string"
+                      },
+                      "enable": {
+                        "default": true,
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "label"
+                    ]
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "content",
+                  "image"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "pricing"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "plans": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "title": {
+                          "type": "string"
+                        },
+                        "subtitle": {
+                          "type": "string"
+                        },
+                        "price": {
+                          "type": "number"
+                        },
+                        "price_yearly": {
+                          "type": "number"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "recommended": {
+                          "type": "boolean"
+                        },
+                        "features": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "button": {
+                          "type": "object",
+                          "properties": {
+                            "label": {
+                              "type": "string"
+                            },
+                            "link": {
+                              "default": "/contact",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "label"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "title",
+                        "price",
+                        "type",
+                        "features",
+                        "button"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "plans"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "faq"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "question": {
+                          "type": "string"
+                        },
+                        "answer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "question",
+                        "answer"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "items"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "highlight"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "body"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "partners"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "stats"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "title"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "testimonials"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "cms": "reference",
+                      "collection": "testimonials"
+                    }
+                  }
+                },
+                "required": [
+                  "type",
+                  "title",
+                  "items"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "title",
+        "blocks"
+      ]
+    }
+  },
+  "blog": {
+    "loader": {
+      "kind": "glob",
+      "pattern": "**/*.{md,mdx}",
+      "base": "src/content/blog"
+    },
+    "schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "meta_title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "date": {},
+        "image": {
+          "type": "string"
+        },
+        "cover": {
+          "type": "string",
+          "cms": "image"
+        },
+        "author": {
+          "type": "string",
+          "cms": "reference",
+          "collection": "authors"
+        },
+        "authors": {
+          "default": [
+            "admin"
+          ],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "categories": {
+          "default": [
+            "others"
+          ],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tags": {
+          "default": [
+            "others"
+          ],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "draft": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "title"
+      ]
+    }
+  },
+  "pages": {
+    "loader": {
+      "kind": "glob",
+      "pattern": "**/*.{md,mdx}",
+      "base": "src/content/pages"
+    },
+    "schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "meta_title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "image": {
+          "type": "string"
+        },
+        "draft": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "title"
+      ]
+    }
+  },
+  "contact": {
+    "loader": {
+      "kind": "glob",
+      "pattern": "**/-*.{md,mdx}",
+      "base": "src/content/contact"
+    },
+    "schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "draft": {
+          "type": "boolean"
+        },
+        "info": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "contacts": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "title",
+            "description",
+            "contacts"
+          ]
+        }
+      },
+      "required": [
+        "title",
+        "description",
+        "draft",
+        "info"
+      ]
+    }
+  },
+  "pricing": {
+    "loader": {
+      "kind": "glob",
+      "pattern": "**/-*.{md,mdx}",
+      "base": "src/content/pricing"
+    },
+    "schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "draft": {
+          "type": "boolean"
+        },
+        "plans": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "subtitle": {
+                "type": "string"
+              },
+              "price": {
+                "type": "number"
+              },
+              "price_yearly": {
+                "type": "number"
+              },
+              "type": {
+                "type": "string"
+              },
+              "recommended": {
+                "type": "boolean"
+              },
+              "features": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "button": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "link": {
+                    "default": "/contact",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "label"
+                ]
+              }
+            },
+            "required": [
+              "title",
+              "price",
+              "type",
+              "features",
+              "button"
+            ]
+          }
+        },
+        "call_to_action": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            },
+            "image": {
+              "type": "string"
+            },
+            "button": {
+              "type": "object",
+              "properties": {
+                "enable": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "link": {
+                  "default": "/contact",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "label"
+              ]
+            }
+          },
+          "required": [
+            "title",
+            "content",
+            "image"
+          ]
+        }
+      },
+      "required": [
+        "title",
+        "draft"
+      ]
+    }
+  },
+  "faq": {
+    "loader": {
+      "kind": "glob",
+      "pattern": "**/-*.{md,mdx}",
+      "base": "src/content/faq"
+    },
+    "schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "draft": {
+          "type": "boolean"
+        },
+        "faqs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "answer": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "answer"
+            ]
+          }
+        }
+      },
+      "required": [
+        "title",
+        "description",
+        "draft",
+        "faqs"
+      ]
+    }
+  }
+}

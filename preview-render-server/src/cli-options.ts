@@ -12,7 +12,11 @@ export interface CliOptions {
    *  not the config's folder. */
   root: string | undefined;
   /** Replaces the output folder. Resolved against the current folder. Keep it
-   *  inside the workspace: the build resolves packages from node_modules. */
+   *  inside the workspace: the build resolves packages from node_modules. The
+   *  build clears this folder, so build.ts refuses (assertOutDirIsSafe in
+   *  site-config.ts) the filesystem root, the site root, an ancestor of the site
+   *  root, the current folder or an ancestor of it, and a folder that is not
+   *  empty and has no bundle.json from an earlier build. */
   out: string | undefined;
   /** The port start.ts listens on, ahead of the PORT variable and the config's
    *  port (see choosePort). build.ts ignores it. */

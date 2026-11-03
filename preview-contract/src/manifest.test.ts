@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   documentRecordSchema,
   imageRecordSchema,
+  imagesJsonSchema,
   routeRecordSchema,
 } from './manifest.ts';
 
@@ -86,6 +87,26 @@ describe('imageRecordSchema', () => {
       imageRecordSchema.safeParse({ path: image.path, hash: undefined })
         .success,
     ).toBe(false);
+  });
+});
+
+describe('imagesJsonSchema', () => {
+  it('accepts a list of image records, and an empty list', () => {
+    const images = [
+      { path: 'src/assets/a.png', hash: 'e3b0c44298fc1c14' },
+      { path: 'src/assets/b.jpg', hash: '0123456789abcdef' },
+    ];
+    expect(imagesJsonSchema.parse(images)).toEqual(images);
+    expect(imagesJsonSchema.parse([])).toEqual([]);
+  });
+
+  it.each([
+    ['the root is an object', { path: 'src/assets/a.png', hash: 'x' }],
+    ['the root is null', null],
+    ['an entry has no hash', [{ path: 'src/assets/a.png' }]],
+    ['an entry is a string', ['src/assets/a.png']],
+  ])('refuses images.json where %s', (_name, body) => {
+    expect(imagesJsonSchema.safeParse(body).success).toBe(false);
   });
 });
 

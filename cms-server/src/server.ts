@@ -4,7 +4,8 @@ import {
   type Server,
   type ServerResponse,
 } from 'node:http';
-import { createApp, type AppDeps } from './http/app.ts';
+import { Readable } from 'node:stream';
+import { type AppDeps, createApp } from './http/app.ts';
 
 // Phase 2 has no auth (PHASE-2-DESIGN 5.1), so the server listens on loopback only.
 // There is deliberately no host setting.
@@ -34,7 +35,7 @@ async function handle(
   res: ServerResponse,
 ): Promise<void> {
   try {
-    const response = await app.fetch(await toRequest(req));
+    const response = await app.fetch(toRequest(req));
     res.writeHead(response.status, [...response.headers].flat());
     res.end(Buffer.from(await response.arrayBuffer()));
   } catch (error) {
@@ -46,7 +47,9 @@ async function handle(
 
 // Builds a web Request from a Node request. The URL base is the fixed loopback
 // address, never the Host header, so a client cannot change the origin the app sees.
-async function toRequest(req: IncomingMessage): Promise<Request> {
+// The body is streamed, not buffered: a route reads it through readBody (http/body.ts),
+// which enforces its cap while the bytes arrive (2.7a gaps).
+function toRequest(req: IncomingMessage): Request {
   const headers = new Headers();
   for (const [name, value] of Object.entries(req.headers)) {
     if (Array.isArray(value)) {
@@ -60,7 +63,12 @@ async function toRequest(req: IncomingMessage): Promise<Request> {
   if (method === 'GET' || method === 'HEAD') {
     return new Request(url, { method, headers });
   }
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
-  return new Request(url, { method, headers, body: Buffer.concat(chunks) });
+  // Node needs `duplex: 'half'` for a stream body; the DOM RequestInit type does not declare it.
+  const init = {
+    method,
+    headers,
+    body: Readable.toWeb(req) as ReadableStream<Uint8Array>,
+    duplex: 'half',
+  } as RequestInit;
+  return new Request(url, init);
 }

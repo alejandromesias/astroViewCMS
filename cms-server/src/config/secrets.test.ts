@@ -268,6 +268,51 @@ describe('loadSecrets with a malformed environment value', () => {
   });
 });
 
+describe('loadSecrets refuses equal secrets (WORKPLAN 2.9b)', () => {
+  const MUST_DIFFER = new Error(
+    'The preview token secret and the internal secret must differ',
+  );
+
+  it('refuses two equal environment values', async () => {
+    const fs = fakeFs();
+    await expect(
+      loadSecrets(
+        DIR,
+        {
+          PREVIEW_TOKEN_SECRET: ENV_TOKEN_HEX,
+          PREVIEW_INTERNAL_SECRET: ENV_TOKEN_HEX,
+        },
+        fs.deps,
+      ),
+    ).rejects.toThrow(MUST_DIFFER);
+    expect(fs.writes).toEqual([]);
+  });
+
+  it('refuses a secrets file whose two values are equal', async () => {
+    const fs = fakeFs(storedText(HEX_01, HEX_01));
+    await expect(loadSecrets(DIR, {}, fs.deps)).rejects.toThrow(MUST_DIFFER);
+    expect(fs.writes).toEqual([]);
+  });
+
+  it('refuses generated secrets that come out equal, and writes no file', async () => {
+    const fs = fakeFs();
+    const sameBytes = {
+      ...fs.deps,
+      randomBytes: () => new Uint8Array(32).fill(7),
+    };
+    await expect(loadSecrets(DIR, {}, sameBytes)).rejects.toThrow(MUST_DIFFER);
+    expect(fs.writes).toEqual([]);
+    expect(fs.mkdirs).toEqual([]);
+  });
+
+  it('refuses an environment token equal to the internal secret kept in the file', async () => {
+    const fs = fakeFs(storedText(HEX_01, HEX_02));
+    await expect(
+      loadSecrets(DIR, { PREVIEW_TOKEN_SECRET: HEX_02 }, fs.deps),
+    ).rejects.toThrow(MUST_DIFFER);
+  });
+});
+
 describe('loadSecrets with the real file system', () => {
   it('generates a file on the first call, and returns the same secrets on the next (restart)', async () => {
     await mkdir(TMP_ROOT, { recursive: true });

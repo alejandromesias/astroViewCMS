@@ -1,6 +1,12 @@
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { loadSiteConfig, resolveSiteConfig } from './site-config.ts';
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  assertOutDirIsSafe,
+  loadSiteConfig,
+  resolveSiteConfig,
+} from './site-config.ts';
 import type { SiteConfig } from './types.ts';
 
 const config: SiteConfig = {
@@ -146,5 +152,132 @@ describe('loadSiteConfig', () => {
 
   it('explains the usage when no file is given', async () => {
     await expect(loadSiteConfig(undefined)).rejects.toThrow(/Usage/);
+  });
+});
+
+describe('assertOutDirIsSafe', () => {
+  const made: string[] = [];
+  afterEach(() => {
+    for (const dir of made.splice(0)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  /** A new temp folder for one test, removed afterwards. */
+  function tempBase(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'out-check-'));
+    made.push(dir);
+    return dir;
+  }
+
+  /** A site whose root is `base/my-site` and whose output is `outDir`. */
+  function siteWithOut(base: string, outDir: string) {
+    const root = path.join(base, 'my-site');
+    fs.mkdirSync(root, { recursive: true });
+    return resolveSiteConfig(
+      { ...config, root },
+      base,
+      path.join(base, '.build'),
+      { out: outDir },
+    );
+  }
+
+  /** The error a refused output folder throws. */
+  function refusal(outDir: string, reason: string): Error {
+    return new Error(
+      `Refusing to build into ${outDir}: ${reason}. A build clears this folder, so give it a folder of its own.`,
+    );
+  }
+
+  it('refuses the site root', () => {
+    const base = tempBase();
+    const site = siteWithOut(base, path.join(base, 'my-site'));
+    const work = path.join(base, 'work');
+    expect(() => assertOutDirIsSafe(site, work)).toThrow(
+      refusal(site.outDir, 'it is the site root'),
+    );
+  });
+
+  it('refuses a folder that contains the site root', () => {
+    const base = tempBase();
+    const site = siteWithOut(base, base);
+    const work = path.join(base, 'work');
+    expect(() => assertOutDirIsSafe(site, work)).toThrow(
+      refusal(site.outDir, 'it contains the site root'),
+    );
+  });
+
+  it('refuses the current folder', () => {
+    const base = tempBase();
+    const build = path.join(base, 'build');
+    fs.mkdirSync(build);
+    const site = siteWithOut(base, build);
+    expect(() => assertOutDirIsSafe(site, build)).toThrow(
+      refusal(site.outDir, 'it is the current folder or contains it'),
+    );
+  });
+
+  it('refuses a folder that contains the current folder', () => {
+    const base = tempBase();
+    const build = path.join(base, 'build');
+    const work = path.join(build, 'work');
+    fs.mkdirSync(work, { recursive: true });
+    const site = siteWithOut(base, build);
+    expect(() => assertOutDirIsSafe(site, work)).toThrow(
+      refusal(site.outDir, 'it is the current folder or contains it'),
+    );
+  });
+
+  it('refuses a filesystem root', () => {
+    const base = tempBase();
+    const driveRoot = path.parse(base).root;
+    const site = siteWithOut(base, driveRoot);
+    const work = path.join(base, 'work');
+    expect(() => assertOutDirIsSafe(site, work)).toThrow(
+      refusal(site.outDir, 'it is a filesystem root'),
+    );
+  });
+
+  it('refuses a non-empty folder with no bundle.json', () => {
+    const base = tempBase();
+    const build = path.join(base, 'build');
+    fs.mkdirSync(build);
+    fs.writeFileSync(path.join(build, 'notes.txt'), 'keep me');
+    const site = siteWithOut(base, build);
+    const work = path.join(base, 'work');
+    expect(() => assertOutDirIsSafe(site, work)).toThrow(
+      refusal(
+        site.outDir,
+        'it is not empty and has no bundle.json from an earlier build',
+      ),
+    );
+  });
+
+  it('allows a folder that does not exist yet', () => {
+    const base = tempBase();
+    const site = siteWithOut(base, path.join(base, 'fresh'));
+    const work = path.join(base, 'work');
+    expect(() => assertOutDirIsSafe(site, work)).not.toThrow();
+  });
+
+  it('allows an empty folder', () => {
+    const base = tempBase();
+    const build = path.join(base, 'build');
+    fs.mkdirSync(build);
+    const site = siteWithOut(base, build);
+    const work = path.join(base, 'work');
+    expect(() => assertOutDirIsSafe(site, work)).not.toThrow();
+  });
+
+  it('allows a rebuild over an old bundle (manifest/bundle.json)', () => {
+    const base = tempBase();
+    const build = path.join(base, 'build');
+    fs.mkdirSync(path.join(build, 'manifest'), { recursive: true });
+    fs.writeFileSync(path.join(build, 'manifest', 'bundle.json'), '{}');
+    fs.mkdirSync(path.join(build, 'server'));
+    fs.writeFileSync(path.join(build, 'server', 'old.mjs'), 'old');
+    const site = siteWithOut(base, build);
+    const work = path.join(base, 'work');
+    expect(() => assertOutDirIsSafe(site, work)).not.toThrow();
   });
 });

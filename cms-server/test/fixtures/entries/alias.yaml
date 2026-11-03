@@ -1,0 +1,8 @@
+# Keyed YAML with an alias: `about` reads the same node as `home`.
+home: &card
+  title: Welcome
+  lang: en
+about: *card
+contact:
+  title: Contact
+  lang: fr

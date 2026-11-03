@@ -4,6 +4,7 @@
 // binding to the real module is content-shim.ts.
 import posix from 'node:path/posix';
 import type { ImageMetadata } from 'astro';
+import { errorMessage } from '../error-message.ts';
 import type { CollectionInfo, SchemaHooks } from '../schema/stubs-flavor2.ts';
 import type { OverlayContext } from './context.ts';
 import { currentOverlay, hasDocument } from './context.ts';
@@ -186,7 +187,7 @@ export function createContentApi(deps: ContentApiDeps) {
         throw new DraftError(key, [
           {
             path: [],
-            message: (error as Error).message,
+            message: errorMessage(error),
             kind: 'refinement-threw',
           },
         ]);

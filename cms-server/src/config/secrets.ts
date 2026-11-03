@@ -58,16 +58,27 @@ export async function loadSecrets(
   const fromEnvToken = fromEnvironment(ENV_TOKEN, env[ENV_TOKEN]);
   const fromEnvInternal = fromEnvironment(ENV_INTERNAL, env[ENV_INTERNAL]);
   if (fromEnvToken !== undefined && fromEnvInternal !== undefined) {
-    return {
+    return distinct({
       previewTokenSecret: fromEnvToken,
       previewInternalSecret: fromEnvInternal,
-    };
+    });
   }
   const kept = await keptSecrets(dir, deps);
-  return {
+  return distinct({
     previewTokenSecret: fromEnvToken ?? kept.previewTokenSecret,
     previewInternalSecret: fromEnvInternal ?? kept.previewInternalSecret,
-  };
+  });
+}
+
+// One leaked value would otherwise open both the preview cookie and the internal
+// bearer path of the node (the same refusal as readGate in the renderer, 2.8e).
+function distinct(secrets: Secrets): Secrets {
+  if (secrets.previewTokenSecret === secrets.previewInternalSecret) {
+    throw new Error(
+      'The preview token secret and the internal secret must differ',
+    );
+  }
+  return secrets;
 }
 
 // An environment value gets the same check as the file: 64 hex digits, so a
@@ -92,10 +103,11 @@ async function keptSecrets(dir: string, deps: SecretsDeps): Promise<Secrets> {
     text = await deps.readFile(path);
   } catch (error) {
     if (!isNotFound(error)) throw error;
-    const created = {
+    // Checked before the file is written, so an equal pair is never kept.
+    const created = distinct({
       previewTokenSecret: hexSecret(deps.randomBytes),
       previewInternalSecret: hexSecret(deps.randomBytes),
-    };
+    });
     await deps.mkdir(dir, { recursive: true });
     await deps.writeFile(path, `${JSON.stringify(created, null, 2)}\n`, {
       mode: FILE_MODE,

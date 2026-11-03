@@ -73,8 +73,14 @@ CI, fail the build). "Report" means the output needs a human reading it.
   projects come from `vitest.projects.ts`, which Stryker shares. The coverage
   report covers each package's `src/` (and the renderer's `test-editor/`). Each
   package has its own floor (one glob each), so a weak package cannot hide
-  behind strong ones. The renderer's floors are a ratchet at 97 on every metric.
-  The other three were measured on 2026-11-01 and set 1 to 2 points under.
+  behind strong ones. **Decision (user, 2026-11-02):** every package's floors are
+  Lines 80, Functions 90, Branches 80, Statements 80. This overrides all earlier
+  per-package floors (the renderer's ratchet at 97, the 98 and 86 of the other
+  packages, `cms-server`'s 85 / 98 / 65 / 83) until a further assessment. The
+  aim is test quality, not chasing a number. If a metric cannot reasonably be
+  met for a file, the file may be excluded from coverage, temporarily or
+  permanently, but only after the user approves it; the exclusion is listed with
+  its reason in `vitest.config.ts`.
 - **Zod** (imported from `astro/zod`, the copy Astro already ships) parses
   everything that crosses a trust boundary instead of casting it: the render
   request envelope (`src/render/envelope.ts`), the query checks in
@@ -104,12 +110,14 @@ CI, fail the build). "Report" means the output needs a human reading it.
   - *Bridge size* (`src/client/bridge-size.test.ts`, a unit test): the bridge
     is bundled and gzipped; it must stay under its byte budget (measured
     5318 B, budget 6400 B), because it ships into every preview page.
-  - *Render latency* (e2e, `test/e2e/preview-server.e2e.test.ts`): after
+  - *Render latency* (e2e, `test/e2e/budgets.e2e.test.ts`): after
     warmup, median render under 30 ms and p95 under 50 ms, for an HTML page and
     for a Markdown document. The `landing/long` render budget (100 consecutive
     edits of a 44-block page) is wider: median under 60 ms and p95 under 100 ms.
     Five runs measured the median at 8 to 33 ms, so a median near 60 ms is a
-    real regression, not noise.
+    real regression, not noise. The budget file runs as its own Vitest project
+    after the other e2e files (`vitest.e2e.config.ts`, `groupOrder`), so no
+    other file loads the CPU while a median is measured.
   - *Memory* (same e2e file): after warmup, `rss` under 400 MB, and `heapUsed`
     grows by under 10 MB over 500 more renders. The test reads memory from a
     dev-only route (`/__dev/memory`) after a forced GC. The server is started
@@ -134,13 +142,13 @@ CI, fail the build). "Report" means the output needs a human reading it.
 | Unit tests, contract | `npm run test -w preview-contract` | seconds |
 | Typecheck, cms-server | `npm run typecheck -w cms-server` | seconds |
 | Unit tests, cms-server | `npm run test -w cms-server` | seconds |
-| Unit tests and coverage floors, all packages | `npm run coverage` (root `vitest.config.ts`: one run, prints the coverage summary, fails under any package's floor) | ~55 s (measured 2026-11-01) |
+| Unit tests and coverage floors, all packages | `npm run coverage` (root `vitest.config.ts`: one run, prints the coverage summary, fails under any package's floor) | ~25 s (measured 2026-11-02: 24.6 to 25.5 s) |
 | Lint | `node_modules/.bin/biome lint` | ~2 s |
 | Format check | `node_modules/.bin/biome format` (fix with `--write`) | ~2 s |
 | Unit tests, one file | `cd preview-render-server && ../node_modules/.bin/vitest run <file>` | seconds |
 | Unit tests, all | `cd preview-render-server && ../node_modules/.bin/vitest run` | ~5 s (1039 tests, 35 files) |
-| e2e and budgets | `cd preview-render-server && ../node_modules/.bin/vitest run --config vitest.e2e.config.ts` | ~52 s (87 tests, 9 files) |
-| Browser tests | `npm run test:browser -w preview-render-server` (one file: append `-- <file>`) | ~60 s (10 files, 25 tests) |
+| e2e and budgets | `cd preview-render-server && ../node_modules/.bin/vitest run --config vitest.e2e.config.ts` | ~46 s (94 tests, 14 files; measured 2026-11-02: 46.0 to 46.7 s; the budget file runs last, alone, see *Render latency* under [How each tool is applied here](#how-each-tool-is-applied-here)) |
+| Browser tests | `npm run test:browser -w preview-render-server` (one file: append `-- <file>`) | ~32 s (10 files, 25 tests; measured 2026-11-02: 31.0 to 33.4 s) |
 | Memory of one preview process (manual) | `npm run measure:memory` (see [Memory metric](#memory-metric)) | ~21 s |
 | Audit | `npm run audit` (needs `osv-scanner`, see below) | ~3 s |
 | Knip | `npm run knip` | ~2 s |
@@ -148,7 +156,7 @@ CI, fail the build). "Report" means the output needs a human reading it.
 | Module graph | `npm run graph` (see [Module graph](#module-graph)) | ~20 s |
 | Edges of one file | `npm run -s deps -- --focus "<regex>"` or `--reaches "<regex>"` | ~3 s |
 | Stryker | `npx stryker run` | see Stryker |
-| Everything | `npm run check [-- flags]` | ~127 s fast (measured 2026-11-01, see [Running everything](#running-everything)), ~170 s with `--e2e`, ~325 s with `--all` (the e2e and Stryker numbers are from 2026-10-31) |
+| Everything | `npm run check [-- flags]` | ~38 s fast, ~115 s with `--e2e`, ~710 s with `--all` (measured 2026-11-02, step sums, see [Running everything](#running-everything); the Stryker step is 594 s of the `--all` total) |
 
 The e2e run builds the sample site and spawns the server, so it needs a free
 port and some memory. Add `--disableConsoleIntercept` to see its `console.log`
@@ -192,10 +200,10 @@ behaves the same on Windows and a Linux CI). Flags go after `--` and combine:
 
 | Flag | Runs | Time |
 | --- | --- | --- |
-| `--fast` (default) | tsc for the four packages, biome lint, biome format, unit tests and coverage floors (every package, one run), knip, depcruise, osv-scanner | ~127 s (measured 2026-11-01: the unit tests and coverage step 54 s, the rest 73 s; 2026-10-31 was 35 to 55 s, before the contract, protocol and cms-server tests joined the coverage run) |
-| `--e2e` | the fast set, then e2e and the budget tests, and the browser suite | the fast set plus ~111 s (measured 2026-10-31: e2e 52 s, browser 59 s; not re-measured since the coverage step moved into the fast set) |
+| `--fast` (default) | tsc for the four packages, biome lint, biome format, unit tests and coverage floors (every package, one run), knip, depcruise, osv-scanner | ~38 s (measured 2026-11-02: the unit tests and coverage step 25 s, the rest 13 s; 2026-11-01 measured 127 s for the same steps, not explained) |
+| `--e2e` | the fast set, then e2e and the budget tests, and the browser suite | the fast set plus ~77 s (measured 2026-11-02: e2e 46 s, browser 31 s) |
 | `--mutation` | `npx stryker run` (incremental) | ~29 s when nothing changed; see below |
-| `--all` | everything above (the coverage floors run in the fast set) | ~325 s wall (measured 2026-10-31: Stryker 161 s after source changes, the other steps 164 s) |
+| `--all` | everything above (the coverage floors run in the fast set) | ~710 s wall (measured 2026-11-02: Stryker 594 s, the other steps 115 s; the run fails on the Stryker score, see [Stryker](#stryker-mutation-testing)) |
 
 Example: `npm run check -- --e2e --mutation`. An unknown flag exits with code 2.
 
@@ -319,6 +327,7 @@ that behaviour down).
   tests) scored 91.83%. **Latest run: 2026-10-31** (`npm run check -- --all`, 161 s
   after source changes): 91.74% over 2781 mutants (2525 killed, 18 timeout, 211
   survived, 18 no coverage, 7 runtime errors), above the 90 floor.
+  **Run 2026-11-02** (`npm run check -- --all`, 594 s): 88.88% over 4,254 mutants (3747 killed, 33 timeout, 431 survived, 42 no coverage, 1 error), **under the 90 break**, so the run exits 1. `cms-server` is 78.3% (`server.ts` 36%, the bridge that 2.7a rewrites; `codecs` 72.8%). No `src` file changed in task 2.1f, so this is code from waves 1 to 3; task 2.1g owns it. Not fixed in 2.1f.
   **Forced full run, 2026-11-01** (new root config, `preview-protocol` added, ~29 min):
   92.83% over 2735 mutants. By package: preview-render-server 92.98%,
   preview-protocol 97.22%, preview-contract 83.10% (above the `high` line of 80,

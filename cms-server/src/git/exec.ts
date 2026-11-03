@@ -81,7 +81,8 @@ export const realExec: ExecFn = (file, args, options) =>
 
 /**
  * Runs `git` with `args` in `cwd` and returns its stdout. The fixed options are `GIT_TERMINAL_PROMPT=0`,
- * `GCM_INTERACTIVE=never` and `LC_ALL=C`, over the inherited environment. `-c protocol.ext.allow=never`
+ * `GCM_INTERACTIVE=never`, `LC_ALL=C` and `GIT_ASKPASS=` (empty), over the inherited environment.
+ * `GIT_SSH_COMMAND` is `ssh -o BatchMode=yes` unless the environment already sets it. `-c protocol.ext.allow=never`
  * comes before every command, because the remote URL comes from the config file.
  */
 export async function runGit(
@@ -102,12 +103,16 @@ export async function runGit(
         { args },
       );
   }
+  const inherited = { ...process.env, ...env };
   const fullEnv = {
-    ...process.env,
-    ...env,
+    ...inherited,
     GIT_TERMINAL_PROMPT: '0',
     GCM_INTERACTIVE: 'never',
     LC_ALL: 'C',
+    GIT_ASKPASS: '',
+    // An SSH passphrase prompt would hang the server (GIT_TERMINAL_PROMPT does not stop it).
+    // A user's own SSH command is kept.
+    GIT_SSH_COMMAND: inherited.GIT_SSH_COMMAND || 'ssh -o BatchMode=yes',
   };
   try {
     const { stdout } = await exec(
@@ -230,6 +235,7 @@ function hasWhitespaceOrControl(text: string): boolean {
   );
 }
 
-function redact(text: string): string {
+/** Replaces the credentials of a URL (`://user:secret@`) with `://***@`. Also used by the logger (`src/log.ts`). */
+export function redact(text: string): string {
   return text.replace(/:\/\/[^/@\s]+@/g, '://***@');
 }

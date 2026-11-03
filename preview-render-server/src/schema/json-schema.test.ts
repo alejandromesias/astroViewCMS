@@ -53,4 +53,21 @@ describe('shapeSchemas', () => {
     expect(out.bad!.schema).toBeUndefined();
     expect(out.bad!.error).toEqual(expect.any(String));
   });
+
+  it('reports a schema whose export throws a non-Error, as its text', () => {
+    // A schema whose property reads throw a string: Zod's export throws it.
+    const hostile = new Proxy(
+      {},
+      {
+        get: () => {
+          throw 'no zod';
+        },
+      },
+    );
+    const out = shapeSchemas({
+      c: { loader: undefined, schema: hostile as unknown as z.ZodType },
+    });
+    expect(out.c!.schema).toBeUndefined();
+    expect(out.c!.error).toBe('no zod');
+  });
 });

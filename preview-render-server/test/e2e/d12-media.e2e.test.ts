@@ -74,6 +74,17 @@ describe('D12: a media-map entry is rendered as its own URL', () => {
     expect(json.limits).toEqual([]);
   });
 
+  it('an absolute CMS staging URL works as the draft value and the map key (2.7a)', async () => {
+    const staged = `http://cms.localhost:4400/media/staging/${'a'.repeat(64)}.png`;
+    const { status, json } = await render(
+      '/blog/blog-1',
+      { 'authors/ana-torres': anaWithAvatar(staged) },
+      { [staged]: entry(staged) },
+    );
+    expect(status).toBe(200);
+    expect(imageSources(json.html)).toContain(staged);
+  });
+
   it('a relative draft path resolves to the project path that the map is keyed by (D5)', async () => {
     const avatar = '../../assets/authors/new-avatar.png';
     const { status, json } = await render(

@@ -1,0 +1,15 @@
+{
+  "$schema": "../schema.json",
+  "home": {
+    "title": "Welcome",
+    "lang": "en"
+  },
+  "about": {
+    "title": "About us",
+    "lang": "en"
+  },
+  "contact": {
+    "title": "Contact",
+    "lang": "fr"
+  }
+}

@@ -1,0 +1,147 @@
+[
+  {
+    "pattern": "/",
+    "component": "src/pages/index.astro",
+    "type": "page",
+    "dynamic": false,
+    "params": [],
+    "restParams": [],
+    "hasStaticPaths": false
+  },
+  {
+    "pattern": "/_image",
+    "component": "../node_modules/astro/dist/assets/endpoint/node.js",
+    "type": "endpoint",
+    "dynamic": false,
+    "params": [],
+    "restParams": [],
+    "hasStaticPaths": false
+  },
+  {
+    "pattern": "/_server-islands/[name]",
+    "component": "_server-islands.astro",
+    "type": "page",
+    "dynamic": true,
+    "params": [
+      "name"
+    ],
+    "restParams": [],
+    "hasStaticPaths": false
+  },
+  {
+    "pattern": "/[regular]",
+    "component": "src/pages/[regular].astro",
+    "type": "page",
+    "dynamic": true,
+    "params": [
+      "regular"
+    ],
+    "restParams": [],
+    "hasStaticPaths": true
+  },
+  {
+    "pattern": "/404",
+    "component": "src/pages/404.astro",
+    "type": "page",
+    "dynamic": false,
+    "params": [],
+    "restParams": [],
+    "hasStaticPaths": false
+  },
+  {
+    "pattern": "/blog",
+    "component": "src/pages/blog/index.astro",
+    "type": "page",
+    "dynamic": false,
+    "params": [],
+    "restParams": [],
+    "hasStaticPaths": false
+  },
+  {
+    "pattern": "/blog/[...single]",
+    "component": "src/pages/blog/[...single].astro",
+    "type": "page",
+    "dynamic": true,
+    "params": [
+      "...single"
+    ],
+    "restParams": [
+      "single"
+    ],
+    "hasStaticPaths": true
+  },
+  {
+    "pattern": "/blog/page/[slug]",
+    "component": "src/pages/blog/page/[slug].astro",
+    "type": "page",
+    "dynamic": true,
+    "params": [
+      "slug"
+    ],
+    "restParams": [],
+    "hasStaticPaths": true
+  },
+  {
+    "pattern": "/contact",
+    "component": "src/pages/contact.astro",
+    "type": "page",
+    "dynamic": false,
+    "params": [],
+    "restParams": [],
+    "hasStaticPaths": false
+  },
+  {
+    "pattern": "/faq",
+    "component": "src/pages/faq.astro",
+    "type": "page",
+    "dynamic": false,
+    "params": [],
+    "restParams": [],
+    "hasStaticPaths": false
+  },
+  {
+    "pattern": "/fixtures/[slug]",
+    "component": "src/pages/fixtures/[slug].astro",
+    "type": "page",
+    "dynamic": true,
+    "params": [
+      "slug"
+    ],
+    "restParams": [],
+    "hasStaticPaths": true
+  },
+  {
+    "pattern": "/landing/[slug]",
+    "component": "src/pages/landing/[slug].astro",
+    "type": "page",
+    "dynamic": true,
+    "params": [
+      "slug"
+    ],
+    "restParams": [],
+    "hasStaticPaths": true
+  },
+  {
+    "pattern": "/pricing",
+    "component": "src/pages/pricing.astro",
+    "type": "page",
+    "dynamic": false,
+    "params": [],
+    "restParams": [],
+    "hasStaticPaths": false
+  },
+  {
+    "pattern": "/tags/[tag]/[...page]",
+    "component": "src/pages/tags/[tag]/[...page].astro",
+    "type": "page",
+    "dynamic": true,
+    "params": [
+      "tag",
+      "...page"
+    ],
+    "restParams": [
+      "page"
+    ],
+    "hasStaticPaths": true
+  }
+]

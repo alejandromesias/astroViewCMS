@@ -1,0 +1,10 @@
+# One object per key. The key is the entry id.
+home:
+  title: Welcome
+  lang: en
+about:
+  title: About us
+  lang: en # the default
+contact:
+  title: Contact
+  lang: fr

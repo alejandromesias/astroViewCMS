@@ -1,4 +1,4 @@
-import { createReadStream, type Stats, statSync } from 'node:fs';
+import { createReadStream, realpathSync, type Stats, statSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 
@@ -69,7 +69,22 @@ function findFile(
     file = path.join(file, 'index.html');
     stats = statOf(file);
   }
-  return stats?.isFile() ? { file, size: stats.size } : undefined;
+  // A symlink inside the folder can point outside it, so the real path must stay inside too.
+  if (!stats?.isFile() || !isInsideRoot(root, file)) return undefined;
+  return { file, size: stats.size };
+}
+
+// True when `file`, with every link resolved, lies inside `root`, also resolved. The
+// real root is used because the root itself may be a link or a junction. A broken
+// link or a path the OS rejects is not inside.
+function isInsideRoot(root: string, file: string): boolean {
+  try {
+    const realRoot = realpathSync(root);
+    const realFile = realpathSync(file);
+    return realFile === realRoot || realFile.startsWith(realRoot + path.sep);
+  } catch {
+    return false;
+  }
 }
 
 function statOf(file: string): Stats | undefined {

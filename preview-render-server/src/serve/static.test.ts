@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { createServer, request, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -45,6 +51,23 @@ async function start(): Promise<{ port: number }> {
   await new Promise<void>((resolve) => started.listen(0, '127.0.0.1', resolve));
   const address: AddressInfo = started.address() as AddressInfo;
   return { port: address.port };
+}
+
+// Creates a link and returns true. Returns false when the OS refuses it (on Windows a
+// file symlink needs developer mode or a privilege), so the test can skip. Other errors throw.
+function tryLink(
+  target: string,
+  link: string,
+  type: 'file' | 'junction',
+): boolean {
+  try {
+    symlinkSync(target, link, type);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'EPERM' || code === 'EEXIST') return false;
+    throw error;
+  }
 }
 
 // A raw request, so the path reaches the server as written (fetch would normalise `..`).
@@ -174,4 +197,55 @@ describe('serveStatic', () => {
       });
     },
   );
+
+  // Links are made inside each test. A file symlink is skipped where the OS refuses it.
+  it('refuses a file symlink inside the folder that points outside it', async (ctx) => {
+    if (
+      !tryLink(
+        path.join(base, 'secret.txt'),
+        path.join(clientDir, 'leak.txt'),
+        'file',
+      )
+    ) {
+      ctx.skip();
+    }
+    const { port } = await start();
+    expect(await send(port, '/leak.txt')).toMatchObject({
+      status: 418,
+      body: 'miss',
+    });
+  });
+
+  it('serves a file symlink inside the folder that points to a file inside it', async (ctx) => {
+    if (
+      !tryLink(
+        path.join(clientDir, 'app.js'),
+        path.join(clientDir, 'alias.js'),
+        'file',
+      )
+    ) {
+      ctx.skip();
+    }
+    const { port } = await start();
+    expect(await send(port, '/alias.js')).toEqual({
+      status: 200,
+      type: 'text/javascript; charset=utf-8',
+      length: '5',
+      body: 'run()',
+    });
+  });
+
+  it('refuses a file under a folder junction that points outside the folder', async () => {
+    // A directory junction needs no privilege on Windows, and is ignored elsewhere.
+    symlinkSync(
+      path.join(base, 'client2'),
+      path.join(clientDir, 'out'),
+      'junction',
+    );
+    const { port } = await start();
+    expect(await send(port, '/out/x.txt')).toMatchObject({
+      status: 418,
+      body: 'miss',
+    });
+  });
 });
