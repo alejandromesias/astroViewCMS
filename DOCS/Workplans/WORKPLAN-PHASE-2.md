@@ -25,7 +25,7 @@ before writing tests, [TESTING-RECOMMENDATIONS.md](../Guidelines/TESTING-RECOMME
 |---|---|
 | Phase 2 design | approved by the user, 2026-10-31 |
 | Decisions D17 to D22 | logged in SYSTEM-DESIGN section 11 |
-| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); next: wave 5 (2.1g first, narrowed 2026-11-03 to the codecs `frontmatter.ts`, `file-entries.ts`, `yaml.ts`, it gates 2.5a; the rest of its scope moved to 2.1h with deadlines before 2.5b and 2.5c; 2.1i done 2026-11-03); the rest not started |
+| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); 2.1g (codecs scope; the rest of its scope moved to 2.1h with deadlines), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a done 2026-11-03 (wave 5 complete, branch `phase-2-wave-5`); next: wave 6 (see the wave order note); the rest not started |
 
 **Done when:** every row of PHASE-2-DESIGN.md section 1 passes. Section 5
 below maps each row to the test that proves it.
@@ -89,7 +89,7 @@ Rules for running tasks in parallel:
 | 3 | 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8c, 2.8d |
 | 4 | 2.1f (alone, first), 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a |
 | 5 | 2.1g (codecs only, 2026-11-03), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a (after 2.1g) |
-| 6 | 2.1h (now also `repo.ts`, before 2.5b), 2.5b, 2.6a, 2.9a, 2.10a |
+| 6 | 2.0j (alone, `[build]`), 2.1h (now also `repo.ts`, before 2.5b), 2.5b, 2.6a, 2.9a, 2.10a |
 | 7 | 2.5c (`server.ts` survivors from 2.1h first), 2.9c, 2.10b |
 | 8 | 2.6b, 2.7b, 2.7c, 2.9d |
 | 9 | 2.9e, 2.10c |
@@ -103,6 +103,8 @@ Wave 5 order (2026-11-03): the orchestrator writes `codecs/by-format.ts`, rebuil
 alone in the main checkout and refreshes `cms-server/test/fixtures/bundle/` **before** 2.4b or 2.4c
 starts (2.4b's revision-equality test compares against today's files). Then 2.4b and 2.4c run in
 parallel; 2.5a waits for 2.1g.
+
+Wave 6 order (2026-11-03): 2.1h comes first in the wave for the `repo.ts` part (seed `repo.test.ts` from a small fixture, then mutate `repo.ts` and `documents/`), because 2.1h must finish those before 2.5b. 2.5b may start in parallel with the tests, but is not closed before `repo.ts` has a score. 2.6a, 2.9a and 2.10a do not wait for 2.1h.
 
 **Critical path** (the longest chain; it decides the elapsed time): 2.0a →
 2.1a → 2.3a → 2.3b → 2.3c → 2.5b → 2.5c → 2.9d → 2.9e → 2.10d → 2.10e →
@@ -381,6 +383,20 @@ done. Item 6 of the design (the front server) is step 2.8.
   collection that has no loader'). A temporary `notes/ghost` document made
   the test fail, then was reverted. Production code unchanged.
 
+#### 2.0j Read-only flag per collection in `schema.json` — after 2.5a · [build]
+
+- Added 2026-11-03 (user approved), from the 2.5a open item. `planWrite` cannot tell that a *new* key
+  belongs to a read-only collection: `documents.json` carries `editable: false` only per existing
+  document, and the `readOnlyCollections` list stays in the preview site config.
+- Add `readOnly?: boolean` to `collectionSchemaJson` (`preview-contract/src/schema.ts`; the object is
+  strict, so the reader would otherwise reject it). `integration.ts` writes it as `true` for each name in
+  `site.readOnlyCollections`, and leaves it out otherwise. `cms-server` passes it to `planWrite`, which
+  refuses a create in such a collection with `read-only`.
+- **Done when:** a contract test (flag accepted, absent flag still valid), an `integration.test.ts` case
+  (`fixtures` carries `readOnly: true`, another collection does not), a `plan-write.test.ts` case, and
+  the `cms-server/test/fixtures/bundle/` `schema.json` refreshed after a `sample-site` build (run alone,
+  as for 2.4c). Runs before 2.5c; it shares `integration.ts` with nothing else open.
+
 ### 2.1 Package scaffold and guardrails — after 2.0a, 2.0f
 
 #### 2.1a The package — after 2.0a, 2.0f · DONE
@@ -641,7 +657,7 @@ done. Item 6 of the design (the front server) is step 2.8.
     unchanged. 2.1g owns this. Nothing committed. Logs: `/tmp/check-e2e-1.log`,
     `/tmp/check-all-1.log`.
 
-#### 2.1g Stryker over the new code — after 2.1f, 2.2c, 2.2d, 2.3b · [build]
+#### 2.1g Stryker over the new code — after 2.1f, 2.2c, 2.2d, 2.3b · [build] · DONE 2026-11-03 (codecs scope; the rest is 2.1h)
 
 - **Scope narrowed (2026-11-02):** this task covers the code that saves and
   the code from waves 1 to 3; the wave 4b code (bundle reader, media,
@@ -739,8 +755,9 @@ done. Item 6 of the design (the front server) is step 2.8.
 - **Wave 5 code, added to this task (2026-11-03), each with its deadline:**
   - `cms-server/src/documents/` (`read.ts`, `revision.ts`): **before 2.5b and 2.5c.** Run again
     after any change to the revision rule, since its revision tests depend on it.
+  - `cms-server/src/documents/plan-write.ts` (added 2026-11-03; 2.5a built it after this list was written): **before 2.5c**, the first caller. Its 43 tests were written with the code, so expect survivors in the path and error branches.
   - `cms-server/src/schema/walk.ts`: **before 2.6a and 2.7b.**
-  - `cms-server/src/codecs/by-format.ts`: with the codec batch, before 2.5a.
+  - `cms-server/src/codecs/by-format.ts`: with the codec batch (it was not mutated before 2.5a; do it with `documents/`).
   - `preview-render-server/src/manifest/documents.ts` (`withRevisions`) and
     `preview-contract/src/revision.ts` (`revisionOfEntry`): **once, now.** The 2.0c fix has landed
     (`b137063`), so mutating them now avoids a second pass.
@@ -1303,7 +1320,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
     `npm run check` was not run, as instructed. `cmsDir` is injected and has no caller yet
     (2.3c, 2.9). A leftover `cms/work-next` is left to 2.10b, as the block says.
 
-#### 2.3c Mutex, commits, diffs, worktrees — after 2.3b
+#### 2.3c Mutex, commits, diffs, worktrees — after 2.3b · DONE 2026-11-03
 
 - One in-process async mutex around every repo operation (save, sync,
   publish) **(call; the design leaves locking to the builder)**, FIFO, with
@@ -1350,6 +1367,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
     (the error names the holder), release when the callback throws, a `siteDir` variant,
     deleted and type-changed paths, a ref missing in `showAt`, a traversal path refused, and
     a worktree added, removed and a crashed one pruned.
+- **Result (2026-11-03, closed out after the fact):** `cms-server/src/git/mutex.ts`, `ops.ts` and `repo.ts`, one test file each (first committed as WIP in `9c4875d`, reviewed with wave 5). Stryker (2.1g, git scope): `ops.ts` 96.5%, `mutex.ts` 97.1%; `repo.ts` has not been mutated (blocked, moved to 2.1h, before 2.5b). Re-checked 2026-11-03 on `phase-2-wave-5`: `cms-server/src/git` tests pass with the rest of the wave 5 scope (595 passed, 1 skipped, 21 files).
 
 ### 2.4 Bundle reader and read API — after 2.0b, 2.0c, 2.0d, 2.1c · ∥ 2.2, 2.3
 
@@ -1435,7 +1453,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
 
 - **Review fix (2026-11-02):** the build wrote `schema.json` only when the site had a content config, so a site without one gave a bundle the reader refused. The build now writes an empty `{}` in that case (`integration.ts`, test updated).
 
-#### 2.4b Read one document — after 2.4a, 2.2
+#### 2.4b Read one document — after 2.4a, 2.2 · DONE 2026-11-03
 
 - `GET /api/documents?key=` (design 5.3): `{ key, value, revision, file,
   format, editable, buildTime, buildTimeFields }`. Reads from the working
@@ -1500,7 +1518,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
     including the revision-equality test against the six fixture documents. Biome and `tsc` clean on the
     touched files. The subagent's own count was 126 across 8 files.
 
-#### 2.4c Schema walker — after 2.4a
+#### 2.4c Schema walker — after 2.4a · DONE 2026-11-03
 
 - `walkMarkers(collectionSchema, value, visit)` yields `{ path, marker }`
   for `cms: 'reference'` and `cms: 'image'` fields through objects, arrays,
@@ -1538,7 +1556,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
 
 ### 2.5 Saving — after 2.2, 2.3c, 2.4 · ∥ 2.6a, 2.7a, 2.8, 2.9a
 
-#### 2.5a Write planner — after 2.2, 2.4a, 2.1g
+#### 2.5a Write planner — after 2.2, 2.4a, 2.1g · DONE 2026-11-03
 
 - **Scope of the 2.1g gate (2026-11-03):** "after 2.1g" means 2.1g's final done-when: the Stryker
   triage of `frontmatter.ts`, `file-entries.ts` and `yaml.ts`, the files this planner writes through.
@@ -1606,6 +1624,8 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
 
 #### 2.5b Changeset state from git — after 2.3c, 2.4b
 
+- **Also (2026-11-03, from 2.5a):** expose the changeset's created documents in the shape of a bundle document record (key, file, format, `entryKey`), so 2.5c can add them to `planWrite`'s `ctx.documents`. Without them, a second save that edits a document the first save created is refused. Add a test for it.
+
 - `GET /api/changes`: the documents that differ between `origin/<branch>`
   and `cms/work`, each with its saved value (or deleted) and its **base
   revision**, which is its revision at `origin/<branch>`. No side file:
@@ -1616,7 +1636,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   changeset has one entry with the original base revision; a deleted
   document and a created one appear.
 
-#### 2.5c `PUT /api/changes` — after 2.5a, 2.5b, 2.0h
+#### 2.5c `PUT /api/changes` — after 2.5a, 2.5b, 2.0h, 2.0j
 
 - The pipeline of design 5.3, as a list of stages sharing a context, so
   later tasks add stages without editing each other's code:
@@ -1640,6 +1660,9 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
 - **Done when:** tests for a good save, two documents in one save, a stale
   revision (`409`), a `422`, a refinement that threw, a failed rename
   restoring the tree, and a build-time field.
+- **From 2.5a (2026-11-03), to settle before the agent runs:**
+  - `planWrite` takes the bundle's documents in `ctx.documents` and refuses an update or delete of a key it lacks (`unwritable`). A second save that edits a document the first save created would be refused. 2.5c must add the changeset's created documents (2.5b) to `ctx.documents`, with a test.
+  - A create into a read-only collection is not refused: settled by 2.0j (flag per collection in `schema.json`, approved 2026-11-03). 2.5c passes it to `planWrite`.
 
 ### 2.6 Delete guard — after 2.2, 2.4c, 2.5c · ∥ 2.7, 2.8, 2.9
 
