@@ -15,11 +15,11 @@ describe('directoryBundleSource', () => {
     expect(await directoryBundleSource(FIXTURE_BUNDLE).current()).toEqual({
       dir: FIXTURE_BUNDLE,
       identity: {
-        bundleId: 'fixture-2026-11-01',
-        siteCommit: 'bec46fcadfe832d7bdec8b06eee6ba6546bd2596',
+        bundleId: 'fixture-2026-11-03',
+        siteCommit: '4523c67c55284f8bd3ae1b61caa6d5501ccc77ab',
         protocolVersion: 2,
         astroVersion: '7.4.2',
-        builtAt: '2026-11-01T10:00:00.000Z',
+        builtAt: '2026-11-04T03:42:22.323Z',
       },
     });
   });
@@ -36,7 +36,7 @@ describe('directoryBundleSource', () => {
     const dir = await bundleFolder();
     const source = directoryBundleSource(dir);
     expect((await source.current())?.identity.bundleId).toBe(
-      'fixture-2026-11-01',
+      'fixture-2026-11-03',
     );
     await writeFile(
       join(dir, 'bundle.json'),

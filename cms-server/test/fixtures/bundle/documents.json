@@ -1,10 +1,45 @@
 [
   {
+    "key": "authors/ana-torres",
+    "file": "src/content/authors/ana-torres.json",
+    "format": "json",
+    "buildTime": false,
+    "revision": "24ae02927ac3e0ac"
+  },
+  {
+    "key": "authors/kofi-mensah",
+    "file": "src/content/authors/kofi-mensah.json",
+    "format": "json",
+    "buildTime": false,
+    "revision": "09d7f226ab492f2f"
+  },
+  {
+    "key": "authors/lena-fischer",
+    "file": "src/content/authors/lena-fischer.json",
+    "format": "json",
+    "buildTime": false,
+    "revision": "d8801ef61a1257af"
+  },
+  {
+    "key": "authors/marco-rossi",
+    "file": "src/content/authors/marco-rossi.json",
+    "format": "json",
+    "buildTime": false,
+    "revision": "17137a5576b9518b"
+  },
+  {
     "key": "authors/noor-haddad",
     "file": "src/content/authors/noor-haddad.yaml",
     "format": "yaml",
     "buildTime": false,
     "revision": "fc219f4aceb68b08"
+  },
+  {
+    "key": "blog/-index",
+    "file": "src/content/blog/-index.md",
+    "format": "md",
+    "buildTime": false,
+    "revision": "f951b0d3d5a329e9"
   },
   {
     "key": "blog/blog-1",
@@ -14,14 +49,46 @@
     "revision": "f0a7b71033203392"
   },
   {
-    "key": "data:src/config/theme.json",
-    "file": "src/config/theme.json",
-    "format": "json",
-    "buildTime": true,
-    "buildTimeFields": [
-      "*"
-    ],
-    "revision": "70df3841b1c2ea25"
+    "key": "blog/blog-2",
+    "file": "src/content/blog/blog-2.md",
+    "format": "md",
+    "buildTime": false,
+    "revision": "7aea0085ca521e1e"
+  },
+  {
+    "key": "blog/blog-3",
+    "file": "src/content/blog/blog-3.md",
+    "format": "md",
+    "buildTime": false,
+    "revision": "df5d163626342f30"
+  },
+  {
+    "key": "blog/blog-4",
+    "file": "src/content/blog/blog-4.md",
+    "format": "md",
+    "buildTime": false,
+    "revision": "841030777fedd3d2"
+  },
+  {
+    "key": "blog/blog-5",
+    "file": "src/content/blog/blog-5.md",
+    "format": "md",
+    "buildTime": false,
+    "revision": "72ba33c895eafa59"
+  },
+  {
+    "key": "contact/-index",
+    "file": "src/content/contact/-index.md",
+    "format": "md",
+    "buildTime": false,
+    "revision": "12317b72ccaef18a"
+  },
+  {
+    "key": "faq/-index",
+    "file": "src/content/faq/-index.md",
+    "format": "md",
+    "buildTime": false,
+    "revision": "ab6d5884d16d8170"
   },
   {
     "key": "fixtures/define-vars",
@@ -32,6 +99,90 @@
     "revision": "9ef732885ca3cc6a"
   },
   {
+    "key": "homepage/-index",
+    "file": "src/content/homepage/-index.md",
+    "format": "md",
+    "buildTime": false,
+    "revision": "d0df21911f650a46"
+  },
+  {
+    "key": "landing/home-v2",
+    "file": "src/content/landing/home-v2.json",
+    "format": "json",
+    "buildTime": false,
+    "revision": "9f366e1654470b75"
+  },
+  {
+    "key": "landing/long",
+    "file": "src/content/landing/long.json",
+    "format": "json",
+    "buildTime": false,
+    "revision": "b418e36dce75494e"
+  },
+  {
+    "key": "landing/product",
+    "file": "src/content/landing/product.json",
+    "format": "json",
+    "buildTime": false,
+    "revision": "79d3de85bf001c9e"
+  },
+  {
+    "key": "pages/elements",
+    "file": "src/content/pages/elements.mdx",
+    "format": "mdx",
+    "buildTime": false,
+    "revision": "7e960716400e8cad"
+  },
+  {
+    "key": "pages/privacy-policy",
+    "file": "src/content/pages/privacy-policy.md",
+    "format": "md",
+    "buildTime": false,
+    "revision": "4cbc108e0d6c579b"
+  },
+  {
+    "key": "pages/terms-conditions",
+    "file": "src/content/pages/terms-conditions.md",
+    "format": "md",
+    "buildTime": false,
+    "revision": "afe1918097619685"
+  },
+  {
+    "key": "partners/atlas",
+    "file": "src/content/partners/atlas.yaml",
+    "format": "yaml",
+    "buildTime": false,
+    "revision": "c4c4d0c75ec3dfee"
+  },
+  {
+    "key": "partners/bright",
+    "file": "src/content/partners/bright.yaml",
+    "format": "yaml",
+    "buildTime": false,
+    "revision": "7dd8eeadab24efc6"
+  },
+  {
+    "key": "partners/loop",
+    "file": "src/content/partners/loop.yaml",
+    "format": "yaml",
+    "buildTime": false,
+    "revision": "d8da46ba6c7c8e8d"
+  },
+  {
+    "key": "partners/northwind",
+    "file": "src/content/partners/northwind.yaml",
+    "format": "yaml",
+    "buildTime": false,
+    "revision": "018c40bc274d5c30"
+  },
+  {
+    "key": "pricing/-index",
+    "file": "src/content/pricing/-index.md",
+    "format": "md",
+    "buildTime": false,
+    "revision": "0940f6f1eabce6fe"
+  },
+  {
     "key": "stats/editors",
     "file": "src/content/stats.yaml",
     "format": "yaml",
@@ -40,11 +191,87 @@
     "revision": "b877e991d4201f6c"
   },
   {
+    "key": "stats/sites",
+    "file": "src/content/stats.yaml",
+    "format": "yaml",
+    "entryKey": "sites",
+    "buildTime": false,
+    "revision": "f60a1c3cab76660a"
+  },
+  {
+    "key": "stats/uptime",
+    "file": "src/content/stats.yaml",
+    "format": "yaml",
+    "entryKey": "uptime",
+    "buildTime": false,
+    "revision": "26f950f0c2fd32c5"
+  },
+  {
     "key": "testimonials/t-ana",
     "file": "src/content/testimonials.json",
     "format": "json",
     "entryKey": "t-ana",
     "buildTime": false,
     "revision": "91997968fd19352c"
+  },
+  {
+    "key": "testimonials/t-kofi",
+    "file": "src/content/testimonials.json",
+    "format": "json",
+    "entryKey": "t-kofi",
+    "buildTime": false,
+    "revision": "9dc9cd4ddc86ee2a"
+  },
+  {
+    "key": "testimonials/t-lena",
+    "file": "src/content/testimonials.json",
+    "format": "json",
+    "entryKey": "t-lena",
+    "buildTime": false,
+    "revision": "3c4a18a1c4ebe8e9"
+  },
+  {
+    "key": "testimonials/t-marco",
+    "file": "src/content/testimonials.json",
+    "format": "json",
+    "entryKey": "t-marco",
+    "buildTime": false,
+    "revision": "642175884a289805"
+  },
+  {
+    "key": "data:src/config/config.json",
+    "file": "src/config/config.json",
+    "format": "json",
+    "buildTime": true,
+    "buildTimeFields": [
+      "site.base_url",
+      "site.base_path",
+      "site.trailing_slash"
+    ],
+    "revision": "7c45dcb03b8738b2"
+  },
+  {
+    "key": "data:src/config/menu.json",
+    "file": "src/config/menu.json",
+    "format": "json",
+    "buildTime": false,
+    "revision": "79bcea37dbe0c11f"
+  },
+  {
+    "key": "data:src/config/social.json",
+    "file": "src/config/social.json",
+    "format": "json",
+    "buildTime": false,
+    "revision": "e9efc478e2cfc213"
+  },
+  {
+    "key": "data:src/config/theme.json",
+    "file": "src/config/theme.json",
+    "format": "json",
+    "buildTime": true,
+    "buildTimeFields": [
+      "*"
+    ],
+    "revision": "70df3841b1c2ea25"
   }
 ]

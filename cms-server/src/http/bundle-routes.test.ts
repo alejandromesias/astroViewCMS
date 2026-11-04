@@ -69,8 +69,8 @@ describe('GET /api/status', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       bundle: {
-        bundleId: 'fixture-2026-11-01',
-        siteCommit: 'bec46fcadfe832d7bdec8b06eee6ba6546bd2596',
+        bundleId: 'fixture-2026-11-03',
+        siteCommit: '4523c67c55284f8bd3ae1b61caa6d5501ccc77ab',
       },
     });
   });
@@ -130,6 +130,15 @@ describe('GET /api/documents?collection=', () => {
     expect(await response.json()).toEqual({
       documents: [
         {
+          key: 'blog/-index',
+          file: 'src/content/blog/-index.md',
+          revision: 'f951b0d3d5a329e9',
+          format: 'md',
+          editable: true,
+          buildTime: false,
+          title: 'Latest news',
+        },
+        {
           key: 'blog/blog-1',
           file: 'src/content/blog/blog-1.md',
           revision: 'f0a7b71033203392',
@@ -137,6 +146,42 @@ describe('GET /api/documents?collection=', () => {
           editable: true,
           buildTime: false,
           title: 'What you need to know about Photography',
+        },
+        {
+          key: 'blog/blog-2',
+          file: 'src/content/blog/blog-2.md',
+          revision: '7aea0085ca521e1e',
+          format: 'md',
+          editable: true,
+          buildTime: false,
+          title: 'How to make toys from old Olarpaper',
+        },
+        {
+          key: 'blog/blog-3',
+          file: 'src/content/blog/blog-3.md',
+          revision: 'df5d163626342f30',
+          format: 'md',
+          editable: true,
+          buildTime: false,
+          title: 'What you need to know about Photography',
+        },
+        {
+          key: 'blog/blog-4',
+          file: 'src/content/blog/blog-4.md',
+          revision: '841030777fedd3d2',
+          format: 'md',
+          editable: true,
+          buildTime: false,
+          title: 'How to make toys from old Olarpaper',
+        },
+        {
+          key: 'blog/blog-5',
+          file: 'src/content/blog/blog-5.md',
+          revision: '72ba33c895eafa59',
+          format: 'md',
+          editable: true,
+          buildTime: false,
+          title: 'Adversus is a web-based dialer and practical CRM solution',
         },
       ],
     });
@@ -170,6 +215,22 @@ describe('GET /api/documents?collection=', () => {
           key: 'stats/editors',
           file: 'src/content/stats.yaml',
           revision: 'b877e991d4201f6c',
+          format: 'yaml',
+          editable: true,
+          buildTime: false,
+        },
+        {
+          key: 'stats/sites',
+          file: 'src/content/stats.yaml',
+          revision: 'f60a1c3cab76660a',
+          format: 'yaml',
+          editable: true,
+          buildTime: false,
+        },
+        {
+          key: 'stats/uptime',
+          file: 'src/content/stats.yaml',
+          revision: '26f950f0c2fd32c5',
           format: 'yaml',
           editable: true,
           buildTime: false,
@@ -224,7 +285,8 @@ describe('GET /api/documents?collection=', () => {
   });
 
   it('answers an empty list for a collection with no documents in documents.json', async () => {
-    const response = await appOver(FIXTURE_BUNDLE).request(
+    const dir = await bundleWith([]);
+    const response = await appOver(dir).request(
       '/api/documents?collection=pricing',
     );
     expect(response.status).toBe(200);
@@ -644,7 +706,14 @@ describe('GET /api/documents?collection= reads the working copy', () => {
     const root = await sampleWorkingCopy({
       'src/content/blog/blog-1.md': text,
     });
-    const response = await appOver(FIXTURE_BUNDLE, root).request(
+    const dir = await bundleWith([
+      record({
+        key: 'blog/blog-1',
+        file: 'src/content/blog/blog-1.md',
+        format: 'md',
+      }),
+    ]);
+    const response = await appOver(dir, root).request(
       '/api/documents?collection=blog',
     );
     expect(response.status).toBe(200);
@@ -667,7 +736,15 @@ describe('GET /api/documents?collection= reads the working copy', () => {
     const root = await sampleWorkingCopy({
       'src/content/testimonials.json': '[',
     });
-    const response = await appOver(FIXTURE_BUNDLE, root).request(
+    const dir = await bundleWith([
+      record({
+        key: 'testimonials/t-ana',
+        file: 'src/content/testimonials.json',
+        format: 'json',
+        entryKey: 't-ana',
+      }),
+    ]);
+    const response = await appOver(dir, root).request(
       '/api/documents?collection=testimonials',
     );
     expect(response.status).toBe(200);
