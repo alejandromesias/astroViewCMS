@@ -1,0 +1,12 @@
+#!/bin/sh
+# Tripwire (WORKPLAN-PHASE-2 2.1h, action plan step 2). While a test or a Stryker worker runs,
+# no ref or HEAD of this checkout may change. Git calls this hook in the `prepared` state before
+# it writes; a non-zero exit aborts the change. Only repos whose core.hooksPath is .githooks run
+# it: the CMS clones use an empty hooks folder, and test repos have no .githooks folder.
+cat > /dev/null
+[ "$1" = "prepared" ] || exit 0
+if [ -n "$VITEST" ] || [ -n "$STRYKER_MUTATOR_WORKER" ]; then
+  echo "reference-transaction: refused, no ref may change during a test run (WORKPLAN 2.1h)" >&2
+  exit 1
+fi
+exit 0
