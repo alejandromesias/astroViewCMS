@@ -327,4 +327,19 @@ describe('the gate, edge cases', () => {
       gateAt().check(get('/preview_token', { cookie: cookieFor() })),
     ).toEqual({ action: 'allow' });
   });
+
+  // A target without `?` has no query, so a token spelled after `&` in the path is not a token.
+  it('does not read a preview_token that sits in the path of a target with no query', () => {
+    expect(gateAt().check(get(`/page&preview_token=${tokenFor()}`))).toEqual({
+      action: 'deny',
+    });
+  });
+
+  // The `?` at index 1 is the first character after the root path: its query must still be read.
+  it('reads the query of a target whose `?` is its second character', () => {
+    expect(gateAt().check(get(`/?preview_token=${tokenFor()}`))).toMatchObject({
+      action: 'redirect',
+      location: '/',
+    });
+  });
 });
