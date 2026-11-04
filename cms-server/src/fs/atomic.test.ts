@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { makeTestRoot, removeTestRoot } from '../../test/helpers/git.ts';
-import { RENAME_ATTEMPTS, writeFileAtomic } from './atomic.ts';
+import { errorCode, RENAME_ATTEMPTS, writeFileAtomic } from './atomic.ts';
 
 let root: string;
 beforeEach(async () => {
@@ -27,6 +27,26 @@ function failingRename(codes: string[]) {
 }
 
 const noWait = async (): Promise<void> => undefined;
+
+describe('errorCode', () => {
+  it('gives the string code of an Error', () => {
+    expect(errorCode(codeError('EPERM'))).toBe('EPERM');
+  });
+
+  it('gives undefined for an Error with no code, or a code that is not a string', () => {
+    expect(errorCode(new Error('plain'))).toBeUndefined();
+    expect(
+      errorCode(Object.assign(new Error('numeric'), { code: 13 })),
+    ).toBeUndefined();
+  });
+
+  it('gives undefined for a value that is not an Error, even when it has a string code', () => {
+    expect(errorCode({ code: 'EPERM' })).toBeUndefined();
+    expect(errorCode('EPERM')).toBeUndefined();
+    expect(errorCode(null)).toBeUndefined();
+    expect(errorCode(undefined)).toBeUndefined();
+  });
+});
 
 describe('writeFileAtomic', () => {
   it('writes the content and leaves no temp file behind', async () => {
@@ -79,6 +99,20 @@ describe('writeFileAtomic', () => {
       writeFileAtomic(file, 'x', { rename, wait: noWait }),
     ).rejects.toMatchObject({ code: 'ENOENT' });
     expect(calls).toHaveLength(1);
+    expect(fs.readdirSync(root)).toEqual([]);
+  });
+
+  it('does not retry a thrown value that is not an Error, even with a retryable code', async () => {
+    const file = path.join(root, 'media.json');
+    let calls = 0;
+    const rename = async (): Promise<void> => {
+      calls += 1;
+      throw { code: 'EBUSY' };
+    };
+    await expect(
+      writeFileAtomic(file, 'x', { rename, wait: noWait }),
+    ).rejects.toEqual({ code: 'EBUSY' });
+    expect(calls).toBe(1);
     expect(fs.readdirSync(root)).toEqual([]);
   });
 

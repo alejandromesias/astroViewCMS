@@ -18,6 +18,16 @@ afterEach(async () => {
 const ABC_SHA256 =
   'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
 
+describe('readStaged: a read error', () => {
+  it('throws an error that is not a missing file, such as a folder under a staged name', async () => {
+    const name = `${ABC_SHA256}.png`;
+    fs.mkdirSync(path.join(stagingDir, name), { recursive: true });
+    await expect(readStaged(stagingDir, name)).rejects.toMatchObject({
+      code: 'EISDIR',
+    });
+  });
+});
+
 describe('stageImage', () => {
   it('names the file by its sha256 and the format, and returns the id and name', async () => {
     const result = await stageImage(stagingDir, Buffer.from('abc'), 'png');
