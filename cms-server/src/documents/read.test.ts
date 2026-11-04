@@ -146,6 +146,16 @@ describe('FileRead.parse', () => {
     expect(outcome.error.column).toBe(10);
   });
 
+  it('keeps a byte-order mark in the text, so JSON that starts with one is an error', async () => {
+    const root = await tempWorkingCopy({});
+    await writeFile(join(root, 'a.json'), Buffer.from('﻿{"a":1}', 'utf8'));
+    const outcome = (await readOf(root, 'a.json')).parse();
+    if (outcome === null || !('error' in outcome)) throw new Error('no error');
+    expect(outcome.error.message).toBe(
+      'Invalid JSON at line 1, column 1: InvalidSymbol',
+    );
+  });
+
   it('keeps the same outcome for every call', async () => {
     const root = await tempWorkingCopy({ 'a.json': '{"a":1}' });
     const read = await readOf(root, 'a.json');

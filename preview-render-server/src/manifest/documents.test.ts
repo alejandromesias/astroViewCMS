@@ -549,6 +549,16 @@ describe('withRevisions (WORKPLAN 2.0c)', () => {
     expect(document?.revision).toBe(revisionOf('{"title":"Plain"}'));
   });
 
+  it('fails in the hash, not in the lookup, for a document with no file whose entry is not in the store', () => {
+    expect(() =>
+      withRevisions(
+        [{ key: 'custom/gone', format: 'other', buildTime: false }],
+        new Map(),
+        siteWith({}),
+      ),
+    ).toThrow(/The "data" argument must be of type string/);
+  });
+
   it('hashes an object-keyed file entry with its id, since the key is the id', () => {
     const root = siteWith({
       'src/content/settings.json':
