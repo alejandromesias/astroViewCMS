@@ -457,6 +457,89 @@ describe('planWrite: glob collections', () => {
   });
 });
 
+describe('planWrite: the id the build gives the new file', () => {
+  const BLOG = { blog: globLoader('**/*.md', 'src/content/blog') };
+
+  it('refuses an id the build would not give the file, and names both ids', async () => {
+    await expect(
+      planWrite(
+        [
+          {
+            op: 'create',
+            collection: 'blog',
+            id: 'My Post',
+            value: { data: { title: 'x' }, body: '' },
+          },
+        ],
+        ctxOf({}, [], BLOG),
+      ),
+    ).rejects.toMatchObject({
+      name: 'WritePlanError',
+      code: 'pattern-mismatch',
+      key: 'blog/My Post',
+      message:
+        'The id "My Post" would be saved as "my-post": the build gives a file its id from its frontmatter slug or its path',
+    });
+  });
+
+  it('refuses an index id, which the build gives the id without its /index', async () => {
+    await expect(
+      planWrite(
+        [
+          {
+            op: 'create',
+            collection: 'blog',
+            id: 'guides/index',
+            value: { data: {}, body: '' },
+          },
+        ],
+        ctxOf({}, [], BLOG),
+      ),
+    ).rejects.toMatchObject({
+      code: 'pattern-mismatch',
+      message:
+        'The id "guides/index" would be saved as "guides": the build gives a file its id from its frontmatter slug or its path',
+    });
+  });
+
+  it('refuses an id that the frontmatter slug of the value replaces', async () => {
+    await expect(
+      planWrite(
+        [
+          {
+            op: 'create',
+            collection: 'blog',
+            id: 'post',
+            value: { data: { slug: 'other' }, body: '' },
+          },
+        ],
+        ctxOf({}, [], BLOG),
+      ),
+    ).rejects.toMatchObject({
+      code: 'pattern-mismatch',
+      message:
+        'The id "post" would be saved as "other": the build gives a file its id from its frontmatter slug or its path',
+    });
+  });
+
+  it('accepts an id the build gives back, with a slash in it', async () => {
+    const ops = await planWrite(
+      [
+        {
+          op: 'create',
+          collection: 'blog',
+          id: 'guides/setup',
+          value: { data: { title: 'x' }, body: '' },
+        },
+      ],
+      ctxOf({}, [], BLOG),
+    );
+    expect(ops).toMatchObject([
+      { op: 'write', path: 'src/content/blog/guides/setup.md' },
+    ]);
+  });
+});
+
 describe('planWrite: refusals', () => {
   it.each([
     ['update', { op: 'update', key: 'blog/a', value: {} }],

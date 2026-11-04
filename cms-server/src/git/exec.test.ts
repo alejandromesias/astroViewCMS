@@ -402,6 +402,27 @@ describe('runGit', () => {
   });
 });
 
+describe('runGit: binary', () => {
+  it('returns stdout as the bytes the exec gave, and asks exec for bytes', async () => {
+    const bytes = Buffer.from([0xff, 0xfe, 0x41]);
+    const { exec, calls } = fakeExec({ stdout: bytes, stderr: '' });
+    await expect(
+      runGit(['cat-file', 'blob', 'HEAD:a'], {
+        cwd: '/repo',
+        exec,
+        binary: true,
+      }),
+    ).resolves.toEqual(bytes);
+    expect(calls[0]?.options.binary).toBe(true);
+  });
+
+  it('asks for text, and leaves the binary option out, by default', async () => {
+    const { exec, calls } = fakeExec({ stdout: 'text', stderr: '' });
+    await runGit(['status'], { cwd: '/repo', exec });
+    expect(calls[0]?.options).not.toHaveProperty('binary');
+  });
+});
+
 describe('the real exec (no fake)', () => {
   it('runs git --version through the default exec', async () => {
     expect(await runGit(['--version'], { cwd: process.cwd() })).toMatch(

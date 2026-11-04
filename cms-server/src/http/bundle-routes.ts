@@ -10,9 +10,13 @@ import {
 } from '../bundle/read.ts';
 import type { BundleSource } from '../bundle/source.ts';
 import { type BundleStore, createBundleStore } from '../bundle/store.ts';
-import type { CodecError } from '../codecs/types.ts';
+import { collectionOf } from '../documents/paths.ts';
 import type { FileReads } from '../documents/read.ts';
-import { revisionOfDocument } from '../documents/revision.ts';
+import {
+  type DocumentError,
+  errorOf,
+  revisionOfDocument,
+} from '../documents/revision.ts';
 
 /** One document in the list of GET /api/documents?collection=. `editable` is always a boolean. `revision` is null when the working copy cannot give one, and `error` is set (true) when the document cannot be read. */
 interface DocumentListItem {
@@ -25,14 +29,6 @@ interface DocumentListItem {
   buildTimeFields?: string[] | undefined;
   title?: string;
   error?: true;
-}
-
-/** The `error` of an answer for a file that does not parse: the codec's message, and its position when it has one. */
-interface DocumentError {
-  code: string;
-  message: string;
-  line?: number;
-  column?: number;
 }
 
 /** The answer of GET /api/documents?key=. `value` is present for an editable document; `error` when its file does not parse. */
@@ -88,7 +84,7 @@ export function registerBundleRoutes(
 }
 
 /** Runs `answer` on the current bundle. Without one it runs `missing`, which answers 503 unless a route says otherwise. */
-async function withBundle(
+export async function withBundle(
   c: Context,
   store: BundleStore,
   answer: (bundle: Bundle) => Response | Promise<Response>,
@@ -186,22 +182,6 @@ async function documentAnswer(
     ...(facts.error === undefined ? {} : { error: errorOf(facts.error) }),
   };
   return c.json(answer);
-}
-
-/** The `error` of an answer: the codec's message, with the position of the error when it has one. */
-function errorOf(error: CodecError): DocumentError {
-  return {
-    code: 'parse-error',
-    message: error.message,
-    ...(error.line === undefined ? {} : { line: error.line }),
-    ...(error.column === undefined ? {} : { column: error.column }),
-  };
-}
-
-/** The collection a document key belongs to: the part before the first slash (D10). A key with no slash is in none. */
-function collectionOf(key: string): string | undefined {
-  const slash = key.indexOf('/');
-  return slash === -1 ? undefined : key.slice(0, slash);
 }
 
 /** One list item. The revision and error come from the working copy, and a document that cannot be read has no title. Only an editable document is parsed, for its title. */

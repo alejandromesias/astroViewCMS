@@ -66,7 +66,7 @@ async function readFromDisk(
 }
 
 /** A FileRead over `bytes`. The parse runs on first use and is kept, so the value and the error come from one parse. */
-function fileRead(
+export function fileRead(
   bytes: Uint8Array,
   format: DocumentRecord['format'],
 ): FileRead {
@@ -108,6 +108,25 @@ export function entryOf(parsed: unknown, key: string): unknown {
   }
   if (isRecord(parsed) && Object.hasOwn(parsed, key)) return parsed[key];
   return undefined;
+}
+
+/**
+ * Every entry of a parsed `file()` value by its id, in the file's order: the array items that have an id (or slug),
+ * or the keys of an object except `$schema`. The first entry with an id is kept, as `entryOf` finds it.
+ */
+export function entriesOf(parsed: unknown): Map<string, unknown> {
+  const entries = new Map<string, unknown>();
+  if (Array.isArray(parsed)) {
+    const items: readonly unknown[] = parsed;
+    for (const item of items) {
+      const id = idOf(item);
+      if (id !== undefined && !entries.has(id)) entries.set(id, item);
+    }
+  } else if (isRecord(parsed)) {
+    for (const [id, entry] of Object.entries(parsed))
+      if (id !== '$schema') entries.set(id, entry);
+  }
+  return entries;
 }
 
 /** The id of an entry as Astro's file loader reads it: `id ?? slug`, as text (`rawItem.id ?? rawItem.slug`). Undefined for a value that is not an object or has neither. */

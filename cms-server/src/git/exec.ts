@@ -5,18 +5,19 @@
 import { execFile } from 'node:child_process';
 import { posix, win32 } from 'node:path';
 
-/** What a finished `git` process produced. */
+/** What a finished `git` process produced. Its stdout is a Buffer only for a call made with `binary`. */
 export interface ExecResult {
-  stdout: string;
+  stdout: string | Buffer;
   stderr: string;
 }
 
-/** The settings `runGit` gives to `exec`. `timeout` is in milliseconds. */
+/** The settings `runGit` gives to `exec`. `timeout` is in milliseconds. `binary` keeps stdout as bytes. */
 export interface ExecOptions {
   cwd: string;
   env: NodeJS.ProcessEnv;
   timeout: number;
   maxBuffer: number;
+  binary?: true;
 }
 
 /** Runs `file` with `args` and no shell. Rejects with Node's error shape (`code`, `killed`, `signal`, `stdout`, `stderr`). */
@@ -60,7 +61,7 @@ export class GitError extends Error {
 
 /** The real `execFile`, promisified. Its rejections carry Node's error shape. */
 export const realExec: ExecFn = (file, args, options) =>
-  new Promise((resolve, reject) => {
+  new Promise<ExecResult>((resolve, reject) => {
     execFile(
       file,
       args,
@@ -69,15 +70,25 @@ export const realExec: ExecFn = (file, args, options) =>
         env: options.env,
         timeout: options.timeout,
         maxBuffer: options.maxBuffer,
-        encoding: 'utf8',
+        encoding: options.binary === true ? 'buffer' : 'utf8',
         windowsHide: true,
       },
       (error, stdout, stderr) => {
-        if (error === null) resolve({ stdout, stderr });
+        // stderr is text for every call, so it is decoded even when stdout is kept as bytes.
+        if (error === null) resolve({ stdout, stderr: String(stderr) });
         else reject(Object.assign(error, { stdout, stderr }));
       },
     );
   });
+
+/** The options of one `runGit` call. `binary` returns stdout as a Buffer, undecoded (a blob's exact bytes). */
+export interface RunGitOptions {
+  cwd: string;
+  timeoutMs?: number;
+  env?: NodeJS.ProcessEnv;
+  exec?: ExecFn;
+  binary?: true;
+}
 
 /**
  * Runs `git` with `args` in `cwd` and returns its stdout. The fixed options are `GIT_TERMINAL_PROMPT=0`,
@@ -85,16 +96,25 @@ export const realExec: ExecFn = (file, args, options) =>
  * `GIT_SSH_COMMAND` is `ssh -o BatchMode=yes` unless the environment already sets it. `-c protocol.ext.allow=never`
  * comes before every command, because the remote URL comes from the config file.
  */
+export function runGit(
+  args: readonly string[],
+  options: RunGitOptions & { binary: true },
+): Promise<Buffer>;
+export function runGit(
+  args: readonly string[],
+  options: RunGitOptions,
+): Promise<string>;
 export async function runGit(
   args: readonly string[],
-  options: {
-    cwd: string;
-    timeoutMs?: number;
-    env?: NodeJS.ProcessEnv;
-    exec?: ExecFn;
-  },
-): Promise<string> {
-  const { cwd, timeoutMs = 60_000, env = {}, exec = realExec } = options;
+  options: RunGitOptions,
+): Promise<string | Buffer> {
+  const {
+    cwd,
+    timeoutMs = 60_000,
+    env = {},
+    exec = realExec,
+    binary,
+  } = options;
   for (const arg of args) {
     if (arg.includes('\0'))
       throw new GitError(
@@ -126,6 +146,7 @@ export async function runGit(
         env: fullEnv,
         timeout: timeoutMs,
         maxBuffer: MAX_BUFFER,
+        ...(binary === true ? { binary: true as const } : {}),
       },
     );
     return stdout;

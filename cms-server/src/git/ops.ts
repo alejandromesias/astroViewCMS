@@ -55,7 +55,19 @@ export interface Repo {
   changedPaths(): Promise<ChangedPath[]>;
   /** The text of `path` at `ref`, or `null` when it is missing there or is a folder. A missing `ref` throws. */
   showAt(ref: string, path: string): Promise<string | null>;
+  /** The exact bytes of `path` at `ref`, or `null` as `showAt`. Undecoded, so a hash of them is the file's revision. */
+  showAtBytes(ref: string, path: string): Promise<Buffer | null>;
+  /** The commit `cms/work` and `origin/<branch>` share: the base that `changedPaths` compares with. Read without the lock. */
+  mergeBase(): Promise<string>;
+  /**
+   * The `CMS-Overwrote` trailers of the saves on `cms/work` that origin does not have, as document key to the
+   * upstream sha. When a key repeats, the newest save (and the last line of it) wins. Read without the lock.
+   */
+  overwrittenSince(): Promise<ReadonlyMap<string, string>>;
 }
+
+/** The trailer that a re-apply save writes for each document it overwrote (2.10b). */
+const OVERWROTE_TRAILER = 'CMS-Overwrote';
 
 /** Makes the operations for one start. `exec` and `mutex` default to the real git and a new lock. */
 export function openRepo({
@@ -72,6 +84,9 @@ export function openRepo({
   // Runs git in the clone. Every call goes through `runGit`, so the git settings and the timeout are the same everywhere.
   const git = (args: readonly string[]): Promise<string> =>
     runGit(args, { cwd: state.repoDir, exec });
+  // The same, with stdout kept as bytes (a blob's content, which may hold invalid UTF-8 or a BOM).
+  const gitBytes = (args: readonly string[]): Promise<Buffer> =>
+    runGit(args, { cwd: state.repoDir, exec, binary: true });
 
   const tx: RepoTx = {
     // Refuses a save off `cms/work`: committing there would put the save on another branch.
@@ -113,6 +128,18 @@ export function openRepo({
     },
   };
 
+  // `cat-file blob` prints the stored bytes. `ls-tree` prints `<mode> <type> <sha>` for a file, and nothing when the path is missing.
+  async function showAtBytes(
+    ref: string,
+    path: string,
+  ): Promise<Buffer | null> {
+    assertRef(ref);
+    const full = repoPath(scope, path);
+    const entry = await git(['ls-tree', '-z', ref, '--', full]);
+    if (entry.split(' ')[1] !== 'blob') return null;
+    return gitBytes(['cat-file', 'blob', `${ref}:${full}`]);
+  }
+
   return {
     locked: (holder, work) => mutex.run(holder, () => work(tx)),
     // Compares the two commits with the merge base, so upstream's new commits do not show as reversed edits.
@@ -129,14 +156,39 @@ export function openRepo({
       return parseNameStatus(output, scope);
     },
     async showAt(ref, path) {
-      assertRef(ref);
-      const full = repoPath(scope, path);
-      // `ls-tree` prints `<mode> <type> <sha>` for a file, and nothing for a missing path.
-      const entry = await git(['ls-tree', '-z', ref, '--', full]);
-      if (entry.split(' ')[1] !== 'blob') return null;
-      return git(['show', `${ref}:${full}`]);
+      const bytes = await showAtBytes(ref, path);
+      return bytes === null ? null : bytes.toString('utf8');
+    },
+    showAtBytes,
+    async mergeBase() {
+      return (await git(['merge-base', `origin/${branch}`, WORK])).trim();
+    },
+    // Oldest first, so a later line (a newer save) replaces an earlier one in `parseOverwrote`.
+    async overwrittenSince() {
+      const output = await git([
+        'log',
+        '--reverse',
+        `--format=%(trailers:key=${OVERWROTE_TRAILER},valueonly)`,
+        `origin/${branch}..${WORK}`,
+      ]);
+      return parseOverwrote(output);
     },
   };
+}
+
+/**
+ * Reads the `CMS-Overwrote` values of a `git log` in the order it prints them: oldest first, one value per line, each
+ * `<document key> <upstream sha>`. The sha is what follows the last space, so a key may hold spaces (a `file()` id can).
+ * A line without a key or a sha is skipped. A later line for a key replaces an earlier one.
+ */
+export function parseOverwrote(output: string): Map<string, string> {
+  const found = new Map<string, string>();
+  for (const line of output.split('\n')) {
+    const space = line.lastIndexOf(' ');
+    if (space <= 0 || space === line.length - 1) continue;
+    found.set(line.slice(0, space), line.slice(space + 1));
+  }
+  return found;
 }
 
 /**

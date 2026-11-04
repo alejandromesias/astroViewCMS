@@ -9,9 +9,10 @@ import {
   type ChangedPath,
   openRepo,
   parseNameStatus,
+  parseOverwrote,
   type Repo,
 } from './ops.ts';
-import { ensureRepo, type RepoState } from './repo.ts';
+import { ensureRepo, type RepoState, WORK } from './repo.ts';
 
 // Each test makes its own small remote and clone, so one test may take a few git calls.
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
@@ -228,6 +229,108 @@ describe('openRepo: commitSave', () => {
       kind: 'invalid-argument',
       message: 'invalid path: "../README.md"',
     });
+  });
+});
+
+describe('openRepo: bytes, merge base and trailers', () => {
+  it('showAtBytes returns the stored bytes, a byte-order mark and invalid UTF-8 included; showAt decodes them', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site');
+    const repo = repoOf(fixture);
+    const raw = Buffer.from([0xef, 0xbb, 0xbf, 0xff, 0x41]);
+    await writeFile(join(fixture.state.siteFolder, 'notes/raw.bin'), raw);
+    await save(repo, ['notes/raw.bin'], 'raw');
+    await expect(repo.showAtBytes(WORK, 'notes/raw.bin')).resolves.toEqual(raw);
+    await expect(repo.showAt(WORK, 'notes/raw.bin')).resolves.toBe('﻿�A');
+  });
+
+  it('showAtBytes and showAt give null for a missing path and for a folder', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site');
+    const repo = repoOf(fixture);
+    await expect(
+      repo.showAtBytes(WORK, 'notes/missing.md'),
+    ).resolves.toBeNull();
+    await expect(repo.showAtBytes(WORK, 'notes')).resolves.toBeNull();
+    await expect(repo.showAt(WORK, 'notes/missing.md')).resolves.toBeNull();
+  });
+
+  it('mergeBase is the commit that origin and cms/work share, and an upstream commit does not move it', async () => {
+    const root = await newRoot();
+    const fixture = await fixtureIn(root, 'site');
+    const repo = repoOf(fixture);
+    const shared = (
+      await git(fixture.state.repoDir, ['rev-parse', 'origin/main'])
+    ).trim();
+    await expect(repo.mergeBase()).resolves.toBe(shared);
+    await writeFile(join(root, 'seed', 'site/notes/a.md'), 'upstream\n');
+    await git(join(root, 'seed'), ['commit', '--all', '--message', 'upstream']);
+    await git(join(root, 'seed'), ['push', 'origin', 'HEAD:main']);
+    await git(fixture.state.repoDir, ['fetch', 'origin']);
+    await expect(repo.mergeBase()).resolves.toBe(shared);
+  });
+
+  it('overwrittenSince reads the CMS-Overwrote trailers of the saves that origin lacks, and the newest value wins', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site');
+    const repo = repoOf(fixture);
+    await edit(fixture, 'notes/a.md', 'alpha 2\n');
+    await save(repo, ['notes/a.md'], 'save');
+    await git(fixture.state.repoDir, [
+      'commit',
+      '--allow-empty',
+      '--message',
+      'reapply one',
+      '--trailer',
+      'CMS-Overwrote: notes/a 1111111',
+      '--trailer',
+      'CMS-Overwrote: notes/x y 2222222',
+    ]);
+    await git(fixture.state.repoDir, [
+      'commit',
+      '--allow-empty',
+      '--message',
+      'reapply two',
+      '--trailer',
+      'CMS-Overwrote: notes/a 3333333',
+    ]);
+    await expect(repo.overwrittenSince()).resolves.toEqual(
+      new Map([
+        ['notes/a', '3333333'],
+        ['notes/x y', '2222222'],
+      ]),
+    );
+  });
+
+  it('overwrittenSince is empty when no save is ahead of origin', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site');
+    await expect(repoOf(fixture).overwrittenSince()).resolves.toEqual(
+      new Map(),
+    );
+  });
+});
+
+describe('parseOverwrote', () => {
+  it('splits each value at its last space, so a key may hold spaces', () => {
+    expect(parseOverwrote('pages/My Post 1234abcd\n')).toEqual(
+      new Map([['pages/My Post', '1234abcd']]),
+    );
+  });
+
+  it('skips a line with no key, no sha, or no space at all', () => {
+    expect(parseOverwrote('nosha\n 1234abcd\npages/a \n\n')).toEqual(new Map());
+  });
+
+  it('keeps the later line for a key that repeats, across and within commits', () => {
+    expect(
+      parseOverwrote('blog/a 1111\nblog/b 2222\nblog/a 3333\nblog/a 4444\n'),
+    ).toEqual(
+      new Map([
+        ['blog/a', '4444'],
+        ['blog/b', '2222'],
+      ]),
+    );
+  });
+
+  it('reads empty output as no trailers', () => {
+    expect(parseOverwrote('')).toEqual(new Map());
   });
 });
 
