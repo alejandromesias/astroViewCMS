@@ -9,7 +9,7 @@ import {
 import type { DocumentEntry } from '../bundle/read.ts';
 import { CodecError } from '../codecs/types.ts';
 import type { FileReads } from './read.ts';
-import { revisionOfDocument } from './revision.ts';
+import { errorOf, revisionOfDocument } from './revision.ts';
 
 afterEach(() => removeWorkingCopies());
 
@@ -217,6 +217,51 @@ describe('revisionOfDocument: a file() entry', () => {
     );
     expect(first?.revision).toBe(revisionOfEntry({ quote: 'Two' }));
     expect(second?.revision).toBe(revisionOfEntry({ quote: 'One' }));
+  });
+});
+
+describe('errorOf', () => {
+  it('gives the code, the message and the line and column when the error has them', () => {
+    const error = new CodecError(
+      'Invalid JSON at line 2, column 10: PropertyNameExpected',
+      {
+        format: 'json',
+        line: 2,
+        column: 10,
+      },
+    );
+    expect(errorOf(error)).toStrictEqual({
+      code: 'parse-error',
+      message: 'Invalid JSON at line 2, column 10: PropertyNameExpected',
+      line: 2,
+      column: 10,
+    });
+  });
+
+  it('leaves out a line the error does not have', () => {
+    const error = new CodecError('a column only', { format: 'md', column: 4 });
+    expect(errorOf(error)).toStrictEqual({
+      code: 'parse-error',
+      message: 'a column only',
+      column: 4,
+    });
+  });
+
+  it('leaves out a column the error does not have', () => {
+    const error = new CodecError('a line only', { format: 'md', line: 3 });
+    expect(errorOf(error)).toStrictEqual({
+      code: 'parse-error',
+      message: 'a line only',
+      line: 3,
+    });
+  });
+
+  it('gives only the code and the message for an error with no position', () => {
+    const error = new CodecError('no position', { format: 'md' });
+    expect(errorOf(error)).toStrictEqual({
+      code: 'parse-error',
+      message: 'no position',
+    });
   });
 });
 
