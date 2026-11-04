@@ -52,6 +52,12 @@ describe('canonicalEntryText', () => {
     expect(canonicalEntryText([3, 'x', null, true])).toBe('[3,"x",null,true]');
     expect(canonicalEntryText('text')).toBe('"text"');
   });
+
+  it('sorts keys that come before and after each other in both directions', () => {
+    expect(canonicalEntryText({ c: 1, a: 2, b: 3, d: 4 })).toBe(
+      '{"a":2,"b":3,"c":1,"d":4}',
+    );
+  });
 });
 
 describe('revisionOfKeyedEntry', () => {
@@ -104,6 +110,25 @@ describe('revisionOfEntry', () => {
   it('changes when a field changes', () => {
     expect(revisionOfEntry({ id: 'x', n: 1 })).not.toBe(
       revisionOfEntry({ id: 'x', n: 2 }),
+    );
+  });
+
+  it.each([
+    ['a string', 'text', '"text"'],
+    ['a number', 7, '7'],
+    ['null', null, 'null'],
+    ['an array', [1, 'two'], '[1,"two"]'],
+    ['a boolean', true, 'true'],
+  ])(
+    'hashes %s whole, since it has no id to take out',
+    (_label, value, text) => {
+      expect(revisionOfEntry(value)).toBe(revisionOf(text));
+    },
+  );
+
+  it('treats a null id as no id, so the slug is taken out and the null id stays', () => {
+    expect(revisionOfEntry({ id: null, slug: 'b' })).toBe(
+      revisionOf('{"id":null}'),
     );
   });
 });
