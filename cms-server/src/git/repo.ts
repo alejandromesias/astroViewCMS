@@ -122,7 +122,7 @@ async function syncRepo(
       { cwd: siteRoot, exec, timeoutMs: CLONE_TIMEOUT_MS },
     );
   }
-  await setConfig(git, identity, hooksDir);
+  await setConfig(git, identity, hooksDir, join(repoDir, '.git', 'config'));
   await git(['fetch', 'origin']);
   if (!(await refExists(git, `refs/heads/${WORK}`)))
     await git(['branch', WORK, `origin/${branch}`]);
@@ -197,16 +197,20 @@ function savesNote(saves: number | undefined): string {
 
 // Every start: the identity comes from the config, so a changed author takes effect. The hooks folder
 // is empty and signing is off, so the user's global hooks and signing do not run on CMS commits.
+// Each write names the clone's own config file, so a folder git does not read as its own repo
+// cannot change a parent repo's settings, even if the guard before it is bypassed.
 async function setConfig(
   git: Git,
   identity: Identity,
   hooksDir: string,
+  configFile: string,
 ): Promise<void> {
-  await git(['config', 'user.name', identity.name]);
-  await git(['config', 'user.email', identity.email]);
-  await git(['config', 'core.hooksPath', hooksDir]);
-  await git(['config', 'commit.gpgsign', 'false']);
-  await git(['config', 'core.autocrlf', 'false']);
+  const file = ['config', '--file', configFile];
+  await git([...file, 'user.name', identity.name]);
+  await git([...file, 'user.email', identity.email]);
+  await git([...file, 'core.hooksPath', hooksDir]);
+  await git([...file, 'commit.gpgsign', 'false']);
+  await git([...file, 'core.autocrlf', 'false']);
 }
 
 // Checked before any git call. A missing `<email>` part is a config error, so it is reported as `failed`.
