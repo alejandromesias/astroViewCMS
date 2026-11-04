@@ -773,30 +773,27 @@ done. Item 6 of the design (the front server) is step 2.8.
 - **Result, part 1 (2026-11-04):** Stryker `--force` on 636a96e plus the tests added after it, measured in a scratch git repo outside the main checkout. Steps 1 to 4 are done. Scores per file: `git/repo.ts` 99.10% (2 survivors, equivalent: `Number()` ignores whitespace, an undefined name and email are the same either way); `codecs/by-format.ts` 100%; `documents/read.ts` 98.18% after a BOM test (2 survivors at L62, equivalent: fs errors are always `Error`s with a `code`; the `||` mutant of the L62 check fails the EISDIR test when applied by hand, so its survival is a Stryker per-test artifact); `documents/revision.ts` 100%; `preview-contract/src/revision.ts` 97.96% (1 survivor: the `<=` sort comparator, equivalent since keys in an object are unique); `preview-render-server/src/manifest/documents.ts` 97.08% (5 survivors, all equivalent: `readOnlyCollections` default, `schema: 'core'` against yaml's default, `contents === null` against `toJS()` of null, `item === null` for primitives, `file ?? ''` against `extname`). Earlier "100%" figures for `read.ts` came from incremental runs and were wrong; use `--force` when scoring.
   - **Leak evidence.** Cause: the Stryker sandbox lives inside the repo with no `.git`, so git climbs to the main checkout. Reproduced with the pre-fix code (33474b3) in a scratch repo: after a Stryker run on `repo.ts` the parent's config held `core.hooksPath` set to a sandbox path and the clone identity. Post-fix code (636a96e): vitest on `src/git` plus the documents tests, and three Stryker runs (`repo.ts`; `by-format.ts`, `read.ts`, `revision.ts`; the preview files) left the scratch parent's branches and config unchanged. `repo.test.ts` has the refusal test (an empty `.git` folder is refused, the parent's settings and branches stay). The cms Stryker config sets `GIT_CEILING_DIRECTORIES` inside `.stryker-tmp`.
   - **Open item.** At 12:57 on 2026-11-04 the main checkout switched to `cms/work` (a branch created from `origin/main` one second before) during a forced cms-server Stryker run. It was undone by hand (checkout back, branch deleted with `-d`). Most likely cause, not proven: a pre-fix scratch run (no ceiling, node_modules junctioned to the main checkout) overlapped it; no post-fix run leaked in five attempts. If it recurs, check `git reflog` first. After every Stryker run: `git config --get core.hooksPath` must print `.githooks`, and `git rev-parse --abbrev-ref HEAD` must print the working branch.
-- **Wave 5 code, added to this task (2026-11-03), each with its deadline:**
-  - `cms-server/src/documents/` (`read.ts`, `revision.ts`): **before 2.5b and 2.5c.** Run again
-    after any change to the revision rule, since its revision tests depend on it.
-  - `cms-server/src/documents/plan-write.ts` (added 2026-11-03; 2.5a built it after this list was written): **before 2.5c**, the first caller. Its 43 tests were written with the code, so expect survivors in the path and error branches.
-  - `cms-server/src/schema/walk.ts`: **before 2.6a and 2.7b.**
-  - `cms-server/src/codecs/by-format.ts`: with the codec batch (it was not mutated before 2.5a; do it with `documents/`).
-  - `preview-render-server/src/manifest/documents.ts` (`withRevisions`) and
-    `preview-contract/src/revision.ts` (`revisionOfEntry`): **once, now.** The 2.0c fix has landed
-    (`b137063`), so mutating them now avoids a second pass.
-- **Moved here from 2.1g (2026-11-03), each with its deadline:**
-  - `cms-server/src/server.ts` (31.7%): **before 2.5c.** Kill its survivors like any other file.
-  - `git/repo.ts`: **before 2.5b.** The Stryker run is blocked because `stryker.config.json` ignores
-    `sample-site`, which some repo tests need. Fix the cause first: seed those tests from a
-    small fixture under `cms-server/test/fixtures/`. The other option, letting `sample-site` into
-    the sandbox, copies a whole site into every sandbox.
-  - `config/load.ts` (53.8%), `config/secrets.ts` (2 survivors), `git/exec.ts` (1 survivor), the
-    remaining `ops.ts`/`mutex.ts` survivors, `serve/` and `preview-config.ts`, `log.ts`: with the rest of 2.1h.
-  - `serve/gate.ts` L121: Stryker says Survived, but a hand-applied mutant fails 37 tests. Run that
-    one file once with `coverageAnalysis: "off"`. If the mutant is then killed, the per-test coverage
-    mapping was wrong: write it down as a tool artifact, with that evidence, and stop. `serve/static.ts`
-    L84 (realpath check): analyse it here.
-- **Done when:** as 2.1g, with the score per folder; `npm run check -- --all`
-  green, or the `break` question raised with the user (2.13c). The `--all`
-  outcome is owned here, not by 2.1g (call, 2026-11-02). The moved items above are in scope.
+- **Part 2 (set 2026-11-04, replaces the lists that were here).** Three blocks, each with its own Result. Already scored in part 1 and the 2.1g serve Result, so not run again: `documents/read.ts`, `documents/revision.ts`, `codecs/by-format.ts`, `manifest/documents.ts`, `preview-contract/src/revision.ts`, `git/repo.ts` (part 1 Result); `serve/settings.ts` 97.6 and `preview-config.ts` 94.4 (2.1g serve Result). `mutex.ts` has no commit after its 2.1g score (last change `9c4875d`, 2026-11-02), so it is not stale.
+  - **Rules for all of part 2.**
+    - A **round** is one `--force` run of one file plus the tests written in response. A file is **done** when it scores 90 or more and every survivor is classified as killed, equivalent, tool artifact or real bug. A file still under 90 after two rounds stops: the agent reports the survivor list and the user decides.
+    - Part 2 edits test files, helpers and mutation configs. A `src` fix is reported, or made only when a survivor shows a real bug, and then named in the Result.
+    - Every score is a `--force` score. After every run: `git config --get core.hooksPath` prints `.githooks`, and `git rev-parse --abbrev-ref HEAD` prints the working branch.
+    - The `plan-write.ts` restriction is lifted: 2.0j (`4523c67`) and 2.5b (`fbb4035`) have landed, and part 1 scored `repo.ts`.
+  - **2a, before 2.5c starts and before 2.6a for `walk.ts`** · `[build]`, runs alone, so nobody else is in these files:
+    1. `cms-server/src/schema/walk.ts` first (deadline: before 2.6a and 2.7b).
+    2. `cms-server/src/documents/plan-write.ts` (43 tests written with the code; expect survivors in the path and error branches).
+    3. `cms-server/src/server.ts` (31.7%, 18 survived, 10 uncovered). The likely file to stop at two rounds.
+    - **Result 2a:** (to fill)
+  - **2b, before 2.9c; `media/` and `fs/atomic.ts` also before 2.7b:**
+    0. Step 0: seed `http/bundle-routes.test.ts` from `cms-server/test/fixtures/bundle/` (refreshed in `2fd60b8`) and remove it from the exclude list in `vitest.mutation.cms-server.config.ts`, as `repo.test.ts` was in part 1. Until then `bundle-routes.ts` and part of `bundle/` score falsely low.
+    1. `media/` and `fs/atomic.ts` first: a wrong cap or a lost `media.json` update is the costly survivor.
+    2. The rest of `fs/`, `bundle/`, `preview/supervisor.ts`.
+    3. `http/` (`body.ts`, `guard.ts`, the route files) last, after 2.5c has merged, so 2b and 2.5c never edit `http/` at the same time.
+    - **Result 2b:** (to fill)
+  - **2c, before 2.9c; the small files:** `config/load.ts` (53.8%, startup only), `config/secrets.ts` (2 survivors), `git/exec.ts` (1 survivor), `log.ts`, the remaining `ops.ts` survivors (stale: 2.5b changed it in `fbb4035`, so run it fresh), `serve/static.ts` (88.7, needs a real round, plus the L84 realpath analysis), and the `serve/gate.ts` L121 check.
+    - `gate.ts` L121: Stryker says Survived, but a hand-applied mutant fails 37 tests. Run that one file once with `coverageAnalysis: "off"`. If the mutant is then killed, the per-test coverage mapping was wrong: write it down as a tool artifact, with that evidence, and stop. Do this first.
+    - **Result 2c:** (to fill)
+- **Done when:** 2a, 2b and 2c are closed under the rules above. Then the lead does one full run. If the overall score is still under 90, that is the `break` question for the user (2.13c); the `--all` outcome is owned here, not by 2.1g (call, 2026-11-02).
 
 #### 2.1i Start code — after 2.3b, 2.4a, 2.7a, 2.9b, 2.11a · DONE 2026-11-03
 
@@ -1643,7 +1640,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
 - **Result (2026-11-03, 2.5a):** `cms-server/src/documents/plan-write.ts` and `plan-write.test.ts` (43 tests). Scoped runs over `documents` and `codecs`: 9 files, 310 passed; biome and tsc clean. Nothing committed. Choices where the gaps block was silent: `ctx` also carries `documents` (the bundle's records by key, for file, format and entryKey), `collections` (schema.json loaders) and `config` (`collections`, for `newEntryFormat`); `readText` is async, so `planWrite` is async; every CodecError becomes `unwritable` with file, line and column; an update or delete of a key the bundle lacks is `unwritable`; a `..`, absolute, backslash, or empty or `.` segment is `outside-site`; a `file()` create checks for an existing entry first, so a duplicate is `exists`; `yml` maps to yaml; a delete takes no value.
   - **Open (for 2.5c):** a create into a read-only collection is not refused. The list is `readOnlyCollections` in the preview site config; `documents.json` carries it only per existing document, and a new key has no record. Options: a read-only flag per collection in `schema.json` (a small preview-render-server change), or cms-server reads the site config. Recommended: the `schema.json` flag, since the fixtures collection can be empty.
 
-#### 2.5b Changeset state from git — after 2.0j, 2.3c, 2.4b
+#### 2.5b Changeset state from git — after 2.0j, 2.3c, 2.4b · DONE 2026-11-04
 
 - **Also (2026-11-03, from 2.5a):** expose the changeset's created documents in the shape of a bundle document record (key, file, format, `entryKey`), so 2.5c can add them to `planWrite`'s `ctx.documents`. Without them, a second save that edits a document the first save created is refused. Add a test for it.
 
