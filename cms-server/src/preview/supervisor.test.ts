@@ -1,7 +1,8 @@
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { makeTestRoot, removeTestRoot } from '../../test/helpers/git.ts';
 import {
   type BundleRef,
@@ -239,12 +240,12 @@ function writeFakeStart(root: string): string {
       "import path from 'node:path';",
       'const bundleId = path.basename(process.argv.at(-1));',
       "const marker = path.join(process.cwd(), bundleId + '.crashed');",
-      "if (bundleId === 'crash' && !fs.existsSync(marker)) {",
+      "if ((bundleId === 'crash' || bundleId === 'loud') && !fs.existsSync(marker)) {",
       "  fs.writeFileSync(marker, '');",
-      "  fs.writeSync(2, 'boom');",
+      "  fs.writeSync(2, bundleId === 'loud' ? 'a'.repeat(6000) + '\\n' + 'b'.repeat(6000) : 'boom');",
       '  process.exit(3);',
       '}',
-      'http',
+      'const server = http',
       '  .createServer((req, res) => {',
       "    if (req.url === '/__preview/config' && req.headers.authorization === 'Bearer ' + process.env.PREVIEW_INTERNAL_SECRET) {",
       "      res.setHeader('content-type', 'application/json');",
@@ -253,8 +254,10 @@ function writeFakeStart(root: string): string {
       '      res.statusCode = 404;',
       '      res.end();',
       '    }',
-      '  })',
-      '  .listen(Number(process.env.PORT), process.env.HOST);',
+      '  });',
+      'const listen = () => server.listen(Number(process.env.PORT), process.env.HOST);',
+      "if (bundleId === 'noisy') process.stdout.write('x'.repeat(2 ** 21), listen);",
+      'else listen();',
       '',
     ].join('\n'),
   );
@@ -746,4 +749,435 @@ describe('createSupervisor with the real defaults', () => {
       await removeTestRoot(root);
     }
   }, 15_000);
+});
+
+// 2.1h part 2b: the cases the first tests left to Stryker.
+const DIED: ExitInfo = { code: 1, signal: null, stderr: '' };
+
+/** A promise that settles when `open()` is called. */
+function gate() {
+  let open: () => void = () => undefined;
+  const opened = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { open, opened };
+}
+
+describe('childEnvironment: a parent variable with no value', () => {
+  it('leaves an allowlisted variable out when its value is undefined', () => {
+    const env = childEnvironment(
+      { PATH: undefined, TMPDIR: '/tmp' },
+      { port: PORT, site: SITE, editorOrigin: ORIGIN, secrets: SECRETS },
+    );
+    expect('PATH' in env).toBe(false);
+    expect(env.TMPDIR).toBe('/tmp');
+  });
+});
+
+describe('createSupervisor: state and readiness', () => {
+  it('is stopped before the first start', () => {
+    expect(make(rig()).status().state).toBe('stopped');
+  });
+
+  it('is starting while the first node and the swapped node are polled', async () => {
+    const fake = rig();
+    const seen: string[] = [];
+    const supervisor = make(fake, {
+      fetch: async (url, init) => {
+        seen.push(supervisor.status().state);
+        return fake.pieces.fetch(url, init);
+      },
+    });
+    await supervisor.start(A);
+    expect(seen[0]).toBe('starting');
+    seen.length = 0;
+    await supervisor.swap(B);
+    expect(seen[0]).toBe('starting');
+  });
+
+  it('gives up on a node at the readiness timeout, not one poll after it', async () => {
+    const fake = rig({ serves: () => null });
+    await make(fake).start(A);
+    const firstBackoff = fake.world.sleeps.findIndex((ms) => ms >= 1_000);
+    const polls = fake.world.sleeps
+      .slice(0, firstBackoff)
+      .filter((ms) => ms === 10);
+    expect(polls).toHaveLength(10);
+  });
+
+  it('does not count a node ready when its answer is not a 200, whatever the body says', async () => {
+    const fake = rig();
+    const supervisor = make(fake, {
+      fetch: async () =>
+        Response.json(
+          { editorOrigins: [ORIGIN], bundleId: 'a', protocolVersion: 1 },
+          { status: 500 },
+        ),
+    });
+    const result = await supervisor.start(A);
+    expect(result.ok).toBe(false);
+    expect(supervisor.status().state).toBe('failed');
+  });
+
+  it('uses 200 ms polls, a 20 s readiness timeout and a 5 s grace period when none are given', async () => {
+    const fake = rig({ serves: () => null });
+    const supervisor = createSupervisor({
+      ...BASE,
+      spawn: fake.pieces.spawn,
+      fetch: fake.pieces.fetch,
+      parentEnv: fake.pieces.parentEnv,
+      now: fake.pieces.now,
+      sleep: fake.pieces.sleep,
+      portInUse: async () => false,
+    });
+    expect(await supervisor.start(A)).toEqual({
+      ok: false,
+      error:
+        'Bundle a did not answer GET /__preview/config with its bundleId within 20000 ms',
+    });
+    expect(fake.world.sleeps[0]).toBe(200);
+    expect(fake.world.sleeps).toContain(5_000);
+  });
+
+  it('times out a swapped node on the real clock when no clock is injected, and rolls back', async () => {
+    const fake = rig({
+      serves: (dir) => (dir === B.dir ? null : path.basename(dir)),
+    });
+    const supervisor = createSupervisor({
+      ...BASE,
+      spawn: fake.pieces.spawn,
+      fetch: fake.pieces.fetch,
+      parentEnv: fake.pieces.parentEnv,
+      portInUse: async () => false,
+      readyTimeoutMs: 60,
+      pollMs: 5,
+      graceMs: 20,
+    });
+    try {
+      await supervisor.start(A);
+      expect(await supervisor.swap(B)).toMatchObject({
+        ok: false,
+        rolledBack: true,
+      });
+    } finally {
+      await supervisor.stop();
+    }
+  }, 5_000);
+});
+
+describe('createSupervisor: a start or swap that replaces a running node', () => {
+  it('does not bring the replaced node back when start() is called again', async () => {
+    const fake = rig();
+    const supervisor = make(fake);
+    await supervisor.start(A);
+    await supervisor.start(B);
+    await flush();
+    expect(fake.world.children).toHaveLength(2);
+    expect(supervisor.status()).toMatchObject({
+      state: 'ready',
+      bundleId: 'b',
+      failures: 0,
+    });
+  });
+
+  it('does not bring a swapped-out node back when start() follows the swap', async () => {
+    const fake = rig();
+    const supervisor = make(fake);
+    await supervisor.start(A);
+    await supervisor.swap(B);
+    await supervisor.start({ bundleId: 'c', dir: '/bundles/c' });
+    await flush();
+    expect(fake.world.children).toHaveLength(3);
+    expect(supervisor.status()).toMatchObject({
+      state: 'ready',
+      bundleId: 'c',
+    });
+  });
+
+  it('checks the port when swap() finds nothing running', async () => {
+    const fake = rig();
+    const supervisor = make(fake, { portInUse: async () => true });
+    expect(await supervisor.swap(B)).toEqual({
+      ok: false,
+      error:
+        'Port 4400 is already in use: the preview node cannot listen on it. Stop the other process or choose another port.',
+      rolledBack: false,
+    });
+    expect(fake.world.children).toHaveLength(0);
+  });
+
+  it('answers that the node was stopped when stop() comes during the swap, with no rollback', async () => {
+    const fake = rig();
+    const held = gate();
+    const reached = gate();
+    const supervisor = make(fake, {
+      fetch: async (url, init) => {
+        if (fake.world.children.length >= 2) {
+          reached.open();
+          await held.opened;
+        }
+        return fake.pieces.fetch(url, init);
+      },
+    });
+    await supervisor.start(A);
+    const swapping = supervisor.swap(B);
+    await reached.opened;
+    await supervisor.stop();
+    held.open();
+    expect(await swapping).toEqual({
+      ok: false,
+      error: 'The node was stopped during the swap',
+      rolledBack: false,
+    });
+    expect(fake.world.children).toHaveLength(2);
+    expect(supervisor.status().state).toBe('stopped');
+  });
+});
+
+describe('createSupervisor: stop() while the loop is busy', () => {
+  it('ends a restart that is polling its node when stop() comes, without a second restart or an error', async () => {
+    const fake = rig();
+    const held = gate();
+    const reached = gate();
+    const supervisor = make(fake, {
+      fetch: async (url, init) => {
+        if (fake.world.children.length >= 2) {
+          reached.open();
+          await held.opened;
+        }
+        return fake.pieces.fetch(url, init);
+      },
+    });
+    await supervisor.start(A);
+    childAt(fake.world, 0).exit(DIED);
+    await reached.opened;
+    await supervisor.stop();
+    held.open();
+    await flush();
+    expect(supervisor.status().state).toBe('stopped');
+    expect(fake.world.children).toHaveLength(2);
+  });
+
+  it('ends the start when stop() comes while a failed node is being killed', async () => {
+    const fake = rig({
+      serves: () => null,
+      ignoresTerm: () => true,
+    });
+    const held = gate();
+    const reached = gate();
+    const supervisor = make(fake, {
+      sleep: async (ms) => {
+        if (ms === 50) {
+          reached.open();
+          await held.opened;
+          return;
+        }
+        await fake.pieces.sleep(ms);
+      },
+    });
+    const starting = supervisor.start(A);
+    await reached.opened;
+    const stopped = supervisor.stop();
+    held.open();
+    await stopped;
+    expect(await starting).toEqual({
+      ok: false,
+      error: 'The node was stopped before it was ready',
+    });
+    expect(supervisor.status().state).toBe('stopped');
+    expect(fake.world.children).toHaveLength(1);
+  });
+
+  it('ends a restart wait after the node had been ready, with nobody waiting for the result', async () => {
+    const fake = rig();
+    const held = gate();
+    const reached = gate();
+    const supervisor = make(fake, {
+      sleep: async (ms) => {
+        if (ms >= 1_000) {
+          reached.open();
+          await held.opened;
+          return;
+        }
+        await fake.pieces.sleep(ms);
+      },
+    });
+    await supervisor.start(A);
+    childAt(fake.world, 0).exit(DIED);
+    await reached.opened;
+    await supervisor.stop();
+    held.open();
+    await flush();
+    expect(supervisor.status().state).toBe('stopped');
+    expect(fake.world.children).toHaveLength(1);
+  });
+
+  it('gives up quietly after five crashes of a node that had been ready', async () => {
+    const fake = rig({
+      dies: (_dir, index) => (index >= 1 ? DIED : undefined),
+    });
+    const supervisor = make(fake);
+    await supervisor.start(A);
+    childAt(fake.world, 0).exit(DIED);
+    await until(() => supervisor.status().state === 'failed');
+    expect(supervisor.status().failures).toBe(5);
+    expect(fake.world.children).toHaveLength(5);
+  });
+});
+
+describe('createSupervisor: the message of an exit', () => {
+  it.each([
+    [
+      'the last line of the stderr, after trailing blank lines',
+      { code: null, signal: 'SIGKILL', stderr: 'noise\nboom\n\n' },
+      'The preview node exited (code none, signal SIGKILL): boom',
+    ],
+    [
+      'no suffix for an empty stderr',
+      { code: 1, signal: null, stderr: '' },
+      'The preview node exited (code 1, signal none)',
+    ],
+    [
+      'no suffix for a stderr of blanks',
+      { code: 2, signal: null, stderr: '  \n ' },
+      'The preview node exited (code 2, signal none)',
+    ],
+  ] as const)('gives %s', async (_name, exit, expected) => {
+    const fake = rig({ dies: () => ({ ...exit }) });
+    expect(await make(fake).start(A)).toEqual({ ok: false, error: expected });
+  });
+});
+
+describe('createSupervisor: the port probe', () => {
+  it('does not take a probe error other than EADDRINUSE for a busy port', async () => {
+    const probe = Object.assign(new EventEmitter(), {
+      listen: () => {
+        queueMicrotask(() =>
+          probe.emit(
+            'error',
+            Object.assign(new Error('denied'), { code: 'EACCES' }),
+          ),
+        );
+        return probe;
+      },
+      close: () => probe,
+    });
+    const spy = vi
+      .spyOn(net, 'createServer')
+      .mockImplementation(() => probe as unknown as net.Server);
+    try {
+      const fake = rig();
+      const supervisor = createSupervisor({ ...BASE, ...fake.pieces });
+      expect(await supervisor.start(A)).toEqual({ ok: true });
+      await supervisor.stop();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe('createSupervisor with the real defaults: output of the node', () => {
+  it('drains the stdout of a node that writes a lot, so that it can start listening', async () => {
+    const root = await makeTestRoot();
+    const port = await freePort();
+    const supervisor = createSupervisor({
+      ...BASE,
+      port,
+      startScript: writeFakeStart(root),
+    });
+    try {
+      expect(
+        await supervisor.start({
+          bundleId: 'noisy',
+          dir: path.join(root, 'bundles', 'noisy'),
+        }),
+      ).toEqual({ ok: true });
+    } finally {
+      await supervisor.stop();
+      await removeTestRoot(root);
+    }
+  }, 15_000);
+
+  it('keeps only the last 4000 characters of the stderr of a node that crashes', async () => {
+    const root = await makeTestRoot();
+    const port = await freePort();
+    const supervisor = createSupervisor({
+      ...BASE,
+      port,
+      startScript: writeFakeStart(root),
+    });
+    try {
+      const starting = supervisor.start({
+        bundleId: 'loud',
+        dir: path.join(root, 'bundles', 'loud'),
+      });
+      await eventually(() => supervisor.status().state === 'restarting');
+      expect(supervisor.status().error).toBe(
+        `The preview node exited (code 3, signal none): ${'b'.repeat(4_000)}`,
+      );
+      expect(await starting).toEqual({ ok: true });
+    } finally {
+      await supervisor.stop();
+      await removeTestRoot(root);
+    }
+  }, 15_000);
+});
+
+describe('createSupervisor: a loop that waits while the node is replaced', () => {
+  it('does not restart the old bundle when its restart wait ends after start() replaced it', async () => {
+    const fake = rig();
+    const held = gate();
+    const reached = gate();
+    const supervisor = make(fake, {
+      sleep: async (ms) => {
+        if (ms >= 1_000) {
+          reached.open();
+          await held.opened;
+          return;
+        }
+        await fake.pieces.sleep(ms);
+      },
+    });
+    await supervisor.start(A);
+    childAt(fake.world, 0).exit(DIED);
+    await reached.opened;
+    await supervisor.start(B);
+    held.open();
+    await flush();
+    expect(
+      fake.world.log.filter((entry) => entry.startsWith('spawn:')),
+    ).toEqual(['spawn:/bundles/a', 'spawn:/bundles/b']);
+    expect(supervisor.status()).toMatchObject({
+      state: 'ready',
+      bundleId: 'b',
+    });
+  });
+
+  it('ends quietly when stop() comes while a restarted node that never answers is being killed', async () => {
+    const fake = rig({
+      serves: (_dir, index) => (index === 0 ? 'a' : null),
+      ignoresTerm: () => true,
+    });
+    const held = gate();
+    const reached = gate();
+    const supervisor = make(fake, {
+      sleep: async (ms) => {
+        if (ms === 50) {
+          reached.open();
+          await held.opened;
+          return;
+        }
+        await fake.pieces.sleep(ms);
+      },
+    });
+    await supervisor.start(A);
+    childAt(fake.world, 0).exit(DIED);
+    await reached.opened;
+    const stopped = supervisor.stop();
+    held.open();
+    await stopped;
+    await flush();
+    expect(supervisor.status().state).toBe('stopped');
+    expect(fake.world.children).toHaveLength(2);
+  });
 });
