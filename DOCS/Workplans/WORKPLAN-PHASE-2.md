@@ -814,6 +814,22 @@ done. Item 6 of the design (the front server) is step 2.8.
       - **Stopped:** the main checkout switched to `cms/work` during a 2c Stryker run (17:12). The branch is restored, and `cms/work` is deleted (it had no commits of its own). The run's sandbox is removed. Cause unproven; the same symptom as 12:57. Stryker runs stay on hold until the isolation question is decided.
 - **Done when:** 2a, 2b and 2c are closed under the rules above. Then the lead does one full run. If the overall score is still under 90, that is the `break` question for the user (2.13c); the `--all` outcome is owned here, not by 2.1g (call, 2026-11-02).
 
+**Standing risk under 2.1h (open 2026-11-04, not a task; no Stryker run in the main checkout until the isolation decision is made)**
+
+A Stryker run can switch the main checkout to another branch. It has happened three times, and it is not fixed.
+
+- **Trigger and context.** Stryker runs the tests of a mutant in `.stryker-tmp/sandbox-*`, inside the real checkout, and the sandbox has no `.git`. A git call whose folder is in the sandbox then finds the main repo. Incidents: 2026-11-03, recorded only in a comment in `vitest.mutation.config.ts`; 2026-11-04 12:57, during a forced cms-server run in the main checkout (`cms/work` created from `origin/main` at 12:57:39 and checked out, restored at 12:59); 2026-11-04 17:12, during the 2c `git/exec.ts` run (`cms/work` checked out, then checked out again at 17:15, restored by the 2c agent). `cms/work` was `d88efdf` each time and had no commits of its own.
+- **Hypothesis.** (a) The guard `GIT_CEILING_DIRECTORIES` in both mutation configs is set to `process.cwd()`, the sandbox root itself. A ceiling only stops the search above it. Probe, 2026-11-04: with the ceiling set to the working folder, `git rev-parse --show-toplevel` still printed the main repo; with the ceiling set to its parent, git stopped. (b) `test/helpers/git.ts` line 13 overwrites the variable with `.test-tmp`, which sits inside the sandbox, so a git call made from the sandbox root or from `cms-server/` still climbs. (c) The 17:12 trigger is probably a mutant that changes the cwd of a git call in `exec.ts`, the case the config comment describes. Not verified: the log does not say which mutant ran. (d) The 12:57 branch sequence matches `syncRepo`'s steps (`branch cms/work origin/main`, `checkout --force cms/work`). The test that ran them is not identified.
+- **Tried.** Part 1: `assertOwnRepo` in `repo.ts` refuses a folder whose top level is not itself; `setConfig` writes to the clone's own config; a refusal test; the ceiling in both configs. Part 1 post-fix: five runs did not leak. 2b: the branch and hooks checks after each of six runs.
+- **Partly worked.** The config leak (`core.hooksPath` and identity written to the main checkout) has not come back since part 1. Post-fix runs of `repo.ts`, `by-format.ts`, the preview files, and 2b's media and supervisor runs did not switch the branch. The checks catch a switch only after the run, and the restore is by hand.
+- **Still fails.** The 17:12 run switched the branch with the ceiling in place. The ceiling is set to the wrong folder, and the helper overwrites it. Causes of 12:57 and 17:12 are unproven.
+- **Risks moving forward.** Any Stryker run in the main checkout can repeat it. The remaining plan is git-heavy: `ops.ts` (after 2.5c), `mutex.ts`, the 2.5c commit path, the repo tests. A switch during a run silently invalidates its scores (the 2c `exec.ts` result was lost this way). A forced checkout in the main checkout would also discard uncommitted edits there. That has not happened, but nothing stops it.
+- **Recommendation.**
+  1. Run Stryker from a separate clone outside the repo tree, for example `%TEMP%\stryker-clone`. Nothing above the sandbox is then a repo, so the climb finds nothing, and the main checkout is never touched. Preferred; do this before 2.5c.
+  2. Until then, no Stryker run in the main checkout.
+  3. Second layer, if the in-tree run is kept: set the ceiling to the parent of the sandbox root (`.stryker-tmp`), and make the helper append to the existing list instead of overwriting it. Check the list separator on Windows with two paths first.
+  4. A guard test: run from the sandbox root, `git rev-parse --show-toplevel` must fail. Fail the run if it does not.
+
 #### 2.1i Start code — after 2.3b, 2.4a, 2.7a, 2.9b, 2.11a · DONE 2026-11-03
 
 - Added 2026-11-02. Wave 4 left every part injectable and nothing that
