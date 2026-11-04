@@ -387,6 +387,58 @@ describe('ensureRepo with a real remote', () => {
         message: `The CMS clone ${repoDir} has origin https://example.test/other.git, but the config says https://example.test/demo.git. The CMS will not repoint or re-clone it. Whether cms/work has unpublished saves could not be checked.`,
       });
     });
+
+    it('says there are no unpublished saves when cms/work does not exist', async () => {
+      const root = await newRoot();
+      const cmsDir = cmsDirOf(root);
+      const repoDir = repoDirOf(root);
+      await ensureRepo({ config: configFor(remote), cmsDir, log: spyLog() });
+      await git(repoDir, ['checkout', '--detach']);
+      await git(repoDir, ['branch', '-D', 'cms/work']);
+      const other = join(root, 'elsewhere.git');
+      await expect(
+        ensureRepo({ config: configFor(other), cmsDir, log: spyLog() }),
+      ).rejects.toMatchObject({
+        kind: 'url-mismatch',
+        message: `The CMS clone ${repoDir} has origin ${remote}, but the config says ${other}. The CMS will not repoint or re-clone it. cms/work has no unpublished saves, so deleting the folder loses nothing.`,
+      });
+    });
+
+    it('fails with the git error when counting the saves times out, not with an uncounted message', async () => {
+      const root = await newRoot();
+      const repoDir = repoDirOf(root);
+      await mkdir(join(repoDir, '.git'), { recursive: true });
+      const exec: ExecFn = (_file, args) => {
+        if (args.includes('get-url'))
+          return Promise.resolve({
+            stdout: 'https://example.test/other.git\n',
+            stderr: '',
+          });
+        if (args.includes('--show-toplevel'))
+          return Promise.resolve({ stdout: `${repoDir}\n`, stderr: '' });
+        if (args.includes('rev-parse'))
+          return Promise.resolve({ stdout: '', stderr: '' });
+        return Promise.reject(
+          Object.assign(new Error('Command failed'), {
+            killed: true,
+            code: null,
+            stderr: '',
+          }),
+        );
+      };
+      await expect(
+        ensureRepo({
+          config: configFor('https://example.test/demo.git'),
+          cmsDir: cmsDirOf(root),
+          exec,
+          log: spyLog(),
+        }),
+      ).rejects.toMatchObject({
+        name: 'RepoError',
+        kind: 'failed',
+        message: expect.stringContaining('timed out after'),
+      });
+    });
   });
 
   describe('a site inside a subfolder (siteDir)', () => {
@@ -453,11 +505,75 @@ describe('a clone folder that is not its own repo', () => {
     ).rejects.toMatchObject({
       kind: 'failed',
       message: `The CMS clone ${repoDir} is not a git repository of its own. Git would use a parent repository, so the CMS will not change it. Check or remove the folder by hand, then start the CMS again.`,
+      stderr: '',
     });
     expect(await git(parent, ['config', '--local', '--list'])).toBe(
       settingsBefore,
     );
     expect(await git(parent, ['branch', '--list', 'cms/work'])).toBe('');
+  });
+
+  it('refuses a .git folder that git cannot read, and keeps the git message', async () => {
+    const root = await newRoot();
+    const repoDir = repoDirOf(root);
+    // No parent repo here: git fails on the empty `.git` folder itself.
+    await mkdir(join(repoDir, '.git'), { recursive: true });
+    await expect(
+      ensureRepo({
+        config: configFor(remote),
+        cmsDir: cmsDirOf(root),
+        log: spyLog(),
+      }),
+    ).rejects.toMatchObject({
+      kind: 'failed',
+      message: `The CMS clone ${repoDir} is not a git repository of its own. Git would use a parent repository, so the CMS will not change it. Check or remove the folder by hand, then start the CMS again.`,
+      stderr: expect.stringContaining('not a git repository'),
+    });
+  });
+
+  it('refuses a folder where git prints no work tree', async () => {
+    const root = await newRoot();
+    const repoDir = repoDirOf(root);
+    await mkdir(join(repoDir, '.git'), { recursive: true });
+    const exec: ExecFn = () => Promise.resolve({ stdout: '', stderr: '' });
+    await expect(
+      ensureRepo({
+        config: configFor(remote),
+        cmsDir: cmsDirOf(root),
+        exec,
+        log: spyLog(),
+      }),
+    ).rejects.toMatchObject({
+      kind: 'failed',
+      message: `The CMS clone ${repoDir} is not a git repository of its own. Git would use a parent repository, so the CMS will not change it. Check or remove the folder by hand, then start the CMS again.`,
+      stderr: '',
+    });
+  });
+
+  it('reports a timeout of the ownership check as git failed, not as a foreign repo', async () => {
+    const root = await newRoot();
+    const repoDir = repoDirOf(root);
+    await mkdir(join(repoDir, '.git'), { recursive: true });
+    const exec: ExecFn = () =>
+      Promise.reject(
+        Object.assign(new Error('Command failed'), {
+          killed: true,
+          code: null,
+          stderr: '',
+        }),
+      );
+    await expect(
+      ensureRepo({
+        config: configFor(remote),
+        cmsDir: cmsDirOf(root),
+        exec,
+        log: spyLog(),
+      }),
+    ).rejects.toMatchObject({
+      name: 'RepoError',
+      kind: 'failed',
+      message: expect.stringContaining('timed out after'),
+    });
   });
 });
 
@@ -541,6 +657,30 @@ describe('ensureRepo errors from git', () => {
       });
     },
   );
+
+  it('does not read the stderr of a timeout as a sign-in failure', async () => {
+    const root = await newRoot();
+    const exec: ExecFn = () =>
+      Promise.reject(
+        Object.assign(new Error('Command failed'), {
+          killed: true,
+          code: null,
+          stderr: AUTH_HTTPS,
+        }),
+      );
+    await expect(
+      ensureRepo({
+        config: configFor(GITHUB),
+        cmsDir: cmsDirOf(root),
+        exec,
+        log: spyLog(),
+      }),
+    ).rejects.toMatchObject({
+      name: 'RepoError',
+      kind: 'failed',
+      message: expect.stringContaining('timed out after'),
+    });
+  });
 
   it('refuses an author without an email, before any git call', async () => {
     const root = await newRoot();
