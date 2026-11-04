@@ -45,15 +45,18 @@ const scan = {
 };
 const loaderKinds = { testimonials: 'file' as const, authors: 'glob' as const };
 
-const documents = shapeDocuments({
-  store,
-  loaderKinds,
-  scan,
-  buildTimeFields: {
-    'data:src/config/config.json': ['site.base_url', 'site.base_path'],
-  },
-});
-const byKey = (key: string) => documents.find((d) => d.key === key);
+// Shaped per call, not once at module level: a call made outside a test is not
+// linked to any test in Stryker's per-test coverage (TESTING-RECOMMENDATIONS 1).
+const shapeSite = () =>
+  shapeDocuments({
+    store,
+    loaderKinds,
+    scan,
+    buildTimeFields: {
+      'data:src/config/config.json': ['site.base_url', 'site.base_path'],
+    },
+  });
+const byKey = (key: string) => shapeSite().find((d) => d.key === key);
 
 describe('shapeDocuments: content entries', () => {
   it('keys are collection/id, and the id keeps its slashes (D10)', () => {
@@ -97,6 +100,7 @@ describe('shapeDocuments: content entries', () => {
             ['a', { id: 'a', filePath: 'src/content/misc/a.yaml' }],
             ['b', { id: 'b', filePath: 'src/content/misc/b.yml' }],
             ['c', { id: 'c', filePath: 'src/content/misc/c.toml' }],
+            ['d', { id: 'd', filePath: 'src/content/misc/d.csv' }],
           ]),
         ],
       ]),
@@ -107,7 +111,47 @@ describe('shapeDocuments: content entries', () => {
       ['yaml', undefined],
       ['yaml', undefined],
       ['toml', false],
+      ['other', false],
     ]);
+  });
+
+  it('lists the entries of a collection by id, whatever order the store holds them', () => {
+    const shaped = shapeDocuments({
+      store: new Map([
+        [
+          'zeta',
+          new Map([
+            ['b', { id: 'b' }],
+            ['a', { id: 'a' }],
+          ]),
+        ],
+      ]),
+      loaderKinds: {},
+      scan: { buildTimeFiles: [], dataModules: [] },
+    });
+    expect(shaped.map((d) => d.key)).toEqual(['zeta/a', 'zeta/b']);
+  });
+
+  it.each([
+    ['src/a.json', 'json'],
+    ['src/a.JSON', 'json'],
+    ['src/a.md', 'md'],
+    ['src/a.markdown', 'md'],
+    ['src/a.MD', 'md'],
+    ['src/a.mdx', 'mdx'],
+    ['src/a.yaml', 'yaml'],
+    ['src/a.yml', 'yaml'],
+    ['src/a.toml', 'toml'],
+    ['src/a.csv', 'other'],
+    ['src/a', 'other'],
+    ['src.d/a', 'other'],
+  ])('formats %s as %s (D13)', (filePath, format) => {
+    const shaped = shapeDocuments({
+      store: new Map([['misc', new Map([['a', { id: 'a', filePath }]])]]),
+      loaderKinds: {},
+      scan: { buildTimeFiles: [], dataModules: [] },
+    });
+    expect(shaped.map((d) => d.format)).toEqual([format]);
   });
 
   it('a read-only collection is not editable, whatever its format; a near-miss name is (site config)', () => {
@@ -183,9 +227,26 @@ describe('shapeDocuments: content entries', () => {
 describe('shapeDocuments: data modules and build-time flags (D1)', () => {
   it('adds every imported JSON as data:<path>', () => {
     expect(
-      documents.filter((d) => d.key.startsWith('data:')).map((d) => d.key),
+      shapeSite()
+        .filter((d) => d.key.startsWith('data:'))
+        .map((d) => d.key),
     ).toEqual([
       'data:src/config/config.json',
+      'data:src/config/menu.json',
+      'data:src/config/theme.json',
+    ]);
+  });
+
+  it('lists the data modules by path, whatever order the scan finds them', () => {
+    const shaped = shapeDocuments({
+      store: new Map(),
+      loaderKinds: {},
+      scan: {
+        buildTimeFiles: [],
+        dataModules: ['src/config/theme.json', 'src/config/menu.json'],
+      },
+    });
+    expect(shaped.map((d) => d.key)).toEqual([
       'data:src/config/menu.json',
       'data:src/config/theme.json',
     ]);

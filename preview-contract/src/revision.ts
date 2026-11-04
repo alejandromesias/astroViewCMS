@@ -53,9 +53,10 @@ function canonical(value: unknown): unknown {
   if (typeof value === 'object' && value !== null) {
     // Object.fromEntries defines each key as an own property, so a key named
     // __proto__ stays a key (see DOCS/Guidelines/IMPLEMENTATION-RECOMMENDATIONS.md, 1).
+    // Keys are unique, so two keys are never equal and the comparator needs no 0.
     return Object.fromEntries(
       Object.entries(value)
-        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .sort(([a], [b]) => (a < b ? -1 : 1))
         .map(([key, child]) => [key, canonical(child)]),
     );
   }
