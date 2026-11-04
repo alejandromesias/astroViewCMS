@@ -3,7 +3,7 @@
 // sets the commit identity, fetches, and creates `cms/work` when it is missing. Then it discards whatever an
 // unfinished save left in the working copy. It never resets `cms/work` to the remote, because that branch
 // holds the saves.
-import { mkdir, stat } from 'node:fs/promises';
+import { mkdir, realpath, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { CmsConfig } from '../config/schema.ts';
 import { type Logger, logger } from '../log.ts';
@@ -105,7 +105,9 @@ async function syncRepo(
   await mkdir(hooksDir, { recursive: true });
   const git: Git = (args) => runGit(args, { cwd: repoDir, exec });
 
+  // An existing folder must be its own repo before any git call runs in it. A fresh clone is one already.
   if (await isRepo(repoDir)) {
+    await assertOwnRepo(git, repoDir);
     await checkOrigin(git, remote, branch, repoDir);
   } else {
     await runGit(
@@ -166,6 +168,36 @@ async function checkOrigin(
     'url-mismatch',
     `The CMS clone ${repoDir} has origin ${actual}, but the config says ${remote}. The CMS will not repoint or re-clone it. ${savesNote(saves)}`,
   );
+}
+
+/**
+ * Refuses a clone folder that git does not treat as its own repo. A `.git` that git does not read (an
+ * empty folder, say) makes git use a parent repo, and the fetch, checkout and config writes would change
+ * that parent. Throws a `failed` RepoError when `git rev-parse --show-toplevel` is not `repoDir`, or when
+ * that git call exits with an error. Real paths are compared, so Windows separators and case do not matter.
+ */
+async function assertOwnRepo(git: Git, repoDir: string): Promise<void> {
+  const refuse = (stderr = ''): RepoError =>
+    new RepoError(
+      'failed',
+      `The CMS clone ${repoDir} is not a git repository of its own. Git would use a parent repository, so the CMS will not change it. Check or remove the folder by hand, then start the CMS again.`,
+      stderr,
+    );
+  let toplevel: string;
+  try {
+    toplevel = (await git(['rev-parse', '--show-toplevel'])).trim();
+  } catch (error: unknown) {
+    if (error instanceof GitError && error.kind === 'failed')
+      throw refuse(error.stderr);
+    throw error;
+  }
+  // A folder inside no work tree (a bare or empty repo) prints nothing: it is not the clone's own repo.
+  if (toplevel === '') throw refuse();
+  const [actual, expected] = await Promise.all([
+    realpath(toplevel),
+    realpath(repoDir),
+  ]);
+  if (actual !== expected) throw refuse();
 }
 
 // The commits on `cms/work` that origin does not have. Undefined when git cannot count them.

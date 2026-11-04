@@ -8,6 +8,9 @@ import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const TEMP_ROOT = fileURLToPath(new URL('../../.test-tmp/', import.meta.url));
+// Git must not look for a repo above the test folders. A test folder without its own .git would otherwise
+// use the main checkout, and a test could switch its branch or change its config. Set before any git call.
+process.env.GIT_CEILING_DIRECTORIES = TEMP_ROOT;
 const SAMPLE_SITE = fileURLToPath(
   new URL('../../../sample-site/', import.meta.url),
 );

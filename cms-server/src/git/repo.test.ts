@@ -362,6 +362,9 @@ describe('ensureRepo with a real remote', () => {
             stdout: 'https://example.test/other.git\n',
             stderr: '',
           });
+        // The clone folder answers as its own repo, so the ownership check passes (repo.ts assertOwnRepo).
+        if (args.includes('--show-toplevel'))
+          return Promise.resolve({ stdout: `${repoDir}\n`, stderr: '' });
         if (args.includes('rev-parse'))
           return Promise.resolve({ stdout: '', stderr: '' });
         return Promise.reject(
