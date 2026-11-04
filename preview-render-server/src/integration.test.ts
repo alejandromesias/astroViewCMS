@@ -965,6 +965,58 @@ describe('previewRenderServer setup', () => {
     expect(Object.keys(schema)).toEqual(['notes']);
   });
 
+  it('marks the read-only collection and the custom-id glob in schema.json', async () => {
+    const out = outputs();
+    const { hooks } = await runSetup({
+      ...site,
+      ...out,
+      root: path.join(fixtures, 'flags-site'),
+      readOnlyCollections: ['fixtures'],
+      regions: {},
+    });
+    hooks['astro:build:done']!({ logger: { warn: vi.fn() } });
+    expect(
+      JSON.parse(
+        fs.readFileSync(path.join(out.manifestDir, 'schema.json'), 'utf8'),
+      ),
+    ).toStrictEqual({
+      fixtures: {
+        loader: {
+          kind: 'glob',
+          pattern: '**/*.json',
+          base: 'src/content/fixtures',
+        },
+        readOnly: true,
+      },
+      people: {
+        loader: {
+          kind: 'glob',
+          pattern: '**/*.json',
+          base: 'src/content/people',
+          customId: true,
+        },
+      },
+    });
+  });
+
+  it('warns about a readOnlyCollections name the build lacks, and only that one', async () => {
+    const out = outputs();
+    const warn = vi.fn();
+    const { hooks } = await runSetup({
+      ...site,
+      ...out,
+      root: path.join(fixtures, 'flags-site'),
+      readOnlyCollections: ['fixtures', 'nope'],
+      regions: {},
+    });
+    hooks['astro:build:done']!({ logger: { warn } });
+    expect(warn.mock.calls).toStrictEqual([
+      [
+        'readOnlyCollections lists "nope", which is not a collection of the build',
+      ],
+    ]);
+  });
+
   it('writes an empty schema.json for a site without a content config', async () => {
     const out = outputs();
     const { hooks } = await runSetup({ ...site, ...out });

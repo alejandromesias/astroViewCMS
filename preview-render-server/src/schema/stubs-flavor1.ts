@@ -10,6 +10,8 @@ export interface LoaderInfo {
   pattern: string;
   /** `glob`: the base folder, as written in the config. */
   base?: string;
+  /** `glob` with its own `generateId`: the id is not the file's path (WORKPLAN 2.0j). */
+  customId?: true;
 }
 
 export interface CollectionInfo {
@@ -24,10 +26,12 @@ export const reference = (collection: string) =>
 export const glob = (options: {
   pattern: string | string[];
   base?: string;
+  generateId?: (...args: never[]) => string;
 }): LoaderInfo => ({
   kind: 'glob',
   pattern: [options.pattern].flat().join(','),
   ...(options.base === undefined ? {} : { base: options.base }),
+  ...(options.generateId === undefined ? {} : { customId: true }),
 });
 export const file = (fileName: string): LoaderInfo => ({
   kind: 'file',

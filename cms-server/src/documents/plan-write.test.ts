@@ -614,6 +614,49 @@ describe('planWrite: refusals', () => {
     },
   );
 
+  it('refuses a create into a read-only collection (read-only)', async () => {
+    const ctx = ctxOf({}, [], {
+      fixtures: {
+        ...globLoader('**/*.json', 'src/content/fixtures'),
+        readOnly: true,
+      },
+    });
+    await expect(
+      planWrite(
+        [{ op: 'create', collection: 'fixtures', id: 'a', value: {} }],
+        ctx,
+      ),
+    ).rejects.toMatchObject({
+      code: 'read-only',
+      key: 'fixtures/a',
+      message: 'The collection "fixtures" is read-only',
+    });
+  });
+
+  it('refuses a create into a glob whose ids come from generateId (unwritable)', async () => {
+    const ctx = ctxOf({}, [], {
+      people: {
+        loader: {
+          kind: 'glob',
+          pattern: '**/*.json',
+          base: 'src/content/people',
+          customId: true,
+        },
+      },
+    });
+    await expect(
+      planWrite(
+        [{ op: 'create', collection: 'people', id: 'ana', value: {} }],
+        ctx,
+      ),
+    ).rejects.toMatchObject({
+      code: 'unwritable',
+      key: 'people/ana',
+      message:
+        'The id "ana" of "people" cannot be turned into a path: its ids come from generateId',
+    });
+  });
+
   it.each([
     ['a collection the bundle does not have', 'missing'],
     ['a collection with no loader', 'loaderless'],

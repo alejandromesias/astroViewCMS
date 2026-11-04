@@ -193,6 +193,12 @@ async function planCreate(
   running: Running,
 ): Promise<void> {
   const { collection, id, value } = change;
+  if (ctx.collections.get(collection)?.readOnly === true)
+    throw new WritePlanError(
+      'read-only',
+      key,
+      `The collection "${collection}" is read-only`,
+    );
   if (!isSafePath(id))
     throw new WritePlanError(
       'outside-site',
@@ -251,6 +257,13 @@ async function planCreate(
     );
     return;
   }
+  // A glob with its own generateId (2.0j): the id is not a file name, so no file can be named for it.
+  if (loader.customId === true)
+    throw new WritePlanError(
+      'unwritable',
+      key,
+      `The id "${id}" of "${collection}" cannot be turned into a path: its ids come from generateId`,
+    );
   // A glob collection: each entry is a file of its own, `base/id.ext`, and the id must match the pattern.
   const configured = Object.hasOwn(ctx.config.collections, collection)
     ? ctx.config.collections[collection]?.newEntryFormat
