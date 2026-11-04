@@ -1,0 +1,119 @@
+{
+  "title": "Product launch",
+  "description": "A short landing page with pricing and FAQ.",
+  "blocks": [
+    {
+      "type": "banner",
+      "title": "Meet the new way to build websites",
+      "content": "A shorter page that mixes blocks in another order.",
+      "button": {
+        "label": "See pricing",
+        "link": "#",
+        "enable": true
+      }
+    },
+    {
+      "type": "highlight",
+      "title": "Why teams switch",
+      "body": "Launch in **days, not months**, and keep full control of your [content](/blog)."
+    },
+    {
+      "type": "pricing",
+      "title": "Pick a plan",
+      "plans": [
+        {
+          "title": "Basic Plan",
+          "subtitle": "Best For Small Individuals",
+          "price": 49,
+          "price_yearly": 490,
+          "type": "month",
+          "features": [
+            "Express Service",
+            "Customs Clearance",
+            "Time-Critical Services"
+          ],
+          "button": {
+            "label": "Get started for free",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "Professional Plan",
+          "subtitle": "Best For Professionals",
+          "price": 69,
+          "price_yearly": 690,
+          "type": "month",
+          "recommended": true,
+          "features": [
+            "Express Service",
+            "Customs Clearance",
+            "Time-Critical Services",
+            "Cloud Service",
+            "Best Dashboard"
+          ],
+          "button": {
+            "label": "Get started",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "Business Plan",
+          "subtitle": "Best For Large Individuals",
+          "price": 99,
+          "price_yearly": 990,
+          "type": "month",
+          "features": [
+            "Express Service",
+            "Customs Clearance",
+            "Time-Critical Services"
+          ],
+          "button": {
+            "label": "Get started",
+            "link": "/contact"
+          }
+        }
+      ]
+    },
+    {
+      "type": "testimonials",
+      "title": "Loved by teams",
+      "items": [
+        "t-lena",
+        "t-kofi"
+      ]
+    },
+    {
+      "type": "faq",
+      "title": "Questions",
+      "items": [
+        {
+          "question": "Will updates also be free?",
+          "answer": "Lorem, [link](https://www.example.com) ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxim"
+        },
+        {
+          "question": "Discounts for students and Non Profit Organizations?",
+          "answer": "Lorem, ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxime perspiciatis iste placeat arch"
+        },
+        {
+          "question": "I need something unique, Can you make it?",
+          "answer": "Lorem, [link](https://www.example.com) ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxim"
+        },
+        {
+          "question": "Is there any documentation and support?",
+          "answer": "Lorem, [link](https://www.example.com) ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxim"
+        }
+      ]
+    },
+    {
+      "type": "cta",
+      "title": "Ready when you are",
+      "content": "Talk to us today.",
+      "image": "/images/cta.png",
+      "button": {
+        "label": "Contact Us",
+        "link": "/contact",
+        "enable": true
+      }
+    }
+  ]
+}

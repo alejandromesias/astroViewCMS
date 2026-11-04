@@ -16,7 +16,7 @@ import {
 import { directoryBundleSource } from '../bundle/source.ts';
 import { createApp } from './app.ts';
 
-// The working copy the route tests read from: a copy of sample-site/src, made before each test.
+// The working copy the route tests read from: a copy of the bundle fixture's source files, made before each test.
 let sample = '';
 beforeEach(async () => {
   sample = await sampleWorkingCopy();
@@ -26,7 +26,7 @@ afterEach(async () => {
   await removeWorkingCopies();
 });
 
-/** The app over one bundle folder and one working copy (the sample-site copy by default). */
+/** The app over one bundle folder and one working copy (the fixture source copy by default). */
 const appOver = (dir: string, root: string = sample) =>
   createApp({
     ...fakeAppDeps(),
@@ -606,7 +606,7 @@ describe('GET /api/documents?key=', () => {
     });
   });
 
-  it('answers the revision the fixture has for every document, with the sample-site files as the working copy', async () => {
+  it('answers the revision the fixture has for every document, with the fixture source files as the working copy', async () => {
     const expected = await fixtureRevisions();
     const app = appOver(FIXTURE_BUNDLE);
     const answers = await Promise.all(

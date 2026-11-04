@@ -1,18 +1,20 @@
 // Working copies for the document reads (WORKPLAN 2.4b): a temp folder inside the workspace (cms-server/.test-tmp)
-// holding the site's `src/` files. `sampleWorkingCopy` copies sample-site/src, the files the bundle fixture was built
-// from; `tempWorkingCopy` writes only the files given. Test code only.
+// holding the site's `src/` files. `sampleWorkingCopy` copies the files the bundle fixture was built from; `tempWorkingCopy` writes only the files given. Test code only.
 import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const TEMP_ROOT = fileURLToPath(new URL('../../.test-tmp/', import.meta.url));
+// The files the bundle fixture documents point at, copied from sample-site/src when the fixture was built.
+// A small copy, not sample-site itself, so that the tests run inside a Stryker sandbox, which ignores sample-site.
+// Refresh it with the bundle fixture.
 const SAMPLE_SRC = fileURLToPath(
-  new URL('../../../sample-site/src/', import.meta.url),
+  new URL('../fixtures/bundle-src/src/', import.meta.url),
 );
 
 const made: string[] = [];
 
-/** A new temp folder with a copy of sample-site/src as its `src/`. `changes` maps a path under the folder to its new text, or null to remove the file. */
+/** A new temp folder with a copy of the bundle fixture's source files as its `src/`. `changes` maps a path under the folder to its new text, or null to remove the file. */
 export async function sampleWorkingCopy(
   changes: Record<string, string | null> = {},
 ): Promise<string> {

@@ -1,0 +1,1206 @@
+{
+  "title": "Long page (44 blocks)",
+  "description": "Stress test: many blocks of every type.",
+  "blocks": [
+    {
+      "type": "banner",
+      "title": "Let us solve your critical website development challenges (1)",
+      "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit. Quam nihil enim maxime corporis cumque <br/> totam aliquid nam sint inventore optio modi neque laborum officiis necessitatibus",
+      "image": "/images/banner-art.png",
+      "button": {
+        "enable": true,
+        "label": "Contact Us",
+        "link": "/contact"
+      }
+    },
+    {
+      "type": "features",
+      "title": "Something You Need To Know (2)",
+      "items": [
+        {
+          "name": "Clean Code",
+          "icon": "/images/code.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Object Oriented",
+          "icon": "/images/oop.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "24h Service",
+          "icon": "/images/user-clock.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Value for Money",
+          "icon": "/images/love.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Faster Response",
+          "icon": "/images/speedometer.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Cloud Support",
+          "icon": "/images/cloud.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        }
+      ]
+    },
+    {
+      "type": "services",
+      "items": [
+        {
+          "title": "It is the most advanced digital marketing and it company.",
+          "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat. consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat.",
+          "images": [
+            "/images/service-slide-1.png",
+            "/images/service-slide-2.png",
+            "/images/service-slide-3.png"
+          ],
+          "button": {
+            "enable": true,
+            "label": "Check it out",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "It is a privately owned Information and cyber security company",
+          "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat. consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat.",
+          "images": [
+            "/images/service-slide-1.png"
+          ],
+          "button": {
+            "enable": true,
+            "label": "Check it out",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "It’s a team of experienced and skilled people with distributions",
+          "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat. consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat.",
+          "images": [
+            "/images/service-slide-1.png",
+            "/images/service-slide-2.png",
+            "/images/service-slide-3.png"
+          ],
+          "button": {
+            "enable": true,
+            "label": "Check it out",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "A company standing different from others",
+          "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat. consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat.",
+          "images": [
+            "/images/service-slide-1.png",
+            "/images/service-slide-2.png",
+            "/images/service-slide-3.png"
+          ],
+          "button": {
+            "enable": true,
+            "label": "Check it out",
+            "link": "/contact"
+          }
+        }
+      ]
+    },
+    {
+      "type": "workflow",
+      "title": "Experience the best workflow with us (4)",
+      "image": "/images/banner.png",
+      "description": ""
+    },
+    {
+      "type": "cta",
+      "title": "Ready to get started? (5)",
+      "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur.",
+      "image": "/images/cta.png",
+      "button": {
+        "enable": true,
+        "label": "Contact Us",
+        "link": "/contact"
+      }
+    },
+    {
+      "type": "pricing",
+      "title": "Pick a plan (6)",
+      "plans": [
+        {
+          "title": "Basic Plan",
+          "subtitle": "Best For Small Individuals",
+          "price": 49,
+          "price_yearly": 490,
+          "type": "month",
+          "features": [
+            "Express Service",
+            "Customs Clearance",
+            "Time-Critical Services"
+          ],
+          "button": {
+            "label": "Get started for free",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "Professional Plan",
+          "subtitle": "Best For Professionals",
+          "price": 69,
+          "price_yearly": 690,
+          "type": "month",
+          "recommended": true,
+          "features": [
+            "Express Service",
+            "Customs Clearance",
+            "Time-Critical Services",
+            "Cloud Service",
+            "Best Dashboard"
+          ],
+          "button": {
+            "label": "Get started",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "Business Plan",
+          "subtitle": "Best For Large Individuals",
+          "price": 99,
+          "price_yearly": 990,
+          "type": "month",
+          "features": [
+            "Express Service",
+            "Customs Clearance",
+            "Time-Critical Services"
+          ],
+          "button": {
+            "label": "Get started",
+            "link": "/contact"
+          }
+        }
+      ]
+    },
+    {
+      "type": "faq",
+      "title": "Questions (7)",
+      "items": [
+        {
+          "question": "Will updates also be free?",
+          "answer": "Lorem, [link](https://www.example.com) ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxim"
+        },
+        {
+          "question": "Discounts for students and Non Profit Organizations?",
+          "answer": "Lorem, ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxime perspiciatis iste placeat arch"
+        },
+        {
+          "question": "I need something unique, Can you make it?",
+          "answer": "Lorem, [link](https://www.example.com) ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxim"
+        },
+        {
+          "question": "Is there any documentation and support?",
+          "answer": "Lorem, [link](https://www.example.com) ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxim"
+        }
+      ]
+    },
+    {
+      "type": "testimonials",
+      "title": "Loved by teams (8)",
+      "items": [
+        "t-lena",
+        "t-kofi"
+      ]
+    },
+    {
+      "type": "highlight",
+      "title": "Why teams switch (9)",
+      "body": "Launch in **days, not months**, and keep full control of your [content](/blog)."
+    },
+    {
+      "type": "features",
+      "title": "Meet the new way to build websites (10)",
+      "content": "A shorter page that mixes blocks in another order.",
+      "button": {
+        "label": "See pricing",
+        "link": "#",
+        "enable": true
+      },
+      "items": [
+        {
+          "name": "Clean Code",
+          "icon": "/images/code.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Object Oriented",
+          "icon": "/images/oop.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "24h Service",
+          "icon": "/images/user-clock.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Value for Money",
+          "icon": "/images/love.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Faster Response",
+          "icon": "/images/speedometer.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Cloud Support",
+          "icon": "/images/cloud.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        }
+      ]
+    },
+    {
+      "type": "features",
+      "title": "Something You Need To Know (11)",
+      "items": [
+        {
+          "name": "Clean Code",
+          "icon": "/images/code.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Object Oriented",
+          "icon": "/images/oop.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "24h Service",
+          "icon": "/images/user-clock.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Value for Money",
+          "icon": "/images/love.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Faster Response",
+          "icon": "/images/speedometer.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Cloud Support",
+          "icon": "/images/cloud.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        }
+      ]
+    },
+    {
+      "type": "services",
+      "items": [
+        {
+          "title": "It is the most advanced digital marketing and it company.",
+          "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat. consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat.",
+          "images": [
+            "/images/service-slide-1.png",
+            "/images/service-slide-2.png",
+            "/images/service-slide-3.png"
+          ],
+          "button": {
+            "enable": true,
+            "label": "Check it out",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "It is a privately owned Information and cyber security company",
+          "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat. consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat.",
+          "images": [
+            "/images/service-slide-1.png"
+          ],
+          "button": {
+            "enable": true,
+            "label": "Check it out",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "It’s a team of experienced and skilled people with distributions",
+          "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat. consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat.",
+          "images": [
+            "/images/service-slide-1.png",
+            "/images/service-slide-2.png",
+            "/images/service-slide-3.png"
+          ],
+          "button": {
+            "enable": true,
+            "label": "Check it out",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "A company standing different from others",
+          "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat. consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat.",
+          "images": [
+            "/images/service-slide-1.png",
+            "/images/service-slide-2.png",
+            "/images/service-slide-3.png"
+          ],
+          "button": {
+            "enable": true,
+            "label": "Check it out",
+            "link": "/contact"
+          }
+        }
+      ]
+    },
+    {
+      "type": "workflow",
+      "title": "Experience the best workflow with us (13)",
+      "image": "/images/banner.png",
+      "description": ""
+    },
+    {
+      "type": "cta",
+      "title": "Ready when you are (14)",
+      "content": "Talk to us today.",
+      "image": "/images/cta.png",
+      "button": {
+        "label": "Contact Us",
+        "link": "/contact",
+        "enable": true
+      }
+    },
+    {
+      "type": "pricing",
+      "title": "Pick a plan (15)",
+      "plans": [
+        {
+          "title": "Basic Plan",
+          "subtitle": "Best For Small Individuals",
+          "price": 49,
+          "price_yearly": 490,
+          "type": "month",
+          "features": [
+            "Express Service",
+            "Customs Clearance",
+            "Time-Critical Services"
+          ],
+          "button": {
+            "label": "Get started for free",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "Professional Plan",
+          "subtitle": "Best For Professionals",
+          "price": 69,
+          "price_yearly": 690,
+          "type": "month",
+          "recommended": true,
+          "features": [
+            "Express Service",
+            "Customs Clearance",
+            "Time-Critical Services",
+            "Cloud Service",
+            "Best Dashboard"
+          ],
+          "button": {
+            "label": "Get started",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "Business Plan",
+          "subtitle": "Best For Large Individuals",
+          "price": 99,
+          "price_yearly": 990,
+          "type": "month",
+          "features": [
+            "Express Service",
+            "Customs Clearance",
+            "Time-Critical Services"
+          ],
+          "button": {
+            "label": "Get started",
+            "link": "/contact"
+          }
+        }
+      ]
+    },
+    {
+      "type": "faq",
+      "title": "Questions (16)",
+      "items": [
+        {
+          "question": "Will updates also be free?",
+          "answer": "Lorem, [link](https://www.example.com) ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxim"
+        },
+        {
+          "question": "Discounts for students and Non Profit Organizations?",
+          "answer": "Lorem, ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxime perspiciatis iste placeat arch"
+        },
+        {
+          "question": "I need something unique, Can you make it?",
+          "answer": "Lorem, [link](https://www.example.com) ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxim"
+        },
+        {
+          "question": "Is there any documentation and support?",
+          "answer": "Lorem, [link](https://www.example.com) ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxim"
+        }
+      ]
+    },
+    {
+      "type": "testimonials",
+      "title": "What customers say (17)",
+      "items": [
+        "t-ana",
+        "t-marco",
+        "t-lena",
+        "t-kofi"
+      ]
+    },
+    {
+      "type": "highlight",
+      "title": "Why teams switch (18)",
+      "body": "Launch in **days, not months**, and keep full control of your [content](/blog)."
+    },
+    {
+      "type": "features",
+      "title": "Let us solve your critical website development challenges (19)",
+      "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit. Quam nihil enim maxime corporis cumque <br/> totam aliquid nam sint inventore optio modi neque laborum officiis necessitatibus",
+      "image": "/images/banner-art.png",
+      "button": {
+        "enable": true,
+        "label": "Contact Us",
+        "link": "/contact"
+      },
+      "items": [
+        {
+          "name": "Clean Code",
+          "icon": "/images/code.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Object Oriented",
+          "icon": "/images/oop.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "24h Service",
+          "icon": "/images/user-clock.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Value for Money",
+          "icon": "/images/love.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Faster Response",
+          "icon": "/images/speedometer.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Cloud Support",
+          "icon": "/images/cloud.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        }
+      ]
+    },
+    {
+      "type": "features",
+      "title": "Something You Need To Know (20)",
+      "items": [
+        {
+          "name": "Clean Code",
+          "icon": "/images/code.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Object Oriented",
+          "icon": "/images/oop.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "24h Service",
+          "icon": "/images/user-clock.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Value for Money",
+          "icon": "/images/love.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Faster Response",
+          "icon": "/images/speedometer.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Cloud Support",
+          "icon": "/images/cloud.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        }
+      ]
+    },
+    {
+      "type": "services",
+      "items": [
+        {
+          "title": "It is the most advanced digital marketing and it company.",
+          "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat. consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat.",
+          "images": [
+            "/images/service-slide-1.png",
+            "/images/service-slide-2.png",
+            "/images/service-slide-3.png"
+          ],
+          "button": {
+            "enable": true,
+            "label": "Check it out",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "It is a privately owned Information and cyber security company",
+          "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat. consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat.",
+          "images": [
+            "/images/service-slide-1.png"
+          ],
+          "button": {
+            "enable": true,
+            "label": "Check it out",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "It’s a team of experienced and skilled people with distributions",
+          "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat. consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat.",
+          "images": [
+            "/images/service-slide-1.png",
+            "/images/service-slide-2.png",
+            "/images/service-slide-3.png"
+          ],
+          "button": {
+            "enable": true,
+            "label": "Check it out",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "A company standing different from others",
+          "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat. consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat.",
+          "images": [
+            "/images/service-slide-1.png",
+            "/images/service-slide-2.png",
+            "/images/service-slide-3.png"
+          ],
+          "button": {
+            "enable": true,
+            "label": "Check it out",
+            "link": "/contact"
+          }
+        }
+      ]
+    },
+    {
+      "type": "workflow",
+      "title": "Experience the best workflow with us (22)",
+      "image": "/images/banner.png",
+      "description": ""
+    },
+    {
+      "type": "cta",
+      "title": "Ready to get started? (23)",
+      "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur.",
+      "image": "/images/cta.png",
+      "button": {
+        "enable": true,
+        "label": "Contact Us",
+        "link": "/contact"
+      }
+    },
+    {
+      "type": "pricing",
+      "title": "Pick a plan (24)",
+      "plans": [
+        {
+          "title": "Basic Plan",
+          "subtitle": "Best For Small Individuals",
+          "price": 49,
+          "price_yearly": 490,
+          "type": "month",
+          "features": [
+            "Express Service",
+            "Customs Clearance",
+            "Time-Critical Services"
+          ],
+          "button": {
+            "label": "Get started for free",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "Professional Plan",
+          "subtitle": "Best For Professionals",
+          "price": 69,
+          "price_yearly": 690,
+          "type": "month",
+          "recommended": true,
+          "features": [
+            "Express Service",
+            "Customs Clearance",
+            "Time-Critical Services",
+            "Cloud Service",
+            "Best Dashboard"
+          ],
+          "button": {
+            "label": "Get started",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "Business Plan",
+          "subtitle": "Best For Large Individuals",
+          "price": 99,
+          "price_yearly": 990,
+          "type": "month",
+          "features": [
+            "Express Service",
+            "Customs Clearance",
+            "Time-Critical Services"
+          ],
+          "button": {
+            "label": "Get started",
+            "link": "/contact"
+          }
+        }
+      ]
+    },
+    {
+      "type": "faq",
+      "title": "Questions (25)",
+      "items": [
+        {
+          "question": "Will updates also be free?",
+          "answer": "Lorem, [link](https://www.example.com) ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxim"
+        },
+        {
+          "question": "Discounts for students and Non Profit Organizations?",
+          "answer": "Lorem, ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxime perspiciatis iste placeat arch"
+        },
+        {
+          "question": "I need something unique, Can you make it?",
+          "answer": "Lorem, [link](https://www.example.com) ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxim"
+        },
+        {
+          "question": "Is there any documentation and support?",
+          "answer": "Lorem, [link](https://www.example.com) ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxim"
+        }
+      ]
+    },
+    {
+      "type": "testimonials",
+      "title": "Loved by teams (26)",
+      "items": [
+        "t-lena",
+        "t-kofi"
+      ]
+    },
+    {
+      "type": "highlight",
+      "title": "Why teams switch (27)",
+      "body": "Launch in **days, not months**, and keep full control of your [content](/blog)."
+    },
+    {
+      "type": "features",
+      "title": "Meet the new way to build websites (28)",
+      "content": "A shorter page that mixes blocks in another order.",
+      "button": {
+        "label": "See pricing",
+        "link": "#",
+        "enable": true
+      },
+      "items": [
+        {
+          "name": "Clean Code",
+          "icon": "/images/code.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Object Oriented",
+          "icon": "/images/oop.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "24h Service",
+          "icon": "/images/user-clock.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Value for Money",
+          "icon": "/images/love.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Faster Response",
+          "icon": "/images/speedometer.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Cloud Support",
+          "icon": "/images/cloud.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        }
+      ]
+    },
+    {
+      "type": "features",
+      "title": "Something You Need To Know (29)",
+      "items": [
+        {
+          "name": "Clean Code",
+          "icon": "/images/code.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Object Oriented",
+          "icon": "/images/oop.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "24h Service",
+          "icon": "/images/user-clock.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Value for Money",
+          "icon": "/images/love.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Faster Response",
+          "icon": "/images/speedometer.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Cloud Support",
+          "icon": "/images/cloud.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        }
+      ]
+    },
+    {
+      "type": "services",
+      "items": [
+        {
+          "title": "It is the most advanced digital marketing and it company.",
+          "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat. consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat.",
+          "images": [
+            "/images/service-slide-1.png",
+            "/images/service-slide-2.png",
+            "/images/service-slide-3.png"
+          ],
+          "button": {
+            "enable": true,
+            "label": "Check it out",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "It is a privately owned Information and cyber security company",
+          "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat. consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat.",
+          "images": [
+            "/images/service-slide-1.png"
+          ],
+          "button": {
+            "enable": true,
+            "label": "Check it out",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "It’s a team of experienced and skilled people with distributions",
+          "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat. consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat.",
+          "images": [
+            "/images/service-slide-1.png",
+            "/images/service-slide-2.png",
+            "/images/service-slide-3.png"
+          ],
+          "button": {
+            "enable": true,
+            "label": "Check it out",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "A company standing different from others",
+          "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat. consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat.",
+          "images": [
+            "/images/service-slide-1.png",
+            "/images/service-slide-2.png",
+            "/images/service-slide-3.png"
+          ],
+          "button": {
+            "enable": true,
+            "label": "Check it out",
+            "link": "/contact"
+          }
+        }
+      ]
+    },
+    {
+      "type": "workflow",
+      "title": "Experience the best workflow with us (31)",
+      "image": "/images/banner.png",
+      "description": ""
+    },
+    {
+      "type": "cta",
+      "title": "Ready when you are (32)",
+      "content": "Talk to us today.",
+      "image": "/images/cta.png",
+      "button": {
+        "label": "Contact Us",
+        "link": "/contact",
+        "enable": true
+      }
+    },
+    {
+      "type": "pricing",
+      "title": "Pick a plan (33)",
+      "plans": [
+        {
+          "title": "Basic Plan",
+          "subtitle": "Best For Small Individuals",
+          "price": 49,
+          "price_yearly": 490,
+          "type": "month",
+          "features": [
+            "Express Service",
+            "Customs Clearance",
+            "Time-Critical Services"
+          ],
+          "button": {
+            "label": "Get started for free",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "Professional Plan",
+          "subtitle": "Best For Professionals",
+          "price": 69,
+          "price_yearly": 690,
+          "type": "month",
+          "recommended": true,
+          "features": [
+            "Express Service",
+            "Customs Clearance",
+            "Time-Critical Services",
+            "Cloud Service",
+            "Best Dashboard"
+          ],
+          "button": {
+            "label": "Get started",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "Business Plan",
+          "subtitle": "Best For Large Individuals",
+          "price": 99,
+          "price_yearly": 990,
+          "type": "month",
+          "features": [
+            "Express Service",
+            "Customs Clearance",
+            "Time-Critical Services"
+          ],
+          "button": {
+            "label": "Get started",
+            "link": "/contact"
+          }
+        }
+      ]
+    },
+    {
+      "type": "faq",
+      "title": "Questions (34)",
+      "items": [
+        {
+          "question": "Will updates also be free?",
+          "answer": "Lorem, [link](https://www.example.com) ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxim"
+        },
+        {
+          "question": "Discounts for students and Non Profit Organizations?",
+          "answer": "Lorem, ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxime perspiciatis iste placeat arch"
+        },
+        {
+          "question": "I need something unique, Can you make it?",
+          "answer": "Lorem, [link](https://www.example.com) ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxim"
+        },
+        {
+          "question": "Is there any documentation and support?",
+          "answer": "Lorem, [link](https://www.example.com) ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxim"
+        }
+      ]
+    },
+    {
+      "type": "testimonials",
+      "title": "What customers say (35)",
+      "items": [
+        "t-ana",
+        "t-marco",
+        "t-lena",
+        "t-kofi"
+      ]
+    },
+    {
+      "type": "highlight",
+      "title": "Why teams switch (36)",
+      "body": "Launch in **days, not months**, and keep full control of your [content](/blog)."
+    },
+    {
+      "type": "features",
+      "title": "Let us solve your critical website development challenges (37)",
+      "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit. Quam nihil enim maxime corporis cumque <br/> totam aliquid nam sint inventore optio modi neque laborum officiis necessitatibus",
+      "image": "/images/banner-art.png",
+      "button": {
+        "enable": true,
+        "label": "Contact Us",
+        "link": "/contact"
+      },
+      "items": [
+        {
+          "name": "Clean Code",
+          "icon": "/images/code.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Object Oriented",
+          "icon": "/images/oop.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "24h Service",
+          "icon": "/images/user-clock.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Value for Money",
+          "icon": "/images/love.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Faster Response",
+          "icon": "/images/speedometer.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Cloud Support",
+          "icon": "/images/cloud.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        }
+      ]
+    },
+    {
+      "type": "features",
+      "title": "Something You Need To Know (38)",
+      "items": [
+        {
+          "name": "Clean Code",
+          "icon": "/images/code.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Object Oriented",
+          "icon": "/images/oop.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "24h Service",
+          "icon": "/images/user-clock.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Value for Money",
+          "icon": "/images/love.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Faster Response",
+          "icon": "/images/speedometer.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        },
+        {
+          "name": "Cloud Support",
+          "icon": "/images/cloud.svg",
+          "content": "Lorem ipsum dolor sit amet consectetur adipisicing elit quam nihil"
+        }
+      ]
+    },
+    {
+      "type": "services",
+      "items": [
+        {
+          "title": "It is the most advanced digital marketing and it company.",
+          "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat. consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat.",
+          "images": [
+            "/images/service-slide-1.png",
+            "/images/service-slide-2.png",
+            "/images/service-slide-3.png"
+          ],
+          "button": {
+            "enable": true,
+            "label": "Check it out",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "It is a privately owned Information and cyber security company",
+          "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat. consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat.",
+          "images": [
+            "/images/service-slide-1.png"
+          ],
+          "button": {
+            "enable": true,
+            "label": "Check it out",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "It’s a team of experienced and skilled people with distributions",
+          "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat. consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat.",
+          "images": [
+            "/images/service-slide-1.png",
+            "/images/service-slide-2.png",
+            "/images/service-slide-3.png"
+          ],
+          "button": {
+            "enable": true,
+            "label": "Check it out",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "A company standing different from others",
+          "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat. consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur. Leo facilisi nunc viverra tellus. Ac laoreet sit vel consquat.",
+          "images": [
+            "/images/service-slide-1.png",
+            "/images/service-slide-2.png",
+            "/images/service-slide-3.png"
+          ],
+          "button": {
+            "enable": true,
+            "label": "Check it out",
+            "link": "/contact"
+          }
+        }
+      ]
+    },
+    {
+      "type": "workflow",
+      "title": "Experience the best workflow with us (40)",
+      "image": "/images/banner.png",
+      "description": ""
+    },
+    {
+      "type": "cta",
+      "title": "Ready to get started? (41)",
+      "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Consequat tristique eget amet, tempus eu at consecttur.",
+      "image": "/images/cta.png",
+      "button": {
+        "enable": true,
+        "label": "Contact Us",
+        "link": "/contact"
+      }
+    },
+    {
+      "type": "pricing",
+      "title": "Pick a plan (42)",
+      "plans": [
+        {
+          "title": "Basic Plan",
+          "subtitle": "Best For Small Individuals",
+          "price": 49,
+          "price_yearly": 490,
+          "type": "month",
+          "features": [
+            "Express Service",
+            "Customs Clearance",
+            "Time-Critical Services"
+          ],
+          "button": {
+            "label": "Get started for free",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "Professional Plan",
+          "subtitle": "Best For Professionals",
+          "price": 69,
+          "price_yearly": 690,
+          "type": "month",
+          "recommended": true,
+          "features": [
+            "Express Service",
+            "Customs Clearance",
+            "Time-Critical Services",
+            "Cloud Service",
+            "Best Dashboard"
+          ],
+          "button": {
+            "label": "Get started",
+            "link": "/contact"
+          }
+        },
+        {
+          "title": "Business Plan",
+          "subtitle": "Best For Large Individuals",
+          "price": 99,
+          "price_yearly": 990,
+          "type": "month",
+          "features": [
+            "Express Service",
+            "Customs Clearance",
+            "Time-Critical Services"
+          ],
+          "button": {
+            "label": "Get started",
+            "link": "/contact"
+          }
+        }
+      ]
+    },
+    {
+      "type": "faq",
+      "title": "Questions (43)",
+      "items": [
+        {
+          "question": "Will updates also be free?",
+          "answer": "Lorem, [link](https://www.example.com) ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxim"
+        },
+        {
+          "question": "Discounts for students and Non Profit Organizations?",
+          "answer": "Lorem, ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxime perspiciatis iste placeat arch"
+        },
+        {
+          "question": "I need something unique, Can you make it?",
+          "answer": "Lorem, [link](https://www.example.com) ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxim"
+        },
+        {
+          "question": "Is there any documentation and support?",
+          "answer": "Lorem, [link](https://www.example.com) ipsum dolor sit amet consectetur adipisicing elit. Cumque praesentium nisi officiis maiores quia sapiente totam omnis vel sequi corporis ipsa incidunt reprehenderit recusandae maxim"
+        }
+      ]
+    },
+    {
+      "type": "testimonials",
+      "title": "Loved by teams (44)",
+      "items": [
+        "t-lena",
+        "t-kofi"
+      ]
+    }
+  ]
+}
