@@ -95,7 +95,7 @@ describe('ensureRepo with a real remote', () => {
 
   beforeAll(async () => {
     seedRoot = await makeTestRoot();
-    remote = await seedRemote(seedRoot);
+    remote = await seedRemote(seedRoot, { source: 'git-site' });
   }, 60_000);
 
   afterAll(async () => {
@@ -395,7 +395,10 @@ describe('ensureRepo with a real remote', () => {
 
     beforeAll(async () => {
       siteSeedRoot = await makeTestRoot();
-      siteRemote = await seedRemote(siteSeedRoot, { siteDir: 'site' });
+      siteRemote = await seedRemote(siteSeedRoot, {
+        siteDir: 'site',
+        source: 'git-site',
+      });
     }, 60_000);
 
     afterAll(async () => {
@@ -414,6 +417,47 @@ describe('ensureRepo with a real remote', () => {
         await git(state.repoDir, ['ls-files', 'site/astro.config.mjs']),
       ).toBe('site/astro.config.mjs\n');
     });
+  });
+});
+
+// A clone folder that git does not read as its own repo must not change the repo above it.
+describe('a clone folder that is not its own repo', () => {
+  let seedRoot: string;
+  let remote: string;
+
+  beforeAll(async () => {
+    seedRoot = await makeTestRoot();
+    remote = await seedRemote(seedRoot, { source: 'git-site' });
+  }, 60_000);
+
+  afterAll(async () => {
+    await removeTestRoot(seedRoot);
+  });
+
+  it('refuses it, and changes no setting or branch of the parent repo', async () => {
+    const root = await newRoot();
+    const parent = join(root, 'parent');
+    const cmsDir = join(parent, '.cms');
+    const repoDir = join(cmsDir, 'demo', 'repo');
+    await mkdir(parent);
+    await git(parent, ['init']);
+    await git(parent, ['remote', 'add', 'origin', remote]);
+    await git(parent, ['config', 'user.name', 'Parent Owner']);
+    await git(parent, ['config', 'user.email', 'parent@example.test']);
+    await git(parent, ['config', 'core.hooksPath', '.githooks']);
+    // An empty `.git` folder: isRepo sees a repo, but git does not read it, so git would use the parent.
+    await mkdir(join(repoDir, '.git'), { recursive: true });
+    const settingsBefore = await git(parent, ['config', '--local', '--list']);
+    await expect(
+      ensureRepo({ config: configFor(remote), cmsDir, log: spyLog() }),
+    ).rejects.toMatchObject({
+      kind: 'failed',
+      message: `The CMS clone ${repoDir} is not a git repository of its own. Git would use a parent repository, so the CMS will not change it. Check or remove the folder by hand, then start the CMS again.`,
+    });
+    expect(await git(parent, ['config', '--local', '--list'])).toBe(
+      settingsBefore,
+    );
+    expect(await git(parent, ['branch', '--list', 'cms/work'])).toBe('');
   });
 });
 

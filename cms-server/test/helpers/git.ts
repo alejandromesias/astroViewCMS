@@ -11,9 +11,14 @@ const TEMP_ROOT = fileURLToPath(new URL('../../.test-tmp/', import.meta.url));
 // Git must not look for a repo above the test folders. A test folder without its own .git would otherwise
 // use the main checkout, and a test could switch its branch or change its config. Set before any git call.
 process.env.GIT_CEILING_DIRECTORIES = TEMP_ROOT;
-const SAMPLE_SITE = fileURLToPath(
-  new URL('../../../sample-site/', import.meta.url),
-);
+// The folders seedRemote can commit: sample-site (the default), and the git-site fixture for the git tests.
+export type SeedSource = 'sample-site' | 'git-site';
+const SITES: Record<SeedSource, string> = {
+  'sample-site': fileURLToPath(
+    new URL('../../../sample-site/', import.meta.url),
+  ),
+  'git-site': fileURLToPath(new URL('../fixtures/git-site/', import.meta.url)),
+};
 // Build output and installed packages are not part of a site's source.
 const NOT_COPIED = new Set(['node_modules', 'dist', '.astro']);
 
@@ -75,13 +80,13 @@ export async function removeTestRoot(root: string): Promise<void> {
 }
 
 /**
- * Makes a bare remote under `root` and a first commit holding sample-site.
+ * Makes a bare remote under `root` and a first commit holding the `source` folder (sample-site by default).
  * With `siteDir`, the site sits in that subfolder (a `siteDir` setting).
  * Returns the remote path.
  */
 export async function seedRemote(
   root: string,
-  options: { siteDir?: string } = {},
+  options: { siteDir?: string; source?: SeedSource } = {},
 ): Promise<string> {
   const remote = join(root, 'remote.git');
   const seed = join(root, 'seed');
@@ -89,7 +94,7 @@ export async function seedRemote(
   await git(root, ['init', '--bare', remote]);
   await mkdir(seed);
   await git(seed, ['init']);
-  await cp(SAMPLE_SITE, siteFolder, {
+  await cp(SITES[options.source ?? 'sample-site'], siteFolder, {
     recursive: true,
     filter: (source) => !NOT_COPIED.has(basename(source)),
   });
