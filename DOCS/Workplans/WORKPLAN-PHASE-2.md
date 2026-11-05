@@ -25,7 +25,7 @@ before writing tests, [TESTING-RECOMMENDATIONS.md](../Guidelines/TESTING-RECOMME
 |---|---|
 | Phase 2 design | approved by the user, 2026-10-31 |
 | Decisions D17 to D22 | logged in SYSTEM-DESIGN section 11 |
-| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); 2.1g (codecs scope; the rest of its scope moved to 2.1h with deadlines), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a done 2026-11-03 (wave 5 complete, branch `phase-2-wave-5`); next: wave 6 (see the wave order note); the rest not started |
+| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); 2.1g (codecs scope; the rest of its scope moved to 2.1h with deadlines), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a done 2026-11-03 (wave 5 complete, branch `phase-2-wave-5`); next: wave 6 (see the wave order note; 2.5c moved into it on 2026-11-04); the rest not started |
 
 **Done when:** every row of PHASE-2-DESIGN.md section 1 passes. Section 5
 below maps each row to the test that proves it.
@@ -89,9 +89,9 @@ Rules for running tasks in parallel:
 | 3 | 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8c, 2.8d |
 | 4 | 2.1f (alone, first), 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a |
 | 5 | 2.1g (codecs only, 2026-11-03), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a (after 2.1g) |
-| 6 | 2.0j (alone, `[build]`), 2.1h (now also `repo.ts`, before 2.5b), 2.5b, 2.6a, 2.9a, 2.10a |
-| 7 | 2.5c (`server.ts` survivors from 2.1h first), 2.9c, 2.10b |
-| 8 | 2.6b, 2.7b, 2.7c, 2.9d |
+| 6 | 2.0j (alone, `[build]`), 2.1h (now also `repo.ts`, before 2.5b), 2.5b, 2.6a, 2.9a, 2.10a, 2.5c (moved here 2026-11-04; starts after 2.10a merges) |
+| 7 | 2.6b, 2.9c, 2.10b |
+| 8 | 2.7b, 2.7c, 2.9d |
 | 9 | 2.9e, 2.10c |
 | 10 | 2.10d, 2.10g, 2.11b |
 | 11 | 2.10e, 2.11c, 2.12a |
@@ -105,6 +105,8 @@ starts (2.4b's revision-equality test compares against today's files). Then 2.4b
 parallel; 2.5a waits for 2.1g.
 
 Wave 6 order (2026-11-03, revised after review): 2.1h part 1 comes first in the wave, in this order: `repo.ts` (seed `repo.test.ts` from a small fixture), the `core.hooksPath` guard in `repo.ts`, then `codecs/by-format.ts`, `manifest/documents.ts` and `preview-contract/src/revision.ts`. `documents/` waits for 2.5b's revision split, and `plan-write.ts` waits for 2.5b to close (2.5b and 2.0j both change it). 2.1h must finish `repo.ts` before 2.5b. 2.5b may start in parallel with the tests, but is not closed before `repo.ts` has a score. 2.6a, 2.9a and 2.10a do not wait for 2.1h.
+
+Wave 6/7/8 reorder (2026-11-04): 2.5c moved from wave 7 to wave 6. Its gates are met: 2.0h, 2.0j, 2.5a and 2.5b are done, and `server.ts` was scored in 2.1h 2a (93.2%). Order inside wave 6: 2.10a first (it adds `tx.fetch` to `git/ops.ts`), then 2.5c alone in `http/`, `save/` and `ops.ts` (it adds `tx.restore`); 2.6a and 2.9a run in parallel with either, since 2.6a works in `references/`, `schema/walk.ts` and `documents/paths.ts`. Wave 7 is then 2.6b, 2.9c and 2.10b. Wave 8 is 2.7b, 2.7c and 2.9d. 2.6b, 2.7b and 2.7c each add a stage to the same pipeline array, so 2.6b runs apart from 2.7b and 2.7c.
 
 **Critical path** (the longest chain; it decides the elapsed time): 2.0a →
 2.1a → 2.3a → 2.3b → 2.3c → 2.5b → 2.5c → 2.9d → 2.9e → 2.10d → 2.10e →
@@ -1765,6 +1767,24 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
 - **From 2.5a (2026-11-03), to settle before the agent runs:**
   - `planWrite` takes the bundle's documents in `ctx.documents` and refuses an update or delete of a key it lacks (`unwritable`). A second save that edits a document the first save created would be refused. 2.5c must add the changeset's created documents (2.5b) to `ctx.documents`, with a test.
   - A create into a read-only collection is not refused: settled by 2.0j (flag per collection in `schema.json`, approved 2026-11-03). 2.5c passes it to `planWrite`.
+- **Gaps settled (calls, 2026-11-04, review).** Wave 6, after 2.10a merges. Files: `http/changes-routes.ts` (the route), a new `save/` folder (the stages), `git/ops.ts` (`tx.restore`), `http/app.ts`, `run.ts`.
+  1. **Restore.** `tx.restore(paths)` in `ops.ts`: `git checkout HEAD -- <paths that exist in HEAD>`, then `git clean -f -- <paths>` for created files. It runs inside the same `locked` call as the writes. A crash mid-save is already covered by `syncRepo`'s `checkout --force` and `clean` at start.
+  2. **Pipeline.** A stage is `(ctx: SaveContext) => Promise<SaveStop | undefined>`: it returns a response to stop, or `undefined` to continue. The pipeline is an ordered array with named slots (the delete guard, images and warnings). 2.6b, 2.7b and 2.7c add stages at their slots without editing each other's files. `SaveContext` also carries `afterCommit`, a list of hooks (see item 9).
+  3. **Lock and conflict.** Body parsing (Zod, `Content-Type`, `Sec-Fetch-Site`, 4 MiB cap) runs before the lock. Everything from the revision check to the commit, validation included, runs in one `locked('save')` call. The `409 conflict` value comes from `documents/read.ts` and `revisionOfDocument`. `PreviewClient.validate` has a 10 s timeout, well below `DEFAULT_LOCK_TIMEOUT_MS` (30 s). On a timeout nothing is written and the answer is `503 preview-unavailable`. A slow validate delays sync and publish; that is accepted. 2.9d implements the client against this timeout.
+  4. **Validation payload.** The new value of every created or updated document (deletes skipped) plus `cms-server`'s own media map (D12). The design's "scratch copy" is `planWrite`'s in-memory output: nothing touches disk before validation passes.
+  5. **Statuses and bodies.** An empty `changes` list is `400 invalid-body` (`min(1)` in Zod). `planWrite` stops at its first refusal, so the body is one error: `{ error: <code>, key, message, file?, line?, column? }`, the last three copied from `WritePlanError`.
+     | `planWrite` code | Status |
+     | --- | --- |
+     | `duplicate-key`, `outside-site`, `pattern-mismatch` | `400` |
+     | `exists`, `file-missing` | `409` |
+     | `read-only`, `unwritable`, `unreadable` | `422` |
+     Validation errors: `422 { error: 'invalid', errors: [{ key, path, message }] }`. Clients tell `409`s apart by `error`: `conflict`, `referenced-by` (2.6b), `exists`, `file-missing`.
+  6. **`GET /api/documents?key=`.** The handler checks the bundle, then the changeset's `createdRecords`, computed per request with no cache. The same records go into `planWrite`'s `ctx.documents`. Tests: create a document then GET it; create it then update it in a second save.
+  7. **`rebuild`.** True when, for some document, the value at a `buildTimeFields` path differs between the stored and the new value (canonical JSON), or when a document that has `buildTimeFields` is deleted. A create never sets it: its record has `buildTime: false` (`changeset.ts`), and the design's trigger table has no "created" row.
+  8. **Commit message.** Subject `CMS save: <n> document(s)`, body one `<status> <key>` line per document. No trailers (2.10b writes them).
+  9. **After the commit.** `ctx.afterCommit` is a list of hooks (2.6b registers the reference index update). They run inside the lock, right after the commit, so a sync's `rebuild()` cannot interleave. A failing hook does not fail the save: it logs and marks the index for a full `rebuild()` on the next read.
+  10. **Response.** `200 { revisions: { [key]: revision }, warnings: [], rebuild: boolean }`. `revisions` lists created and updated documents, not deleted ones. `warnings` and `rebuild` are always present (`warnings` is empty until 2.7c).
+  11. **Stryker.** 2.5c runs none. After it merges, through the script and one file at a time: `save/`, `http/changes-routes.ts`, the rest of `http/` (2.1h 2b step 3), `git/ops.ts` with `restore`, `schema/walk.ts` (after 2.6a) and `documents/paths.ts`.
 
 ### 2.6 Delete guard — after 2.2, 2.4c, 2.5c · ∥ 2.7, 2.8, 2.9
 
@@ -1777,6 +1797,11 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   No site code runs.
 - **Done when:** tests on the sample's data: authors to posts, testimonial
   entries to landing blocks (inside the union), a self-reference.
+- **Gaps settled (calls, 2026-11-04, review).** Files: `cms-server/src/references/` (new), `schema/walk.ts` (small edit), `documents/paths.ts` (`documentKey`).
+  - **Collection.** Each reference field node in `schema.json` carries `"cms": "reference", "collection": "<name>"`, and `walkMarkers` did not pass it on. The hit gains an optional `collection`, set only for a `reference` marker whose `collection` is a string (each keyword is checked before use). A reference with no collection is reported without one; 2.6a skips it with a `log.warn`. This edits `walk.ts`, so it is scored again through the script after 2.6a merges (counted in the wave plan).
+  - **Key.** `cms-server` has no key builder (the renderer writes `` `${collection}/${id}` `` inline in `manifest/documents.ts` and `overlay/keys.ts`; `cms-server` only has `collectionOf(key)` in `documents/paths.ts`). Add `documentKey(collection, id)` next to `collectionOf`, with a test that rebuilds every key in the bundle fixture's `documents.json` from its collection and id, so drift from the renderer shows. Moving it to `preview-contract` would edit the renderer and is out of scope.
+  - **Values.** A reference is a string or `{ id }`. Anything else is skipped without throwing. A reference to a document that does not exist is still indexed.
+  - **Scope of the index.** Built over the bundle's documents plus the changeset's `createdRecords` (2.5b), with values read from the working copy. Otherwise a document created in an unpublished save would have referrers the index does not know.
 
 #### 2.6b The guard in `PUT /api/changes` — after 2.5c, 2.6a
 
