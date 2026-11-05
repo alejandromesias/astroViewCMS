@@ -413,6 +413,22 @@ describe('PUT /api/changes', () => {
     });
   });
 
+  it('answers 500 for a body that fails while it is read, not 413', async () => {
+    const { app } = await saveApp(previewSays());
+    const broken = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new Error('connection reset'));
+      },
+    });
+    const res = await app.request('/api/changes', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: broken,
+      duplex: 'half',
+    } as RequestInit);
+    expect(res.status).toBe(500);
+  });
+
   it('answers 503 no-bundle when no bundle is in place', async () => {
     const { app } = await saveApp(
       previewSays(),

@@ -171,6 +171,17 @@ describe('saveChanges', () => {
     });
   });
 
+  it('rethrows a bundle read that fails with something other than a bundle error', async () => {
+    const failure = new Error('disk gone');
+    await expect(
+      saveChanges(
+        inputOf([], () => Promise.reject(failure)),
+        lockedRepo(fakeTx(), []),
+        { stages: [] },
+      ),
+    ).rejects.toBe(failure);
+  });
+
   it('restores the working copy from HEAD when a write fails, so no part of the save is kept', async () => {
     const root = await makeTestRoot();
     folders.push(root);

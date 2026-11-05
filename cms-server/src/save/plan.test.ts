@@ -194,6 +194,30 @@ describe('planChanges', () => {
     });
   });
 
+  it('rethrows an error from the planner that is not a refusal', async () => {
+    const siteFolder = await tempWorkingCopy({});
+    const failure = new Error('config broke');
+    const ctx = saveContext({
+      siteFolder,
+      bundle: bundleOf([], authorsCollections()),
+      documents: new Map(),
+      config: {
+        get collections(): never {
+          throw failure;
+        },
+      },
+      changes: [
+        {
+          document: 'authors/lee',
+          baseRevision: null,
+          deleted: false,
+          data: {},
+        },
+      ],
+    });
+    await expect(planChanges(ctx)).rejects.toBe(failure);
+  });
+
   it('answers 422 unwritable for a format the CMS cannot write', async () => {
     const siteFolder = await tempWorkingCopy({ 'src/config.toml': 'a = 1\n' });
     const ctx = contextFor(

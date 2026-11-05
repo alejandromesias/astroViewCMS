@@ -23,6 +23,8 @@ const ANA_TEXT = '{\n  "name": "Ana"\n}\n';
 const ANA_NEW = '{\n  "name": "Ana Torres"\n}\n';
 const LEE = 'src/content/authors/lee.json';
 const LEE_TEXT = '{\n  "name": "Lee"\n}\n';
+const SHARED = 'src/content/authors/all.json';
+const SHARED_TEXT = '{\n  "ana": { "name": "Ana" }\n}\n';
 
 afterEach(removeWorkingCopies);
 
@@ -109,6 +111,40 @@ describe('writeChanges', () => {
     expect(await writeChanges(ctx)).toBeUndefined();
     expect(ctx.revisions).toStrictEqual(
       new Map([['authors/lee', revisionOf(LEE_TEXT)]]),
+    );
+  });
+
+  it('throws, naming the document, when its file is gone after the commit', async () => {
+    const siteFolder = await tempWorkingCopy({ [ANA]: ANA_TEXT });
+    const ctx = saveContext({
+      siteFolder,
+      writeFile: writeFileAtomic,
+      changes: [UPDATE],
+      bundle: bundleOf([documentOf('authors/ana', { file: ANA })]),
+      documents: bundleOf([documentOf('authors/ana', { file: ANA })]).documents,
+      plan: [{ op: 'delete', path: ANA }],
+    });
+    await expect(writeChanges(ctx)).rejects.toThrow(
+      new Error('"authors/ana" has no revision after the save'),
+    );
+  });
+
+  it('throws when a shared file no longer parses after the commit, so the entry has no revision', async () => {
+    const siteFolder = await tempWorkingCopy({ [SHARED]: SHARED_TEXT });
+    const entry = documentOf('authors/ana', {
+      file: SHARED,
+      entryKey: 'ana',
+    });
+    const ctx = saveContext({
+      siteFolder,
+      writeFile: writeFileAtomic,
+      changes: [UPDATE],
+      bundle: bundleOf([entry]),
+      documents: bundleOf([entry]).documents,
+      plan: [{ op: 'write', path: SHARED, text: '{ "ana": ' }],
+    });
+    await expect(writeChanges(ctx)).rejects.toThrow(
+      new Error('"authors/ana" has no revision after the save'),
     );
   });
 
