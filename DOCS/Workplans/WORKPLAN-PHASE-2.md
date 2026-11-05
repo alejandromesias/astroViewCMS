@@ -383,7 +383,7 @@ done. Item 6 of the design (the front server) is step 2.8.
   collection that has no loader'). A temporary `notes/ghost` document made
   the test fail, then was reverted. Production code unchanged.
 
-#### 2.0j Read-only flag per collection in `schema.json` — after 2.5a · [build]
+#### 2.0j Read-only flag per collection in `schema.json` — after 2.5a · [build] · DONE 2026-11-03
 
 - Added 2026-11-03 (user approved), from the 2.5a open item. `planWrite` cannot tell that a *new* key
   belongs to a read-only collection: `documents.json` carries `editable: false` only per existing
