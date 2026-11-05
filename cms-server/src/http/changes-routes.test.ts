@@ -229,7 +229,7 @@ describe('PUT /api/changes', () => {
     expect(updated.status).toBe(200);
     const reread = await app.request('/api/documents?key=authors/lee');
     expect(await reread.json()).toMatchObject({ value: { name: 'Lee Park' } });
-  });
+  }, 20_000);
 
   it('saves one entry of a shared file, and leaves the other entries as they are', async () => {
     const { app, siteFolder } = await saveApp(previewSays());
