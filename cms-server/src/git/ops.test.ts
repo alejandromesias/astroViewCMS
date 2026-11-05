@@ -292,6 +292,26 @@ describe('openRepo: restore', () => {
       '',
     );
   });
+
+  it('does nothing for an empty list, and keeps what the index holds', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site');
+    await edit(fixture, 'notes/new.md', 'new\n');
+    await git(fixture.state.repoDir, ['add', '--', 'site/notes/new.md']);
+    await repoOf(fixture).locked('save', (tx) => tx.restore([]));
+    expect(
+      await git(fixture.state.repoDir, ['diff', '--cached', '--name-only']),
+    ).toContain('site/notes/new.md');
+  });
+
+  it('leaves an untracked file outside the list alone', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site');
+    await edit(fixture, 'notes/a.md', 'alpha 2\n');
+    await edit(fixture, 'notes/other.md', 'kept\n');
+    await repoOf(fixture).locked('save', (tx) => tx.restore(['notes/a.md']));
+    expect(
+      await readFile(join(fixture.state.siteFolder, 'notes/other.md'), 'utf8'),
+    ).toBe('kept\n');
+  });
 });
 
 describe('openRepo: bytes, merge base and trailers', () => {
@@ -616,6 +636,16 @@ describe('openRepo: worktrees', () => {
       kind: 'invalid-argument',
       message: 'invalid path: "../repo"',
     });
+  });
+
+  it('refuses a ref that starts with a dash, and makes no folder', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site');
+    await expect(
+      repoOf(fixture).locked('sync', (tx) => tx.worktreeAdd('-x', 'preview')),
+    ).rejects.toMatchObject({ name: 'GitError', kind: 'invalid-argument' });
+    await expect(
+      stat(join(fixture.cmsDir, 'demo', 'worktrees', 'preview')),
+    ).rejects.toThrow('ENOENT');
   });
 });
 
@@ -962,6 +992,21 @@ describe('openRepo: fetch', () => {
       reapply: false,
       change: 'code',
       paths: [],
+    });
+  });
+
+  it('is a sync error when the bundle store fails with something that is not a bundle error', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site', syncFiles());
+    await expect(
+      syncOf(
+        fixture,
+        createBundleStore({
+          current: () => Promise.reject(new Error('disk gone')),
+        }),
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      syncError: { kind: 'failed', message: 'disk gone' },
     });
   });
 
