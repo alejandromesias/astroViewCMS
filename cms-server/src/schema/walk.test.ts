@@ -50,14 +50,30 @@ describe('walkMarkers on the sample schema', () => {
       ],
     };
     expect(hitsOf(schema, value)).toEqual([
-      { path: ['blocks', 1, 'items', 0], marker: 'reference', value: 't-ana' },
+      {
+        path: ['blocks', 1, 'items', 0],
+        marker: 'reference',
+        value: 't-ana',
+        collection: 'testimonials',
+      },
       {
         path: ['blocks', 1, 'items', 1],
         marker: 'reference',
         value: 't-marco',
+        collection: 'testimonials',
       },
-      { path: ['blocks', 1, 'items', 2], marker: 'reference', value: 't-lena' },
-      { path: ['blocks', 1, 'items', 3], marker: 'reference', value: 't-kofi' },
+      {
+        path: ['blocks', 1, 'items', 2],
+        marker: 'reference',
+        value: 't-lena',
+        collection: 'testimonials',
+      },
+      {
+        path: ['blocks', 1, 'items', 3],
+        marker: 'reference',
+        value: 't-kofi',
+        collection: 'testimonials',
+      },
     ]);
   });
 
@@ -96,6 +112,51 @@ describe('walkMarkers on the sample schema', () => {
 });
 
 describe('walkMarkers on synthetic schemas', () => {
+  it('gives a reference hit the collection its marker names, and an image hit none', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        author: { type: 'string', cms: 'reference', collection: 'authors' },
+        avatar: { type: 'string', cms: 'image', collection: 'ignored' },
+      },
+    };
+    expect(hitsOf(schema, { author: 'ana', avatar: 'a.png' })).toEqual([
+      {
+        path: ['author'],
+        marker: 'reference',
+        value: 'ana',
+        collection: 'authors',
+      },
+      { path: ['avatar'], marker: 'image', value: 'a.png' },
+    ]);
+  });
+
+  it('gives each item of a reference array the collection of the items schema', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        tags: {
+          type: 'array',
+          items: { type: 'string', cms: 'reference', collection: 'tags' },
+        },
+      },
+    };
+    expect(hitsOf(schema, { tags: ['t-1', 't-2'] })).toEqual([
+      {
+        path: ['tags', 0],
+        marker: 'reference',
+        value: 't-1',
+        collection: 'tags',
+      },
+      {
+        path: ['tags', 1],
+        marker: 'reference',
+        value: 't-2',
+        collection: 'tags',
+      },
+    ]);
+  });
+
   it('follows a $ref into $defs', () => {
     const schema = {
       type: 'object',

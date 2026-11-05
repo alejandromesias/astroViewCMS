@@ -35,6 +35,14 @@ export function collectionOf(key: string): string | undefined {
 }
 
 /**
+ * The key of a collection entry, `collection/id`: the same format preview-render-server writes (D10). The id is not
+ * checked and may contain slashes; the collection must not, so that `collectionOf` reads it back.
+ */
+export function documentKey(collection: string, id: string): string {
+  return `${collection}/${id}`;
+}
+
+/**
  * The path of `path` relative to a loader's `base` folder, or undefined when the file is not inside it. A base of `.`
  * (or none) is the site folder, so the path is its own relative path.
  */

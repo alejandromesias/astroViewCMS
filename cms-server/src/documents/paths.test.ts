@@ -3,6 +3,7 @@ import { FIXTURE_BUNDLE } from '../../test/helpers/bundle.ts';
 import { readBundle } from '../bundle/read.ts';
 import {
   collectionOf,
+  documentKey,
   formatOfExtension,
   formatOfPath,
   globIdOf,
@@ -114,6 +115,25 @@ describe('collectionOf', () => {
   });
 });
 
+describe('documentKey', () => {
+  it('joins the collection and the id with a slash', () => {
+    expect(documentKey('authors', 'noor-haddad')).toBe('authors/noor-haddad');
+  });
+
+  it('keeps the slashes of an id (D10)', () => {
+    expect(documentKey('blog', 'generated/post-001')).toBe(
+      'blog/generated/post-001',
+    );
+    expect(collectionOf(documentKey('blog', 'generated/post-001'))).toBe(
+      'blog',
+    );
+  });
+
+  it('keeps a prototype name as an id', () => {
+    expect(documentKey('authors', '__proto__')).toBe('authors/__proto__');
+  });
+});
+
 describe('slugOf', () => {
   it('reads data.slug for Markdown and the top-level slug for the other formats', () => {
     expect(slugOf({ data: { slug: 'md-slug' }, body: '' }, 'md')).toBe(
@@ -164,5 +184,24 @@ describe('the keys of the fixture bundle', () => {
       return `${collection}/${globIdOf(relative ?? '', undefined)}`;
     });
     expect(built).toEqual(globDocuments.map((document) => document.key));
+  });
+
+  it('are rebuilt by documentKey from their collection and their id (drift from the renderer)', async () => {
+    // The renderer writes `${collection}/${entry.id}` (preview-render-server manifest/documents.ts); this checks that format.
+    const bundle = await readBundle(FIXTURE_BUNDLE, {
+      bundleId: 'fixture-2026-11-03',
+      siteCommit: '4523c67c55284f8bd3ae1b61caa6d5501ccc77ab',
+      protocolVersion: 2,
+      astroVersion: '7.4.2',
+      builtAt: '2026-11-04T03:42:22.323Z',
+    });
+    const keys = [...bundle.documents.keys()];
+    expect(keys).toContain('testimonials/t-ana');
+    for (const key of keys) {
+      const collection = collectionOf(key) ?? '';
+      expect(documentKey(collection, key.slice(collection.length + 1))).toBe(
+        key,
+      );
+    }
   });
 });
