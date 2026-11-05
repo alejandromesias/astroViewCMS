@@ -33,16 +33,14 @@ export function createReferenceIndex(
   schemaOf: CollectionSchemaOf,
 ): ReferenceIndex {
   // Referrer key to the target keys it points at, and the reverse. Both are kept, so that an update or a removal
-  // finds the old edges without a scan.
+  // finds the old edges without a scan. An update records its targets even when there are none, and a set is never
+  // deleted: an empty set answers the same as a missing one.
   const pointsAt = new Map<string, ReadonlySet<string>>();
   const referrers = new Map<string, Set<string>>();
 
   function unlink(key: string): void {
-    for (const target of pointsAt.get(key) ?? []) {
-      const set = referrers.get(target);
-      if (set === undefined) continue;
-      set.delete(key);
-      if (set.size === 0) referrers.delete(target);
+    for (const target of pointsAt.get(key) ?? new Set<string>()) {
+      setOf(referrers, target).delete(key);
     }
     pointsAt.delete(key);
   }
@@ -50,13 +48,8 @@ export function createReferenceIndex(
   function update(key: string, value: unknown): void {
     unlink(key);
     const targets = targetsOf(key, value, schemaOf);
-    if (targets.size === 0) return;
     pointsAt.set(key, targets);
-    for (const target of targets) {
-      const set = referrers.get(target) ?? new Set<string>();
-      set.add(key);
-      referrers.set(target, set);
-    }
+    for (const target of targets) setOf(referrers, target).add(key);
   }
 
   return {
@@ -71,6 +64,13 @@ export function createReferenceIndex(
       for (const { key, value } of documents) update(key, value);
     },
   };
+}
+
+/** The set under `key` in `map`, created empty when there is none yet. */
+function setOf(map: Map<string, Set<string>>, key: string): Set<string> {
+  const set = map.get(key) ?? new Set<string>();
+  map.set(key, set);
+  return set;
 }
 
 /**
@@ -95,14 +95,11 @@ function targetsOf(
   return targets;
 }
 
-/** The id a reference value names: the string itself, or the `id` of an object (`{ id }`). Any other value names none. */
+/**
+ * The id a reference value names: the string itself, or the `id` of an object (`{ id }`). Any other value names none.
+ * `Object(value)` wraps a number, a boolean or an array, whose `id` is undefined, so those need no type check.
+ */
 function idOfReference(value: unknown): string | undefined {
-  if (typeof value === 'string') return value;
-  if (!isRecord(value) || !Object.hasOwn(value, 'id')) return undefined;
-  return typeof value.id === 'string' ? value.id : undefined;
-}
-
-/** True for a plain object: not null and not an array. */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  const id: unknown = typeof value === 'string' ? value : Object(value).id;
+  return typeof id === 'string' ? id : undefined;
 }
