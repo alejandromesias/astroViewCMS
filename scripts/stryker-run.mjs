@@ -2,7 +2,9 @@
 // made by a test or a mutant can reach the main checkout (WORKPLAN-PHASE-2 2.1h, action plan 3 and 4).
 // Usage, from the repo root:
 //   node scripts/stryker-run.mjs <config> --mutate <files> [other Stryker options]
-// Refuses a dirty tree and a run without --mutate. Runs are always --force. Before and after the run
+//   node scripts/stryker-run.mjs stryker.config.json --full [other Stryker options]
+// --full is the whole-repo run (WORKPLAN-PHASE-2 2.1h, the lead's full run); it needs stryker.config.json and no --mutate.
+// Refuses a dirty tree and a run without --mutate or --full. Runs are always --force. Before and after the run
 // it compares the main checkout's branch, HEAD, refs, local config and root node_modules; if any
 // changed, nothing is copied back. Results go to reports/stryker-runs/<stamp>/.
 import { spawn, spawnSync } from 'node:child_process';
@@ -172,12 +174,17 @@ function removeOwn(path, root) {
 }
 
 async function main() {
-  const [config, ...rest] = process.argv.slice(2);
-  if (!config || !/^stryker[\w.-]*\.mjs$/.test(config) || !existsSync(join(MAIN, config))) {
-    throw new Error('the first argument must be a Stryker config in the repo root, such as stryker.cms-server.config.mjs');
+  const [config, ...given] = process.argv.slice(2);
+  const full = given.includes('--full');
+  const rest = given.filter((arg) => arg !== '--full');
+  if (!config || !/^stryker[\w.-]*\.(mjs|json)$/.test(config) || !existsSync(join(MAIN, config))) {
+    throw new Error('the first argument must be a Stryker config in the repo root, such as stryker.cms-server.config.mjs or stryker.config.json');
   }
-  if (!rest.some((arg) => arg === '--mutate' || arg.startsWith('--mutate='))) {
-    throw new Error('give --mutate <files>; a run over the whole repo is not allowed here');
+  if (full && config !== 'stryker.config.json') {
+    throw new Error('--full runs with stryker.config.json only');
+  }
+  if (!full && !rest.some((arg) => arg === '--mutate' || arg.startsWith('--mutate='))) {
+    throw new Error('give --mutate <files>, or --full for the whole repo');
   }
   if (!rest.includes('--force')) rest.push('--force');
 
