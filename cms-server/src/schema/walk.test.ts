@@ -143,6 +143,25 @@ describe('walkMarkers on synthetic schemas', () => {
     ).toThrow('unresolved $ref "#/$defs/missing"');
   });
 
+  it('throws for a $ref to a name that only Object.prototype has', () => {
+    expect(() =>
+      walkMarkers({ $ref: '#/$defs/__proto__' }, 'x', () => undefined),
+    ).toThrow('unresolved $ref "#/$defs/__proto__"');
+  });
+
+  it('walks a null-typed branch for null but not for a string, so a bad $ref inside it throws only for null', () => {
+    const schema = {
+      oneOf: [
+        { type: 'null', anyOf: [{ $ref: '#/$defs/missing' }] },
+        { type: 'string' },
+      ],
+    };
+    expect(() => walkMarkers(schema, 'x', () => undefined)).not.toThrow();
+    expect(() => walkMarkers(schema, null, () => undefined)).toThrow(
+      'unresolved $ref "#/$defs/missing"',
+    );
+  });
+
   it('walks every branch of anyOf that fits the value', () => {
     const schema = {
       anyOf: [

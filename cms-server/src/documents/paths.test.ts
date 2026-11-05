@@ -131,6 +131,8 @@ describe('slugOf', () => {
     expect(slugOf('text', 'md')).toBeUndefined();
     expect(slugOf(['slug'], 'json')).toBeUndefined();
     expect(slugOf({ title: 'x' }, 'json')).toBeUndefined();
+    expect(slugOf(null, 'json')).toBeUndefined();
+    expect(slugOf(null, 'md')).toBeUndefined();
   });
 });
 
