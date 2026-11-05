@@ -49,7 +49,11 @@ function snapshot() {
   return {
     branch: gitText(MAIN, ['rev-parse', '--abbrev-ref', 'HEAD']),
     head: gitText(MAIN, ['rev-parse', 'HEAD']),
-    refs: gitText(MAIN, ['for-each-ref', '--format=%(refname) %(objectname)']),
+    // refs/t3/ holds checkpoint refs that the T3 Code app writes during a session, not branch state.
+    refs: gitText(MAIN, ['for-each-ref', '--format=%(refname) %(objectname)'])
+      .split('\n')
+      .filter((line) => !line.startsWith('refs/t3/'))
+      .join('\n'),
     hooksPath: git(MAIN, ['config', '--local', '--get', 'core.hooksPath']).stdout.trim(),
     localConfig: gitText(MAIN, ['config', '--local', '--list']),
     nodeModules: readdirSync(join(MAIN, 'node_modules'))
