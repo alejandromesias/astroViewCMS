@@ -83,6 +83,11 @@ export interface RepoTx {
    * one, the change is `code`.
    */
   fetch(bundles: BundleStore): Promise<FetchResult>;
+  /**
+   * Puts `paths` back as HEAD has them (2.5c): unstages them, checks out the ones HEAD has, and removes the ones it
+   * does not have (files a failed save wrote). Site-relative, as `commitSave`. A path that matches nothing is ignored.
+   */
+  restore(paths: readonly string[]): Promise<void>;
 }
 
 /** The repo operations of one start. */
@@ -175,6 +180,25 @@ export function openRepo({
       } catch (error: unknown) {
         return { ok: false, syncError: syncErrorOf(error, remote) };
       }
+    },
+    // Unstages first, so a file a failed save added is not kept by the index, then checks out what HEAD has.
+    async restore(paths) {
+      if (paths.length === 0) return;
+      const full = paths.map((path) => repoPath(scope, path));
+      await git(['reset', '-q', '--', ...full]);
+      const listed = await git([
+        'ls-tree',
+        '-z',
+        '--name-only',
+        'HEAD',
+        '--',
+        ...full,
+      ]);
+      const inHead = new Set(listed.split('\0').filter((path) => path !== ''));
+      const tracked = full.filter((path) => inHead.has(path));
+      const created = full.filter((path) => !inHead.has(path));
+      if (tracked.length > 0) await git(['checkout', 'HEAD', '--', ...tracked]);
+      if (created.length > 0) await git(['clean', '-f', '--', ...created]);
     },
     // Refuses a save off `cms/work`: committing there would put the save on another branch.
     async commitSave(paths, message) {

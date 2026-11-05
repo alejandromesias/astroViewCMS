@@ -17,6 +17,7 @@ import type { AppDeps } from './http/app.ts';
 import type { Logger } from './log.ts';
 import type { Supervisor, SupervisorOptions } from './preview/supervisor.ts';
 import { describeError, parseArgs, portOf, type RunDeps, run } from './run.ts';
+import { previewNotReady } from './save/validate.ts';
 import { startServer as listen } from './server.ts';
 
 const USAGE = 'Usage: node src/main.ts [config-file] [--bundle <folder>]';
@@ -229,6 +230,7 @@ describe('run', () => {
           bundle: expect.any(Object) as BundleSource,
           workingCopy: 'repo',
           repo: expect.any(Object) as Repo,
+          save: { config: expect.any(Object), preview: previewNotReady },
         },
         4400,
       );

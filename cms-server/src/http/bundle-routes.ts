@@ -10,6 +10,7 @@ import {
 } from '../bundle/read.ts';
 import type { BundleSource } from '../bundle/source.ts';
 import { type BundleStore, createBundleStore } from '../bundle/store.ts';
+import { type ChangesetRepo, changesetOf } from '../documents/changeset.ts';
 import { collectionOf } from '../documents/paths.ts';
 import type { FileReads } from '../documents/read.ts';
 import {
@@ -44,11 +45,12 @@ interface DocumentAnswer {
   error?: DocumentError;
 }
 
-/** Registers the bundle routes on `app`. All of them read the bundle through one store; the documents are read from `workingCopy`, the site folder of the working copy. */
+/** Registers the bundle routes on `app`. All of them read the bundle through one store; the documents are read from `workingCopy`, the site folder of the working copy. `repo`, when given, lets `GET /api/documents?key=` find a document that a save created (WORKPLAN 2.5c). */
 export function registerBundleRoutes(
   app: Hono,
   source: BundleSource,
   workingCopy: string,
+  repo?: ChangesetRepo,
 ): void {
   const store = createBundleStore(source);
 
@@ -64,7 +66,9 @@ export function registerBundleRoutes(
   );
 
   app.get('/api/documents', (c) =>
-    withBundle(c, store, (bundle) => documentsAnswer(c, bundle, workingCopy)),
+    withBundle(c, store, (bundle) =>
+      documentsAnswer(c, bundle, workingCopy, repo),
+    ),
   );
 
   app.get('/api/status', (c) =>
@@ -106,9 +110,11 @@ async function documentsAnswer(
   c: Context,
   bundle: Bundle,
   workingCopy: string,
+  repo: ChangesetRepo | undefined,
 ): Promise<Response> {
   const key = c.req.query('key');
-  if (key !== undefined) return documentAnswer(c, bundle, key, workingCopy);
+  if (key !== undefined)
+    return documentAnswer(c, bundle, key, workingCopy, repo);
   const collection = c.req.query('collection');
   if (collection === undefined) {
     return c.json(
@@ -141,8 +147,9 @@ async function documentAnswer(
   bundle: Bundle,
   key: string,
   workingCopy: string,
+  repo: ChangesetRepo | undefined,
 ): Promise<Response> {
-  const document = bundle.documents.get(key);
+  const document = await documentOf(bundle, key, workingCopy, repo);
   if (document === undefined) {
     return c.json(
       {
@@ -182,6 +189,23 @@ async function documentAnswer(
     ...(facts.error === undefined ? {} : { error: errorOf(facts.error) }),
   };
   return c.json(answer);
+}
+
+/** The entry of a key: the bundle's, or else the one an earlier save created (the changeset's createdRecords, WORKPLAN 2.5c item 6). Undefined when neither has it. */
+async function documentOf(
+  bundle: Bundle,
+  key: string,
+  workingCopy: string,
+  repo: ChangesetRepo | undefined,
+): Promise<DocumentEntry | undefined> {
+  const listed = bundle.documents.get(key);
+  if (listed !== undefined || repo === undefined) return listed;
+  const { createdRecords } = await changesetOf({
+    bundle,
+    repo,
+    siteFolder: workingCopy,
+  });
+  return createdRecords.find((record) => record.key === key);
 }
 
 /** One list item. The revision and error come from the working copy, and a document that cannot be read has no title. Only an editable document is parsed, for its title. */

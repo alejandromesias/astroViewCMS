@@ -1744,7 +1744,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   document and a created one appear.
 - **Result (2026-11-03):** `cms-server/src/documents/changeset.ts` (`changesetOf`), `documents/paths.ts` (the glob id rule as Astro 7 gives it, `formatOfExtension`, `formatOfPath`, `relativeToBase`, `collectionOf`, `slugOf`), `http/changes-routes.ts` (`GET /api/changes`, registered by `createApp` with `repo`), `git/ops.ts` (`showAtBytes`, `mergeBase`, `overwrittenSince`, `parseOverwrote`), `git/exec.ts` (`runGit` with `binary`), `documents/read.ts` (`entriesOf`, `fileRead`), `documents/revision.ts` (`entryRevision`, `errorOf`, `DocumentError`). `planWrite` refuses a create whose id the build would not give (`pattern-mismatch`, both ids named). `github-slugger` 2.0.0 is a `cms-server` dependency. `run.ts` makes one `openRepo` per start. Departures from the bullets above: (a) `GET /api/changes` answers 503 with no bundle and 500 for a bundle that does not parse, as the other bundle routes do; a document that cannot be read answers 200 with its `error`. (b) `createdRecords` are full bundle records (`buildTime: false`, `revision`); a created document in a format with no codec is reported with its `error` and not listed. (c) `overwritten` is the upstream sha of the newest trailer. (d) Bytes come from `git cat-file blob`, which does no textconv. (e) No `sample-site` build runs in the tests: the Decisions' "Test source" and the "created key matches the built key" check compare against fixed ids. `paths.test.ts` hard-codes the ids Astro 7's `getContentEntryIdAndSlug` gives for `My Post`, `slug` and `index.md` (checked 2026-11-03), and checks each glob document of the fixture bundle (a sample-site build) against its file path. Checks: `src/git`, `src/documents`, `src/http`, `src/bundle`, `src/run.test.ts` (467 passed, 1 skipped, the skip pre-existing), cms-server e2e (7 passed), Biome, typecheck, depcruise clean. Knip reports unused exports that predate this work. No Stryker run (2.5b runs none). 2.1h part 1 step 4 is no longer blocked by the revision split, and `plan-write.ts` is free for 2.1h now that 2.5b has closed.
 
-#### 2.5c `PUT /api/changes` — after 2.5a, 2.5b, 2.0h, 2.0j, 2.10a (merged; both edit `git/ops.ts`)
+#### 2.5c `PUT /api/changes` — after 2.5a, 2.5b, 2.0h, 2.0j, 2.10a (merged; both edit `git/ops.ts`) · DONE 2026-11-05 (Stryker pending; see Result)
 
 - The pipeline of design 5.3, as a list of stages sharing a context, so
   later tasks add stages without editing each other's code:
@@ -1789,6 +1789,12 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   9. **After the commit.** `ctx.afterCommit` is a list of hooks (2.6b registers the reference index update). They run inside the lock, right after the commit, so a sync's `rebuild()` cannot interleave. A failing hook does not fail the save: it logs and marks the index for a full `rebuild()` on the next read.
   10. **Response.** `200 { revisions: { [key]: revision }, warnings: [], rebuild: boolean }`. `revisions` lists created and updated documents, not deleted ones. `warnings` and `rebuild` are always present (`warnings` is empty until 2.7c).
   11. **Stryker.** 2.5c runs none. After it merges, through the script and one file at a time: `save/`, `http/changes-routes.ts`, the rest of `http/` (2.1h 2b step 3), `git/ops.ts` with `restore`, `schema/walk.ts` (after 2.6a) and `documents/paths.ts`.
+- **Result (2026-11-05, Haiku agent, reviewed by the lead).** Done: the pipeline in `save/` (`body`, `conflicts`, `plan`, `validate`, `rebuild`, `write`, `pipeline`, `context`), `tx.restore` in `git/ops.ts`, `PUT` in `http/changes-routes.ts`, `GET /api/documents?key=` finds created documents, `run.ts` registers the save route. 16 test files, 279 tests pass (`src/save`, `src/http`, `git/ops`, `run`); typecheck, lint and format clean. Not run: Stryker (item 11), the full suite, e2e. Calls the agent made where the plan was open:
+  - Body `{ changes: [{ document, baseRevision, data?, deleted? }] }` (design 4). A create is `baseRevision: null` on a key neither the bundle nor the changeset holds; a key with no collection is `400 invalid-body`. An update or delete of a missing document is `409 conflict` with `revision: null`.
+  - The bundle is read inside the lock (`saveChanges` takes a `BundleStore`); its `503 no-bundle` and `500 bundle-invalid` are copied from `withBundle`, not shared.
+  - `restore` runs `git reset`, then `checkout HEAD` for paths HEAD has, then `clean -f` for the rest (the plan said checkout and clean; the reset unstages added files).
+  - The media map for validate is every entry of `media.json` (see 2.7b).
+  - **Left open** (each is noted in the task that takes it): a failing after-commit hook is logged, not marked for rebuild (2.6b); `refinement-threw` keys are not stored (2.10e); the 10 s validate timeout is not in the pipeline (2.9d); every real save answers `503` until 2.9d. Also open, no task yet: if `tx.restore` throws during a failed save, or `revisionsAfter` throws after the commit, the route answers a bare 500 instead of the JSON body; the "failed rename" test injects a failing write call, not a real rename failure.
 
 ### 2.6 Delete guard — after 2.2, 2.4c, 2.5c · ∥ 2.7, 2.8, 2.9
 
@@ -1814,6 +1820,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   changeset changes or deletes every referrer so it no longer points at the
   document. A referrer that is `editable: false` adds
   `needsDeveloper: true`. No force delete.
+- **From 2.5c (2026-11-05):** the slot is in `save/pipeline.ts`, `SAVE_STAGES`, between `checkRevisions` and `planChanges`. `ctx.afterCommit` is the hook list; register the index update there. A failing hook is only logged and the save still answers `200`: **2.6b must also mark the index for a full `rebuild()` on the next read** (2.5c item 9; 2.5c did not do it). Hooks run inside the lock, after the commit and before the revisions are read.
 - **Done when (design R5):** delete an author alone: `409` listing the
   posts; delete it and clear the field in the posts: `200`; delete the
   author and the posts: `200`; a read-only referrer: `409` with
@@ -1921,6 +1928,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   **the file that holds the document** (D5), and record the metadata in
   `media.json`. The media map passed to validate is `cms-server`'s own,
   never the editor's (D12).
+- **From 2.5c (2026-11-05):** the slot is in `save/pipeline.ts`, `SAVE_STAGES`, after `validateChanges` and before `writeChanges`. Today `validateChanges` builds the media map from **all** of `media.json`, with URLs `${cmsOrigin}/media/staging/<id>.<format>` (`mediaMapOf` in `save/validate.ts`); confirm it here once images move into place. The body has no `media` field yet (`save/body.ts`): add it here if the editor must send one.
 - **Done when:** a save with an upload in an author avatar (own file) and in
   a `testimonials` entry (shared file, relative to `src/content/`) writes
   the right relative paths, and validation sees the real metadata.
@@ -2414,6 +2422,7 @@ Design 4.4, 5.6.
   with the internal bearer, timeouts, and Zod-parsed responses (`kind`
   defaults to `invalid`). If the node isn't ready, saves answer `503
   preview-unavailable` with a plain message.
+- **From 2.5c (2026-11-05):** `run.ts` registers `save: { config, preview: previewNotReady }` (`save/validate.ts`), so a real start answers `503 preview-unavailable` to every save until this task replaces it. Replace it in `run.ts`. The save stage treats any rejection of `validate` as `503`, and does **not** apply a timeout itself: the 10 s timeout of 2.5c item 3 belongs in this client. Without it a hung node holds the repo lock (30 s) and delays sync and publish.
 - **Done when:** the save pipeline runs against a real node: a save with a
   valid change, a `422` from the real validate. [build]
 
@@ -2510,6 +2519,7 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
   builds first when: an MDX body changed, a build-time field changed, a
   validation hit `refinement-threw`, or code moved upstream since the
   current bundle.
+- **From 2.5c (2026-11-05):** a save keeps the keys whose validation hit `refinement-threw` in `ctx.refinements` (`save/validate.ts`), and **nothing stores them**: they are lost when the request ends. Settle where they live (in memory per start, or in `.cms/<site>/`) before this task can use the trigger; add it to the save pipeline's `writeChanges` or an `afterCommit` hook. "Build-time field changed" is the `rebuild` flag the save already answers (`save/rebuild.ts`), which is not stored either.
 - The candidate is the squashed commit, built in a worktree **before** the
   push and pushed only if the build passes; the same commit is pushed, so
   what was checked is what ships. When it passes, its bundle becomes the
@@ -2636,6 +2646,7 @@ Design 5.8. This is still a test tool, not the phase 3 editor.
   a save the revisions update and the list from `GET /api/changes` refreshes.
   A response with `rebuild: true` shows "applies after rebuild" and waits for
   the bundle to change (poll `GET /api/status`), then reloads the iframe.
+- **From 2.5c (2026-11-05):** the body is `{ changes: [{ document, baseRevision, data?, deleted? }] }`. A create sends `baseRevision: null` and a key `collection/id`; a key with no collection answers `400 invalid-body`. An update or delete of a missing document answers `409 conflict` with `revision: null`. `409` bodies: `conflict` is `{ error, documents: [{ key, revision, value? }] }`; `exists` and `file-missing` are `{ error, key, message }`. `500 save-failed` means nothing was kept (restored from git); `503 preview-unavailable` means nothing was written.
 - **Done when:** editor unit tests for each response; the form hides and
   restores its draft state as before.
 

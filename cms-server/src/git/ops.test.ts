@@ -250,6 +250,50 @@ describe('openRepo: commitSave', () => {
   });
 });
 
+describe('openRepo: restore', () => {
+  it('puts back a modified file, and unstages and removes a new file that the index holds', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site');
+    const repo = repoOf(fixture);
+    await edit(fixture, 'notes/a.md', 'alpha 2\n');
+    await edit(fixture, 'notes/new.md', 'new\n');
+    await git(fixture.state.repoDir, ['add', '--', 'site/notes/new.md']);
+    await repo.locked('save', (tx) =>
+      tx.restore(['notes/a.md', 'notes/new.md']),
+    );
+    expect(
+      await readFile(join(fixture.state.siteFolder, 'notes/a.md'), 'utf8'),
+    ).toBe('alpha\n');
+    await expect(
+      stat(join(fixture.state.siteFolder, 'notes/new.md')),
+    ).rejects.toThrow('ENOENT');
+    expect(await git(fixture.state.repoDir, ['status', '--porcelain'])).toBe(
+      '',
+    );
+  });
+
+  it('checks out a deleted file again', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site');
+    await rm(join(fixture.state.siteFolder, 'notes/b.md'));
+    await repoOf(fixture).locked('save', (tx) => tx.restore(['notes/b.md']));
+    expect(
+      await readFile(join(fixture.state.siteFolder, 'notes/b.md'), 'utf8'),
+    ).toBe('beta\n');
+    expect(await git(fixture.state.repoDir, ['status', '--porcelain'])).toBe(
+      '',
+    );
+  });
+
+  it('ignores a path that matches nothing', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site');
+    await expect(
+      repoOf(fixture).locked('save', (tx) => tx.restore(['notes/none.md'])),
+    ).resolves.toBeUndefined();
+    expect(await git(fixture.state.repoDir, ['status', '--porcelain'])).toBe(
+      '',
+    );
+  });
+});
+
 describe('openRepo: bytes, merge base and trailers', () => {
   it('showAtBytes returns the stored bytes, a byte-order mark and invalid UTF-8 included; showAt decodes them', async () => {
     const fixture = await fixtureIn(await newRoot(), 'site');
