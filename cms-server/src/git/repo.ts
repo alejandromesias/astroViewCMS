@@ -30,14 +30,14 @@ const AUTH_FAILED =
   /authentication failed|could not read username|permission denied \(publickey\)/i;
 const NOT_FOUND = /repository.*not found/i;
 
-type RepoErrorKind =
+export type RepoErrorKind =
   | 'auth-failed'
   | 'remote-not-found'
   | 'url-mismatch'
   | 'failed';
 
 /** A repo that cannot be made ready. `message` and `stderr` have their credentials redacted, like `GitError`'s. */
-class RepoError extends Error {
+export class RepoError extends Error {
   readonly kind: RepoErrorKind;
   readonly stderr: string;
 
@@ -278,7 +278,7 @@ function pathsOf(status: string): string[] {
     .map((entry) => entry.slice(3));
 }
 
-function repoErrorOf(error: GitError, remote: string): RepoError {
+export function repoErrorOf(error: GitError, remote: string): RepoError {
   const kind =
     error.kind === 'failed' && GITHUB_REMOTE.test(remote)
       ? classify(error.stderr)

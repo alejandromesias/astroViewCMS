@@ -1,12 +1,25 @@
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, posix } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { git, makeTestRoot, removeTestRoot } from '../../test/helpers/git.ts';
+import {
+  bundleFolder,
+  removeBundleFolders,
+} from '../../test/helpers/bundle.ts';
+import {
+  cloneRemote,
+  git,
+  makeTestRoot,
+  removeTestRoot,
+} from '../../test/helpers/git.ts';
+import { directoryBundleSource } from '../bundle/source.ts';
+import { type BundleStore, createBundleStore } from '../bundle/store.ts';
 import { type CmsConfig, parseConfig } from '../config/schema.ts';
 import type { Logger } from '../log.ts';
+import { type ExecFn, realExec } from './exec.ts';
 import { createMutex, type Mutex } from './mutex.ts';
 import {
   type ChangedPath,
+  type FetchResult,
   openRepo,
   parseNameStatus,
   parseOverwrote,
@@ -64,7 +77,11 @@ async function writeFiles(
 }
 
 // A bare remote whose `main` holds the site under `siteDir` and a README outside it, cloned with `ensureRepo`.
-async function fixtureIn(root: string, siteDir: string): Promise<Fixture> {
+async function fixtureIn(
+  root: string,
+  siteDir: string,
+  extra: Record<string, string> = {},
+): Promise<Fixture> {
   const remote = join(root, 'remote.git');
   const seed = join(root, 'seed');
   await git(root, ['init', '--bare', remote]);
@@ -74,6 +91,7 @@ async function fixtureIn(root: string, siteDir: string): Promise<Fixture> {
     [posix.join(siteDir, 'notes/a.md')]: 'alpha\n',
     [posix.join(siteDir, 'notes/b.md')]: 'beta\n',
     'README.md': 'root\n',
+    ...extra,
   });
   await git(seed, ['add', '--all']);
   await git(seed, ['commit', '--message', 'seed']);
@@ -609,6 +627,364 @@ describe('openRepo: showAt refs', () => {
     ).rejects.toMatchObject({
       name: 'GitError',
       kind: 'invalid-argument',
+    });
+  });
+});
+
+// Pushes one commit to `remote` from a second clone in `root`. `edit` changes that clone's files before the commit.
+async function pushFrom(
+  root: string,
+  remote: string,
+  edit: (dir: string) => Promise<void>,
+): Promise<string> {
+  const dir = await cloneRemote(remote, join(root, 'second'));
+  await edit(dir);
+  await git(dir, ['add', '--all']);
+  await git(dir, ['commit', '--message', 'upstream change']);
+  await git(dir, ['push', 'origin', 'HEAD']);
+  return (await git(dir, ['rev-parse', 'HEAD'])).trim();
+}
+
+// The extra files of a sync test's site: a content.config.ts, a build-time theme and an image.
+function syncFiles(): Record<string, string> {
+  return {
+    'site/content.config.ts': 'export default {};\n',
+    'site/src/config/theme.json': '{"color":"red"}\n',
+    'site/src/assets/logo.png': 'logo v1\n',
+  };
+}
+
+// The documents of the sync tests' bundle: two content documents (the notes) and the build-time theme.
+function syncDocuments(): Record<string, string | boolean>[] {
+  const revision = '0123456789abcdef';
+  return [
+    {
+      key: 'notes/a',
+      file: 'notes/a.md',
+      format: 'md',
+      buildTime: false,
+      revision,
+    },
+    {
+      key: 'notes/b',
+      file: 'notes/b.md',
+      format: 'md',
+      buildTime: false,
+      revision,
+    },
+    {
+      key: 'data:src/config/theme.json',
+      file: 'src/config/theme.json',
+      format: 'json',
+      buildTime: true,
+      revision,
+    },
+  ];
+}
+
+// A store over a bundle whose bundle.json names `siteCommit` (null for none) and whose documents are the sync ones.
+async function bundleOf(siteCommit: string | null): Promise<BundleStore> {
+  const dir = await bundleFolder({
+    'bundle.json': `${JSON.stringify({ bundleId: 'fixture-2026-11-03', siteCommit, protocolVersion: 2, astroVersion: '7.4.2', builtAt: '2026-11-04T03:42:22.323Z' }, null, 2)}\n`,
+    'documents.json': JSON.stringify(syncDocuments()),
+  });
+  return createBundleStore(directoryBundleSource(dir));
+}
+
+// Runs `tx.fetch` under the lock. `exec` replaces the git runner, and `fixture` may carry another config.
+function syncOf(
+  fixture: Fixture,
+  bundles: BundleStore,
+  exec?: ExecFn,
+): Promise<FetchResult> {
+  const repo = openRepo(exec === undefined ? fixture : { ...fixture, exec });
+  return repo.locked('sync', (tx) => tx.fetch(bundles));
+}
+
+// A git runner that fails each call whose arguments include `word` with the fields of `failure`, and runs every
+// other call for real.
+function failing(word: string, failure: Record<string, unknown>): ExecFn {
+  return (file, args, options) =>
+    args.includes(word)
+      ? Promise.reject(Object.assign(new Error('git failed'), failure))
+      : realExec(file, args, options);
+}
+
+describe('openRepo: fetch', () => {
+  afterEach(async () => {
+    await removeBundleFolders();
+  });
+
+  it('reports no change, and no reapply, when origin has not moved since the bundle', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site', syncFiles());
+    const seed = await headOf(fixture);
+    await expect(syncOf(fixture, await bundleOf(seed))).resolves.toEqual({
+      ok: true,
+      upstream: seed,
+      reapply: false,
+      change: 'none',
+      paths: [],
+    });
+  });
+
+  it('is content-only for a push that edits a content document, and reapply is true', async () => {
+    const root = await newRoot();
+    const fixture = await fixtureIn(root, 'site', syncFiles());
+    const bundles = await bundleOf(await headOf(fixture));
+    const pushed = await pushFrom(root, fixture.config.remote, (dir) =>
+      writeFiles(dir, { 'site/notes/a.md': 'alpha, edited\n' }),
+    );
+    await expect(syncOf(fixture, bundles)).resolves.toEqual({
+      ok: true,
+      upstream: pushed,
+      reapply: true,
+      change: 'content-only',
+      paths: [{ path: 'site/notes/a.md', status: 'modified' }],
+    });
+  });
+
+  it('is code for a push that edits content.config.ts', async () => {
+    const root = await newRoot();
+    const fixture = await fixtureIn(root, 'site', syncFiles());
+    const bundles = await bundleOf(await headOf(fixture));
+    const pushed = await pushFrom(root, fixture.config.remote, (dir) =>
+      writeFiles(dir, {
+        'site/content.config.ts': 'export default { edited: true };\n',
+      }),
+    );
+    await expect(syncOf(fixture, bundles)).resolves.toEqual({
+      ok: true,
+      upstream: pushed,
+      reapply: true,
+      change: 'code',
+      paths: [{ path: 'site/content.config.ts', status: 'modified' }],
+    });
+  });
+
+  it('is code for a push that edits theme.json, a build-time document', async () => {
+    const root = await newRoot();
+    const fixture = await fixtureIn(root, 'site', syncFiles());
+    const bundles = await bundleOf(await headOf(fixture));
+    const pushed = await pushFrom(root, fixture.config.remote, (dir) =>
+      writeFiles(dir, { 'site/src/config/theme.json': '{"color":"blue"}\n' }),
+    );
+    await expect(syncOf(fixture, bundles)).resolves.toEqual({
+      ok: true,
+      upstream: pushed,
+      reapply: true,
+      change: 'code',
+      paths: [{ path: 'site/src/config/theme.json', status: 'modified' }],
+    });
+  });
+
+  it('is code for a push that adds a document', async () => {
+    const root = await newRoot();
+    const fixture = await fixtureIn(root, 'site', syncFiles());
+    const bundles = await bundleOf(await headOf(fixture));
+    const pushed = await pushFrom(root, fixture.config.remote, (dir) =>
+      writeFiles(dir, { 'site/notes/new.md': 'new\n' }),
+    );
+    await expect(syncOf(fixture, bundles)).resolves.toEqual({
+      ok: true,
+      upstream: pushed,
+      reapply: true,
+      change: 'code',
+      paths: [{ path: 'site/notes/new.md', status: 'created' }],
+    });
+  });
+
+  it('is code for a push that deletes a content document', async () => {
+    const root = await newRoot();
+    const fixture = await fixtureIn(root, 'site', syncFiles());
+    const bundles = await bundleOf(await headOf(fixture));
+    const pushed = await pushFrom(root, fixture.config.remote, (dir) =>
+      rm(join(dir, 'site/notes/b.md')),
+    );
+    await expect(syncOf(fixture, bundles)).resolves.toEqual({
+      ok: true,
+      upstream: pushed,
+      reapply: true,
+      change: 'code',
+      paths: [{ path: 'site/notes/b.md', status: 'deleted' }],
+    });
+  });
+
+  it('is code for a push that changes an image', async () => {
+    const root = await newRoot();
+    const fixture = await fixtureIn(root, 'site', syncFiles());
+    const bundles = await bundleOf(await headOf(fixture));
+    const pushed = await pushFrom(root, fixture.config.remote, (dir) =>
+      writeFiles(dir, { 'site/src/assets/logo.png': 'logo v2\n' }),
+    );
+    await expect(syncOf(fixture, bundles)).resolves.toEqual({
+      ok: true,
+      upstream: pushed,
+      reapply: true,
+      change: 'code',
+      paths: [{ path: 'site/src/assets/logo.png', status: 'modified' }],
+    });
+  });
+
+  it('is code for a push outside the site folder', async () => {
+    const root = await newRoot();
+    const fixture = await fixtureIn(root, 'site', syncFiles());
+    const bundles = await bundleOf(await headOf(fixture));
+    const pushed = await pushFrom(root, fixture.config.remote, (dir) =>
+      writeFiles(dir, { 'README.md': 'root, edited\n' }),
+    );
+    await expect(syncOf(fixture, bundles)).resolves.toEqual({
+      ok: true,
+      upstream: pushed,
+      reapply: true,
+      change: 'code',
+      paths: [{ path: 'README.md', status: 'modified' }],
+    });
+  });
+
+  it('is code when the bundle has no commit (siteCommit null), even with no change', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site', syncFiles());
+    const seed = await headOf(fixture);
+    await expect(syncOf(fixture, await bundleOf(null))).resolves.toEqual({
+      ok: true,
+      upstream: seed,
+      reapply: false,
+      change: 'code',
+      paths: [],
+    });
+  });
+
+  it('is code when the bundle commit is missing from the clone', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site', syncFiles());
+    const seed = await headOf(fixture);
+    await expect(
+      syncOf(fixture, await bundleOf('f'.repeat(40))),
+    ).resolves.toEqual({
+      ok: true,
+      upstream: seed,
+      reapply: false,
+      change: 'code',
+      paths: [],
+    });
+  });
+
+  it('is code when the diff against the bundle commit fails', async () => {
+    const root = await newRoot();
+    const fixture = await fixtureIn(root, 'site', syncFiles());
+    const bundles = await bundleOf(await headOf(fixture));
+    const pushed = await pushFrom(root, fixture.config.remote, (dir) =>
+      writeFiles(dir, { 'site/notes/a.md': 'alpha, edited\n' }),
+    );
+    await expect(
+      syncOf(
+        fixture,
+        bundles,
+        failing('diff', { code: 128, stderr: 'fatal: bad revision\n' }),
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      upstream: pushed,
+      reapply: true,
+      change: 'code',
+      paths: [],
+    });
+  });
+
+  it('is code when there is no bundle', async () => {
+    const root = await newRoot();
+    const fixture = await fixtureIn(root, 'site', syncFiles());
+    const seed = await headOf(fixture);
+    const empty = join(root, 'no-bundle');
+    await mkdir(empty);
+    await expect(
+      syncOf(fixture, createBundleStore(directoryBundleSource(empty))),
+    ).resolves.toEqual({
+      ok: true,
+      upstream: seed,
+      reapply: false,
+      change: 'code',
+      paths: [],
+    });
+  });
+
+  it('is code when the bundle cannot be read', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site', syncFiles());
+    const seed = await headOf(fixture);
+    const dir = await bundleFolder({ 'documents.json': 'not json' });
+    await expect(
+      syncOf(fixture, createBundleStore(directoryBundleSource(dir))),
+    ).resolves.toEqual({
+      ok: true,
+      upstream: seed,
+      reapply: false,
+      change: 'code',
+      paths: [],
+    });
+  });
+
+  it('is a sync error, not a throw, when origin cannot be reached', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site', syncFiles());
+    const bundles = await bundleOf(await headOf(fixture));
+    await expect(
+      syncOf(
+        fixture,
+        bundles,
+        failing('fetch', {
+          code: 128,
+          stderr:
+            'fatal: unable to access: Could not resolve host: github.com\n',
+        }),
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      syncError: {
+        kind: 'failed',
+        message:
+          'git fetch origin failed (exit 128): fatal: unable to access: Could not resolve host: github.com',
+      },
+    });
+  });
+
+  it('is a sync error when the fetch times out at the 60 s default', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site', syncFiles());
+    const bundles = await bundleOf(await headOf(fixture));
+    await expect(
+      syncOf(fixture, bundles, failing('fetch', { killed: true, code: null })),
+    ).resolves.toEqual({
+      ok: false,
+      syncError: {
+        kind: 'failed',
+        message: 'git fetch origin timed out after 60000 ms',
+      },
+    });
+  });
+
+  it('keeps the auth kind of ensureRepo, and redacts the remote', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site', syncFiles());
+    const bundles = await bundleOf(await headOf(fixture));
+    const github = {
+      ...fixture,
+      config: {
+        ...fixture.config,
+        remote: 'https://user:secret@github.com/owner/repo.git',
+      },
+    };
+    await expect(
+      syncOf(
+        github,
+        bundles,
+        failing('fetch', {
+          code: 128,
+          stderr:
+            "fatal: Authentication failed for 'https://github.com/owner/repo.git/'\n",
+        }),
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      syncError: {
+        kind: 'auth-failed',
+        message:
+          "Git could not sign in to https://***@github.com/owner/repo.git. Check the machine's git credential helper or SSH key.",
+      },
     });
   });
 });
