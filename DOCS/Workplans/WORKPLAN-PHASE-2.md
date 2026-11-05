@@ -779,6 +779,8 @@ done. Item 6 of the design (the front server) is step 2.8.
     - Part 2 edits test files, helpers and mutation configs. A `src` fix is reported, or made only when a survivor shows a real bug, and then named in the Result.
     - Every score is a `--force` score. After every run: `git config --get core.hooksPath` prints `.githooks`, and `git rev-parse --abbrev-ref HEAD` prints the working branch.
     - The `plan-write.ts` restriction is lifted: 2.0j (`4523c67`) and 2.5b (`fbb4035`) have landed, and part 1 scored `repo.ts`.
+    - **Only the script runs Stryker (action plan 4, 2026-11-04).** Every run is `node scripts/stryker-run.mjs <config> --mutate <files>`, by the lead or any agent. No raw `npx stryker run`. The script refuses a dirty tree and a run without `--mutate`, runs in an export of HEAD with no git repository above it, and copies nothing back if the main checkout's branch, HEAD, refs, local config or root `node_modules` changed. Results land in `reports/stryker-runs/<stamp>/`, not in the accumulated triage files.
+    - **Builder brief line** (no brief file exists; copy this into every brief to an agent that may run Stryker): "Run Stryker only as `node scripts/stryker-run.mjs <config> --mutate <files>` from the repo root. Never `npx stryker run`. If the script refuses, stop and report its message."
   - **2a, before 2.5c starts and before 2.6a for `walk.ts`** · `[build]`, runs alone, so nobody else is in these files:
     1. `cms-server/src/schema/walk.ts` first (deadline: before 2.6a and 2.7b).
     2. `cms-server/src/documents/plan-write.ts` (43 tests written with the code; expect survivors in the path and error branches).
