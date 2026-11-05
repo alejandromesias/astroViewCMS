@@ -168,6 +168,44 @@ describe('the reference index on synthetic schemas', () => {
   });
 });
 
+describe('the reference index edge cases', () => {
+  it('does not look up a schema for a key with no collection', () => {
+    const index = createReferenceIndex((name) => {
+      if (name === undefined)
+        throw new Error('a schema was looked up for no collection');
+      return undefined;
+    });
+    expect(() =>
+      index.rebuild([{ key: 'lone', value: { a: 1 } }]),
+    ).not.toThrow();
+  });
+
+  it('names no document for a reference with no collection, or whose value gives no id', () => {
+    const index = createReferenceIndex((name) =>
+      name === 'blog'
+        ? {
+            type: 'object',
+            properties: {
+              ref: { type: 'string', cms: 'reference' },
+              author: {
+                type: 'string',
+                cms: 'reference',
+                collection: 'authors',
+              },
+              bad: { type: 'number', cms: 'reference', collection: 'authors' },
+            },
+          }
+        : undefined,
+    );
+    index.rebuild([
+      { key: 'blog/b1', value: { ref: 'ana', author: 'ok', bad: 5 } },
+    ]);
+    expect(index.referrersOf('undefined/ana')).toEqual([]);
+    expect(index.referrersOf('authors/undefined')).toEqual([]);
+    expect(index.referrersOf('authors/ok')).toEqual(['blog/b1']);
+  });
+});
+
 describe('the reference index updates, removals and rebuilds', () => {
   it('moves a referrer to its new target when an update changes the reference', async () => {
     const index = createReferenceIndex(await sampleSchemaOf());
