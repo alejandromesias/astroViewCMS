@@ -131,6 +131,18 @@ describe('walkMarkers on synthetic schemas', () => {
     ]);
   });
 
+  it('gives a reference hit no collection when its collection keyword is not a string', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        author: { type: 'string', cms: 'reference', collection: 5 },
+      },
+    };
+    expect(hitsOf(schema, { author: 'ana' })).toEqual([
+      { path: ['author'], marker: 'reference', value: 'ana' },
+    ]);
+  });
+
   it('gives each item of a reference array the collection of the items schema', () => {
     const schema = {
       type: 'object',
