@@ -124,4 +124,64 @@ describe('needsRebuild', () => {
       ),
     ).toBe(false);
   });
+
+  it('is true when a listed field is added or removed', () => {
+    const documents = new Map([[DOC, buildTime(['site.base_url'])]]);
+    expect(
+      needsRebuild(
+        [update(DOC, { site: { base_url: '/b' } })],
+        documents,
+        new Map([[DOC, {}]]),
+      ),
+    ).toBe(true);
+    expect(
+      needsRebuild(
+        [update(DOC, {})],
+        documents,
+        new Map([[DOC, { site: { base_url: '/a' } }]]),
+      ),
+    ).toBe(true);
+  });
+
+  it('is false when a listed field is missing on both sides', () => {
+    expect(
+      needsRebuild(
+        [update(DOC, { site: {} })],
+        new Map([[DOC, buildTime(['site.base_url'])]]),
+        new Map([[DOC, { site: {} }]]),
+      ),
+    ).toBe(false);
+  });
+
+  it('reads nothing past a value that is not a plain object', () => {
+    const stored = new Map([[DOC, { site: null, title: 'abc', items: ['a'] }]]);
+    expect(
+      needsRebuild(
+        [update(DOC, { site: null, title: 'abcd', items: ['b'] })],
+        new Map([
+          [DOC, buildTime(['site.base_url', 'title.length', 'items.0'])],
+        ]),
+        stored,
+      ),
+    ).toBe(false);
+    // No stored value at all, as for an update whose file could not be read.
+    expect(
+      needsRebuild(
+        [update(DOC, { site: null })],
+        new Map([[DOC, buildTime(['site.base_url'])]]),
+        new Map(),
+      ),
+    ).toBe(false);
+  });
+
+  it('reads an own key named __proto__ as a value', () => {
+    // JSON.parse makes __proto__ an own key, so the field is read rather than the prototype.
+    expect(
+      needsRebuild(
+        [update(DOC, JSON.parse('{"__proto__": {}}'))],
+        new Map([[DOC, buildTime(['__proto__'])]]),
+        new Map([[DOC, {}]]),
+      ),
+    ).toBe(true);
+  });
 });
