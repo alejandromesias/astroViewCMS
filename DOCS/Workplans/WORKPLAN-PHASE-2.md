@@ -1829,7 +1829,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
 
 ### 2.6 Delete guard — after 2.2, 2.4c, 2.5c · ∥ 2.7, 2.8, 2.9
 
-#### 2.6a Reference index — after 2.2, 2.4c
+#### 2.6a Reference index — after 2.2, 2.4c · DONE 2026-11-05 (Stryker on walk and paths; reference-index open, see Result)
 
 - For each document, the documents that point at it, built by walking every
   document's value with 2.4c. A reference is a string id or `{ id }`; the
@@ -1843,6 +1843,11 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   - **Key.** `cms-server` has no key builder (the renderer writes `` `${collection}/${id}` `` inline in `manifest/documents.ts` and `overlay/keys.ts`; `cms-server` only has `collectionOf(key)` in `documents/paths.ts`). Add `documentKey(collection, id)` next to `collectionOf`, with a test that rebuilds every key in the bundle fixture's `documents.json` from its collection and id, so drift from the renderer shows. Moving it to `preview-contract` would edit the renderer and is out of scope.
   - **Values.** A reference is a string or `{ id }`. Anything else is skipped without throwing. A reference to a document that does not exist is still indexed.
   - **Scope of the index.** Built over the bundle's documents plus the changeset's `createdRecords` (2.5b), with values read from the working copy. Otherwise a document created in an unpublished save would have referrers the index does not know.
+
+- **Result (2026-11-05; Haiku agent, reviewed by the lead; `a4d1064`, `f6d5654`, `4dc0430` on `phase-2-wave-6`, rebased from an older base).** `documentKey(collection, id)` is next to `collectionOf` in `documents/paths.ts`, with a drift test over the fixture bundle's keys. `walk.ts` gives a reference hit an optional `collection` (only for a string keyword). `references/reference-index.ts` has `referrersOf`, `update`, `remove` and `rebuild`, with `schemaOf` injected and no I/O. The "Done when" cases have tests: authors to posts (a string or `{ id }`), testimonials inside the landing blocks union (a banner's `items` is the near-miss), and a self-reference on a synthetic schema, since the sample has none. Calls where the plan was open: no `splitDocumentKey` (keys are split with `collectionOf`; a `data:` key reads as collection `data:<folder>`, which has no schema); a `rebuild` takes the documents, so 2.6b or startup must read them; a `$ref` that does not resolve throws from `update` and `rebuild`, as `walk.ts` does.
+  - **Stryker, `schema/walk.ts` (the rescore that 2.6a asks for):** 97.46 after the 2.6a tests (`reports/stryker-runs/2026-11-05T23-09-04-727Z/`), 6 survived. Four are the 2.1h survivors, moved 17 lines: 261, 263, 295 and 296. They keep their 2.1h classification (equivalent, or tool artifacts). L181 (`typeof node.collection` in the reference branch) is killed by "gives a reference hit no collection when its collection keyword is not a string" (`f6d5654`). L206 (`collection === undefined` as `false`) is equivalent: the hit gets an own `collection: undefined`, which every reader treats as absent. Rerun after `f6d5654`: **97.88** (228 killed, 3 timeout, 5 survived), `reports/stryker-runs/2026-11-05T23-11-09-304Z/`.
+  - **Stryker, `documents/paths.ts`:** 100 (64 killed), `reports/stryker-runs/2026-11-05T23-13-22-869Z/`. The first dry run failed on a test that Stryker did not name, and the rerun passed. Not reproduced. The dry run runs every `src` test, including `build-commit.real.test.ts`, so a flake there would be the first suspect.
+  - **Stryker, `references/reference-index.ts` (new code, not in the plan):** 76.32 first, then **80.26** after the edge tests (`4dc0430`), `reports/stryker-runs/2026-11-05T23-18-25-283Z/`: 61 killed, 15 survived. All 15 are equivalent for the values the index reads (JSON values; `walkMarkers` never passes null): 41 (the empty fallback never matches a document key), 43 (a dead guard under the index invariant), 45 (two) and 47, 53, 69 (they change only the internal maps, not `referrersOf`), 101 (`&&` for `||`, and the `false` branch of the guard, since a JSON value has no own `id` outside a record), and 107 (six; `isRecord` only turns a primitive or an array into a record with no own `id`). This is below the 90 bar. **Open, user decides:** accept 80.26 with this classification, or refactor the dead branches (43, 45, 47, 53, 69) so the bar can be met.
 
 #### 2.6b The guard in `PUT /api/changes` — after 2.5c, 2.6a
 
@@ -2279,7 +2284,7 @@ request-path rules apply (no `child_process`, no `fs` except the allowlist).
 
 Design 4.4, 5.6.
 
-#### 2.9a Build runner — after 2.0e, 2.3c · [build]
+#### 2.9a Build runner — after 2.0e, 2.3c · [build] · DONE 2026-11-05 (no Stryker run yet; see Result)
 
 - Runs `preview-render-server/src/build.ts` as a child process on a git
   worktree of one commit (never the live working copy, which saves keep
@@ -2313,6 +2318,13 @@ Design 4.4, 5.6.
   6. **Timeout and errors.** 5 minutes, then the whole process tree is killed (`taskkill /T /F` on win32; `child.kill()` leaves grandchildren). `firstError` is not parsed from Astro's text: `build.ts` writes a structured error (file and message) to a known file in `--out`; the fallback is the last 20 lines of the log. The code that writes that file lives in a small module, because `build.ts` is excluded from Stryker's `mutate` and its branches would go unscored.
   7. **Root.** The child gets `--root <worktree>/<siteDir>`.
   8. **What `[build]` means here.** While 2.9a's real-build tests run: no other `[build]` task, no Stryker run, no e2e, no `sample-site` build (low-memory machine). Writing the code and running targeted unit tests may happen alongside 2.10a or 2.5c; 2.9a does not edit `ops.ts`.
+
+- **Result (2026-11-05; Haiku agent, reviewed by the lead; `a4f7d4d` on `phase-2-wave-6`, rebased from an older base).** `preview/build-commit.ts` builds one commit in a worktree (env allowlist, timeout 10 min with SIGKILL, log file); `preview/build-runner.ts` is the queue (one build at a time, one queued, requests made during a build merge into the newest commit); `preview/bundles.ts` is the GC (keeps the two newest complete bundles; removes a folder with no `bundle.json`). The "Done when" cases are covered: a build of a worktree of the seeded remote (`build-commit.real.test.ts`, real, passes); a broken page fails with `firstError` (`src/pages/broken.astro`, a page and not a component, since a component no page imports is never compiled); no token, SSH setting or `GIT_*` variable reaches the child (unit test); queue merging (unit test). The real tests take about 60 s and run alone. Unit tests: 78 pass with the supervisor tests. `tsc` is clean.
+  - Calls where the plan was open: the runner lives in `preview/`, because depcruise allows `child_process` only in `git/` and `preview/`; a request takes a commit sha; `dir` is returned even on failure, and a failed folder is removed, so check `ok` first; the log is `.cms/<site>/logs/<bundleId>.log` and is not collected.
+  - **Windows long paths (open, a decision):** `git worktree remove --force` fails with "Filename too long", because Astro writes `node_modules/.astro` inside the worktree. The runner deletes the folder with Node instead and logs a warning, so every real build logs it. A real fix (Astro's cache outside the worktree, or shorter worktree names) touches `build.ts`, so it is outside 2.9a.
+  - **For 2.9c:** GC does not know which bundle the node serves. After a rollback the served bundle can be older than the two that GC keeps, so 2.9c must pin it.
+  - **Stryker: not run, on purpose.** The triage config runs every `src` test, including `*.real.test.ts`, so mutants of these files would start real builds in parallel, which breaks the `[build]` rule. A run needs a config decision (exclude the real tests from the triage config, or a separate config for these files).
+  - **Not done:** the wiring into `run.ts` and `state.json` (2.9c).
 
 #### 2.9b Node supervisor — after 2.8c, 2.0e · DONE 2026-11-02
 
