@@ -682,6 +682,67 @@ describe('ensureRepo errors from git', () => {
     });
   });
 
+  it('rethrows a timed-out ref lookup, so the start stops instead of creating the work branch', async () => {
+    const remote = 'https://example.test/site.git';
+    const root = await newRoot();
+    const repoDir = repoDirOf(root);
+    await mkdir(join(repoDir, '.git'), { recursive: true });
+    const exec: ExecFn = (_file, args) => {
+      if (args.includes('get-url'))
+        return Promise.resolve({ stdout: `${remote}\n`, stderr: '' });
+      if (args.includes('--show-toplevel'))
+        return Promise.resolve({ stdout: `${repoDir}\n`, stderr: '' });
+      if (args.includes('--verify'))
+        return Promise.reject(
+          Object.assign(new Error('Command failed'), {
+            killed: true,
+            code: null,
+            stderr: '',
+          }),
+        );
+      return Promise.resolve({ stdout: '', stderr: '' });
+    };
+    await expect(
+      ensureRepo({
+        config: configFor(remote),
+        cmsDir: cmsDirOf(root),
+        exec,
+        log: spyLog(),
+      }),
+    ).rejects.toMatchObject({
+      name: 'RepoError',
+      kind: 'failed',
+      message: expect.stringContaining('timed out after'),
+    });
+  });
+
+  it('trims the spaces around git.author before it reads the name and the email', async () => {
+    const remote = 'https://example.test/site.git';
+    const root = await newRoot();
+    const repoDir = repoDirOf(root);
+    await mkdir(join(repoDir, '.git'), { recursive: true });
+    const calls: string[][] = [];
+    const exec: ExecFn = (_file, args) => {
+      calls.push([...args]);
+      if (args.includes('get-url'))
+        return Promise.resolve({ stdout: `${remote}\n`, stderr: '' });
+      if (args.includes('--show-toplevel'))
+        return Promise.resolve({ stdout: `${repoDir}\n`, stderr: '' });
+      return Promise.resolve({ stdout: '', stderr: '' });
+    };
+    await ensureRepo({
+      config: configFor(remote, {
+        git: { author: '  Ada Lovelace <ada@example.test>  ' },
+      }),
+      cmsDir: cmsDirOf(root),
+      exec,
+      log: spyLog(),
+    });
+    const written = calls.map((args) => args.slice(-2));
+    expect(written).toContainEqual(['user.name', 'Ada Lovelace']);
+    expect(written).toContainEqual(['user.email', 'ada@example.test']);
+  });
+
   it('refuses an author without an email, before any git call', async () => {
     const root = await newRoot();
     const exec: ExecFn = vi.fn(() =>
