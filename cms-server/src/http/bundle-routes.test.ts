@@ -14,6 +14,7 @@ import {
   tempWorkingCopy,
 } from '../../test/helpers/working-copy.ts';
 import { directoryBundleSource } from '../bundle/source.ts';
+import type { Repo } from '../git/ops.ts';
 import { createApp } from './app.ts';
 
 // The working copy the route tests read from: a copy of the bundle fixture's source files, made before each test.
@@ -453,6 +454,46 @@ describe('GET /api/documents?key=', () => {
     });
   });
 
+  it('finds a document that a save created, and answers 404 for a key that nothing made', async () => {
+    const text = '{"name":"New"}';
+    const root = await tempWorkingCopy({
+      'src/content/authors/new-one.json': text,
+    });
+    const repo: Repo = {
+      changedPaths: async () => [
+        { path: 'src/content/authors/new-one.json', status: 'created' },
+      ],
+      mergeBase: async () => 'base',
+      showAtBytes: async () => null,
+      overwrittenSince: async () => new Map(),
+      locked: () => Promise.reject(new Error('GET takes no lock')),
+      showAt: () => Promise.reject(new Error('GET reads no text')),
+    };
+    const app = createApp({
+      ...fakeAppDeps(),
+      bundle: directoryBundleSource(FIXTURE_BUNDLE),
+      workingCopy: root,
+      repo,
+    });
+    const created = await app.request('/api/documents?key=authors/new-one');
+    expect(created.status).toBe(200);
+    expect(await created.json()).toEqual({
+      key: 'authors/new-one',
+      file: 'src/content/authors/new-one.json',
+      revision: revisionOf(text),
+      format: 'json',
+      editable: true,
+      buildTime: false,
+      value: { name: 'New' },
+    });
+    const missing = await app.request('/api/documents?key=authors/nobody');
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toEqual({
+      error: 'unknown-document',
+      message: 'The bundle has no document "authors/nobody".',
+    });
+  });
+
   it('answers 404 unknown-document for a key the bundle does not have', async () => {
     const response = await appOver(FIXTURE_BUNDLE).request(
       '/api/documents?key=blog/nope',
@@ -695,6 +736,53 @@ describe('GET /api/documents?collection= reads the working copy', () => {
           revision: revisionOf(c),
           format: 'json',
           editable: false,
+          buildTime: false,
+        },
+      ],
+    });
+  });
+
+  it('takes an MDX title from its data, and gives no title to a name that is not a string or to a null value', async () => {
+    const files = {
+      'src/d.mdx': '---\ntitle: Delta\n---\nx\n',
+      'src/e.json': '{"name":5}',
+      'src/f.json': 'null',
+    };
+    const dir = await bundleWith([
+      record({ key: 'pages/d', file: 'src/d.mdx', format: 'mdx' }),
+      record({ key: 'pages/e', file: 'src/e.json', format: 'json' }),
+      record({ key: 'pages/f', file: 'src/f.json', format: 'json' }),
+    ]);
+    const root = await tempWorkingCopy(files);
+    const response = await appOver(dir, root).request(
+      '/api/documents?collection=pages',
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      documents: [
+        {
+          key: 'pages/d',
+          file: 'src/d.mdx',
+          revision: revisionOf(files['src/d.mdx']),
+          format: 'mdx',
+          editable: true,
+          buildTime: false,
+          title: 'Delta',
+        },
+        {
+          key: 'pages/e',
+          file: 'src/e.json',
+          revision: revisionOf(files['src/e.json']),
+          format: 'json',
+          editable: true,
+          buildTime: false,
+        },
+        {
+          key: 'pages/f',
+          file: 'src/f.json',
+          revision: revisionOf(files['src/f.json']),
+          format: 'json',
+          editable: true,
           buildTime: false,
         },
       ],
