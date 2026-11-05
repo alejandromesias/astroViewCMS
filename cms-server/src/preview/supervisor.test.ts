@@ -1153,6 +1153,33 @@ describe('createSupervisor: a loop that waits while the node is replaced', () =>
     });
   });
 
+  it('does not restart the old bundle when its restart wait ends after swap() and stop() came', async () => {
+    const fake = rig();
+    const held = gate();
+    const reached = gate();
+    const supervisor = make(fake, {
+      sleep: async (ms) => {
+        if (ms >= 1_000) {
+          reached.open();
+          await held.opened;
+          return;
+        }
+        await fake.pieces.sleep(ms);
+      },
+    });
+    await supervisor.start(A);
+    childAt(fake.world, 0).exit(DIED);
+    await reached.opened;
+    expect(await supervisor.swap(B)).toEqual({ ok: true });
+    await supervisor.stop();
+    held.open();
+    await flush();
+    expect(
+      fake.world.log.filter((entry) => entry.startsWith('spawn:')),
+    ).toEqual(['spawn:/bundles/a', 'spawn:/bundles/b']);
+    expect(supervisor.status().state).toBe('stopped');
+  });
+
   it('ends quietly when stop() comes while a restarted node that never answers is being killed', async () => {
     const fake = rig({
       serves: (_dir, index) => (index === 0 ? 'a' : null),
