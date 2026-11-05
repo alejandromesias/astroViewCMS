@@ -83,7 +83,8 @@ function exportHead() {
     maxBuffer: 1 << 30,
   });
   if (archive.status !== 0) throw new Error(`git archive failed: ${archive.stderr}`);
-  const tar = spawnSync('tar', ['-x', '-f', '-', '-C', EXPORT], { input: archive.stdout });
+  // No drive letter in the arguments: GNU tar reads `C:...` as a remote host.
+  const tar = spawnSync('tar', ['-x', '-f', '-'], { cwd: EXPORT, input: archive.stdout });
   if (tar.status !== 0) throw new Error(`tar failed: ${tar.stderr}`);
 }
 
