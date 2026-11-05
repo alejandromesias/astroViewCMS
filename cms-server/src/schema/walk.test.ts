@@ -149,6 +149,16 @@ describe('walkMarkers on synthetic schemas', () => {
     ).toThrow('unresolved $ref "#/$defs/__proto__"');
   });
 
+  it('throws for a $ref outside $defs, even when $defs has a key named undefined', () => {
+    expect(() =>
+      walkMarkers(
+        { $defs: { undefined: { type: 'string' } }, $ref: '#/other' },
+        'x',
+        () => undefined,
+      ),
+    ).toThrow('unresolved $ref "#/other"');
+  });
+
   it('walks a null-typed branch for null but not for a string, so a bad $ref inside it throws only for null', () => {
     const schema = {
       oneOf: [
