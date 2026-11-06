@@ -11,6 +11,7 @@ import {
   makeTestRoot,
   removeTestRoot,
 } from '../../test/helpers/git.ts';
+import type { Bundle } from '../bundle/read.ts';
 import { directoryBundleSource } from '../bundle/source.ts';
 import { type BundleStore, createBundleStore } from '../bundle/store.ts';
 import { type CmsConfig, parseConfig } from '../config/schema.ts';
@@ -301,6 +302,22 @@ describe('openRepo: restore', () => {
     expect(
       await git(fixture.state.repoDir, ['diff', '--cached', '--name-only']),
     ).toContain('site/notes/new.md');
+  });
+
+  it('removes a new file at an ignored path, so a failed save leaves nothing behind', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site', {
+      'site/.gitignore': 'notes/ignored/\n',
+    });
+    await mkdir(join(fixture.state.siteFolder, 'notes/ignored'), {
+      recursive: true,
+    });
+    await edit(fixture, 'notes/ignored/new.md', 'new\n');
+    await repoOf(fixture).locked('save', (tx) =>
+      tx.restore(['notes/ignored/new.md']),
+    );
+    await expect(
+      stat(join(fixture.state.siteFolder, 'notes/ignored/new.md')),
+    ).rejects.toThrow('ENOENT');
   });
 
   it('leaves an untracked file outside the list alone', async () => {
@@ -913,6 +930,38 @@ describe('openRepo: fetch', () => {
       change: 'code',
       paths: [{ path: 'README.md', status: 'modified' }],
     });
+  });
+
+  it('never gives a siteCommit that starts with a dash to git, and reads the change as code', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site', syncFiles());
+    const calls: string[][] = [];
+    const recording: ExecFn = (file, args, options) => {
+      calls.push([...args]);
+      return realExec(file, args, options);
+    };
+    // The bundle parser refuses this value, so the store is replaced to reach the git call.
+    const bundle: Bundle = {
+      identity: {
+        bundleId: 'fixture-2026-11-03',
+        siteCommit: '--output=poisoned',
+        protocolVersion: 2,
+        astroVersion: '7.4.2',
+        builtAt: '2026-11-04T03:42:22.323Z',
+      },
+      documents: new Map(),
+      collections: new Map(),
+      routes: [],
+      images: [],
+    };
+    const bundles: BundleStore = { current: () => Promise.resolve(bundle) };
+    await expect(syncOf(fixture, bundles, recording)).resolves.toEqual({
+      ok: true,
+      upstream: await headOf(fixture),
+      reapply: false,
+      change: 'code',
+      paths: [],
+    });
+    expect(calls.filter((args) => args[0] === 'diff')).toStrictEqual([]);
   });
 
   it('is code when the bundle has no commit (siteCommit null), even with no change', async () => {

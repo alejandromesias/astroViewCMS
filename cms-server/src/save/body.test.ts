@@ -77,6 +77,44 @@ describe('parseSaveBody', () => {
     });
   });
 
+  it.each([
+    'authors/ana\nCMS-Overwrote: abc',
+    'authors/ana\rx',
+    'authors/ana\tx',
+    'authors/ana\u0000x',
+    'authors/ana\u007fx',
+  ])(
+    'refuses the key %j, whose control character would break its line of the commit message',
+    (document) => {
+      expect(
+        parseSaveBody(bodyOf([{ document, baseRevision: null, data: 1 }])),
+      ).toStrictEqual({
+        ok: false,
+        message: 'changes.0.document: must not contain control characters',
+      });
+    },
+  );
+
+  it('keeps a space in a key, which a file() id may hold', () => {
+    expect(
+      parseSaveBody(
+        bodyOf([
+          { document: 'authors/ana torres', baseRevision: null, data: 1 },
+        ]),
+      ),
+    ).toStrictEqual({
+      ok: true,
+      changes: [
+        {
+          document: 'authors/ana torres',
+          baseRevision: null,
+          deleted: false,
+          data: 1,
+        },
+      ],
+    });
+  });
+
   it('refuses a base revision that is neither a string nor null', () => {
     expect(
       parseSaveBody(bodyOf([{ document: 'a/b', baseRevision: 5, data: 1 }])),

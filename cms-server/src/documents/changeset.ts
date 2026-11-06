@@ -189,6 +189,8 @@ function unitOf(
     if (loader === undefined) continue;
     if (loader.kind === 'file' && loader.pattern === path)
       return { kind: 'shared', path, collection, records: [] };
+    // A glob with its own generateId takes its ids from generateId, not from the path, so a file outside the bundle has no key here.
+    if (loader.kind === 'glob' && loader.customId === true) continue;
     const relative =
       loader.kind === 'glob' ? relativeToBase(loader.base, path) : undefined;
     if (relative !== undefined && posix.matchesGlob(relative, loader.pattern))

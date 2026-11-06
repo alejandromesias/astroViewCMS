@@ -344,6 +344,32 @@ describe('changesetOf: documents with a file of their own', () => {
     });
   });
 
+  it('ignores a new file of a collection with generateId ids, since its key is not its path', async () => {
+    const h = await harness();
+    await edit(h, 'src/content/blog/new-post.md', POST_B);
+    await save(h, ['src/content/blog/new-post.md'], 'new post');
+    const collections: Bundle['collections'] = new Map([
+      [
+        'blog',
+        {
+          loader: {
+            kind: 'glob',
+            pattern: '**/*.md',
+            base: 'src/content/blog',
+            customId: true,
+          },
+        },
+      ],
+    ]);
+    expect(
+      await changesetOf({
+        bundle: { documents: new Map<string, DocumentEntry>(), collections },
+        repo: h.repo,
+        siteFolder: h.siteFolder,
+      }),
+    ).toStrictEqual({ documents: [], createdRecords: [], fileErrors: [] });
+  });
+
   it('gives a document the CMS-Overwrote sha of its newest trailer', async () => {
     const h = await harness();
     await edit(h, BLOG_A, '---\ntitle: Post A\n---\nBody A edited\n');

@@ -1863,6 +1863,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   author and the posts: `200`; a read-only referrer: `409` with
   `needsDeveloper`.
 - **From wave 6 close-out (2026-11-06):** a failing `tx.restore` during a failed save, or a failing `revisionsAfter` after the commit, answers a bare 500 instead of the JSON body (2.5c). Done in `05301ef`: both answer JSON, with tests. The "failed rename" test still injects a failing write, not a real rename failure.
+- **Review round 2 (2026-11-06):** `GET` and `PUT /api/changes` answer 500 `changes-unavailable` when git fails, as `GET /api/documents?key=` does (`changes-routes.ts`). A failed save of a new file at a gitignored path removes the file: `restore` runs `git clean -x` (`ops.ts`). A `customId` glob file outside the bundle gets no key from its path (`changeset.ts`). A document key with a control character is refused, since the key is a commit-message line (`body.ts`). `siteCommit` goes through `assertRef` before `git diff`; the bundle schema already refuses such a value, so this is defence in depth.
 
 ### 2.7 Media — after 2.1c · ∥ everything
 

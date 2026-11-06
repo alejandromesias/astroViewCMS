@@ -19,12 +19,20 @@ export type BodyResult =
   | { readonly ok: true; readonly changes: readonly SaveChange[] }
   | { readonly ok: false; readonly message: string };
 
+// A key with a control character (a line break, a tab) would break its line of the commit message (write.ts).
+function hasControl(text: string): boolean {
+  return [...text].some((char) => char < ' ' || char === '\u007f');
+}
+
 // The messages name only the rule: the path of an issue (`changes.0.data`) already names the field.
 const changeSchema = z
   .object({
     document: z
       .string({ error: 'must be a string' })
-      .min(1, { error: 'must not be empty' }),
+      .min(1, { error: 'must not be empty' })
+      .refine((key) => !hasControl(key), {
+        error: 'must not contain control characters',
+      }),
     baseRevision: z.string({ error: 'must be a string or null' }).nullable(),
     deleted: z.boolean({ error: 'must be true or false' }).optional(),
     data: z.unknown().optional(),

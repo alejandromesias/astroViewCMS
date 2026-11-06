@@ -144,6 +144,8 @@ export function openRepo({
   ): Promise<ChangedPath[] | null> {
     if (siteCommit === null) return null;
     try {
+      // Checked as every ref is, so a value that git would read as an option never reaches it.
+      assertRef(siteCommit);
       // Three dots: the diff runs from the merge base of `siteCommit` and origin, so only what origin changed since
       // they split counts. Saves on `cms/work` are not on origin, so they never appear in it.
       const output = await git([
@@ -199,7 +201,10 @@ export function openRepo({
       const tracked = full.filter((path) => inHead.has(path));
       const created = full.filter((path) => !inHead.has(path));
       if (tracked.length > 0) await git(['checkout', 'HEAD', '--', ...tracked]);
-      if (created.length > 0) await git(['clean', '-f', '--', ...created]);
+      // `-x` also removes an ignored file. `git add` refuses an ignored path, so a save that wrote one fails, and
+      // without `-x` clean would leave that file behind.
+      if (created.length > 0)
+        await git(['clean', '-f', '-x', '--', ...created]);
     },
     // Refuses a save off `cms/work`: committing there would put the save on another branch.
     async commitSave(paths, message) {

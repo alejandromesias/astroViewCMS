@@ -11,8 +11,9 @@ import {
 } from '../../test/helpers/bundle.ts';
 import { git, makeTestRoot, removeTestRoot } from '../../test/helpers/git.ts';
 import { saveRepoIn } from '../../test/helpers/repo.ts';
-import { previewSays } from '../../test/helpers/save-context.ts';
+import { fakeTx, previewSays } from '../../test/helpers/save-context.ts';
 import { directoryBundleSource } from '../bundle/source.ts';
+import { GitError } from '../git/exec.ts';
 import type { Repo } from '../git/ops.ts';
 import type { PreviewClient } from '../save/context.ts';
 import { createApp } from './app.ts';
@@ -45,12 +46,16 @@ const repo: Repo = {
   showAt: () => Promise.reject(new Error('GET reads no text')),
 };
 
-// The app with only the changes route, over the bundle folder and a working copy.
-async function get(bundle: string, siteFolder: string): Promise<Response> {
+// The app with only the changes route, over the bundle folder and a working copy. `reads` is the repo it reads.
+async function get(
+  bundle: string,
+  siteFolder: string,
+  reads: Repo = repo,
+): Promise<Response> {
   const app = new Hono();
   registerChangeRoutes(app, {
     source: directoryBundleSource(bundle),
-    repo,
+    repo: reads,
     siteFolder,
     media: fakeAppDeps().media,
   });
@@ -97,6 +102,24 @@ describe('GET /api/changes', () => {
     expect(await res.json()).toStrictEqual({
       error: 'bundle-invalid',
       message: 'bundle.json: is not valid JSON',
+    });
+  });
+
+  it('answers 500 changes-unavailable, not a bare 500, when git cannot list the changes', async () => {
+    const failing: Repo = {
+      ...repo,
+      changedPaths: () =>
+        Promise.reject(
+          new GitError('failed', 'git diff --name-status failed (exit 128)', {
+            exitCode: 128,
+          }),
+        ),
+    };
+    const res = await get(FIXTURE_BUNDLE, await workingCopy(), failing);
+    expect(res.status).toBe(500);
+    expect(await res.json()).toStrictEqual({
+      error: 'changes-unavailable',
+      message: 'git diff --name-status failed (exit 128)',
     });
   });
 });
@@ -431,6 +454,46 @@ describe('PUT /api/changes', () => {
       duplex: 'half',
     } as RequestInit);
     expect(res.status).toBe(500);
+  });
+
+  it('answers 500 changes-unavailable when git cannot read the changes before the save, and writes nothing', async () => {
+    const siteFolder = await workingCopy();
+    const failing: Repo = {
+      ...repo,
+      locked: (_holder, work) => work(fakeTx()),
+      mergeBase: () =>
+        Promise.reject(
+          new GitError('failed', 'git merge-base failed (exit 128)', {
+            exitCode: 128,
+          }),
+        ),
+    };
+    const app = new Hono();
+    registerChangeRoutes(app, {
+      source: directoryBundleSource(FIXTURE_BUNDLE),
+      repo: failing,
+      siteFolder,
+      media: fakeAppDeps().media,
+      save: { config: { collections: {} }, preview: previewSays() },
+    });
+    const res = await put(
+      app,
+      JSON.stringify({
+        changes: [
+          {
+            document: 'blog/blog-1',
+            baseRevision: revisionOf(OLD),
+            data: { data: { title: 'Other' }, body: 'other\n' },
+          },
+        ],
+      }),
+    );
+    expect(res.status).toBe(500);
+    expect(await res.json()).toStrictEqual({
+      error: 'changes-unavailable',
+      message: 'git merge-base failed (exit 128)',
+    });
+    expect(await readFile(join(siteFolder, BLOG_1), 'utf8')).toBe(NEW);
   });
 
   it('answers 503 no-bundle when no bundle is in place', async () => {
