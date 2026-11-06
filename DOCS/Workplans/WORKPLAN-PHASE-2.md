@@ -25,7 +25,7 @@ before writing tests, [TESTING-RECOMMENDATIONS.md](../Guidelines/TESTING-RECOMME
 |---|---|
 | Phase 2 design | approved by the user, 2026-10-31 |
 | Decisions D17 to D22 | logged in SYSTEM-DESIGN section 11 |
-| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); 2.1g (codecs scope; the rest of its scope moved to 2.1h with deadlines), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a done 2026-11-03 (wave 5 complete, branch `phase-2-wave-5`); next: wave 6 (see the wave order note; 2.5c moved into it on 2026-11-04); the rest not started |
+| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); 2.1g (codecs scope; the rest of its scope moved to 2.1h with deadlines), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a done 2026-11-03 (wave 5 complete, branch `phase-2-wave-5`); 2.0j, 2.1h, 2.5b, 2.5c, 2.6a, 2.9a, 2.10a done 2026-11-03 to 2026-11-06 (wave 6 complete, branch `phase-2-wave-6`); next: wave 7 (2.6b, 2.9c, 2.10b); the rest not started |
 
 **Done when:** every row of PHASE-2-DESIGN.md section 1 passes. Section 5
 below maps each row to the test that proves it.
@@ -1800,7 +1800,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   - The bundle is read inside the lock (`saveChanges` takes a `BundleStore`); its `503 no-bundle` and `500 bundle-invalid` are copied from `withBundle`, not shared.
   - `restore` runs `git reset`, then `checkout HEAD` for paths HEAD has, then `clean -f` for the rest (the plan said checkout and clean; the reset unstages added files).
   - The media map for validate is every entry of `media.json` (see 2.7b).
-  - **Left open** (each is noted in the task that takes it): a failing after-commit hook is logged, not marked for rebuild (2.6b); `refinement-threw` keys are not stored (2.10e); the 10 s validate timeout is not in the pipeline (2.9d); every real save answers `503` until 2.9d. Also open, no task yet: if `tx.restore` throws during a failed save, or `revisionsAfter` throws after the commit, the route answers a bare 500 instead of the JSON body; the "failed rename" test injects a failing write call, not a real rename failure.
+  - **Left open** (each is noted in the task that takes it): a failing after-commit hook is logged, not marked for rebuild (2.6b); `refinement-threw` keys are not stored (2.10e); the 10 s validate timeout is not in the pipeline (2.9d); every real save answers `503` until 2.9d. Also open, assigned to 2.6b (2026-11-06, wave 6 close-out): if `tx.restore` throws during a failed save, or `revisionsAfter` throws after the commit, the route answers a bare 500 instead of the JSON body; the "failed rename" test injects a failing write call, not a real rename failure.
   - **Stryker, first run (2026-11-05, `save/` plus `http/changes-routes.ts` and `git/ops.ts`, concurrency 8, 12 min):** 93.62% overall. Per file: `conflicts.ts` 100, `validate.ts` 100, `plan.ts` 97.87, `pipeline.ts` 96.77, `changes-routes.ts` 96.43, `write.ts` 95.31, `ops.ts` 93.75 (13 survived, not yet classified), `body.ts` 90.24, `rebuild.ts` 76.36 (below 90: fixed below). `reports/stryker-runs/2026-11-05T16-11-02-718Z/`.
   - **Stryker, `rebuild.ts` (2026-11-05, commit `bd93270`):** 76.36% → 94.55%. Four tests added (a field added or removed; a field missing on both sides; a path through null, a string, or an array; an own `__proto__` key). The 3 survivors left are equivalent: `canonicalEntryText(undefined)` is `undefined` (`JSON.stringify(undefined)`), so the guard on lines 30–31 of `rebuild.ts` gives the same answer as the plain comparison in every case. `reports/stryker-runs/2026-11-05T17-00-38-811Z/`.
   - **Stryker, `git/ops.ts` (2026-11-05, commit `749dab4`, after four restore, sync and worktree tests were added):** 98.53% (257 killed, 11 timeout, 2 survived, 2 no coverage). `reports/stryker-runs/2026-11-05T17-25-48-155Z/`. Classification of the first run's 13 survivors and the new run's leftovers:
@@ -1861,6 +1861,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   posts; delete it and clear the field in the posts: `200`; delete the
   author and the posts: `200`; a read-only referrer: `409` with
   `needsDeveloper`.
+- **From wave 6 close-out (2026-11-06):** a failing `tx.restore` during a failed save, or a failing `revisionsAfter` after the commit, answers a bare 500 instead of the JSON body (2.5c). Give both the JSON error body and a test that makes the real rename fail (not an injected write). The route is the same one 2.6b edits.
 
 ### 2.7 Media — after 2.1c · ∥ everything
 
@@ -2488,7 +2489,7 @@ Design 4.4, 5.6.
 
 Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
 
-#### 2.10a Sync — after 2.3c, 2.4a
+#### 2.10a Sync — after 2.3c, 2.4a · DONE 2026-11-04
 
 - `fetch`; if `origin/<branch>` moved, report how: **content-only** when
   every changed path lies in a directory that holds a current document, has
