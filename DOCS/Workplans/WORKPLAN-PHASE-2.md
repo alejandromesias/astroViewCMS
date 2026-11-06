@@ -25,7 +25,7 @@ before writing tests, [TESTING-RECOMMENDATIONS.md](../Guidelines/TESTING-RECOMME
 |---|---|
 | Phase 2 design | approved by the user, 2026-10-31 |
 | Decisions D17 to D22 | logged in SYSTEM-DESIGN section 11 |
-| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); 2.1g (codecs scope; the rest of its scope moved to 2.1h with deadlines), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a done 2026-11-03 (wave 5 complete, branch `phase-2-wave-5`); 2.0j, 2.1h, 2.5b, 2.5c, 2.6a, 2.9a, 2.10a done 2026-11-03 to 2026-11-06 (wave 6 complete, branch `phase-2-wave-6`); next: wave 7 (2.6b, 2.9c, 2.10b); the rest not started |
+| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); 2.1g (codecs scope; the rest of its scope moved to 2.1h with deadlines), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a done 2026-11-03 (wave 5 complete, branch `phase-2-wave-5`); 2.0j, 2.1h, 2.5b, 2.5c, 2.6a, 2.9a, 2.10a done 2026-11-03 to 2026-11-06 (wave 6 complete, branch `phase-2-wave-6`); next: wave 7 (2.6b, 2.9c, 2.10b, then 2.1j last); the rest not started |
 
 **Done when:** every row of PHASE-2-DESIGN.md section 1 passes. Section 5
 below maps each row to the test that proves it.
@@ -90,7 +90,7 @@ Rules for running tasks in parallel:
 | 4 | 2.1f (alone, first), 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a |
 | 5 | 2.1g (codecs only, 2026-11-03), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a (after 2.1g) |
 | 6 | 2.0j (alone, `[build]`), 2.1h (now also `repo.ts`, before 2.5b), 2.5b, 2.6a, 2.9a, 2.10a, 2.5c (moved here 2026-11-04; starts after 2.10a merges) |
-| 7 | 2.6b, 2.9c, 2.10b |
+| 7 | 2.6b, 2.9c, 2.10b, 2.1j (last, alone: it edits `repo.ts` and `ops.ts`) |
 | 8 | 2.7b, 2.7c, 2.9d |
 | 9 | 2.9e, 2.10c |
 | 10 | 2.10d, 2.10g, 2.11b |
@@ -106,7 +106,7 @@ parallel; 2.5a waits for 2.1g.
 
 Wave 6 order (2026-11-03, revised after review): 2.1h part 1 comes first in the wave, in this order: `repo.ts` (seed `repo.test.ts` from a small fixture), the `core.hooksPath` guard in `repo.ts`, then `codecs/by-format.ts`, `manifest/documents.ts` and `preview-contract/src/revision.ts`. `documents/` waits for 2.5b's revision split, and `plan-write.ts` waits for 2.5b to close (2.5b and 2.0j both change it). 2.1h must finish `repo.ts` before 2.5b. 2.5b may start in parallel with the tests, but is not closed before `repo.ts` has a score. 2.6a, 2.9a and 2.10a do not wait for 2.1h.
 
-Wave 6/7/8 reorder (2026-11-04): 2.5c moved from wave 7 to wave 6. Its gates are met: 2.0h, 2.0j, 2.5a and 2.5b are done, and `server.ts` was scored in 2.1h 2a (93.2%). Order inside wave 6: 2.10a first (it adds `tx.fetch` to `git/ops.ts`), then 2.5c alone in `http/`, `save/` and `ops.ts` (it adds `tx.restore`); 2.6a and 2.9a run in parallel with either, since 2.6a works in `references/`, `schema/walk.ts` and `documents/paths.ts`. Wave 7 is then 2.6b, 2.9c and 2.10b. Wave 8 is 2.7b, 2.7c and 2.9d. 2.6b, 2.7b and 2.7c each add a stage to the same pipeline array, so 2.6b runs apart from 2.7b and 2.7c.
+Wave 6/7/8 reorder (2026-11-04): 2.5c moved from wave 7 to wave 6. Its gates are met: 2.0h, 2.0j, 2.5a and 2.5b are done, and `server.ts` was scored in 2.1h 2a (93.2%). Order inside wave 6: 2.10a first (it adds `tx.fetch` to `git/ops.ts`), then 2.5c alone in `http/`, `save/` and `ops.ts` (it adds `tx.restore`); 2.6a and 2.9a run in parallel with either, since 2.6a works in `references/`, `schema/walk.ts` and `documents/paths.ts`. Wave 7 is then 2.6b, 2.9c and 2.10b, and 2.1j last (added 2026-11-06, the standing-risk step 6: it changes the clone's git calls in `repo.ts` and `ops.ts`, so it runs after the wave's other tasks, not in parallel with them). Wave 8 is 2.7b, 2.7c and 2.9d. 2.6b, 2.7b and 2.7c each add a stage to the same pipeline array, so 2.6b runs apart from 2.7b and 2.7c.
 
 **Critical path** (the longest chain; it decides the elapsed time): 2.0a →
 2.1a → 2.3a → 2.3b → 2.3c → 2.5b → 2.5c → 2.9d → 2.9e → 2.10d → 2.10e →
@@ -825,7 +825,7 @@ done. Item 6 of the design (the front server) is step 2.8.
 - **Close-out (2026-11-05): 2.1h is done.** The three open items were decided by the user:
   - **Full run accepted at 93.67%, with a caveat.** The run (recorded in `702fba5`) predates the 2b step 3 tests (`d998d28`), the save code (`716a0ed`), and the later reruns of `ops.ts`, `walk.ts` and `paths.ts`. It was not rerun. The score is above 90, so no `break` question.
   - **`preview/supervisor.ts` L382 killed.** The surviving mutant (`generation -= 1` in `swap`) is killed by "does not restart the old bundle when its restart wait ends after swap() and stop() came" (`56a2a7e`). Hand-applied, the test fails with a third spawn of the old bundle. Rerun `reports/stryker-runs/2026-11-05T21-57-47-021Z/`: 95.88 (243 killed, 13 timeout, 9 survived, 2 no coverage, 5 errors). The nine survivors are the 2b classified set; L382 is not among them. The 5 errors are `OptionalChaining` mutants of the `notify?.(…)` calls in `supervise`. Stryker counts them as errors, not survivors, and the score excludes them, as in the full run.
-  - **Deferred follow-up:** standing-risk step 6 (`runGit` gets `GIT_DIR` and `GIT_WORK_TREE`). See step 6 below.
+  - **Deferred follow-up:** standing-risk step 6 (`runGit` gets `GIT_DIR` and `GIT_WORK_TREE`), now task 2.1j (wave 7, end). See step 6 below.
   - **Caveat:** `serve/static.ts` L85:11 and L86:12 are equivalent in practice, not formally (see 2c).
 
 **Standing risk under 2.1h (open 2026-11-04, not a task; no Stryker run in the main checkout until the isolation decision is made)**
@@ -860,7 +860,7 @@ Steps, in order:
 3. **Run script, outside any repo (before 2.5c).** `scripts/stryker-run.mjs <config> --mutate <files>`. It refuses a dirty tree (step 1). It exports `HEAD` with `git archive` into `%TEMP%\avc-stryker\<timestamp>` (no `.git`; not a worktree or a clone, since both have their own `.git` and a worktree shares refs with the main checkout). It installs or links `node_modules`, and sets `GIT_CEILING_DIRECTORIES` to the parent of that folder. It checks that `git rev-parse --show-toplevel` fails there (the guard of Recommendation 4), runs Stryker, and copies `reports/` back. Before and after, it records the main checkout's branch, `HEAD`, the branch list and `core.hooksPath`, and fails the run if any changed. A climbing git call then finds no repo and fails, so the mutant is killed instead of doing harm. *Done when:* one scoped run of `exec.ts` and one of `repo.ts` through the script complete, the checks pass, and the scores land in `reports/`. Recommendation 3 above (ceiling in the in-tree configs) is no longer needed once this is in place; leave the existing ceiling settings as they are.
 4. **Only the script runs Stryker.** No raw `npx stryker run`, by the lead or any agent. Add this to the 2.1h rules and the builder brief.
 5. **Shared checkout (rule).** Builders that edit code run with `isolation: "worktree"`, so a switch in one session does not move the lead's working tree. A Stryker run still goes through step 3, whichever session starts it.
-6. **Product hardening (deferred follow-up, 2026-11-05: the user chose to defer it).** Give the clone's `runGit` calls `GIT_DIR=<repoDir>/.git` and `GIT_WORK_TREE=<repoDir>`, as well as `cwd`, so the clone never relies on repo discovery. In production `.cms/` may sit inside the developer's site repo, where a lost `cwd` would run `checkout --force` and `clean -fd` on their work. This is a `src` change in `exec.ts`/`repo.ts`; ask the user first.
+6. **Product hardening: scheduled as 2.1j (wave 7, end; added 2026-11-06).** The user deferred it on 2026-11-05 and asked on 2026-11-06 for it to be scheduled. The change, the tests and the order are in 2.1j.
 
 - **The hold ends** when steps 1 to 4 are in place. The 2c items left (`exec.ts`, `log.ts`, the `load.ts`, `static.ts` and `gate.ts` re-measures) then run through the script. If a switch still happens with steps 2 and 3 in place, stop and record it here with the run's mutant list; do not retry.
 - **Result, steps 1 and 2 (2026-11-04, uncommitted):**
@@ -970,6 +970,17 @@ Steps, in order:
     kill makes npm print "Lifecycle script `start` failed"; that is expected.
   - **Left on disk (gitignored, from the manual run):** `.dev/`, `cms.config.ts`, `.cms/` at the
     repo root.
+
+#### 2.1j Clone isolation: `runGit` gets `GIT_DIR` and `GIT_WORK_TREE` — after 2.1h, 2.6b, 2.9c, 2.10b · last in wave 7 (added 2026-11-06)
+
+- **Why.** Standing-risk step 6 (the 2026-11-04 action plan under 2.1h). The clone's git calls find their repo from `cwd` alone. In production `.cms/` may sit inside the developer's site repo. A lost `cwd` would then run `checkout --force` and `clean -fd` on the developer's work.
+- **Change.** The clone's git calls pass `env: { GIT_DIR: join(repoDir, '.git'), GIT_WORK_TREE: repoDir }` as well as `cwd`: the `git` and `gitBytes` closures in `ops.ts`, and the `git` closure in `ensureRepo` (`repo.ts`). `runGit` already takes `env`, so `exec.ts` stays as it is unless a test shows it must change.
+- **Keep unscoped.** The `git clone` in `ensureRepo`, and `assertOwnRepo`'s `rev-parse --show-toplevel`. With both variables set, `--show-toplevel` prints `GIT_WORK_TREE`, so the check would compare the clone with itself. Checked 2026-11-06 in a temp folder: an empty `.git` under the variables fails with `fatal`, so it still refuses, but the check no longer tests discovery.
+- **Tests.** (1) Every clone call carries both variables; the clone and the own-repo check carry none. (2) A real-git test: a call with `cwd` set to a parent repo and the variables set to the clone changes only the clone; the parent's status and files stay the same. (3) One test uses the backslash paths that `join` makes on Windows (the 2026-11-06 check used forward slashes).
+- **Verify.** Targeted tests only: `git/exec`, `git/repo`, `git/ops` (CLAUDE.md: no full suite). Biome on the changed files. Stryker through `scripts/stryker-run.mjs`, one file at a time, for `repo.ts` and `ops.ts`: the new env literals add mutants. Budget up to 2 hours per file (the `repo.ts` run hit the 2-hour limit in 2.1h).
+- **Done when.** The tests pass. `repo.ts` and `ops.ts` score at least their current 99.10 and 96.74, or each new survivor is classified in the Result. The parent-repo test shows the parent unchanged.
+- **File ownership.** `repo.ts`, `ops.ts`, their tests and the test helpers. `exec.ts` only if a test needs it, and then named in the Result.
+- **Order.** Last in wave 7, after 2.6b, 2.9c and 2.10b, and not in parallel with them. The user asked on 2026-11-06 for it to be scheduled, which answers the "ask the user first" in the standing-risk step.
 
 ### 2.2 Format codecs — after 2.1a · ∥ 2.3, 2.1b to 2.1d, 2.0
 
