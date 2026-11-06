@@ -992,7 +992,8 @@ describe('openRepo: fetch', () => {
       change: 'code',
       paths: [],
     });
-    expect(calls.filter((args) => args[0] === 'diff')).toStrictEqual([]);
+    // runGit puts `-c <setting>` before the command, so the command is not always the first argument.
+    expect(calls.filter((args) => args.includes('diff'))).toStrictEqual([]);
   });
 
   it('is code when the bundle has no commit (siteCommit null), even with no change', async () => {
