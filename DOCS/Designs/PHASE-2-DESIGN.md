@@ -250,9 +250,21 @@ fields (D1). `cms-server` runs a preview build:
 |---|---|
 | The site has no bundle yet | first start |
 | `origin/main` moved outside content paths (seen by sync) | code changed: markup, CSS, schemas |
-| A save touched a build-time field (D1) | build code reads it |
+| A save touched a build-time field (D1), or deleted a document that has one | build code reads it |
 | The bundle's protocol version differs from `cms-server`'s (D14, section 5.6) | old bundle, at most once per bundle id |
 | After a publish | keeps the overlay small; free if the build check already ran |
+
+"Outside content paths" is strict (WORKPLAN 2.10a, 2026-11-04): sync
+diffs the current bundle's `siteCommit` against `origin/main` (three dots,
+so the CMS's own saves don't count). The push is content-only only when
+every changed path is a modification of the file of a current document
+that is not build-time. Anything else is code: an added, deleted or
+renamed file, an image, the lockfile, a path outside `siteDir`, a missing
+bundle or `siteCommit`. Erring toward a rebuild costs one build; erring the
+other way shows a stale preview.
+
+Every preview build, not only the candidate, runs on a git worktree of one
+commit, never on the working copy that saves keep writing (WORKPLAN 2.9a).
 
 **Build check before push: optional, by configuration (user).**
 `publish.buildCheck`:
@@ -392,8 +404,20 @@ as static files on the CMS origin (section 5.8).
      `refinement-threw` don't block the save (5.1 item 9);
   5. write each file atomically (temp file and rename) with its codec,
      move staged images into place (5.5), commit on `cms/work`;
-  6. answer `200 { revisions: { key: revision } }`. If a build-time field
-     changed, add `rebuild: true` and queue a build.
+  6. answer `200 { revisions: { key: revision }, warnings, rebuild }`
+     (`revisions` lists created and updated documents). `rebuild` is
+     always present: `true` when a build-time field changed or a document
+     with build-time fields was deleted, and then a build is queued. A
+     create never sets it.
+
+  Steps 2 to 6 run under the repo lock. A plan refusal is one error,
+  `{ error, key, message, file?, line?, column? }`: `400` for a bad request
+  (`duplicate-key`, `outside-site`, `pattern-mismatch`), `409` for the
+  state of the tree (`exists`, `file-missing`), `422` for a document that
+  can't be written (`read-only`, `unwritable`, `unreadable`). A preview
+  that is not ready or times out answers `503 preview-unavailable`, and
+  nothing is written. A save that committed but whose revisions can't be
+  read back answers `500 save-committed` (WORKPLAN 2.5c, 2026-11-05).
 - **`GET /api/changes`**: the saved changeset (documents that differ
   between `origin/main` and `cms/work`), with each document's base revision
   and whether it was overwritten in the last sync.
@@ -479,7 +503,8 @@ Round-trip tests run on copies of the sample's own files.
   the editor reloads the iframe after a bundle change anyway. Running two
   nodes at once would need a proxy in front, either in the credential-holding
   `cms-server` or as one more process. Not worth it in single tenant; phase
-  5's preview router takes this role. Keep the last two bundles. One build at a time; a trigger that
+  5's preview router takes this role. Keep the last two bundles, plus the
+  one the node serves and the last good one (WORKPLAN 2.9c). One build at a time; a trigger that
   arrives during a build queues one more, and further triggers merge into
   it.
 - **Protocol mismatch (D14), simplified (call):** after each build and at
@@ -598,7 +623,7 @@ end of phase 2, with their tests moved or rewritten against the new routes.
 | `GET /api/documents?collection=` | list: key, file, revision, format, editable, title if the data has one |
 | `GET /api/documents?key=` | 5.3 |
 | `POST /api/media` | 5.5 |
-| `PUT /api/changes` | 5.3: `200` (with `warnings`, e.g. a missing `public/` image, 5.5), `409 conflict`, `409 referenced-by`, `422` |
+| `PUT /api/changes` | 5.3: `200` (with `warnings`, e.g. a missing `public/` image, 5.5), `400`, `409 conflict`, `409 referenced-by`, `409 exists`, `409 file-missing`, `422`, `503 preview-unavailable` |
 | `GET /api/changes` | 5.3 |
 | `POST /api/publish` | 4.2: `200 { commit, overwritten: [...] }`, `422` validation, `424 build-failed`, `502` push failed after retries |
 | `GET /api/overlay` | `{ documents, media }`: working copy against the current bundle (by revision), plus images the bundle lacks |
