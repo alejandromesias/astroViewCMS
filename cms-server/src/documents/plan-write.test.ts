@@ -1,6 +1,7 @@
 import type { CollectionSchemaJson } from 'preview-contract';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { DocumentEntry } from '../bundle/read.ts';
+import { codecFor } from '../codecs/by-format.ts';
 import { type PlanContext, planWrite, type WriteChange } from './plan-write.ts';
 
 const TESTIMONIALS = 'src/content/testimonials.json';
@@ -172,6 +173,7 @@ describe('planWrite: file() collections', () => {
       name: 'WritePlanError',
       code: 'exists',
       key: 'stats/a',
+      file: STATS,
       message: 'An entry with the id "a" already exists',
     });
   });
@@ -375,6 +377,7 @@ describe('planWrite: glob collections', () => {
       code: 'exists',
       key: 'blog/hello',
       file: 'src/content/blog/hello.md',
+      message: 'The file "src/content/blog/hello.md" already exists',
     });
   });
 
@@ -391,6 +394,25 @@ describe('planWrite: glob collections', () => {
       message: 'No format the CMS can write for the collection "misc"',
     });
   });
+
+  it.each([['**/*.txt'], ['**/*.toml'], ['**/*.md-x'], ['**/*.{md,mdx}-x']])(
+    'refuses a glob create whose pattern gives no writable format, for %s (unwritable)',
+    async (pattern) => {
+      const ctx = ctxOf({}, [], {
+        misc: globLoader(pattern, 'src/content/misc'),
+      });
+      await expect(
+        planWrite(
+          [{ op: 'create', collection: 'misc', id: 'a', value: {} }],
+          ctx,
+        ),
+      ).rejects.toMatchObject({
+        code: 'unwritable',
+        key: 'misc/a',
+        message: 'No format the CMS can write for the collection "misc"',
+      });
+    },
+  );
 
   it('deletes a document that is a file of its own', async () => {
     const ctx = ctxOf(
@@ -453,7 +475,95 @@ describe('planWrite: glob collections', () => {
     );
     await expect(
       planWrite([{ op: 'delete', key: 'blog/hello' }], ctx),
-    ).rejects.toMatchObject({ code: 'file-missing', key: 'blog/hello' });
+    ).rejects.toMatchObject({
+      code: 'file-missing',
+      key: 'blog/hello',
+      file: 'src/content/blog/hello.md',
+      message: 'The file "src/content/blog/hello.md" is missing',
+    });
+  });
+});
+
+describe('planWrite: the id the build gives the new file', () => {
+  const BLOG = { blog: globLoader('**/*.md', 'src/content/blog') };
+
+  it('refuses an id the build would not give the file, and names both ids', async () => {
+    await expect(
+      planWrite(
+        [
+          {
+            op: 'create',
+            collection: 'blog',
+            id: 'My Post',
+            value: { data: { title: 'x' }, body: '' },
+          },
+        ],
+        ctxOf({}, [], BLOG),
+      ),
+    ).rejects.toMatchObject({
+      name: 'WritePlanError',
+      code: 'pattern-mismatch',
+      key: 'blog/My Post',
+      message:
+        'The id "My Post" would be saved as "my-post": the build gives a file its id from its frontmatter slug or its path',
+    });
+  });
+
+  it('refuses an index id, which the build gives the id without its /index', async () => {
+    await expect(
+      planWrite(
+        [
+          {
+            op: 'create',
+            collection: 'blog',
+            id: 'guides/index',
+            value: { data: {}, body: '' },
+          },
+        ],
+        ctxOf({}, [], BLOG),
+      ),
+    ).rejects.toMatchObject({
+      code: 'pattern-mismatch',
+      message:
+        'The id "guides/index" would be saved as "guides": the build gives a file its id from its frontmatter slug or its path',
+    });
+  });
+
+  it('refuses an id that the frontmatter slug of the value replaces', async () => {
+    await expect(
+      planWrite(
+        [
+          {
+            op: 'create',
+            collection: 'blog',
+            id: 'post',
+            value: { data: { slug: 'other' }, body: '' },
+          },
+        ],
+        ctxOf({}, [], BLOG),
+      ),
+    ).rejects.toMatchObject({
+      code: 'pattern-mismatch',
+      message:
+        'The id "post" would be saved as "other": the build gives a file its id from its frontmatter slug or its path',
+    });
+  });
+
+  it('accepts an id the build gives back, with a slash in it', async () => {
+    const ops = await planWrite(
+      [
+        {
+          op: 'create',
+          collection: 'blog',
+          id: 'guides/setup',
+          value: { data: { title: 'x' }, body: '' },
+        },
+      ],
+      ctxOf({}, [], BLOG),
+    );
+    expect(ops).toMatchObject([
+      { op: 'write', path: 'src/content/blog/guides/setup.md' },
+    ]);
   });
 });
 
@@ -480,6 +590,40 @@ describe('planWrite: refusals', () => {
     },
   );
 
+  it('refuses an update of a document that has no file (unwritable)', async () => {
+    const ctx = ctxOf({}, [docOf({ key: 'blog/a', format: 'md' })]);
+    await expect(
+      planWrite([{ op: 'update', key: 'blog/a', value: {} }], ctx),
+    ).rejects.toMatchObject({
+      name: 'WritePlanError',
+      code: 'unwritable',
+      key: 'blog/a',
+      message: 'The document "blog/a" has no file',
+    });
+  });
+
+  it('rethrows an error from a codec that is not a CodecError, unchanged', async () => {
+    const codec = codecFor('yaml');
+    if (codec === null) throw new Error('yaml has no codec');
+    const boom = new Error('codec broke');
+    const spy = vi.spyOn(codec, 'write').mockImplementation(() => {
+      throw boom;
+    });
+    const ctx = ctxOf({ [STATS]: '- id: a\n  value: 1\n' }, [
+      docOf({ key: 'stats/a', file: STATS, format: 'yaml' }),
+    ]);
+    try {
+      await expect(
+        planWrite(
+          [{ op: 'update', key: 'stats/a', value: { id: 'a', value: 5 } }],
+          ctx,
+        ),
+      ).rejects.toBe(boom);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('refuses a change when the working copy cannot be read (unreadable)', async () => {
     const ctx: PlanContext = {
       ...ctxOf({}, [
@@ -499,7 +643,15 @@ describe('planWrite: refusals', () => {
     });
   });
 
-  it.each([['../x'], ['/x'], ['a\\b'], ['a/../../x'], ['a//b'], ['']])(
+  it.each([
+    ['../x'],
+    ['/x'],
+    ['a\\b'],
+    ['a/../../x'],
+    ['a//b'],
+    ['a/./b'],
+    [''],
+  ])(
     'refuses the id %j as a path outside the site (outside-site)',
     async (id) => {
       const ctx = ctxOf({}, [], {
@@ -517,7 +669,11 @@ describe('planWrite: refusals', () => {
           ],
           ctx,
         ),
-      ).rejects.toMatchObject({ code: 'outside-site', key: `blog/${id}` });
+      ).rejects.toMatchObject({
+        code: 'outside-site',
+        key: `blog/${id}`,
+        message: `The id "${id}" is not a path inside the site`,
+      });
     },
   );
 
@@ -548,7 +704,11 @@ describe('planWrite: refusals', () => {
         ],
         ctx,
       ),
-    ).rejects.toMatchObject({ code: 'outside-site', key: 'blog/a' });
+    ).rejects.toMatchObject({
+      code: 'outside-site',
+      key: 'blog/a',
+      message: '"../elsewhere/a.md" is outside the site',
+    });
   });
 
   it('refuses a file() loader whose file is outside the site (outside-site)', async () => {
@@ -575,6 +735,7 @@ describe('planWrite: refusals', () => {
       code: 'file-missing',
       key: 'blog/a',
       file: 'src/content/a.json',
+      message: 'The file "src/content/a.json" is missing',
     });
   });
 
@@ -614,6 +775,49 @@ describe('planWrite: refusals', () => {
     },
   );
 
+  it('refuses a create into a read-only collection (read-only)', async () => {
+    const ctx = ctxOf({}, [], {
+      fixtures: {
+        ...globLoader('**/*.json', 'src/content/fixtures'),
+        readOnly: true,
+      },
+    });
+    await expect(
+      planWrite(
+        [{ op: 'create', collection: 'fixtures', id: 'a', value: {} }],
+        ctx,
+      ),
+    ).rejects.toMatchObject({
+      code: 'read-only',
+      key: 'fixtures/a',
+      message: 'The collection "fixtures" is read-only',
+    });
+  });
+
+  it('refuses a create into a glob whose ids come from generateId (unwritable)', async () => {
+    const ctx = ctxOf({}, [], {
+      people: {
+        loader: {
+          kind: 'glob',
+          pattern: '**/*.json',
+          base: 'src/content/people',
+          customId: true,
+        },
+      },
+    });
+    await expect(
+      planWrite(
+        [{ op: 'create', collection: 'people', id: 'ana', value: {} }],
+        ctx,
+      ),
+    ).rejects.toMatchObject({
+      code: 'unwritable',
+      key: 'people/ana',
+      message:
+        'The id "ana" of "people" cannot be turned into a path: its ids come from generateId',
+    });
+  });
+
   it.each([
     ['a collection the bundle does not have', 'missing'],
     ['a collection with no loader', 'loaderless'],
@@ -627,6 +831,7 @@ describe('planWrite: refusals', () => {
     ).rejects.toMatchObject({
       code: 'unwritable',
       key: `${collection}/a`,
+      message: `The collection "${collection}" has no loader to write into`,
     });
   });
 

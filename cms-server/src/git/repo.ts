@@ -3,7 +3,7 @@
 // sets the commit identity, fetches, and creates `cms/work` when it is missing. Then it discards whatever an
 // unfinished save left in the working copy. It never resets `cms/work` to the remote, because that branch
 // holds the saves.
-import { mkdir, stat } from 'node:fs/promises';
+import { mkdir, realpath, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { CmsConfig } from '../config/schema.ts';
 import { type Logger, logger } from '../log.ts';
@@ -30,14 +30,14 @@ const AUTH_FAILED =
   /authentication failed|could not read username|permission denied \(publickey\)/i;
 const NOT_FOUND = /repository.*not found/i;
 
-type RepoErrorKind =
+export type RepoErrorKind =
   | 'auth-failed'
   | 'remote-not-found'
   | 'url-mismatch'
   | 'failed';
 
 /** A repo that cannot be made ready. `message` and `stderr` have their credentials redacted, like `GitError`'s. */
-class RepoError extends Error {
+export class RepoError extends Error {
   readonly kind: RepoErrorKind;
   readonly stderr: string;
 
@@ -105,7 +105,9 @@ async function syncRepo(
   await mkdir(hooksDir, { recursive: true });
   const git: Git = (args) => runGit(args, { cwd: repoDir, exec });
 
+  // An existing folder must be its own repo before any git call runs in it. A fresh clone is one already.
   if (await isRepo(repoDir)) {
+    await assertOwnRepo(git, repoDir);
     await checkOrigin(git, remote, branch, repoDir);
   } else {
     await runGit(
@@ -122,7 +124,7 @@ async function syncRepo(
       { cwd: siteRoot, exec, timeoutMs: CLONE_TIMEOUT_MS },
     );
   }
-  await setConfig(git, identity, hooksDir);
+  await setConfig(git, identity, hooksDir, join(repoDir, '.git', 'config'));
   await git(['fetch', 'origin']);
   if (!(await refExists(git, `refs/heads/${WORK}`)))
     await git(['branch', WORK, `origin/${branch}`]);
@@ -168,6 +170,37 @@ async function checkOrigin(
   );
 }
 
+/**
+ * Refuses a clone folder that git does not treat as its own repo. A `.git` that git does not read (an
+ * empty folder, say) makes git use a parent repo, and the fetch, checkout and config writes would change
+ * that parent. Throws a `failed` RepoError when `git rev-parse --show-toplevel` is not `repoDir`, or when
+ * that git call exits with an error. Real paths are compared, so Windows separators do not matter. Case does: `realpath`
+ * does not fold it, so a case-only difference is refused (a false refusal, the safe direction).
+ */
+async function assertOwnRepo(git: Git, repoDir: string): Promise<void> {
+  const refuse = (stderr = ''): RepoError =>
+    new RepoError(
+      'failed',
+      `The CMS clone ${repoDir} is not a git repository of its own. Git would use a parent repository, so the CMS will not change it. Check or remove the folder by hand, then start the CMS again.`,
+      stderr,
+    );
+  let toplevel: string;
+  try {
+    toplevel = (await git(['rev-parse', '--show-toplevel'])).trim();
+  } catch (error: unknown) {
+    if (error instanceof GitError && error.kind === 'failed')
+      throw refuse(error.stderr);
+    throw error;
+  }
+  // A folder inside no work tree (a bare or empty repo) prints nothing: it is not the clone's own repo.
+  if (toplevel === '') throw refuse();
+  const [actual, expected] = await Promise.all([
+    realpath(toplevel),
+    realpath(repoDir),
+  ]);
+  if (actual !== expected) throw refuse();
+}
+
 // The commits on `cms/work` that origin does not have. Undefined when git cannot count them.
 async function unpublishedSaves(
   git: Git,
@@ -197,16 +230,20 @@ function savesNote(saves: number | undefined): string {
 
 // Every start: the identity comes from the config, so a changed author takes effect. The hooks folder
 // is empty and signing is off, so the user's global hooks and signing do not run on CMS commits.
+// Each write names the clone's own config file, so a folder git does not read as its own repo
+// cannot change a parent repo's settings, even if the guard before it is bypassed.
 async function setConfig(
   git: Git,
   identity: Identity,
   hooksDir: string,
+  configFile: string,
 ): Promise<void> {
-  await git(['config', 'user.name', identity.name]);
-  await git(['config', 'user.email', identity.email]);
-  await git(['config', 'core.hooksPath', hooksDir]);
-  await git(['config', 'commit.gpgsign', 'false']);
-  await git(['config', 'core.autocrlf', 'false']);
+  const file = ['config', '--file', configFile];
+  await git([...file, 'user.name', identity.name]);
+  await git([...file, 'user.email', identity.email]);
+  await git([...file, 'core.hooksPath', hooksDir]);
+  await git([...file, 'commit.gpgsign', 'false']);
+  await git([...file, 'core.autocrlf', 'false']);
 }
 
 // Checked before any git call. A missing `<email>` part is a config error, so it is reported as `failed`.
@@ -242,7 +279,7 @@ function pathsOf(status: string): string[] {
     .map((entry) => entry.slice(3));
 }
 
-function repoErrorOf(error: GitError, remote: string): RepoError {
+export function repoErrorOf(error: GitError, remote: string): RepoError {
   const kind =
     error.kind === 'failed' && GITHUB_REMOTE.test(remote)
       ? classify(error.stderr)

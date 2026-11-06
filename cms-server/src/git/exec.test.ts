@@ -1,4 +1,7 @@
 // @ts-nocheck
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   assertRef,
@@ -402,6 +405,27 @@ describe('runGit', () => {
   });
 });
 
+describe('runGit: binary', () => {
+  it('returns stdout as the bytes the exec gave, and asks exec for bytes', async () => {
+    const bytes = Buffer.from([0xff, 0xfe, 0x41]);
+    const { exec, calls } = fakeExec({ stdout: bytes, stderr: '' });
+    await expect(
+      runGit(['cat-file', 'blob', 'HEAD:a'], {
+        cwd: '/repo',
+        exec,
+        binary: true,
+      }),
+    ).resolves.toEqual(bytes);
+    expect(calls[0]?.options.binary).toBe(true);
+  });
+
+  it('asks for text, and leaves the binary option out, by default', async () => {
+    const { exec, calls } = fakeExec({ stdout: 'text', stderr: '' });
+    await runGit(['status'], { cwd: '/repo', exec });
+    expect(calls[0]?.options).not.toHaveProperty('binary');
+  });
+});
+
 describe('the real exec (no fake)', () => {
   it('runs git --version through the default exec', async () => {
     expect(await runGit(['--version'], { cwd: process.cwd() })).toMatch(
@@ -436,6 +460,23 @@ describe('the real exec (no fake)', () => {
         },
       ),
     ).rejects.toMatchObject({ code: 3, stdout: '', stderr: 'bad' });
+  });
+
+  it('rejects a failed binary call with a GitError that has text stderr, not a TypeError', async () => {
+    const folder = await mkdtemp(join(tmpdir(), 'exec-binary-'));
+    try {
+      const error = await gitErrorOfAsync(() =>
+        runGit(['cat-file', 'blob', 'HEAD:nope.txt'], {
+          cwd: folder,
+          binary: true,
+        }),
+      );
+      expect(error.kind).toBe('failed');
+      expect(error.exitCode).toBe(128);
+      expect(error.stderr).toMatch(/not a git repository/);
+    } finally {
+      await rm(folder, { recursive: true, force: true });
+    }
   });
 
   it('kills a process that runs past its timeout, and rejects with killed set', async () => {

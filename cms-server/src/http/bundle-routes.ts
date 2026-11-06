@@ -10,9 +10,15 @@ import {
 } from '../bundle/read.ts';
 import type { BundleSource } from '../bundle/source.ts';
 import { type BundleStore, createBundleStore } from '../bundle/store.ts';
-import type { CodecError } from '../codecs/types.ts';
+import { type ChangesetRepo, changesetOf } from '../documents/changeset.ts';
+import { collectionOf } from '../documents/paths.ts';
 import type { FileReads } from '../documents/read.ts';
-import { revisionOfDocument } from '../documents/revision.ts';
+import {
+  type DocumentError,
+  errorOf,
+  revisionOfDocument,
+} from '../documents/revision.ts';
+import { GitError } from '../git/exec.ts';
 
 /** One document in the list of GET /api/documents?collection=. `editable` is always a boolean. `revision` is null when the working copy cannot give one, and `error` is set (true) when the document cannot be read. */
 interface DocumentListItem {
@@ -25,14 +31,6 @@ interface DocumentListItem {
   buildTimeFields?: string[] | undefined;
   title?: string;
   error?: true;
-}
-
-/** The `error` of an answer for a file that does not parse: the codec's message, and its position when it has one. */
-interface DocumentError {
-  code: string;
-  message: string;
-  line?: number;
-  column?: number;
 }
 
 /** The answer of GET /api/documents?key=. `value` is present for an editable document; `error` when its file does not parse. */
@@ -48,11 +46,12 @@ interface DocumentAnswer {
   error?: DocumentError;
 }
 
-/** Registers the bundle routes on `app`. All of them read the bundle through one store; the documents are read from `workingCopy`, the site folder of the working copy. */
+/** Registers the bundle routes on `app`. All of them read the bundle through one store; the documents are read from `workingCopy`, the site folder of the working copy. `repo`, when given, lets `GET /api/documents?key=` find a document that a save created (WORKPLAN 2.5c). */
 export function registerBundleRoutes(
   app: Hono,
   source: BundleSource,
   workingCopy: string,
+  repo?: ChangesetRepo,
 ): void {
   const store = createBundleStore(source);
 
@@ -68,7 +67,9 @@ export function registerBundleRoutes(
   );
 
   app.get('/api/documents', (c) =>
-    withBundle(c, store, (bundle) => documentsAnswer(c, bundle, workingCopy)),
+    withBundle(c, store, (bundle) =>
+      documentsAnswer(c, bundle, workingCopy, repo),
+    ),
   );
 
   app.get('/api/status', (c) =>
@@ -88,7 +89,7 @@ export function registerBundleRoutes(
 }
 
 /** Runs `answer` on the current bundle. Without one it runs `missing`, which answers 503 unless a route says otherwise. */
-async function withBundle(
+export async function withBundle(
   c: Context,
   store: BundleStore,
   answer: (bundle: Bundle) => Response | Promise<Response>,
@@ -110,9 +111,11 @@ async function documentsAnswer(
   c: Context,
   bundle: Bundle,
   workingCopy: string,
+  repo: ChangesetRepo | undefined,
 ): Promise<Response> {
   const key = c.req.query('key');
-  if (key !== undefined) return documentAnswer(c, bundle, key, workingCopy);
+  if (key !== undefined)
+    return documentAnswer(c, bundle, key, workingCopy, repo);
   const collection = c.req.query('collection');
   if (collection === undefined) {
     return c.json(
@@ -145,8 +148,19 @@ async function documentAnswer(
   bundle: Bundle,
   key: string,
   workingCopy: string,
+  repo: ChangesetRepo | undefined,
 ): Promise<Response> {
-  const document = bundle.documents.get(key);
+  let document: DocumentEntry | undefined;
+  try {
+    document = await documentOf(bundle, key, workingCopy, repo);
+  } catch (error: unknown) {
+    // The changes could not be read, so the key is not known to be absent: a 404 would say it is.
+    if (!(error instanceof GitError)) throw error;
+    return c.json(
+      { error: 'changes-unavailable', message: error.message },
+      500,
+    );
+  }
   if (document === undefined) {
     return c.json(
       {
@@ -188,20 +202,21 @@ async function documentAnswer(
   return c.json(answer);
 }
 
-/** The `error` of an answer: the codec's message, with the position of the error when it has one. */
-function errorOf(error: CodecError): DocumentError {
-  return {
-    code: 'parse-error',
-    message: error.message,
-    ...(error.line === undefined ? {} : { line: error.line }),
-    ...(error.column === undefined ? {} : { column: error.column }),
-  };
-}
-
-/** The collection a document key belongs to: the part before the first slash (D10). A key with no slash is in none. */
-function collectionOf(key: string): string | undefined {
-  const slash = key.indexOf('/');
-  return slash === -1 ? undefined : key.slice(0, slash);
+/** The entry of a key: the bundle's, or else the one an earlier save created (the changeset's createdRecords, WORKPLAN 2.5c item 6). Undefined when neither has it. */
+async function documentOf(
+  bundle: Bundle,
+  key: string,
+  workingCopy: string,
+  repo: ChangesetRepo | undefined,
+): Promise<DocumentEntry | undefined> {
+  const listed = bundle.documents.get(key);
+  if (listed !== undefined || repo === undefined) return listed;
+  const { createdRecords } = await changesetOf({
+    bundle,
+    repo,
+    siteFolder: workingCopy,
+  });
+  return createdRecords.find((record) => record.key === key);
 }
 
 /** One list item. The revision and error come from the working copy, and a document that cannot be read has no title. Only an editable document is parsed, for its title. */

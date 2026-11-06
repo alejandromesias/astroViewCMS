@@ -22,6 +22,12 @@ describe('shapeSchemas', () => {
     });
   });
 
+  it('marks a read-only collection, and no other', () => {
+    const none = { loader: undefined, schema: undefined };
+    const out = shapeSchemas({ fixtures: none, posts: none }, ['fixtures']);
+    expect(out).toStrictEqual({ fixtures: { readOnly: true }, posts: {} });
+  });
+
   it('exports what an author writes: defaults are not required, transforms are ignored', () => {
     const out = shapeSchemas({
       c: {

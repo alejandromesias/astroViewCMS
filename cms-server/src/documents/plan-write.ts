@@ -2,12 +2,13 @@
 // delete of a document by its key, or a create of `collection/id`. The planner reads the working copy only through
 // `ctx.readText` and returns one file operation per path. It writes nothing: 2.5c joins the paths to the repo root.
 import { posix } from 'node:path';
-import type { CollectionSchemaJson, DocumentRecord } from 'preview-contract';
+import type { CollectionSchemaJson } from 'preview-contract';
 import type { DocumentEntry } from '../bundle/read.ts';
 import { codecFor } from '../codecs/by-format.ts';
 import { changeEntry, type EntryChange } from '../codecs/file-entries.ts';
 import { CodecError } from '../codecs/types.ts';
 import type { CmsConfig } from '../config/schema.ts';
+import { formatOfExtension, globIdOf, slugOf } from './paths.ts';
 import { entryOf } from './read.ts';
 
 /** One change in a save: an update or a delete of a document by its key, or a create of `collection/id`. */
@@ -79,15 +80,6 @@ export class WritePlanError extends Error {
 
 /** The running text of each path the save touches: a string, or null when this save deletes the file. */
 type Running = Map<string, string | null>;
-
-/** The formats a create or a `file()` entry can be written in, by extension. */
-const FORMAT_OF_EXTENSION = new Map<string, DocumentRecord['format']>([
-  ['json', 'json'],
-  ['md', 'md'],
-  ['mdx', 'mdx'],
-  ['yaml', 'yaml'],
-  ['yml', 'yaml'],
-]);
 
 /** Plans the file operations of one save. Throws a WritePlanError for the first change that cannot be saved. */
 export async function planWrite(
@@ -193,6 +185,12 @@ async function planCreate(
   running: Running,
 ): Promise<void> {
   const { collection, id, value } = change;
+  if (ctx.collections.get(collection)?.readOnly === true)
+    throw new WritePlanError(
+      'read-only',
+      key,
+      `The collection "${collection}" is read-only`,
+    );
   if (!isSafePath(id))
     throw new WritePlanError(
       'outside-site',
@@ -215,7 +213,7 @@ async function planCreate(
         key,
         `"${path}" is outside the site`,
       );
-    const format = FORMAT_OF_EXTENSION.get(posix.extname(path).slice(1));
+    const format = formatOfExtension(posix.extname(path).slice(1));
     const codec = format === undefined ? null : codecFor(format);
     if (format === undefined || codec === null)
       throw new WritePlanError(
@@ -251,12 +249,19 @@ async function planCreate(
     );
     return;
   }
+  // A glob with its own generateId (2.0j): the id is not a file name, so no file can be named for it.
+  if (loader.customId === true)
+    throw new WritePlanError(
+      'unwritable',
+      key,
+      `The id "${id}" of "${collection}" cannot be turned into a path: its ids come from generateId`,
+    );
   // A glob collection: each entry is a file of its own, `base/id.ext`, and the id must match the pattern.
   const configured = Object.hasOwn(ctx.config.collections, collection)
     ? ctx.config.collections[collection]?.newEntryFormat
     : undefined;
   const ext = configured ?? firstExtension(loader.pattern);
-  const format = ext === undefined ? undefined : FORMAT_OF_EXTENSION.get(ext);
+  const format = ext === undefined ? undefined : formatOfExtension(ext);
   const codec = format === undefined ? null : codecFor(format);
   if (ext === undefined || format === undefined || codec === null)
     throw new WritePlanError(
@@ -270,6 +275,15 @@ async function planCreate(
       'pattern-mismatch',
       key,
       `"${rel}" does not match the loader pattern "${loader.pattern}"`,
+    );
+  // The build gives the file its id from its frontmatter slug or its path (paths.ts). A id it would not give is refused,
+  // so the saved document has the key that was asked for: a caller's "My Post" is refused, not saved as "my-post".
+  const built = globIdOf(rel, slugOf(value, format));
+  if (built !== id)
+    throw new WritePlanError(
+      'pattern-mismatch',
+      key,
+      `The id "${id}" would be saved as "${built}": the build gives a file its id from its frontmatter slug or its path`,
     );
   const path = posix.join(loader.base ?? '.', rel);
   if (!isSafePath(path))

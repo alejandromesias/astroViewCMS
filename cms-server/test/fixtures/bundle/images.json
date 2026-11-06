@@ -4,11 +4,43 @@
     "hash": "3ae64adeff2adc8b"
   },
   {
+    "path": "src/assets/authors/kofi-mensah.png",
+    "hash": "953840670ec4beae"
+  },
+  {
+    "path": "src/assets/authors/lena-fischer.png",
+    "hash": "2162c118836172d4"
+  },
+  {
+    "path": "src/assets/authors/marco-rossi.png",
+    "hash": "fa8475844a5f3620"
+  },
+  {
+    "path": "src/assets/authors/noor-haddad.png",
+    "hash": "a8cd178c9ac89ad1"
+  },
+  {
     "path": "src/assets/blog/cover-1.jpg",
     "hash": "4cd072865c0d2a8e"
   },
   {
+    "path": "src/assets/blog/cover-2.jpg",
+    "hash": "8083b9cba7537c9d"
+  },
+  {
     "path": "src/assets/partners/atlas.png",
     "hash": "5426fdb4cbbae55b"
+  },
+  {
+    "path": "src/assets/partners/bright.png",
+    "hash": "983e908231d51dd0"
+  },
+  {
+    "path": "src/assets/partners/loop.png",
+    "hash": "78f8453acfa946c0"
+  },
+  {
+    "path": "src/assets/partners/northwind.png",
+    "hash": "ebe77b283fe8651e"
   }
 ]

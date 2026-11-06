@@ -24,6 +24,7 @@
   "exclude": [
     "test/fixtures/schema-site",
     "test/fixtures/scan-site",
-    "test/fixtures/loaderless-site"
+    "test/fixtures/loaderless-site",
+    "test/fixtures/flags-site"
   ]
 }

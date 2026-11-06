@@ -194,7 +194,7 @@ export default function previewRenderServer(
               c.loader?.kind,
             ]),
           );
-          schemaManifest = shapeSchemas(collections);
+          schemaManifest = shapeSchemas(collections, site.readOnlyCollections);
         }
       },
       // Clears the output of the previous build, but keeps the uploads.
@@ -228,6 +228,12 @@ export default function previewRenderServer(
             `bundle.json, images.json or schema.json not written: ${errorMessage(error)}`,
           );
         }
+        // A read-only name that is no collection of the build marks nothing (WORKPLAN 2.0j).
+        for (const name of site.readOnlyCollections ?? [])
+          if (!Object.hasOwn(schemaManifest ?? {}, name))
+            logger.warn(
+              `readOnlyCollections lists "${name}", which is not a collection of the build`,
+            );
         if (routesManifest !== undefined) {
           writeManifest(site, 'routes.json', routesManifest);
         }

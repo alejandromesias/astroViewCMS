@@ -9,6 +9,7 @@ import { loadConfig } from './config/load.ts';
 import type { CmsConfig } from './config/schema.ts';
 import { type Env, loadSecrets, type Secrets } from './config/secrets.ts';
 import { type EditorPage, loadEditorPage } from './editor/page.ts';
+import { openRepo } from './git/ops.ts';
 import {
   type EnsureRepoOptions,
   ensureRepo,
@@ -21,6 +22,7 @@ import {
   type Supervisor,
   type SupervisorOptions,
 } from './preview/supervisor.ts';
+import { previewNotReady } from './save/validate.ts';
 import { startServer } from './server.ts';
 
 /** The arguments of the start. `bundleDir` is the renderer's build folder (its `manifest/` holds the five files). */
@@ -154,6 +156,10 @@ export async function run(
     bundle: source,
     // The repo's site folder (repoDir joined with the config's siteDir): where the bundle's document files are.
     workingCopy: repo.siteFolder,
+    // One set of repo operations per start, so the lock covers every save of this start.
+    repo: openRepo({ config, cmsDir, state: repo }),
+    // The preview client is 2.9d's. Until it is in place every save answers 503 preview-unavailable.
+    save: { config, preview: previewNotReady },
   };
   const supervisor = deps.createSupervisor({
     port: previewPort,

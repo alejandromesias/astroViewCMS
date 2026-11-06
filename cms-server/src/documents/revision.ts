@@ -43,6 +43,24 @@ export async function revisionOfDocument(
   return entryFacts(read, document.entryKey, wantValue);
 }
 
+/** The `error` of an answer: the codec's message, with the position of the error when it has one. */
+export interface DocumentError {
+  code: string;
+  message: string;
+  line?: number;
+  column?: number;
+}
+
+/** The `error` of an answer for a CodecError: its message, and its position when it has one. */
+export function errorOf(error: CodecError): DocumentError {
+  return {
+    code: 'parse-error',
+    message: error.message,
+    ...(error.line === undefined ? {} : { line: error.line }),
+    ...(error.column === undefined ? {} : { column: error.column }),
+  };
+}
+
 /** The facts of a document with a file of its own: the revision of its bytes, and its parse when it is wanted. */
 function ownFileFacts(read: FileRead, wantValue: boolean): DocumentFacts {
   const revision = revisionOf(read.bytes);
@@ -65,9 +83,13 @@ function entryFacts(
   if ('error' in outcome) return { revision: null, error: outcome.error };
   const entry = entryOf(outcome.value, key);
   if (entry === undefined) return null;
-  // An array item is hashed without its id; an object-keyed value whole, as its key is the id (as preview-render-server).
-  const revision = Array.isArray(outcome.value)
+  const revision = entryRevision(outcome.value, entry);
+  return wantValue ? { revision, value: entry } : { revision };
+}
+
+/** The revision of one entry of a `file()` value `whole`. An array item is hashed without its id; an object-keyed value whole, as its key is the id (as preview-render-server). */
+export function entryRevision(whole: unknown, entry: unknown): string {
+  return Array.isArray(whole)
     ? revisionOfEntry(entry)
     : revisionOfKeyedEntry(entry);
-  return wantValue ? { revision, value: entry } : { revision };
 }

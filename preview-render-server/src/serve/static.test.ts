@@ -263,6 +263,16 @@ describe('serveStatic', () => {
       body: 'miss',
     });
   });
+
+  it('refuses a path that climbs out of the folder, even when the file it names is a link back inside', async () => {
+    // `/..%2fclimb/app.js` decodes to `/../climb/app.js`: the junction sits outside the folder and points inside it.
+    symlinkSync(clientDir, path.join(base, 'climb'), 'junction');
+    const { port } = await start();
+    expect(await send(port, '/..%2fclimb/app.js')).toMatchObject({
+      status: 418,
+      body: 'miss',
+    });
+  });
 });
 
 describe('serveStatic edge cases', () => {

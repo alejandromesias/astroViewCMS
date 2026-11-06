@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { revisionOf, revisionOfEntry } from 'preview-contract';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeAppDeps } from '../../test/helpers/app-deps.ts';
 import {
   bundleFolder,
@@ -14,9 +14,11 @@ import {
   tempWorkingCopy,
 } from '../../test/helpers/working-copy.ts';
 import { directoryBundleSource } from '../bundle/source.ts';
+import { GitError } from '../git/exec.ts';
+import type { Repo } from '../git/ops.ts';
 import { createApp } from './app.ts';
 
-// The working copy the route tests read from: a copy of sample-site/src, made before each test.
+// The working copy the route tests read from: a copy of the bundle fixture's source files, made before each test.
 let sample = '';
 beforeEach(async () => {
   sample = await sampleWorkingCopy();
@@ -26,7 +28,7 @@ afterEach(async () => {
   await removeWorkingCopies();
 });
 
-/** The app over one bundle folder and one working copy (the sample-site copy by default). */
+/** The app over one bundle folder and one working copy (the fixture source copy by default). */
 const appOver = (dir: string, root: string = sample) =>
   createApp({
     ...fakeAppDeps(),
@@ -69,8 +71,8 @@ describe('GET /api/status', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       bundle: {
-        bundleId: 'fixture-2026-11-01',
-        siteCommit: 'bec46fcadfe832d7bdec8b06eee6ba6546bd2596',
+        bundleId: 'fixture-2026-11-03',
+        siteCommit: '4523c67c55284f8bd3ae1b61caa6d5501ccc77ab',
       },
     });
   });
@@ -130,6 +132,15 @@ describe('GET /api/documents?collection=', () => {
     expect(await response.json()).toEqual({
       documents: [
         {
+          key: 'blog/-index',
+          file: 'src/content/blog/-index.md',
+          revision: 'f951b0d3d5a329e9',
+          format: 'md',
+          editable: true,
+          buildTime: false,
+          title: 'Latest news',
+        },
+        {
           key: 'blog/blog-1',
           file: 'src/content/blog/blog-1.md',
           revision: 'f0a7b71033203392',
@@ -137,6 +148,42 @@ describe('GET /api/documents?collection=', () => {
           editable: true,
           buildTime: false,
           title: 'What you need to know about Photography',
+        },
+        {
+          key: 'blog/blog-2',
+          file: 'src/content/blog/blog-2.md',
+          revision: '7aea0085ca521e1e',
+          format: 'md',
+          editable: true,
+          buildTime: false,
+          title: 'How to make toys from old Olarpaper',
+        },
+        {
+          key: 'blog/blog-3',
+          file: 'src/content/blog/blog-3.md',
+          revision: 'df5d163626342f30',
+          format: 'md',
+          editable: true,
+          buildTime: false,
+          title: 'What you need to know about Photography',
+        },
+        {
+          key: 'blog/blog-4',
+          file: 'src/content/blog/blog-4.md',
+          revision: '841030777fedd3d2',
+          format: 'md',
+          editable: true,
+          buildTime: false,
+          title: 'How to make toys from old Olarpaper',
+        },
+        {
+          key: 'blog/blog-5',
+          file: 'src/content/blog/blog-5.md',
+          revision: '72ba33c895eafa59',
+          format: 'md',
+          editable: true,
+          buildTime: false,
+          title: 'Adversus is a web-based dialer and practical CRM solution',
         },
       ],
     });
@@ -170,6 +217,22 @@ describe('GET /api/documents?collection=', () => {
           key: 'stats/editors',
           file: 'src/content/stats.yaml',
           revision: 'b877e991d4201f6c',
+          format: 'yaml',
+          editable: true,
+          buildTime: false,
+        },
+        {
+          key: 'stats/sites',
+          file: 'src/content/stats.yaml',
+          revision: 'f60a1c3cab76660a',
+          format: 'yaml',
+          editable: true,
+          buildTime: false,
+        },
+        {
+          key: 'stats/uptime',
+          file: 'src/content/stats.yaml',
+          revision: '26f950f0c2fd32c5',
           format: 'yaml',
           editable: true,
           buildTime: false,
@@ -224,7 +287,8 @@ describe('GET /api/documents?collection=', () => {
   });
 
   it('answers an empty list for a collection with no documents in documents.json', async () => {
-    const response = await appOver(FIXTURE_BUNDLE).request(
+    const dir = await bundleWith([]);
+    const response = await appOver(dir).request(
       '/api/documents?collection=pricing',
     );
     expect(response.status).toBe(200);
@@ -391,6 +455,101 @@ describe('GET /api/documents?key=', () => {
     });
   });
 
+  it('finds a document that a save created, and answers 404 for a key that nothing made', async () => {
+    const text = '{"name":"New"}';
+    const root = await tempWorkingCopy({
+      'src/content/authors/new-one.json': text,
+    });
+    const repo: Repo = {
+      changedPaths: async () => [
+        { path: 'src/content/authors/new-one.json', status: 'created' },
+      ],
+      mergeBase: async () => 'base',
+      showAtBytes: async () => null,
+      overwrittenSince: async () => new Map(),
+      locked: () => Promise.reject(new Error('GET takes no lock')),
+      showAt: () => Promise.reject(new Error('GET reads no text')),
+    };
+    const app = createApp({
+      ...fakeAppDeps(),
+      bundle: directoryBundleSource(FIXTURE_BUNDLE),
+      workingCopy: root,
+      repo,
+    });
+    const created = await app.request('/api/documents?key=authors/new-one');
+    expect(created.status).toBe(200);
+    expect(await created.json()).toEqual({
+      key: 'authors/new-one',
+      file: 'src/content/authors/new-one.json',
+      revision: revisionOf(text),
+      format: 'json',
+      editable: true,
+      buildTime: false,
+      value: { name: 'New' },
+    });
+    const missing = await app.request('/api/documents?key=authors/nobody');
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toEqual({
+      error: 'unknown-document',
+      message: 'The bundle has no document "authors/nobody".',
+    });
+  });
+
+  it('answers 500 changes-unavailable, not 404, when the changes of an unknown key cannot be read', async () => {
+    const root = await tempWorkingCopy({});
+    const repo: Repo = {
+      changedPaths: () =>
+        Promise.reject(
+          new GitError('failed', 'git diff --name-status failed (exit 128)'),
+        ),
+      mergeBase: async () => 'base',
+      showAtBytes: async () => null,
+      overwrittenSince: async () => new Map(),
+      locked: () => Promise.reject(new Error('GET takes no lock')),
+      showAt: () => Promise.reject(new Error('GET reads no text')),
+    };
+    const app = createApp({
+      ...fakeAppDeps(),
+      bundle: directoryBundleSource(FIXTURE_BUNDLE),
+      workingCopy: root,
+      repo,
+    });
+    const response = await app.request('/api/documents?key=authors/nobody');
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: 'changes-unavailable',
+      message: 'git diff --name-status failed (exit 128)',
+    });
+  });
+
+  it('answers 500 as an unhandled error, not changes-unavailable and not 404, when the changes of an unknown key fail for another reason', async () => {
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    try {
+      const root = await tempWorkingCopy({});
+      const repo: Repo = {
+        changedPaths: () => Promise.reject(new Error('boom')),
+        mergeBase: async () => 'base',
+        showAtBytes: async () => null,
+        overwrittenSince: async () => new Map(),
+        locked: () => Promise.reject(new Error('GET takes no lock')),
+        showAt: () => Promise.reject(new Error('GET reads no text')),
+      };
+      const app = createApp({
+        ...fakeAppDeps(),
+        bundle: directoryBundleSource(FIXTURE_BUNDLE),
+        workingCopy: root,
+        repo,
+      });
+      const response = await app.request('/api/documents?key=authors/nobody');
+      expect(response.status).toBe(500);
+      expect(await response.text()).toBe('Internal Server Error');
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it('answers 404 unknown-document for a key the bundle does not have', async () => {
     const response = await appOver(FIXTURE_BUNDLE).request(
       '/api/documents?key=blog/nope',
@@ -544,7 +703,7 @@ describe('GET /api/documents?key=', () => {
     });
   });
 
-  it('answers the revision the fixture has for every document, with the sample-site files as the working copy', async () => {
+  it('answers the revision the fixture has for every document, with the fixture source files as the working copy', async () => {
     const expected = await fixtureRevisions();
     const app = appOver(FIXTURE_BUNDLE);
     const answers = await Promise.all(
@@ -639,12 +798,66 @@ describe('GET /api/documents?collection= reads the working copy', () => {
     });
   });
 
+  it('takes an MDX title from its data, and gives no title to a name that is not a string or to a null value', async () => {
+    const files = {
+      'src/d.mdx': '---\ntitle: Delta\n---\nx\n',
+      'src/e.json': '{"name":5}',
+      'src/f.json': 'null',
+    };
+    const dir = await bundleWith([
+      record({ key: 'pages/d', file: 'src/d.mdx', format: 'mdx' }),
+      record({ key: 'pages/e', file: 'src/e.json', format: 'json' }),
+      record({ key: 'pages/f', file: 'src/f.json', format: 'json' }),
+    ]);
+    const root = await tempWorkingCopy(files);
+    const response = await appOver(dir, root).request(
+      '/api/documents?collection=pages',
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      documents: [
+        {
+          key: 'pages/d',
+          file: 'src/d.mdx',
+          revision: revisionOf(files['src/d.mdx']),
+          format: 'mdx',
+          editable: true,
+          buildTime: false,
+          title: 'Delta',
+        },
+        {
+          key: 'pages/e',
+          file: 'src/e.json',
+          revision: revisionOf(files['src/e.json']),
+          format: 'json',
+          editable: true,
+          buildTime: false,
+        },
+        {
+          key: 'pages/f',
+          file: 'src/f.json',
+          revision: revisionOf(files['src/f.json']),
+          format: 'json',
+          editable: true,
+          buildTime: false,
+        },
+      ],
+    });
+  });
+
   it('lists a document whose file does not parse with no title and the error flag, and the other documents as they are', async () => {
     const text = '+++\ntitle = "x"\n+++\nBody\n';
     const root = await sampleWorkingCopy({
       'src/content/blog/blog-1.md': text,
     });
-    const response = await appOver(FIXTURE_BUNDLE, root).request(
+    const dir = await bundleWith([
+      record({
+        key: 'blog/blog-1',
+        file: 'src/content/blog/blog-1.md',
+        format: 'md',
+      }),
+    ]);
+    const response = await appOver(dir, root).request(
       '/api/documents?collection=blog',
     );
     expect(response.status).toBe(200);
@@ -667,7 +880,15 @@ describe('GET /api/documents?collection= reads the working copy', () => {
     const root = await sampleWorkingCopy({
       'src/content/testimonials.json': '[',
     });
-    const response = await appOver(FIXTURE_BUNDLE, root).request(
+    const dir = await bundleWith([
+      record({
+        key: 'testimonials/t-ana',
+        file: 'src/content/testimonials.json',
+        format: 'json',
+        entryKey: 't-ana',
+      }),
+    ]);
+    const response = await appOver(dir, root).request(
       '/api/documents?collection=testimonials',
     );
     expect(response.status).toBe(200);

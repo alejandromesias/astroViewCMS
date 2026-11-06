@@ -9,11 +9,15 @@ export type CmsMarker = 'reference' | 'image';
 /** One segment of a path from the document root: an object key or an array index. */
 export type PathSegment = string | number;
 
-/** One marked field of a value: where it is, its marker, and the value there, passed untouched. */
+/**
+ * One marked field of a value: where it is, its marker, and the value there, passed untouched. A reference hit
+ * also carries the `collection` its schema names (2.6a), when it names one. Image hits never carry it.
+ */
 export interface MarkerHit {
   readonly path: PathSegment[];
   readonly marker: CmsMarker;
   readonly value: unknown;
+  readonly collection?: string;
 }
 
 /** Receives each marked field. It must not change the value. */
@@ -85,7 +89,7 @@ function walkOwn(
   state: WalkState,
 ): void {
   const marker = markerOf(node.cms);
-  if (marker !== undefined) reportMarked(marker, value, path, state);
+  if (marker !== undefined) reportMarked(node, marker, value, path, state);
   if (Array.isArray(value)) walkArray(node, value, path, state);
   else if (isObject(value)) walkObject(node, value, path, state);
   walkUnion(nodesOf(node.oneOf), value, path, refs, state);
@@ -162,25 +166,34 @@ function walkUnion(
   }
 }
 
-/** Reports a marked value. A marked array reports each item, at the item's own path. */
+/**
+ * Reports a marked value. A marked array reports each item, at the item's own path. A reference names the
+ * collection its node's `collection` keyword gives, if that keyword is a string.
+ */
 function reportMarked(
+  node: SchemaNode,
   marker: CmsMarker,
   value: unknown,
   path: PathSegment[],
   state: WalkState,
 ): void {
+  const collection =
+    marker === 'reference' && typeof node.collection === 'string'
+      ? node.collection
+      : undefined;
   if (Array.isArray(value)) {
     value.forEach((item, index) => {
-      reportOne(marker, item, [...path, index], state);
+      reportOne(marker, collection, item, [...path, index], state);
     });
     return;
   }
-  reportOne(marker, value, path, state);
+  reportOne(marker, collection, value, path, state);
 }
 
 /** Reports one value once per path and marker. A null or undefined value is not a reference or an image. */
 function reportOne(
   marker: CmsMarker,
+  collection: string | undefined,
   value: unknown,
   path: PathSegment[],
   state: WalkState,
@@ -189,7 +202,11 @@ function reportOne(
   const key = JSON.stringify([path, marker]);
   if (state.reported.has(key)) return;
   state.reported.add(key);
-  state.visit({ path: [...path], marker, value });
+  state.visit(
+    collection === undefined
+      ? { path: [...path], marker, value }
+      : { path: [...path], marker, value, collection },
+  );
 }
 
 /** Follows the `$ref` links of a node to the schema they name. A cycle of links that never reaches a schema gives undefined. */

@@ -53,9 +53,17 @@ A file can score well only through other files' tests and still have no direct t
 ## 7. Running Stryker on new work
 
 - Make sure the file's tests pass first: `npx vitest run <file>`.
-- Run Stryker incrementally on the files you changed: `npx stryker run --mutate "src/a.ts,src/b.ts"` (comma-separated). The table also shows cached files, so read only your rows.
+- **Never run `npx stryker run` yourself.** A raw run puts its sandbox inside the repo, where a git call from a test or a mutant can reach the main checkout and change its branch, refs or config (it has happened three times; see WORKPLAN-PHASE-2.md, 2.1h standing risk). Run Stryker only through the script, from the repo root:
+  `node scripts/stryker-run.mjs <config> --mutate <files>`
+  - `<config>` is `stryker.cms-server.config.mjs` for `cms-server` files, or `stryker.serve.config.mjs` for `preview-render-server/src/serve/` files.
+  - `--mutate` is required (comma-separated files or globs). The script adds `--force` itself, so every score is a fresh, full score for those files.
+  - **Commit or stash first.** The script refuses a dirty tree, because it exports `HEAD`. Do not commit or switch branches while it runs.
+  - It runs a copy of `HEAD` under `%TEMP%\avc-stryker\` with no git repository above it, checks the main checkout's branch, `HEAD`, refs, local config and `node_modules` before and after, and copies nothing back if one changed.
+  - If it refuses or reports a change, stop and report its message. Do not retry and do not fall back to `npx stryker run`.
+  - A run takes tens of minutes (about 40 for a file of 200 mutants). Run one at a time, in the background if your tool allows it.
+- Results are in `reports/stryker-runs/<stamp>/`. The survivors, with the original and the changed code, are in the run's console output (clear-text report). Score with the table's `% Mutation score` row for your file; ignore other rows.
 - The result that counts is the Stryker re-run, not the green test run.
-- Read the surviving mutants from `reports/stryker-incremental.json`.
+- To check a survivor by hand, apply the mutant in the file, run that test file, then restore the file with `git checkout -- <file>`. Do this only with no Stryker run in progress.
 - Mutants in module-level constants ("static" mutants) often survive under the Vitest runner, because modules are not reloaded for each mutant. Check them by hand and treat them as noise.
 - Floors: coverage floors are per package (root `vitest.config.ts`): 80 lines, 90 functions, 80 branches and 80 statements for every package (decided 2026-11-02; see QUALITY-TOOLING.md). Stryker fails the run below 75% (`break`); above 90% is healthy and below 80% needs attention (`high` 90, `low` 80; see QUALITY-TOOLING.md).
 

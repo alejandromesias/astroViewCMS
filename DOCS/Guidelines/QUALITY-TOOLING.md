@@ -336,6 +336,32 @@ that behaviour down).
   preview-protocol 97.22%, preview-contract 83.10% (between the `low` line of 80 and
   the `high` line of 90, and the weakest; 9 survivors).
 
+### Running Stryker through the script (since 2026-11-04)
+
+A raw `npx stryker run` creates its sandbox (`.stryker-tmp`) inside the repo. The sandbox has
+no `.git`, so a git call made by a test or a mutant climbs to the main checkout. This switched
+the checkout to another branch three times (WORKPLAN-PHASE-2.md, 2.1h standing risk). The
+rules that came from it:
+
+1. **Clean tree.** Commit or stash before a run.
+2. **Tripwire hook.** `.githooks/reference-transaction` refuses any ref or `HEAD` change in the
+   main checkout while `VITEST` or `STRYKER_MUTATOR_WORKER` is set. Needs `core.hooksPath`
+   set to `.githooks` (see Pre-commit hook).
+3. **Only the script runs Stryker:** `node scripts/stryker-run.mjs <config> --mutate <files>`.
+   It refuses a dirty tree and a run without `--mutate`, adds `--force`, exports `HEAD` with
+   `git archive` to `%TEMP%\avc-stryker\<stamp>` (no `.git`, no repository above it), links
+   `node_modules` with junctions, and checks that git finds no repository there. Before and
+   after, it compares the main checkout's branch, `HEAD`, refs (except `refs/t3/`, which the
+   T3 Code app writes), local config and root `node_modules`; if any changed it copies nothing
+   back. Cleanup removes junctions as links, never following them.
+4. **Agents.** Builder briefs for agents that may run Stryker carry the same rule. Agents that
+   edit code run with `isolation: "worktree"`, but a Stryker run still goes through the script.
+
+Configs: `stryker.cms-server.config.mjs`, `stryker.serve.config.mjs`. Output: `reports/stryker-runs/<stamp>/`
+(`run.json` has the config, arguments and `HEAD`), plus the console output. Each run starts
+from an empty incremental file, so the accumulated `reports/stryker-triage-*.json` files are
+not updated. The script has no way to run the whole repo; use `--mutate` with globs.
+
 ### Incremental mode
 
 `"incremental": true`, with the baseline stored in

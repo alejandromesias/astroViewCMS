@@ -68,6 +68,25 @@ describe('readBody', () => {
     expect(state.pulled).toBe(0);
   });
 
+  it('accepts a declared length of exactly the cap', async () => {
+    const { stream } = countedBody(2, 5);
+    const bytes = await readBody(
+      streamRequest(stream, { 'content-length': '10' }),
+      10,
+    );
+    expect(bytes.byteLength).toBe(10);
+  });
+
+  it('refuses a declared length over the cap when there is no body to cancel', async () => {
+    const request = new Request(URL, {
+      method: 'POST',
+      headers: { 'content-length': '11' },
+    });
+    await expect(readBody(request, 10)).rejects.toBeInstanceOf(
+      BodyTooLargeError,
+    );
+  });
+
   it('passes a read error through, such as a client that disconnects', async () => {
     let pulls = 0;
     const stream = new ReadableStream<Uint8Array>(

@@ -12,14 +12,18 @@ export const loaderInfoSchema = z.object({
   kind: z.enum(['glob', 'file']),
   pattern: z.string(),
   base: z.string().optional(),
+  /** Set only for a glob with its own `generateId`: its ids are not file names (WORKPLAN 2.0j). */
+  customId: z.literal(true).optional(),
 });
 
 /** One collection in schema.json. `schema` is absent when the collection has
- *  none or Zod can't export it (then `error` says why). */
+ *  none or Zod can't export it (then `error` says why). `readOnly` is set only
+ *  for a collection the site config lists in `readOnlyCollections` (2.0j). */
 export const collectionSchemaJson = z.strictObject({
   loader: loaderInfoSchema.optional(),
   schema: objectOf('"schema" must be an object').optional(),
   error: z.string().optional(),
+  readOnly: z.boolean().optional(),
 });
 
 /** One collection of schema.json, as the parsed value gives it. */

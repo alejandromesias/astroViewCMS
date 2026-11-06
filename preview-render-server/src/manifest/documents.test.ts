@@ -4,7 +4,7 @@ import path from 'node:path';
 import { stringify } from 'devalue';
 import { revisionOf, revisionOfEntry } from 'preview-contract';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { DataStore } from './documents.ts';
+import type { DataStore, LoaderKinds } from './documents.ts';
 import { readDataStore, shapeDocuments, withRevisions } from './documents.ts';
 
 const store: DataStore = new Map([
@@ -45,15 +45,18 @@ const scan = {
 };
 const loaderKinds = { testimonials: 'file' as const, authors: 'glob' as const };
 
-const documents = shapeDocuments({
-  store,
-  loaderKinds,
-  scan,
-  buildTimeFields: {
-    'data:src/config/config.json': ['site.base_url', 'site.base_path'],
-  },
-});
-const byKey = (key: string) => documents.find((d) => d.key === key);
+// Shaped per call, not once at module level: a call made outside a test is not
+// linked to any test in Stryker's per-test coverage (TESTING-RECOMMENDATIONS 1).
+const shapeSite = () =>
+  shapeDocuments({
+    store,
+    loaderKinds,
+    scan,
+    buildTimeFields: {
+      'data:src/config/config.json': ['site.base_url', 'site.base_path'],
+    },
+  });
+const byKey = (key: string) => shapeSite().find((d) => d.key === key);
 
 describe('shapeDocuments: content entries', () => {
   it('keys are collection/id, and the id keeps its slashes (D10)', () => {
@@ -97,6 +100,7 @@ describe('shapeDocuments: content entries', () => {
             ['a', { id: 'a', filePath: 'src/content/misc/a.yaml' }],
             ['b', { id: 'b', filePath: 'src/content/misc/b.yml' }],
             ['c', { id: 'c', filePath: 'src/content/misc/c.toml' }],
+            ['d', { id: 'd', filePath: 'src/content/misc/d.csv' }],
           ]),
         ],
       ]),
@@ -107,7 +111,47 @@ describe('shapeDocuments: content entries', () => {
       ['yaml', undefined],
       ['yaml', undefined],
       ['toml', false],
+      ['other', false],
     ]);
+  });
+
+  it('lists the entries of a collection by id, whatever order the store holds them', () => {
+    const shaped = shapeDocuments({
+      store: new Map([
+        [
+          'zeta',
+          new Map([
+            ['b', { id: 'b' }],
+            ['a', { id: 'a' }],
+          ]),
+        ],
+      ]),
+      loaderKinds: {},
+      scan: { buildTimeFiles: [], dataModules: [] },
+    });
+    expect(shaped.map((d) => d.key)).toEqual(['zeta/a', 'zeta/b']);
+  });
+
+  it.each([
+    ['src/a.json', 'json'],
+    ['src/a.JSON', 'json'],
+    ['src/a.md', 'md'],
+    ['src/a.markdown', 'md'],
+    ['src/a.MD', 'md'],
+    ['src/a.mdx', 'mdx'],
+    ['src/a.yaml', 'yaml'],
+    ['src/a.yml', 'yaml'],
+    ['src/a.toml', 'toml'],
+    ['src/a.csv', 'other'],
+    ['src/a', 'other'],
+    ['src.d/a', 'other'],
+  ])('formats %s as %s (D13)', (filePath, format) => {
+    const shaped = shapeDocuments({
+      store: new Map([['misc', new Map([['a', { id: 'a', filePath }]])]]),
+      loaderKinds: {},
+      scan: { buildTimeFiles: [], dataModules: [] },
+    });
+    expect(shaped.map((d) => d.format)).toEqual([format]);
   });
 
   it('a read-only collection is not editable, whatever its format; a near-miss name is (site config)', () => {
@@ -183,9 +227,26 @@ describe('shapeDocuments: content entries', () => {
 describe('shapeDocuments: data modules and build-time flags (D1)', () => {
   it('adds every imported JSON as data:<path>', () => {
     expect(
-      documents.filter((d) => d.key.startsWith('data:')).map((d) => d.key),
+      shapeSite()
+        .filter((d) => d.key.startsWith('data:'))
+        .map((d) => d.key),
     ).toEqual([
       'data:src/config/config.json',
+      'data:src/config/menu.json',
+      'data:src/config/theme.json',
+    ]);
+  });
+
+  it('lists the data modules by path, whatever order the scan finds them', () => {
+    const shaped = shapeDocuments({
+      store: new Map(),
+      loaderKinds: {},
+      scan: {
+        buildTimeFiles: [],
+        dataModules: ['src/config/theme.json', 'src/config/menu.json'],
+      },
+    });
+    expect(shaped.map((d) => d.key)).toEqual([
       'data:src/config/menu.json',
       'data:src/config/theme.json',
     ]);
@@ -310,12 +371,16 @@ describe('withRevisions (WORKPLAN 2.0c)', () => {
     ]);
 
   /** Each document's revision, by key, for a store read from `root`. */
-  const revisionsOf = (root: string, store: DataStore) =>
+  const revisionsOf = (
+    root: string,
+    store: DataStore,
+    loaderKinds: LoaderKinds = { testimonials: 'file' },
+  ) =>
     Object.fromEntries(
       withRevisions(
         shapeDocuments({
           store,
-          loaderKinds: { testimonials: 'file' },
+          loaderKinds,
           scan: { buildTimeFiles: [], dataModules: [] },
         }),
         store,
@@ -465,6 +530,264 @@ describe('withRevisions (WORKPLAN 2.0c)', () => {
     });
     expect(() => revisionsOf(root, testimonialsStore({}, {}))).toThrow(
       "src/content/testimonials.json has no entry 't-ana'",
+    );
+  });
+
+  it('hashes a document with no file by its store data', () => {
+    const store: DataStore = new Map([
+      ['custom', new Map([['x', { id: 'x', data: { title: 'Plain' } }]])],
+    ]);
+    const [document] = withRevisions(
+      shapeDocuments({
+        store,
+        loaderKinds: {},
+        scan: { buildTimeFiles: [], dataModules: [] },
+      }),
+      store,
+      siteWith({}),
+    );
+    expect(document?.revision).toBe(revisionOf('{"title":"Plain"}'));
+  });
+
+  it('fails in the hash, not in the lookup, for a document with no file whose entry is not in the store', () => {
+    expect(() =>
+      withRevisions(
+        [{ key: 'custom/gone', format: 'other', buildTime: false }],
+        new Map(),
+        siteWith({}),
+      ),
+    ).toThrow(/The "data" argument must be of type string/);
+  });
+
+  it('hashes an object-keyed file entry with its id, since the key is the id', () => {
+    const root = siteWith({
+      'src/content/settings.json':
+        '{"site":{"id":"site","name":"Ana"},"other":{"name":"Kofi"}}',
+    });
+    const store: DataStore = new Map([
+      [
+        'settings',
+        new Map([
+          [
+            'site',
+            { id: 'site', filePath: 'src/content/settings.json', data: {} },
+          ],
+        ]),
+      ],
+    ]);
+    expect(revisionsOf(root, store, { settings: 'file' })).toEqual({
+      'settings/site': revisionOf('{"id":"site","name":"Ana"}'),
+    });
+  });
+
+  it('does not take an inherited property as an object-keyed entry', () => {
+    const root = siteWith({
+      'src/content/settings.json': '{"site":{"name":"Ana"}}',
+    });
+    const store: DataStore = new Map([
+      [
+        'settings',
+        new Map([
+          [
+            'toString',
+            {
+              id: 'toString',
+              filePath: 'src/content/settings.json',
+              data: {},
+            },
+          ],
+        ]),
+      ],
+    ]);
+    expect(() => revisionsOf(root, store, { settings: 'file' })).toThrow(
+      "src/content/settings.json has no entry 'toString'",
+    );
+  });
+
+  it('expands a YAML merge key in an object-keyed file, as Astro does', () => {
+    const root = siteWith({
+      'src/content/stats.yaml':
+        'base: &base\n  color: red\nitem:\n  <<: *base\n  size: 2\n',
+    });
+    const store: DataStore = new Map([
+      [
+        'stats',
+        new Map([
+          [
+            'item',
+            { id: 'item', filePath: 'src/content/stats.yaml', data: {} },
+          ],
+        ]),
+      ],
+    ]);
+    expect(revisionsOf(root, store, { stats: 'file' })).toEqual({
+      'stats/item': revisionOf('{"color":"red","size":2}'),
+    });
+  });
+
+  it.each(['yml', 'yaml'])('reads a .%s file() entry as YAML', (extension) => {
+    const root = siteWith({
+      [`src/content/stats.${extension}`]:
+        '- id: editors\n  since: 2026-09-01\n',
+    });
+    const store: DataStore = new Map([
+      [
+        'stats',
+        new Map([
+          [
+            'editors',
+            {
+              id: 'editors',
+              filePath: `src/content/stats.${extension}`,
+              data: {},
+            },
+          ],
+        ]),
+      ],
+    ]);
+    expect(revisionsOf(root, store, { stats: 'file' })).toEqual({
+      'stats/editors': revisionOfEntry({
+        since: new Date('2026-09-01T00:00:00Z'),
+      }),
+    });
+  });
+
+  it('refuses a file() entry in a format it does not read', () => {
+    const root = siteWith({ 'src/content/site.toml': 'title = "Ana"\n' });
+    const store: DataStore = new Map([
+      [
+        'site',
+        new Map([
+          ['main', { id: 'main', filePath: 'src/content/site.toml', data: {} }],
+        ]),
+      ],
+    ]);
+    expect(() => revisionsOf(root, store, { site: 'file' })).toThrow(
+      'src/content/site.toml: a file() entry must be JSON or YAML',
+    );
+  });
+
+  it('finds the array entry past items that are not objects or have no id', () => {
+    const root = siteWith({
+      'src/content/testimonials.json':
+        '[null, "note", 5, {"name":"Nobody"}, {"id":"t-kofi","name":"Kofi"}, {"id":"t-ana","name":"Ana"}]',
+    });
+    const store: DataStore = new Map([
+      [
+        'testimonials',
+        new Map([
+          [
+            't-ana',
+            {
+              id: 't-ana',
+              filePath: 'src/content/testimonials.json',
+              data: {},
+            },
+          ],
+        ]),
+      ],
+    ]);
+    expect(revisionsOf(root, store)).toEqual({
+      'testimonials/t-ana': revisionOf('{"name":"Ana"}'),
+    });
+  });
+
+  it('finds an array entry by its slug when its id is null', () => {
+    const root = siteWith({
+      'src/content/testimonials.json':
+        '[{"id":null,"slug":"about","name":"About"}]',
+    });
+    const store: DataStore = new Map([
+      [
+        'testimonials',
+        new Map([
+          [
+            'about',
+            {
+              id: 'about',
+              filePath: 'src/content/testimonials.json',
+              data: {},
+            },
+          ],
+        ]),
+      ],
+    ]);
+    expect(revisionsOf(root, store)).toEqual({
+      'testimonials/about': revisionOf('{"id":null,"name":"About"}'),
+    });
+  });
+
+  it.each([
+    ['[{"name":"Ana"}]', 'undefined'],
+    ['[{"id":null,"name":"Ana"}]', 'null'],
+    ['[{"slug":null,"name":"Ana"}]', 'null'],
+  ])('does not take %s as the entry %s', (text, entryId) => {
+    const root = siteWith({ 'src/content/testimonials.json': text });
+    const store: DataStore = new Map([
+      [
+        'testimonials',
+        new Map([
+          [
+            entryId,
+            {
+              id: entryId,
+              filePath: 'src/content/testimonials.json',
+              data: {},
+            },
+          ],
+        ]),
+      ],
+    ]);
+    expect(() => revisionsOf(root, store)).toThrow(
+      `src/content/testimonials.json has no entry '${entryId}'`,
+    );
+  });
+
+  it.each([
+    ['settings.json', 'null'],
+    ['settings.yaml', ''],
+    ['settings.yaml', 'null\n'],
+  ])('says the entry is missing when the whole %s file is %j', (file, text) => {
+    const root = siteWith({ [`src/content/${file}`]: text });
+    const store: DataStore = new Map([
+      [
+        'settings',
+        new Map([
+          [
+            'site',
+            {
+              id: 'site',
+              filePath: `src/content/${file}`,
+              data: {},
+            },
+          ],
+        ]),
+      ],
+    ]);
+    expect(() => revisionsOf(root, store, { settings: 'file' })).toThrow(
+      `src/content/${file} has no entry 'site'`,
+    );
+  });
+
+  it('reports a YAML syntax error instead of hashing a partial document', () => {
+    const root = siteWith({ 'src/content/settings.yaml': 'site: [1, 2\n' });
+    const store: DataStore = new Map([
+      [
+        'settings',
+        new Map([
+          [
+            'site',
+            {
+              id: 'site',
+              filePath: 'src/content/settings.yaml',
+              data: {},
+            },
+          ],
+        ]),
+      ],
+    ]);
+    expect(() => revisionsOf(root, store, { settings: 'file' })).toThrow(
+      'Flow sequence in block collection must be sufficiently indented',
     );
   });
 });

@@ -21,6 +21,13 @@ describe('readMedia', () => {
     expect(await readMedia(mediaFile)).toEqual(new Map());
   });
 
+  it('throws a read error that is not a missing file, such as a folder read as a file', async () => {
+    fs.mkdirSync(mediaFile, { recursive: true });
+    await expect(readMedia(mediaFile)).rejects.toMatchObject({
+      code: 'EISDIR',
+    });
+  });
+
   it('rejects a file whose top level is not an object', async () => {
     fs.mkdirSync(path.dirname(mediaFile), { recursive: true });
     for (const text of ['[]', 'null', '"x"']) {
