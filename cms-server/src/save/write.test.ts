@@ -1,11 +1,7 @@
-import { readFile, access } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { revisionOf } from 'preview-contract';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  removeWorkingCopies,
-  tempWorkingCopy,
-} from '../../test/helpers/working-copy.ts';
 import {
   authorsCollections,
   bundleOf,
@@ -14,6 +10,10 @@ import {
   fakeTx,
   saveContext,
 } from '../../test/helpers/save-context.ts';
+import {
+  removeWorkingCopies,
+  tempWorkingCopy,
+} from '../../test/helpers/working-copy.ts';
 import { writeFileAtomic } from '../fs/atomic.ts';
 import type { SaveChange } from './body.ts';
 import { commitMessageOf, writeChanges } from './write.ts';
@@ -123,6 +123,24 @@ describe('writeChanges', () => {
     );
   });
 
+  it('answers save-committed, and logs the missing revision, when a created document is not in the changeset after the commit', async () => {
+    const siteFolder = await tempWorkingCopy({ [LEE]: LEE_TEXT });
+    const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const ctx = saveContext({
+      siteFolder,
+      log,
+      bundle: bundleOf([], authorsCollections()),
+      writeFile: writeFileAtomic,
+      changes: [CREATE],
+      plan: [{ op: 'write', path: LEE, text: LEE_TEXT }],
+    });
+    expect(await writeChanges(ctx)).toStrictEqual(SAVE_COMMITTED);
+    expect(log.error).toHaveBeenCalledWith(
+      'the revisions of a committed save could not be read',
+      { reason: '"authors/lee" has no revision after the save' },
+    );
+  });
+
   it('answers save-committed, and logs the document, when its file is gone after the commit', async () => {
     const siteFolder = await tempWorkingCopy({ [ANA]: ANA_TEXT });
     const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -218,9 +236,11 @@ describe('writeChanges', () => {
     const tx = fakeTx({
       restore: vi.fn(() => Promise.reject(new Error('lock lost'))),
     });
+    const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const ctx = saveContext({
       siteFolder,
       tx,
+      log,
       writeFile: async () => {
         throw new Error('disk full');
       },
@@ -235,6 +255,10 @@ describe('writeChanges', () => {
           'The save was not written: disk full; the working copy could not be restored: lock lost',
       },
     });
+    expect(log.error).toHaveBeenCalledWith(
+      'the working copy could not be restored after a failed save',
+      { reason: 'lock lost' },
+    );
   });
 
   it('answers save-committed, not save-failed, when the revisions cannot be read after the commit', async () => {

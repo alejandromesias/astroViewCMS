@@ -122,6 +122,23 @@ describe('GET /api/changes', () => {
       message: 'git diff --name-status failed (exit 128)',
     });
   });
+
+  it('answers 500 as an unhandled error, not changes-unavailable, when the changes fail for another reason', async () => {
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    try {
+      const failing: Repo = {
+        ...repo,
+        changedPaths: () => Promise.reject(new Error('boom')),
+      };
+      const res = await get(FIXTURE_BUNDLE, await workingCopy(), failing);
+      expect(res.status).toBe(500);
+      expect(await res.text()).toBe('Internal Server Error');
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
 });
 
 // The app over a real clone of the bundle fixture's source, with `preview` as the preview node. Each test calls it.

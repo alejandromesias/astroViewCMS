@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { revisionOf, revisionOfEntry } from 'preview-contract';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeAppDeps } from '../../test/helpers/app-deps.ts';
 import {
   bundleFolder,
@@ -520,6 +520,34 @@ describe('GET /api/documents?key=', () => {
       error: 'changes-unavailable',
       message: 'git diff --name-status failed (exit 128)',
     });
+  });
+
+  it('answers 500 as an unhandled error, not changes-unavailable and not 404, when the changes of an unknown key fail for another reason', async () => {
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    try {
+      const root = await tempWorkingCopy({});
+      const repo: Repo = {
+        changedPaths: () => Promise.reject(new Error('boom')),
+        mergeBase: async () => 'base',
+        showAtBytes: async () => null,
+        overwrittenSince: async () => new Map(),
+        locked: () => Promise.reject(new Error('GET takes no lock')),
+        showAt: () => Promise.reject(new Error('GET reads no text')),
+      };
+      const app = createApp({
+        ...fakeAppDeps(),
+        bundle: directoryBundleSource(FIXTURE_BUNDLE),
+        workingCopy: root,
+        repo,
+      });
+      const response = await app.request('/api/documents?key=authors/nobody');
+      expect(response.status).toBe(500);
+      expect(await response.text()).toBe('Internal Server Error');
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it('answers 404 unknown-document for a key the bundle does not have', async () => {

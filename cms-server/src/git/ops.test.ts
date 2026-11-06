@@ -329,6 +329,37 @@ describe('openRepo: restore', () => {
       await readFile(join(fixture.state.siteFolder, 'notes/other.md'), 'utf8'),
     ).toBe('kept\n');
   });
+
+  it('runs no checkout when no path is in HEAD, and removes the new file', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site');
+    await edit(fixture, 'notes/new.md', 'new\n');
+    const calls: string[][] = [];
+    const recording: ExecFn = (file, args, options) => {
+      calls.push([...args]);
+      return realExec(file, args, options);
+    };
+    await openRepo({ ...fixture, exec: recording }).locked('save', (tx) =>
+      tx.restore(['notes/new.md']),
+    );
+    expect(calls.filter((args) => args.includes('checkout'))).toStrictEqual([]);
+    await expect(
+      stat(join(fixture.state.siteFolder, 'notes/new.md')),
+    ).rejects.toThrow('ENOENT');
+  });
+
+  it('runs one checkout when a tracked file is restored, so the recording sees checkout', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site');
+    await edit(fixture, 'notes/a.md', 'alpha 2\n');
+    const calls: string[][] = [];
+    const recording: ExecFn = (file, args, options) => {
+      calls.push([...args]);
+      return realExec(file, args, options);
+    };
+    await openRepo({ ...fixture, exec: recording }).locked('save', (tx) =>
+      tx.restore(['notes/a.md']),
+    );
+    expect(calls.filter((args) => args.includes('checkout'))).toHaveLength(1);
+  });
 });
 
 describe('openRepo: bytes, merge base and trailers', () => {
