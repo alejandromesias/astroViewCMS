@@ -119,8 +119,11 @@ interface Harness {
   readonly siteFolder: string;
 }
 
-// A remote with the test site on `main`, cloned by ensureRepo. Its operations are the real ones.
-async function harness(): Promise<Harness> {
+// A remote with the test site on `main`, cloned by ensureRepo. Its operations are the real ones. `extraFiles` replaces
+// files of the seed commit, so a test can start from a file that does not parse.
+async function harness(
+  extraFiles: Record<string, string> = {},
+): Promise<Harness> {
   const root = await makeTestRoot();
   roots.push(root);
   const remote = join(root, 'remote.git');
@@ -133,6 +136,7 @@ async function harness(): Promise<Harness> {
     [BLOG_B]: POST_B,
     [PEOPLE]: PEOPLE_TEXT,
     [NOTES]: NOTES_TEXT,
+    ...extraFiles,
   };
   for (const [path, text] of Object.entries(files)) {
     const target = join(seed, 'site', path);
@@ -179,6 +183,18 @@ function save(h: Harness, paths: string[], message: string): Promise<unknown> {
 function changes(h: Harness) {
   return changesetOf({
     bundle: bundleOf(),
+    repo: h.repo,
+    siteFolder: h.siteFolder,
+  });
+}
+
+// The changes of a bundle that holds no document, so each changed file is read by its collection's loader.
+function changesUnbundled(h: Harness) {
+  return changesetOf({
+    bundle: {
+      documents: new Map<string, DocumentEntry>(),
+      collections: bundleOf().collections,
+    },
     repo: h.repo,
     siteFolder: h.siteFolder,
   });
@@ -233,6 +249,97 @@ describe('changesetOf: documents with a file of their own', () => {
           key: 'blog/post-b',
           status: 'deleted',
           baseRevision: revisionOf(POST_B),
+        },
+      ],
+      createdRecords: [],
+      fileErrors: [],
+    });
+  });
+
+  it('reports a deleted file the bundle does not hold, with no created record', async () => {
+    const h = await harness();
+    await rm(join(h.siteFolder, BLOG_B));
+    await save(h, [BLOG_B], 'delete b');
+    expect(await changesUnbundled(h)).toStrictEqual({
+      documents: [
+        {
+          key: 'blog/post-b',
+          status: 'deleted',
+          baseRevision: revisionOf(POST_B),
+        },
+      ],
+      createdRecords: [],
+      fileErrors: [],
+    });
+  });
+
+  it('reports a modified file the bundle does not hold as a document, with no created record', async () => {
+    const h = await harness();
+    await edit(h, BLOG_A, '---\ntitle: Post A\n---\nBody A edited\n');
+    await save(h, [BLOG_A], 'edit a');
+    expect(await changesUnbundled(h)).toStrictEqual({
+      documents: [
+        {
+          key: 'blog/post-a',
+          status: 'modified',
+          baseRevision: revisionOf(POST_A),
+          value: { data: { title: 'Post A' }, body: 'Body A edited\n' },
+        },
+      ],
+      createdRecords: [],
+      fileErrors: [],
+    });
+  });
+
+  it('reports nothing for a new file that the working copy no longer has', async () => {
+    const h = await harness();
+    await edit(h, 'src/content/blog/gone.md', POST_B);
+    await save(h, ['src/content/blog/gone.md'], 'add gone');
+    await rm(join(h.siteFolder, 'src/content/blog/gone.md'));
+    expect(await changesUnbundled(h)).toStrictEqual({
+      documents: [],
+      createdRecords: [],
+      fileErrors: [],
+    });
+  });
+
+  it('reports a new file that does not parse as a document with its error, and no created record', async () => {
+    const h = await harness();
+    const authors = new Map<string, CollectionSchemaJson>([
+      [
+        'authors',
+        {
+          loader: {
+            kind: 'glob',
+            pattern: '**/*.json',
+            base: 'src/content/authors',
+          },
+        },
+      ],
+    ]);
+    await edit(h, 'src/content/authors/ana.json', '{\n  "name": ');
+    await save(h, ['src/content/authors/ana.json'], 'broken author');
+    expect(
+      await changesetOf({
+        bundle: {
+          documents: new Map<string, DocumentEntry>(),
+          collections: authors,
+        },
+        repo: h.repo,
+        siteFolder: h.siteFolder,
+      }),
+    ).toStrictEqual({
+      documents: [
+        {
+          key: 'authors/ana',
+          status: 'created',
+          baseRevision: null,
+          error: {
+            code: 'parse-error',
+            message: 'Invalid JSON at line 2, column 11: ValueExpected',
+            line: 2,
+            column: 11,
+          },
         },
       ],
       createdRecords: [],
@@ -504,6 +611,219 @@ describe('changesetOf: entries of a file() file', () => {
         },
       ],
       createdRecords: [],
+      fileErrors: [],
+    });
+  });
+
+  it('reports a new file() file in a format the CMS cannot parse as a file error', async () => {
+    const h = await harness();
+    const settings = 'src/content/settings.toml';
+    const bundle = {
+      documents: new Map<string, DocumentEntry>(),
+      collections: new Map<string, CollectionSchemaJson>([
+        ['settings', { loader: { kind: 'file', pattern: settings } }],
+      ]),
+    };
+    await edit(h, settings, 'title = "Site"\n');
+    await save(h, [settings], 'settings');
+    expect(
+      await changesetOf({ bundle, repo: h.repo, siteFolder: h.siteFolder }),
+    ).toStrictEqual({
+      documents: [],
+      createdRecords: [],
+      fileErrors: [
+        {
+          path: settings,
+          error: {
+            code: 'not-editable',
+            message:
+              'The format "toml" is read-only in the CMS, so the document cannot be checked',
+          },
+        },
+      ],
+    });
+  });
+
+  it('gives the documents of a file that did not parse at the merge base the base error', async () => {
+    const h = await harness({ [PEOPLE]: '[\n  { "id": "ana", "name": ' });
+    await edit(h, PEOPLE, PEOPLE_TEXT);
+    await save(h, [PEOPLE], 'repair people');
+    const error = {
+      code: 'parse-error',
+      message: 'Invalid JSON at line 2, column 26: ValueExpected',
+      line: 2,
+      column: 26,
+    };
+    expect(await changes(h)).toStrictEqual({
+      documents: [
+        { key: 'people/ana', status: 'modified', baseRevision: null, error },
+        { key: 'people/kofi', status: 'modified', baseRevision: null, error },
+      ],
+      createdRecords: [],
+      fileErrors: [],
+    });
+  });
+
+  it('gives a document whose entry the merge base lacks the error, with no base revision', async () => {
+    const h = await harness();
+    const base = bundleOf();
+    const documents = new Map(base.documents);
+    documents.set('people/lena', {
+      key: 'people/lena',
+      file: PEOPLE,
+      format: 'json',
+      entryKey: 'lena',
+      buildTime: false,
+      revision: 'r',
+    });
+    await edit(h, PEOPLE, '[\n  { "id": "ana", "name": ');
+    await save(h, [PEOPLE], 'broken');
+    const error = {
+      code: 'parse-error',
+      message: 'Invalid JSON at line 2, column 26: ValueExpected',
+      line: 2,
+      column: 26,
+    };
+    expect(
+      await changesetOf({
+        bundle: { documents, collections: base.collections },
+        repo: h.repo,
+        siteFolder: h.siteFolder,
+      }),
+    ).toStrictEqual({
+      documents: [
+        {
+          key: 'people/ana',
+          status: 'modified',
+          baseRevision: revisionOfEntry({ name: 'Ana' }),
+          error,
+        },
+        {
+          key: 'people/kofi',
+          status: 'modified',
+          baseRevision: revisionOfEntry({ name: 'Kofi' }),
+          error,
+        },
+        { key: 'people/lena', status: 'modified', baseRevision: null, error },
+      ],
+      createdRecords: [],
+      fileErrors: [],
+    });
+  });
+
+  it('orders the changed entries of a file() file by id', async () => {
+    const h = await harness();
+    await edit(
+      h,
+      PEOPLE,
+      '[\n  { "id": "ana", "name": "Ana B" },\n  { "id": "lena", "name": "Lena" },\n  { "id": "bo", "name": "Bo" }\n]\n',
+    );
+    await save(h, [PEOPLE], 'people');
+    expect(await changes(h)).toStrictEqual({
+      documents: [
+        {
+          key: 'people/ana',
+          status: 'modified',
+          baseRevision: revisionOfEntry({ name: 'Ana' }),
+          value: { id: 'ana', name: 'Ana B' },
+        },
+        {
+          key: 'people/bo',
+          status: 'created',
+          baseRevision: null,
+          value: { id: 'bo', name: 'Bo' },
+        },
+        {
+          key: 'people/kofi',
+          status: 'deleted',
+          baseRevision: revisionOfEntry({ name: 'Kofi' }),
+        },
+        {
+          key: 'people/lena',
+          status: 'created',
+          baseRevision: null,
+          value: { id: 'lena', name: 'Lena' },
+        },
+      ],
+      createdRecords: [
+        {
+          key: 'people/bo',
+          file: PEOPLE,
+          format: 'json',
+          entryKey: 'bo',
+          buildTime: false,
+          revision: revisionOfEntry({ name: 'Bo' }),
+        },
+        {
+          key: 'people/lena',
+          file: PEOPLE,
+          format: 'json',
+          entryKey: 'lena',
+          buildTime: false,
+          revision: revisionOfEntry({ name: 'Lena' }),
+        },
+      ],
+      fileErrors: [],
+    });
+  });
+
+  it('keeps an entry the bundle holds out of the created records, and a modified entry with no record out too', async () => {
+    const h = await harness();
+    const base = bundleOf();
+    const lena: DocumentEntry = {
+      key: 'people/lena',
+      file: PEOPLE,
+      format: 'json',
+      entryKey: 'lena',
+      buildTime: false,
+      revision: 'r',
+    };
+    await edit(
+      h,
+      PEOPLE,
+      '[\n  { "id": "ana", "name": "Ana B" },\n  { "id": "kofi", "name": "Kofi" },\n  { "id": "lena", "name": "Lena" },\n  { "id": "bo", "name": "Bo" }\n]\n',
+    );
+    await save(h, [PEOPLE], 'people');
+    expect(
+      await changesetOf({
+        bundle: {
+          documents: new Map<string, DocumentEntry>([[lena.key, lena]]),
+          collections: base.collections,
+        },
+        repo: h.repo,
+        siteFolder: h.siteFolder,
+      }),
+    ).toStrictEqual({
+      documents: [
+        {
+          key: 'people/ana',
+          status: 'modified',
+          baseRevision: revisionOfEntry({ name: 'Ana' }),
+          value: { id: 'ana', name: 'Ana B' },
+        },
+        {
+          key: 'people/bo',
+          status: 'created',
+          baseRevision: null,
+          value: { id: 'bo', name: 'Bo' },
+        },
+        {
+          key: 'people/lena',
+          status: 'created',
+          baseRevision: null,
+          value: { id: 'lena', name: 'Lena' },
+        },
+      ],
+      createdRecords: [
+        {
+          key: 'people/bo',
+          file: PEOPLE,
+          format: 'json',
+          entryKey: 'bo',
+          buildTime: false,
+          revision: revisionOfEntry({ name: 'Bo' }),
+        },
+      ],
       fileErrors: [],
     });
   });
