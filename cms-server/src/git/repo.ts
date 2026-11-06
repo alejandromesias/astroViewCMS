@@ -174,7 +174,8 @@ async function checkOrigin(
  * Refuses a clone folder that git does not treat as its own repo. A `.git` that git does not read (an
  * empty folder, say) makes git use a parent repo, and the fetch, checkout and config writes would change
  * that parent. Throws a `failed` RepoError when `git rev-parse --show-toplevel` is not `repoDir`, or when
- * that git call exits with an error. Real paths are compared, so Windows separators and case do not matter.
+ * that git call exits with an error. Real paths are compared, so Windows separators do not matter. Case does: `realpath`
+ * does not fold it, so a case-only difference is refused (a false refusal, the safe direction).
  */
 async function assertOwnRepo(git: Git, repoDir: string): Promise<void> {
   const refuse = (stderr = ''): RepoError =>

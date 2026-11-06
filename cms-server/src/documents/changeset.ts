@@ -46,11 +46,19 @@ interface ChangedDocument {
   readonly error?: DocumentError;
 }
 
+/** A changed `file()` file whose parse failed and that the bundle holds no document of, so no document can carry the error. */
+export interface FileError {
+  readonly path: string;
+  readonly error: DocumentError;
+}
+
 /** The changeset: the changed documents, and the documents created on cms/work in the bundle's shape. */
 export interface Changeset {
   readonly documents: readonly ChangedDocument[];
   /** Documents that the save created and the bundle does not hold, for 2.5c's `ctx.documents`. */
   readonly createdRecords: readonly DocumentEntry[];
+  /** Changed shared files that fail to parse and hold no bundle document. Without this, a broken new file is not listed. */
+  readonly fileErrors: readonly FileError[];
 }
 
 export interface ChangesetInput {
@@ -64,6 +72,7 @@ export interface ChangesetInput {
 interface Found {
   readonly documents: ChangedDocument[];
   readonly createdRecords: DocumentEntry[];
+  readonly fileErrors?: readonly FileError[];
 }
 
 /** The changed file, sorted by what names its documents. */
@@ -121,12 +130,14 @@ export async function changesetOf({
   const byFile = documentsByFile(bundle.documents.values());
   const documents: ChangedDocument[] = [];
   const createdRecords: DocumentEntry[] = [];
+  const fileErrors: FileError[] = [];
   for (const { path } of await repo.changedPaths()) {
     const unit = unitOf(path, byFile, bundle.collections);
     if (unit === undefined) continue;
     const found = await unitChanges(unit, env);
     documents.push(...found.documents);
     createdRecords.push(...found.createdRecords);
+    fileErrors.push(...(found.fileErrors ?? []));
   }
   const overwritten = await repo.overwrittenSince();
   return {
@@ -135,6 +146,7 @@ export async function changesetOf({
       return sha === undefined ? document : { ...document, overwritten: sha };
     }),
     createdRecords,
+    fileErrors,
   };
 }
 
@@ -277,6 +289,7 @@ async function sharedFile(
         }),
       ),
       createdRecords: [],
+      fileErrors: records.length === 0 ? [{ path, error: failure }] : [],
     };
   const documents: ChangedDocument[] = [];
   const createdRecords: DocumentEntry[] = [];

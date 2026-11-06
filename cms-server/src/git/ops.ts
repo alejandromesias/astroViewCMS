@@ -144,7 +144,8 @@ export function openRepo({
   ): Promise<ChangedPath[] | null> {
     if (siteCommit === null) return null;
     try {
-      // Three dots: the base is the merge base, so the CMS's own saves on `cms/work` do not count.
+      // Three dots: the diff runs from the merge base of `siteCommit` and origin, so only what origin changed since
+      // they split counts. Saves on `cms/work` are not on origin, so they never appear in it.
       const output = await git([
         'diff',
         '--name-status',

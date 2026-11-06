@@ -41,6 +41,15 @@ const CREATE: SaveChange = {
   deleted: false,
   data: { name: 'Lee' },
 };
+// The answer when the commit went through but the revisions could not be read (see write.ts).
+const SAVE_COMMITTED = {
+  status: 500,
+  body: {
+    error: 'save-committed',
+    message:
+      'The save was committed, but its revisions could not be read. Reload the documents before the next save.',
+  },
+};
 
 describe('writeChanges', () => {
   it('writes an update, commits it, and answers the revision of the new file', async () => {
@@ -114,8 +123,9 @@ describe('writeChanges', () => {
     );
   });
 
-  it('throws, naming the document, when its file is gone after the commit', async () => {
+  it('answers save-committed, and logs the document, when its file is gone after the commit', async () => {
     const siteFolder = await tempWorkingCopy({ [ANA]: ANA_TEXT });
+    const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const ctx = saveContext({
       siteFolder,
       writeFile: writeFileAtomic,
@@ -123,13 +133,16 @@ describe('writeChanges', () => {
       bundle: bundleOf([documentOf('authors/ana', { file: ANA })]),
       documents: bundleOf([documentOf('authors/ana', { file: ANA })]).documents,
       plan: [{ op: 'delete', path: ANA }],
+      log,
     });
-    await expect(writeChanges(ctx)).rejects.toThrow(
-      new Error('"authors/ana" has no revision after the save'),
+    expect(await writeChanges(ctx)).toStrictEqual(SAVE_COMMITTED);
+    expect(log.error).toHaveBeenCalledWith(
+      'the revisions of a committed save could not be read',
+      { reason: '"authors/ana" has no revision after the save' },
     );
   });
 
-  it('throws when a shared file no longer parses after the commit, so the entry has no revision', async () => {
+  it('answers save-committed when a shared file no longer parses after the commit, so the entry has no revision', async () => {
     const siteFolder = await tempWorkingCopy({ [SHARED]: SHARED_TEXT });
     const entry = documentOf('authors/ana', {
       file: SHARED,
@@ -143,9 +156,7 @@ describe('writeChanges', () => {
       documents: bundleOf([entry]).documents,
       plan: [{ op: 'write', path: SHARED, text: '{ "ana": ' }],
     });
-    await expect(writeChanges(ctx)).rejects.toThrow(
-      new Error('"authors/ana" has no revision after the save'),
-    );
+    expect(await writeChanges(ctx)).toStrictEqual(SAVE_COMMITTED);
   });
 
   it('restores the planned paths and answers 500 when a write fails', async () => {
@@ -200,6 +211,55 @@ describe('writeChanges', () => {
       },
     });
     expect(tx.restore).toHaveBeenCalledWith([ANA]);
+  });
+
+  it('keeps the write error in the answer when the restore after it fails too', async () => {
+    const siteFolder = await tempWorkingCopy({ [ANA]: ANA_TEXT });
+    const tx = fakeTx({
+      restore: vi.fn(() => Promise.reject(new Error('lock lost'))),
+    });
+    const ctx = saveContext({
+      siteFolder,
+      tx,
+      writeFile: async () => {
+        throw new Error('disk full');
+      },
+      changes: [UPDATE],
+      plan: [{ op: 'write', path: ANA, text: ANA_NEW }],
+    });
+    expect(await writeChanges(ctx)).toStrictEqual({
+      status: 500,
+      body: {
+        error: 'save-failed',
+        message:
+          'The save was not written: disk full; the working copy could not be restored: lock lost',
+      },
+    });
+  });
+
+  it('answers save-committed, not save-failed, when the revisions cannot be read after the commit', async () => {
+    const siteFolder = await tempWorkingCopy({ [ANA]: ANA_TEXT });
+    const tx = fakeTx();
+    const bundle = bundleOf([documentOf('authors/ana', { file: ANA })]);
+    const ctx = saveContext({
+      siteFolder,
+      tx,
+      writeFile: writeFileAtomic,
+      changes: [UPDATE],
+      bundle,
+      documents: bundle.documents,
+      plan: [{ op: 'delete', path: ANA }],
+    });
+    expect(await writeChanges(ctx)).toStrictEqual({
+      status: 500,
+      body: {
+        error: 'save-committed',
+        message:
+          'The save was committed, but its revisions could not be read. Reload the documents before the next save.',
+      },
+    });
+    expect(tx.commitSave).toHaveBeenCalled();
+    expect(tx.restore).not.toHaveBeenCalled();
   });
 
   it('runs every after-commit hook, and logs a hook that throws without failing the save', async () => {

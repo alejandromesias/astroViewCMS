@@ -199,6 +199,7 @@ describe('changesetOf: documents with a file of their own', () => {
         },
       ],
       createdRecords: [],
+      fileErrors: [],
     });
   });
 
@@ -218,6 +219,7 @@ describe('changesetOf: documents with a file of their own', () => {
         },
       ],
       createdRecords: [],
+      fileErrors: [],
     });
   });
 
@@ -234,6 +236,7 @@ describe('changesetOf: documents with a file of their own', () => {
         },
       ],
       createdRecords: [],
+      fileErrors: [],
     });
   });
 
@@ -260,6 +263,7 @@ describe('changesetOf: documents with a file of their own', () => {
           revision: revisionOf(text),
         },
       ],
+      fileErrors: [],
     });
   });
 
@@ -288,6 +292,7 @@ describe('changesetOf: documents with a file of their own', () => {
           revision: revisionOf(latest),
         },
       ],
+      fileErrors: [],
     });
   });
 
@@ -323,6 +328,7 @@ describe('changesetOf: documents with a file of their own', () => {
         },
       ],
       createdRecords: [],
+      fileErrors: [],
     });
   });
 
@@ -334,6 +340,7 @@ describe('changesetOf: documents with a file of their own', () => {
     expect(await changes(h)).toStrictEqual({
       documents: [],
       createdRecords: [],
+      fileErrors: [],
     });
   });
 
@@ -392,6 +399,7 @@ describe('changesetOf: entries of a file() file', () => {
           revision: revisionOfEntry({ name: 'Lena' }),
         },
       ],
+      fileErrors: [],
     });
   });
 
@@ -408,6 +416,7 @@ describe('changesetOf: entries of a file() file', () => {
         },
       ],
       createdRecords: [],
+      fileErrors: [],
     });
   });
 
@@ -439,6 +448,7 @@ describe('changesetOf: entries of a file() file', () => {
         },
       ],
       createdRecords: [],
+      fileErrors: [],
     });
   });
 
@@ -468,6 +478,39 @@ describe('changesetOf: entries of a file() file', () => {
         },
       ],
       createdRecords: [],
+      fileErrors: [],
+    });
+  });
+
+  it('reports a new file() file that does not parse as a file error, since no document of the bundle can carry it', async () => {
+    const h = await harness();
+    const extra = 'src/content/extra.json';
+    const base = bundleOf();
+    const bundle = {
+      documents: base.documents,
+      collections: new Map<string, CollectionSchemaJson>([
+        ...base.collections,
+        ['extra', { loader: { kind: 'file', pattern: extra } }],
+      ]),
+    };
+    await edit(h, extra, '[\n  { "id": "ana", "name": ');
+    await save(h, [extra], 'broken new file');
+    expect(
+      await changesetOf({ bundle, repo: h.repo, siteFolder: h.siteFolder }),
+    ).toStrictEqual({
+      documents: [],
+      createdRecords: [],
+      fileErrors: [
+        {
+          path: extra,
+          error: {
+            code: 'parse-error',
+            message: 'Invalid JSON at line 2, column 26: ValueExpected',
+            line: 2,
+            column: 26,
+          },
+        },
+      ],
     });
   });
 });

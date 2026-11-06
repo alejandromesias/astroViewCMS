@@ -14,6 +14,7 @@ import {
   tempWorkingCopy,
 } from '../../test/helpers/working-copy.ts';
 import { directoryBundleSource } from '../bundle/source.ts';
+import { GitError } from '../git/exec.ts';
 import type { Repo } from '../git/ops.ts';
 import { createApp } from './app.ts';
 
@@ -491,6 +492,33 @@ describe('GET /api/documents?key=', () => {
     expect(await missing.json()).toEqual({
       error: 'unknown-document',
       message: 'The bundle has no document "authors/nobody".',
+    });
+  });
+
+  it('answers 500 changes-unavailable, not 404, when the changes of an unknown key cannot be read', async () => {
+    const root = await tempWorkingCopy({});
+    const repo: Repo = {
+      changedPaths: () =>
+        Promise.reject(
+          new GitError('failed', 'git diff --name-status failed (exit 128)'),
+        ),
+      mergeBase: async () => 'base',
+      showAtBytes: async () => null,
+      overwrittenSince: async () => new Map(),
+      locked: () => Promise.reject(new Error('GET takes no lock')),
+      showAt: () => Promise.reject(new Error('GET reads no text')),
+    };
+    const app = createApp({
+      ...fakeAppDeps(),
+      bundle: directoryBundleSource(FIXTURE_BUNDLE),
+      workingCopy: root,
+      repo,
+    });
+    const response = await app.request('/api/documents?key=authors/nobody');
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: 'changes-unavailable',
+      message: 'git diff --name-status failed (exit 128)',
     });
   });
 

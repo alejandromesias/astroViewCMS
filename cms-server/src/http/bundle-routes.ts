@@ -18,6 +18,7 @@ import {
   errorOf,
   revisionOfDocument,
 } from '../documents/revision.ts';
+import { GitError } from '../git/exec.ts';
 
 /** One document in the list of GET /api/documents?collection=. `editable` is always a boolean. `revision` is null when the working copy cannot give one, and `error` is set (true) when the document cannot be read. */
 interface DocumentListItem {
@@ -149,7 +150,17 @@ async function documentAnswer(
   workingCopy: string,
   repo: ChangesetRepo | undefined,
 ): Promise<Response> {
-  const document = await documentOf(bundle, key, workingCopy, repo);
+  let document: DocumentEntry | undefined;
+  try {
+    document = await documentOf(bundle, key, workingCopy, repo);
+  } catch (error: unknown) {
+    // The changes could not be read, so the key is not known to be absent: a 404 would say it is.
+    if (!(error instanceof GitError)) throw error;
+    return c.json(
+      { error: 'changes-unavailable', message: error.message },
+      500,
+    );
+  }
   if (document === undefined) {
     return c.json(
       {

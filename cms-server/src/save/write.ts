@@ -22,14 +22,20 @@ export async function writeChanges(
     for (const op of ctx.plan) await applyOp(ctx, op);
     await ctx.tx.commitSave(paths, commitMessageOf(ctx.changes));
   } catch (error) {
-    await ctx.tx.restore(paths);
-    return {
-      status: 500,
-      body: {
-        error: 'save-failed',
-        message: `The save was not written: ${messageOf(error)}`,
-      },
-    };
+    let message = `The save was not written: ${messageOf(error)}`;
+    try {
+      await ctx.tx.restore(paths);
+    } catch (restoreError) {
+      // The working copy may be partly written, so the client is told; the save's own error is kept.
+      ctx.log.error(
+        'the working copy could not be restored after a failed save',
+        {
+          reason: messageOf(restoreError),
+        },
+      );
+      message += `; the working copy could not be restored: ${messageOf(restoreError)}`;
+    }
+    return { status: 500, body: { error: 'save-failed', message } };
   }
   for (const hook of ctx.afterCommit) {
     try {
@@ -40,7 +46,22 @@ export async function writeChanges(
       });
     }
   }
-  ctx.revisions = await revisionsAfter(ctx);
+  try {
+    ctx.revisions = await revisionsAfter(ctx);
+  } catch (error) {
+    // The save is committed, so this is not a failed save: the client is told to reload, not to resend.
+    ctx.log.error('the revisions of a committed save could not be read', {
+      reason: messageOf(error),
+    });
+    return {
+      status: 500,
+      body: {
+        error: 'save-committed',
+        message:
+          'The save was committed, but its revisions could not be read. Reload the documents before the next save.',
+      },
+    };
+  }
   return undefined;
 }
 

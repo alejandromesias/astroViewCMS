@@ -1,4 +1,7 @@
 // @ts-nocheck
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   assertRef,
@@ -457,6 +460,23 @@ describe('the real exec (no fake)', () => {
         },
       ),
     ).rejects.toMatchObject({ code: 3, stdout: '', stderr: 'bad' });
+  });
+
+  it('rejects a failed binary call with a GitError that has text stderr, not a TypeError', async () => {
+    const folder = await mkdtemp(join(tmpdir(), 'exec-binary-'));
+    try {
+      const error = await gitErrorOfAsync(() =>
+        runGit(['cat-file', 'blob', 'HEAD:nope.txt'], {
+          cwd: folder,
+          binary: true,
+        }),
+      );
+      expect(error.kind).toBe('failed');
+      expect(error.exitCode).toBe(128);
+      expect(error.stderr).toMatch(/not a git repository/);
+    } finally {
+      await rm(folder, { recursive: true, force: true });
+    }
   });
 
   it('kills a process that runs past its timeout, and rejects with killed set', async () => {

@@ -74,9 +74,10 @@ export const realExec: ExecFn = (file, args, options) =>
         windowsHide: true,
       },
       (error, stdout, stderr) => {
-        // stderr is text for every call, so it is decoded even when stdout is kept as bytes.
+        // stderr is text for every call, so it is decoded even when stdout is kept as bytes. A rejection carries
+        // the same text, so GitError can redact it (a Buffer has no replace).
         if (error === null) resolve({ stdout, stderr: String(stderr) });
-        else reject(Object.assign(error, { stdout, stderr }));
+        else reject(Object.assign(error, { stdout, stderr: String(stderr) }));
       },
     );
   });

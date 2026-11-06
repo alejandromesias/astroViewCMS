@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { Hono } from 'hono';
 import { revisionOf } from 'preview-contract';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fakeAppDeps } from '../../test/helpers/app-deps.ts';
 import {
   bundleFolder,
@@ -17,6 +17,9 @@ import type { Repo } from '../git/ops.ts';
 import type { PreviewClient } from '../save/context.ts';
 import { createApp } from './app.ts';
 import { MAX_BODY_BYTES, registerChangeRoutes } from './changes-routes.ts';
+
+// Each save and read here runs real git calls, so one test takes a few seconds under load.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
 
 const BLOG_1 = 'src/content/blog/blog-1.md';
 const OLD = '---\ntitle: Old\n---\nold\n';
@@ -76,6 +79,7 @@ describe('GET /api/changes', () => {
         },
       ],
       createdRecords: [],
+      fileErrors: [],
     });
   });
 
