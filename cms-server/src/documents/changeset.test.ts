@@ -451,6 +451,23 @@ describe('changesetOf: documents with a file of their own', () => {
     });
   });
 
+  it('ignores a changed file when a collection has no loader to read it', async () => {
+    const h = await harness();
+    await edit(h, 'src/other/page.md', '# other\n');
+    await save(h, ['src/other/page.md'], 'page');
+    const collections = new Map<string, CollectionSchemaJson>([
+      ['pages', {}],
+      ...bundleOf().collections,
+    ]);
+    expect(
+      await changesetOf({
+        bundle: { documents: new Map<string, DocumentEntry>(), collections },
+        repo: h.repo,
+        siteFolder: h.siteFolder,
+      }),
+    ).toStrictEqual({ documents: [], createdRecords: [], fileErrors: [] });
+  });
+
   it('ignores a new file of a collection with generateId ids, since its key is not its path', async () => {
     const h = await harness();
     await edit(h, 'src/content/blog/new-post.md', POST_B);
