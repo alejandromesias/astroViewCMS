@@ -57,6 +57,8 @@ async function setUp() {
   };
   const state = await ensureRepo({ config, cmsDir, log: SILENT });
   const repo = openRepo({ config, cmsDir, state });
+  // The builder's warnings are kept: git must remove a built worktree itself, with no fallback to a Node delete.
+  const warnings: string[] = [];
   const runner = createBuildRunner({
     build: createBuilder({
       repo,
@@ -64,23 +66,24 @@ async function setUp() {
       site: SITE,
       siteDir: '.',
       siteConfig: SITE_CONFIG,
-      log: SILENT,
+      log: { ...SILENT, warn: (message) => void warnings.push(message) },
     }),
   });
-  return { remote, cmsDir, state, runner };
+  return { remote, cmsDir, state, runner, warnings };
 }
 
 describe('the build of a commit', () => {
   it(
     'builds a worktree of the seeded remote into a bundle, and removes the worktree',
     async () => {
-      const { cmsDir, state, runner } = await setUp();
+      const { cmsDir, state, runner, warnings } = await setUp();
       const commit = (
         await git(state.repoDir, ['rev-parse', 'origin/main'])
       ).trim();
 
       const result = await runner.request(commit);
 
+      expect(warnings).toEqual([]);
       expect(result.ok).toBe(true);
       expect(result.firstError).toBeNull();
       expect(result.dir).toBe(

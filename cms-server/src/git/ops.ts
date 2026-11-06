@@ -232,9 +232,17 @@ export function openRepo({
       return target;
     },
     // Removes the worktree with `--force` (its folder may hold unsaved edits), then prunes what git left behind.
+    // `core.longpaths` lets Windows git delete deep paths, such as astro's cache inside a built worktree.
     async worktreeRemove(dir) {
       const target = worktreePath(worktreesDir, dir);
-      await git(['worktree', 'remove', '--force', target]);
+      await git([
+        '-c',
+        'core.longpaths=true',
+        'worktree',
+        'remove',
+        '--force',
+        target,
+      ]);
       await git(['worktree', 'prune']);
     },
   };
