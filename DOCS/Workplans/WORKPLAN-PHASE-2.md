@@ -2284,7 +2284,7 @@ request-path rules apply (no `child_process`, no `fs` except the allowlist).
 
 Design 4.4, 5.6.
 
-#### 2.9a Build runner — after 2.0e, 2.3c · [build] · DONE 2026-11-05 (no Stryker run yet; see Result)
+#### 2.9a Build runner — after 2.0e, 2.3c · [build] · DONE 2026-11-06 (Stryker 96.39 / 100 / 100; see Result)
 
 - Runs `preview-render-server/src/build.ts` as a child process on a git
   worktree of one commit (never the live working copy, which saves keep
@@ -2321,9 +2321,9 @@ Design 4.4, 5.6.
 
 - **Result (2026-11-05; Haiku agent, reviewed by the lead; `a4f7d4d` on `phase-2-wave-6`, rebased from an older base).** `preview/build-commit.ts` builds one commit in a worktree (env allowlist, timeout 10 min with SIGKILL, log file); `preview/build-runner.ts` is the queue (one build at a time, one queued, requests made during a build merge into the newest commit); `preview/bundles.ts` is the GC (keeps the two newest complete bundles; removes a folder with no `bundle.json`). The "Done when" cases are covered: a build of a worktree of the seeded remote (`build-commit.real.test.ts`, real, passes); a broken page fails with `firstError` (`src/pages/broken.astro`, a page and not a component, since a component no page imports is never compiled); no token, SSH setting or `GIT_*` variable reaches the child (unit test); queue merging (unit test). The real tests take about 60 s and run alone. Unit tests: 78 pass with the supervisor tests. `tsc` is clean.
   - Calls where the plan was open: the runner lives in `preview/`, because depcruise allows `child_process` only in `git/` and `preview/`; a request takes a commit sha; `dir` is returned even on failure, and a failed folder is removed, so check `ok` first; the log is `.cms/<site>/logs/<bundleId>.log` and is not collected.
-  - **Windows long paths (open, a decision):** `git worktree remove --force` fails with "Filename too long", because Astro writes `node_modules/.astro` inside the worktree. The runner deletes the folder with Node instead and logs a warning, so every real build logs it. A real fix (Astro's cache outside the worktree, or shorter worktree names) touches `build.ts`, so it is outside 2.9a.
-  - **For 2.9c:** GC does not know which bundle the node serves. After a rollback the served bundle can be older than the two that GC keeps, so 2.9c must pin it.
-  - **Stryker: not run, on purpose.** The triage config runs every `src` test, including `*.real.test.ts`, so mutants of these files would start real builds in parallel, which breaks the `[build]` rule. A run needs a config decision (exclude the real tests from the triage config, or a separate config for these files).
+  - **Windows long paths (fixed 2026-11-06, `9bff015`):** `git worktree remove --force` failed with "Filename too long", because Astro writes `node_modules/.astro` inside the worktree. `worktreeRemove` in `git/ops.ts` now runs `git -c core.longpaths=true worktree remove`, and the real build test asserts that the builder logs no warning, so git removes the worktree itself. The Node delete stays as the fallback. No change to `build.ts`.
+  - **For 2.9c:** GC does not know which bundle the node serves. After a rollback the served bundle can be older than the two that GC keeps, so 2.9c must pin it (also listed under 2.9c).
+  - **Stryker (2026-11-06; user approved the config change).** `vitest.mutation.cms-server.config.ts` now excludes `*.real.test.ts` (`9bff015`); the real tests run alone with `npx vitest run`. Round 1 (`reports/stryker-runs/2026-11-06T00-32-59-707Z/`): `build-commit.ts` 68.67 (34 uncovered, 18 survived: the real `defaultSpawn` and the log parsing had no unit test), `build-runner.ts` 100, `bundles.ts` 93.10. Tests added (`1de9acb`; `defaultSpawn` is exported and tested with small real children). Round 2 (`reports/stryker-runs/2026-11-06T00-37-03-901Z/`): **`build-commit.ts` 96.39, `build-runner.ts` 100, `bundles.ts` 100.** The 6 survivors of `build-commit.ts` are equivalent: 262:25 (the default of regex group 1, which always matches), 257:57 (`path.join` leaves at most one trailing slash), 268:9 (`sameLine` is already trimmed), 302:18 (`windowsHide`, not observable), 308:27 and 309:27 (`setEncoding('')` means utf8).
   - **Not done:** the wiring into `run.ts` and `state.json` (2.9c).
 
 #### 2.9b Node supervisor — after 2.8c, 2.0e · DONE 2026-11-02
@@ -2455,6 +2455,7 @@ Design 4.4, 5.6.
 - `GET /api/status` in full (design 5.6): bundle id and commit, build state,
   node state, last sync, changeset size, and errors (`protocolMismatch`,
   `upstreamBuildFailed`).
+- **From 2.9a (2026-11-06):** `collectBundles` (`preview/bundles.ts`) keeps the two newest complete bundles and does not know which bundle the node serves. After a rollback the served bundle can be older than those two. Give `collectBundles` a set of bundle ids to keep (the served one, and last-good from `state.json`), and call it with that set from the build runner. Test: a served bundle older than the two newest survives a build.
 - **Done when:** a test per trigger with fakes; the mismatch rebuild happens
   once and then reports the error. A bundle built before this phase (no
   `bundle.json`) counts as a mismatch.
