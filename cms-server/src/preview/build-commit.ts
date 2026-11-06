@@ -290,7 +290,7 @@ function messageOf(error: unknown): string {
 }
 
 /** The real child: stdin is closed, and stdout and stderr are kept together in the order they arrive. */
-function defaultSpawn(
+export function defaultSpawn(
   command: string,
   args: readonly string[],
   options: { readonly cwd: string; readonly env: NodeJS.ProcessEnv },

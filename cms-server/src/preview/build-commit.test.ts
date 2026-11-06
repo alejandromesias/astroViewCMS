@@ -1,5 +1,5 @@
-import { existsSync } from 'node:fs';
-import { mkdir, readFile, utimes, writeFile } from 'node:fs/promises';
+import { existsSync, realpathSync } from 'node:fs';
+import { mkdir, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeTestRoot, removeTestRoot } from '../../test/helpers/git.ts';
@@ -9,6 +9,7 @@ import {
   type BuildExit,
   childEnvironment,
   createBuilder,
+  defaultSpawn,
   type SpawnBuild,
   type WorktreeLock,
 } from './build-commit.ts';
@@ -166,6 +167,7 @@ describe('createBuilder', () => {
       'lock build b1',
       'remove build-b1',
     ]);
+    expect(kills).toEqual([]);
   });
 
   it('runs build.ts on the site folder of the worktree, into the bundle folder, with the bundle id', async () => {
@@ -378,9 +380,232 @@ describe('createBuilder', () => {
     expect(existsSync(bundleDir('mid'))).toBe(true);
     expect(existsSync(bundleDir('new'))).toBe(true);
   });
+
+  // A bundle folder with a manifest, as a build that got that far leaves it.
+  async function writeManifest(id: string): Promise<void> {
+    const file = path.join(bundleDir(id), 'manifest', 'bundle.json');
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, '{}\n');
+  }
+
+  it('removes the bundle folder of a failed build even when it holds a manifest, and keeps that of a good build', async () => {
+    await writeManifest('b1');
+    await builderWith({
+      spawn: fakeSpawn({ code: 1, signal: null, output: 'failed\n' }),
+    })(JOB);
+    expect(existsSync(bundleDir('b1'))).toBe(false);
+
+    await writeManifest('b1');
+    await builderWith()(JOB);
+    expect(existsSync(bundleDir('b1'))).toBe(true);
+  });
+
+  it('leaves no timer behind when the build ends before the timeout', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      await builderWith()(JOB);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reads a located error through colour codes, indentation and blank lines', async () => {
+    const location = `${worktreeSite().replaceAll('\\', '/')}/src/pages/a.astro:2:14`;
+    const output = [
+      `  \u001b[31m[plugin astro:build]\u001b[39m ${location}  `,
+      '',
+      '  CompilerError: Unexpected token  ',
+    ].join('\n');
+    expect(
+      await builderWith({
+        spawn: fakeSpawn({ code: 1, signal: null, output }),
+      })(JOB),
+    ).toMatchObject({
+      firstError: {
+        file: 'src/pages/a.astro',
+        message: 'CompilerError: Unexpected token',
+      },
+    });
+  });
+
+  it('reads a location with backslashes, and the message on the same line', async () => {
+    const output = `${worktreeSite()}\\src\\pages\\a.astro:5:1: boom\n`;
+    expect(
+      await builderWith({
+        spawn: fakeSpawn({ code: 1, signal: null, output }),
+      })(JOB),
+    ).toMatchObject({
+      firstError: { file: 'src/pages/a.astro', message: 'boom' },
+    });
+  });
+
+  it('reads a located error when the site folder ends with a slash', async () => {
+    const location = `${worktreeSite().replaceAll('\\', '/')}/src/x.astro:1:1`;
+    const output = `${location}\nbad token\n`;
+    expect(
+      await builderWith({
+        siteDir: `${SITE_DIR}/`,
+        spawn: fakeSpawn({ code: 1, signal: null, output }),
+      })(JOB),
+    ).toMatchObject({
+      firstError: { file: 'src/x.astro', message: 'bad token' },
+    });
+  });
+
+  it('names the file when a located error has no message on its line or after it', async () => {
+    const location = `${worktreeSite().replaceAll('\\', '/')}/src/x.astro`;
+    const output = `${location}:1:1\n`;
+    expect(
+      await builderWith({
+        spawn: fakeSpawn({ code: 1, signal: null, output }),
+      })(JOB),
+    ).toMatchObject({
+      firstError: {
+        file: 'src/x.astro',
+        message: `The build failed in ${location}`,
+      },
+    });
+  });
+
+  it('reports a build that was stopped by a signal with no exit code', async () => {
+    expect(
+      await builderWith({
+        spawn: fakeSpawn({ code: null, signal: 'SIGTERM', output: '' }),
+      })(JOB),
+    ).toMatchObject({
+      firstError: {
+        file: null,
+        message: 'The build exited (code none, signal SIGTERM)',
+      },
+    });
+  });
+
+  it('does not log a second warning when git cannot remove a worktree whose folder is already gone', async () => {
+    await builderWith({
+      repo: fakeRepo(undefined, new Error('locked by another process')),
+    })(JOB);
+    expect(logged.map((call) => call.message)).toEqual([
+      'Could not remove the build worktree',
+      'Build finished',
+    ]);
+  });
+
+  it('logs when the folder of a worktree cannot be deleted either, and the build result stands', async () => {
+    // A path with a null byte makes fs.rm reject, on every platform.
+    const repo: WorktreeLock = {
+      locked: (_holder, work) =>
+        work({
+          worktreeAdd: async () => 'bad\0folder',
+          worktreeRemove: async () => {
+            throw new Error('locked by another process');
+          },
+        }),
+    };
+    expect(await builderWith({ repo })(JOB)).toMatchObject({ ok: true });
+    expect(logged[1]).toMatchObject({
+      level: 'warn',
+      message: 'Could not delete the build worktree folder',
+      fields: { worktree: 'build-b1' },
+    });
+    expect(String(logged[1]?.fields?.error)).toContain('null bytes');
+  });
+
+  it('logs when the old bundles cannot be collected, and the build result stands', async () => {
+    // The child replaces the bundles folder with a file, so the folder cannot be listed.
+    const spawn: SpawnBuild = () => ({
+      exited: rm(bundlesDir(), { recursive: true, force: true })
+        .then(() => writeFile(bundlesDir(), 'not a folder'))
+        .then(() => ({ code: 0, signal: null, output: '' })),
+      kill: () => undefined,
+    });
+    expect(await builderWith({ spawn })(JOB)).toMatchObject({ ok: true });
+    expect(logged[0]).toMatchObject({
+      level: 'warn',
+      message: 'Could not collect the old bundles',
+      fields: { bundleId: 'b1' },
+    });
+    expect(typeof logged[0]?.fields?.error).toBe('string');
+  });
+});
+
+describe('defaultSpawn', () => {
+  const run = (script: string, env: NodeJS.ProcessEnv = {}) =>
+    defaultSpawn(process.execPath, ['-e', script], { cwd: root, env });
+
+  it('keeps stdout and stderr together in the order they arrive, with the exit code', async () => {
+    const child = run(
+      "process.stdout.write('out '); setTimeout(() => process.stderr.write('err\\n'), 200)",
+    );
+    expect(await child.exited).toEqual({
+      code: 0,
+      signal: null,
+      output: 'out err\n',
+    });
+  });
+
+  it('reports the exit code of a failed child', async () => {
+    expect(await run('process.exit(3)').exited).toEqual({
+      code: 3,
+      signal: null,
+      output: '',
+    });
+  });
+
+  it('runs in the given folder, with only the given environment', async () => {
+    vi.stubEnv('PARENT_ONLY', 'leaked');
+    const child = run(
+      'console.log(JSON.stringify([process.cwd(), process.env.CHILD_VAR, process.env.PARENT_ONLY ?? null]))',
+      { CHILD_VAR: 'x' },
+    );
+    const [cwd, childVar, parentOnly] = JSON.parse((await child.exited).output);
+    expect(realpathSync(cwd)).toBe(realpathSync(root));
+    expect(childVar).toBe('x');
+    expect(parentOnly).toBeNull();
+  });
+
+  it('closes the input of the child', async () => {
+    const child = run(
+      "process.stdin.on('end', () => console.log('eof')).resume()",
+    );
+    expect((await child.exited).output).toBe('eof\n');
+  });
+
+  it('decodes output as UTF-8 even when a character arrives in two chunks', async () => {
+    const child = run(
+      'process.stdout.write(Buffer.from([0xc3])); setTimeout(() => process.stdout.write(Buffer.from([0xa9])), 200)',
+    );
+    expect((await child.exited).output).toBe('é');
+  });
+
+  it('settles with the error message when the command cannot be started', async () => {
+    const command = path.join(root, 'no-such-command');
+    const child = defaultSpawn(command, [], { cwd: root, env: {} });
+    expect(await child.exited).toEqual({
+      code: null,
+      signal: null,
+      output: `spawn ${command} ENOENT\n`,
+    });
+  });
+
+  it('kills the child with the signal given', async () => {
+    const child = run('setInterval(() => undefined, 1000)');
+    child.kill('SIGKILL');
+    expect(await child.exited).toEqual({
+      code: null,
+      signal: 'SIGKILL',
+      output: '',
+    });
+  });
 });
 
 describe('childEnvironment', () => {
+  it('drops an allowlisted name that has no value', () => {
+    expect(
+      Object.keys(childEnvironment({ PATH: undefined, TMP: '/t' })),
+    ).toEqual(['TMP']);
+  });
+
   it('keeps only the allowlisted names, matched without case', () => {
     expect(
       childEnvironment({

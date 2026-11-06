@@ -60,6 +60,26 @@ describe('collectBundles', () => {
     ]);
   });
 
+  it('removes a folder that did not finish even when it sorts before the complete ones', async () => {
+    await makeBundle('a-partial', false);
+    await makeBundle('b', true, 2_000_000);
+    await makeBundle('c', true, 3_000_000);
+    await collectBundles(bundles);
+    expect((await readdir(bundles)).sort()).toEqual([
+      'b',
+      'b-regions',
+      'c',
+      'c-regions',
+    ]);
+  });
+
+  it('removes a region folder whose bundle folder is gone', async () => {
+    await mkdir(path.join(bundles, 'gone-regions'));
+    await makeBundle('b', true, 2_000_000);
+    await collectBundles(bundles);
+    expect((await readdir(bundles)).sort()).toEqual(['b', 'b-regions']);
+  });
+
   it('judges the age of a bundle by when its bundle.json was written, not by its name', async () => {
     await makeBundle('a', true, 3_000_000);
     await makeBundle('b', true, 1_000_000);
