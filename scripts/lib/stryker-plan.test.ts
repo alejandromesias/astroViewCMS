@@ -129,3 +129,7 @@ describe('planFiles', () => {
     ).toThrow('no Stryker group for sample-site/src/x.ts');
   });
 });
+
+it('deliberate failure for the 2.1o ruleset check (do not merge)', () => {
+  expect(1).toBe(2);
+});
