@@ -224,6 +224,14 @@ The `depcruise` step enforces the import rules listed in the [annex](#annex-depe
   long (9 min once, when the stored baseline was stale and only 281 of 2684
   mutants were reused). The next run reused all 2684 and took 26 s. Changing
   one line of source re-runs only the mutants on that code.
+- **The sample-site build "exit 1" (wave 5, explained 2026-11-07):**
+  `npm run build` and `npm run build:sample` in `preview-render-server` exit 1
+  when `.build/sample-site` already holds files from an earlier build but no
+  `bundle.json`. `assertOutDirIsSafe` (`preview-render-server/src/site-config.ts`)
+  refuses to clear a folder it did not create. A fresh `--out` folder builds
+  with exit 0 (checked on Windows, 2026-11-07). The stale folder is gitignored:
+  delete it, or pass a new `--out`. CI runs no site build step; its e2e tests
+  build into fresh `.build/e2e-*` folders, so the check never trips there.
 
 ### Pre-commit hook
 
