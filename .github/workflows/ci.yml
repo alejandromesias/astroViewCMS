@@ -86,6 +86,16 @@ jobs:
         run: npm run test:e2e -w preview-render-server
       - name: browser suite
         run: npm run test:browser -w preview-render-server
+      - name: Upload the Playwright output of a failed run
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-failure-output
+          path: |
+            **/test-results
+            **/playwright-report
+          retention-days: 14
+          if-no-files-found: ignore
 
   mutation-diff:
     # Stryker on the source files this branch changed (against origin/main). Blocks when the changed set scores
