@@ -54,16 +54,23 @@ only.
 
 ## 2. Working rules
 
-- **Ask before committing.** Finish, summarize, ask. The user reviews changes
-  before they land in history. Exception: CI setup work is committed to `main`
-  directly, and an agent may push for it, as far as the user allowed for that
-  task (2026-11-07).
+- **Ask before committing to `main`.** Finish, summarize, ask. The user reviews
+  changes before they land in `main`'s history. Exceptions: CI setup work is
+  committed to `main` directly, and an agent may push for it, as far as the user
+  allowed for that task (2026-11-07); and on a task branch an agent commits and
+  pushes on its own (2026-11-07), so the pull request is where the user reviews.
 - **One branch per task, one worktree per branch.** A task lives on
   `task/<id>-<slug>`, cut from `main`, in its own worktree (section 6). Push the
   branch and open a pull request: CI runs `fast`, `e2e` and `mutation-diff`
   (see [CI-PIPELINE.md](Guidelines/CI-PIPELINE.md)). Merge into `main` with a
   merge commit once all three are green. A wave is a milestone, not a branch: it
   is closed when `mutation-full` is green, and tagged `wave-<n>-closed`.
+- **Watch the pipeline.** After a push, read `fast`, `e2e` and `mutation-diff`
+  with `gh pr checks` or `gh run list`, and fix failures on the branch. Kill or
+  classify Stryker survivors. A task is not done while a check is red or
+  pending. An agent commits to its task branch, pushes it and opens the pull
+  request on its own; it never pushes to `main` directly (the CI-setup
+  exception above aside).
 - **Stryker runs in CI.** A task does not wait on a local Stryker run. A local
   run is the exception (CI-PIPELINE.md section 4) and goes through
   `scripts/stryker-run.mjs`, never `npx stryker run`.

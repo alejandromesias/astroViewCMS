@@ -53,4 +53,8 @@ Mutation testing showed that some code cannot be checked by any test. For exampl
 - [ ] Each guard and branch has an effect a test can see.
 - [ ] Injected dependencies keep a real default.
 
+## 7. How to run a task
+
+Before you start, read [DOCS/README.md](../README.md) section 2 (working rules: one branch and worktree per task, pull request, merge commit, watching the pipeline, no local Stryker) and [CI-PIPELINE.md](CI-PIPELINE.md) (the checks and how to read them). They are the source of truth; this file does not repeat them.
+
 Open design questions that are not rules yet: cancelling superseded bridge requests with `AbortController`, a timeout on render requests, and the noisy `[preview-bridge] patched` log.
