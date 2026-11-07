@@ -29,4 +29,12 @@ export const UNIT_PROJECTS: TestProjectConfiguration[] = [
       exclude: [...configDefaults.exclude, 'test/e2e/**'],
     },
   },
+  {
+    // The repo's scripts (worktree tooling, WORKPLAN 2.1n). Not in coverage: the coverage include lists package src only.
+    test: {
+      name: 'scripts',
+      root: 'scripts',
+      include: ['**/*.test.ts'],
+    },
+  },
 ];

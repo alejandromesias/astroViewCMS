@@ -155,3 +155,27 @@ and `npm start` in `preview-render-server` build and serve `sample-site`.
 
 From an agent, prefix build and test commands with the `env -u …` line from
 section 3.
+
+## 6. Worktrees
+
+One task, one branch `task/<id>-<slug>`, one worktree (WORKPLAN-PHASE-2 section
+2). The main checkout stays on `main`. Worktrees live in `..\avc-wt\<id>`,
+next to the repo, and share the packages of the main `node_modules` through
+junctions (WORKPLAN 2.1n).
+
+```sh
+npm run worktree -- new 2.6b delete-guard          # branch from main, worktree, shared node_modules
+npm run worktree -- new 2.6b delete-guard --own-install   # for a task that changes package.json or the lockfile
+npm run worktree -- link [<dir>] [--replace]        # refresh the links; --replace rebuilds the folder's own node_modules
+npm run worktree -- remove <dir> [--force]          # unlink, then git worktree remove; keeps the branch
+```
+
+- **Do not install inside a shared worktree.** `npm install` stops at the
+  guard. `npm ci` is not stopped, and neither npm command touches main's
+  packages (they prune the worktree's links only). After an install, run
+  `link --replace` to share packages again.
+- **A dependency change gets `--own-install`.** `link` refuses when a worktree's
+  dependencies differ from main's. Merge main into the branch first, if main
+  changed them after the branch was cut.
+- **Remove a worktree with `remove`,** not with `git worktree remove` by hand:
+  `remove` unlinks the packages first.

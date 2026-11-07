@@ -23,6 +23,8 @@
   },
   "scripts": {
     "check": "node scripts/check.ts",
+    "preinstall": "node scripts/worktree.ts guard",
+    "worktree": "node scripts/worktree.ts",
     "audit": "osv-scanner scan source -L package-lock.json --config osv-scanner.toml",
     "knip": "knip",
     "coverage": "vitest run --coverage",
