@@ -222,6 +222,10 @@ try {
     await once(server, 'exit');
   }
   // Remove the junction alone first, so the recursive delete never follows it into the repo.
-  if (fs.existsSync(modulesLink)) fs.rmdirSync(modulesLink);
+  // A Windows junction is removed with rmdir; a POSIX symlink to a folder needs unlink (rmdir fails with ENOTDIR).
+  if (fs.existsSync(modulesLink)) {
+    if (process.platform === 'win32') fs.rmdirSync(modulesLink);
+    else fs.unlinkSync(modulesLink);
+  }
   fs.rmSync(workDir, { recursive: true, force: true });
 }
