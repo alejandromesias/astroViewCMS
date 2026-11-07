@@ -44,6 +44,9 @@ beforeEach(() => {
   writeFileSync(join(main, 'package-lock.json'), '{"lockfileVersion":3}\n');
   writeFileSync(join(main, '.gitignore'), 'node_modules/\n');
   git(main, ['init', '-b', 'main']);
+  // A Windows runner may set core.autocrlf=true globally: the worktree would then get CRLF copies of the
+  // LF files this fixture writes, and lockfileMismatch would see a difference that is not there.
+  git(main, ['config', 'core.autocrlf', 'false']);
   git(main, ['add', '-A']);
   git(main, [
     '-c',

@@ -168,7 +168,7 @@ try {
       PORT: String(port),
       PREVIEW_INSECURE: '1',
     },
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'], // the node exits when its stdin closes (2.1i): keep the pipe open
   });
   server.stdout.on('data', (chunk) => (output += chunk));
   server.stderr.on('data', (chunk) => (output += chunk));
