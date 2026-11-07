@@ -1,0 +1,16 @@
+# Dependency updates (WORKPLAN 2.1o). A pull request from here is a normal branch: CI runs on it
+# and it merges when `fast`, `e2e` and `mutation-diff` are green.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

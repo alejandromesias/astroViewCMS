@@ -1,0 +1,56 @@
+# Security scans (WORKPLAN 2.1o): CodeQL for JavaScript and TypeScript, and the osv-scanner results as
+# SARIF in the Security tab. Reports only: the blocking audit gate is `npm run audit` in ci.yml `fast`.
+# Runs on push to main, weekly and by hand. Each job asks for security-events: write, and nothing else.
+name: security
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '41 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: javascript-typescript
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+
+  osv-sarif:
+    name: osv-scanner SARIF
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Install osv-scanner (pinned version, checksum checked)
+        run: |
+          BASE=https://github.com/google/osv-scanner/releases/download/v2.7.0
+          cd "$RUNNER_TEMP"
+          curl -fsSL -O "$BASE/osv-scanner_linux_amd64"
+          curl -fsSL -O "$BASE/osv-scanner_SHA256SUMS"
+          grep ' osv-scanner_linux_amd64$' osv-scanner_SHA256SUMS | sha256sum -c -
+          chmod +x osv-scanner_linux_amd64
+          mv osv-scanner_linux_amd64 osv-scanner
+      - name: Scan the lockfile, same ignores as the audit gate
+        # A finding makes osv-scanner exit non-zero; the SARIF is still written and uploaded below.
+        run: |
+          "$RUNNER_TEMP/osv-scanner" scan source -L package-lock.json --config osv-scanner.toml --format sarif --output osv.sarif || test -s osv.sarif
+      - uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: osv.sarif
+          category: osv-scanner

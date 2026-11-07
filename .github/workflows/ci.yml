@@ -22,8 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version-file: .node-version
           cache: npm
@@ -37,6 +37,17 @@ jobs:
           chmod +x osv-scanner_linux_amd64
           mv osv-scanner_linux_amd64 osv-scanner
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Lint the workflow files (actionlint, pinned version, checksum checked)
+        run: |
+          VER=1.7.12
+          BASE=https://github.com/rhysd/actionlint/releases/download/v$VER
+          cd "$RUNNER_TEMP"
+          curl -fsSL -O "$BASE/actionlint_${VER}_linux_amd64.tar.gz"
+          curl -fsSL -O "$BASE/actionlint_${VER}_checksums.txt"
+          grep " actionlint_${VER}_linux_amd64.tar.gz\$" "actionlint_${VER}_checksums.txt" | sha256sum -c -
+          tar -xzf "actionlint_${VER}_linux_amd64.tar.gz" actionlint
+          cd "$GITHUB_WORKSPACE"
+          "$RUNNER_TEMP/actionlint"
       - name: CI git identity (the git tests commit)
         run: |
           git config --global user.name "astroViewCMS CI"
@@ -47,7 +58,7 @@ jobs:
         run: npm run check -- --fast
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: coverage
           path: reports/coverage
@@ -60,8 +71,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version-file: .node-version
           cache: npm
@@ -85,10 +96,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 240
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version-file: .node-version
           cache: npm
@@ -102,7 +113,7 @@ jobs:
         run: node scripts/stryker-changed.ts --run
       - name: Upload the Stryker reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mutation-diff
           path: reports/mutation-diff
