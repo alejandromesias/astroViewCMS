@@ -37,19 +37,27 @@ let interrupted = false;
 // Where the run's reports go: AVC_STRYKER_OUT (inside the main checkout's reports/) or the stamped folder.
 function reportFolder() {
   const given = process.env.AVC_STRYKER_OUT;
-  if (given === undefined || given === '') return join(MAIN, 'reports', 'stryker-runs', stamp);
+  if (given === undefined || given === '')
+    return join(MAIN, 'reports', 'stryker-runs', stamp);
   const out = resolve(MAIN, given);
-  if (!within(out, join(MAIN, 'reports'))) throw new Error(`AVC_STRYKER_OUT must be inside ${join(MAIN, 'reports')}`);
+  if (!within(out, join(MAIN, 'reports')))
+    throw new Error(`AVC_STRYKER_OUT must be inside ${join(MAIN, 'reports')}`);
   return out;
 }
 
 function git(cwd, argv, env = process.env) {
-  return spawnSync('git', argv, { cwd, env, encoding: 'utf8', windowsHide: true });
+  return spawnSync('git', argv, {
+    cwd,
+    env,
+    encoding: 'utf8',
+    windowsHide: true,
+  });
 }
 
 function gitText(cwd, argv) {
   const result = git(cwd, argv);
-  if (result.status !== 0) throw new Error(`git ${argv.join(' ')} failed: ${result.stderr.trim()}`);
+  if (result.status !== 0)
+    throw new Error(`git ${argv.join(' ')} failed: ${result.stderr.trim()}`);
   return result.stdout.trim();
 }
 
@@ -64,7 +72,12 @@ function snapshot() {
       .split('\n')
       .filter((line) => !line.startsWith('refs/t3/'))
       .join('\n'),
-    hooksPath: git(MAIN, ['config', '--local', '--get', 'core.hooksPath']).stdout.trim(),
+    hooksPath: git(MAIN, [
+      'config',
+      '--local',
+      '--get',
+      'core.hooksPath',
+    ]).stdout.trim(),
     localConfig: gitText(MAIN, ['config', '--local', '--list']),
     nodeModules: readdirSync(join(MAIN, 'node_modules'))
       .filter((name) => !name.startsWith('.'))
@@ -93,12 +106,20 @@ function realpathOrNull(path) {
 // Copies HEAD into EXPORT through `git archive`. The archive has no .git and no untracked files.
 function exportHead() {
   mkdirSync(EXPORT, { recursive: true });
-  const archive = spawnSync('git', ['-C', MAIN, 'archive', '--format=tar', 'HEAD'], {
-    maxBuffer: 1 << 30,
-  });
-  if (archive.status !== 0) throw new Error(`git archive failed: ${archive.stderr}`);
+  const archive = spawnSync(
+    'git',
+    ['-C', MAIN, 'archive', '--format=tar', 'HEAD'],
+    {
+      maxBuffer: 1 << 30,
+    },
+  );
+  if (archive.status !== 0)
+    throw new Error(`git archive failed: ${archive.stderr}`);
   // No drive letter in the arguments: GNU tar reads `C:...` as a remote host.
-  const tar = spawnSync('tar', ['-x', '-f', '-'], { cwd: EXPORT, input: archive.stdout });
+  const tar = spawnSync('tar', ['-x', '-f', '-'], {
+    cwd: EXPORT,
+    input: archive.stdout,
+  });
   if (tar.status !== 0) throw new Error(`tar failed: ${tar.stderr}`);
 }
 
@@ -108,27 +129,38 @@ function exportHead() {
 // same source.
 function linkNodeModules() {
   for (const dir of ['', ...WORKSPACES]) {
-    if (existsSync(join(MAIN, dir, 'node_modules'))) linkModules(join(MAIN, dir), join(EXPORT, dir));
+    if (existsSync(join(MAIN, dir, 'node_modules')))
+      linkModules(join(MAIN, dir), join(EXPORT, dir));
   }
 }
 
 // Refuses the run if git finds any repository from the export, with or without the ceiling.
 function guard() {
-  if (existsSync(join(EXPORT, '.git'))) throw new Error('the export contains a .git folder');
+  if (existsSync(join(EXPORT, '.git')))
+    throw new Error('the export contains a .git folder');
   const withCeiling = { ...process.env, GIT_CEILING_DIRECTORIES: ROOT };
   const noCeiling = { ...process.env };
   delete noCeiling.GIT_CEILING_DIRECTORIES;
   for (const cwd of [EXPORT, join(EXPORT, 'cms-server')]) {
     for (const env of [withCeiling, noCeiling]) {
       if (git(cwd, ['rev-parse', '--show-toplevel'], env).status === 0) {
-        throw new Error(`git finds a repository from ${cwd}; the run is refused`);
+        throw new Error(
+          `git finds a repository from ${cwd}; the run is refused`,
+        );
       }
     }
   }
 }
 
 function runStryker(config, args) {
-  const bin = join(EXPORT, 'node_modules', '@stryker-mutator', 'core', 'bin', 'stryker.js');
+  const bin = join(
+    EXPORT,
+    'node_modules',
+    '@stryker-mutator',
+    'core',
+    'bin',
+    'stryker.js',
+  );
   const child = spawn(process.execPath, [bin, 'run', config, ...args], {
     cwd: EXPORT,
     env: { ...process.env, GIT_CEILING_DIRECTORIES: ROOT },
@@ -146,7 +178,8 @@ function runStryker(config, args) {
 
 function copyReports(run, out) {
   mkdirSync(out, { recursive: true });
-  if (existsSync(join(EXPORT, 'reports'))) cpSync(join(EXPORT, 'reports'), out, { recursive: true });
+  if (existsSync(join(EXPORT, 'reports')))
+    cpSync(join(EXPORT, 'reports'), out, { recursive: true });
   writeFileSync(join(out, 'run.json'), `${JSON.stringify(run, null, 2)}\n`);
   return out;
 }
@@ -174,25 +207,43 @@ async function main() {
   const [config, ...given] = process.argv.slice(2);
   const full = given.includes('--full');
   const rest = given.filter((arg) => arg !== '--full');
-  if (!config || !/^stryker[\w.-]*\.(mjs|json)$/.test(config) || !existsSync(join(MAIN, config))) {
-    throw new Error('the first argument must be a Stryker config in the repo root, such as stryker.cms-server.config.mjs or stryker.config.json');
+  if (
+    !config ||
+    !/^stryker[\w.-]*\.(mjs|json)$/.test(config) ||
+    !existsSync(join(MAIN, config))
+  ) {
+    throw new Error(
+      'the first argument must be a Stryker config in the repo root, such as stryker.cms-server.config.mjs or stryker.config.json',
+    );
   }
   if (full && config !== 'stryker.config.json') {
     throw new Error('--full runs with stryker.config.json only');
   }
-  if (!full && !rest.some((arg) => arg === '--mutate' || arg.startsWith('--mutate='))) {
+  if (
+    !full &&
+    !rest.some((arg) => arg === '--mutate' || arg.startsWith('--mutate='))
+  ) {
     throw new Error('give --mutate <files>, or --full for the whole repo');
   }
   if (!rest.includes('--force')) rest.push('--force');
 
   const dirty = gitText(MAIN, ['status', '--porcelain']);
   if (dirty !== '') {
-    throw new Error(`uncommitted changes in the main checkout; commit or stash them first:\n${dirty}`);
+    throw new Error(
+      `uncommitted changes in the main checkout; commit or stash them first:\n${dirty}`,
+    );
   }
 
   const out = reportFolder();
   const before = snapshot();
-  const run = { stamp, config, args: rest, head: before.head, branch: before.branch, exitCode: null };
+  const run = {
+    stamp,
+    config,
+    args: rest,
+    head: before.head,
+    branch: before.branch,
+    exitCode: null,
+  };
   console.log(`stryker-run: export ${EXPORT}`);
   let code = null;
   try {
@@ -203,15 +254,22 @@ async function main() {
     if (interrupted) throw new Error('interrupted; nothing copied back');
     const changed = changedFields(before, snapshot());
     if (changed.length > 0) {
-      throw new Error(`the main checkout changed during the run (${changed.join(', ')}); nothing copied back`);
+      throw new Error(
+        `the main checkout changed during the run (${changed.join(', ')}); nothing copied back`,
+      );
     }
     run.exitCode = code;
-    console.log(`stryker-run: reports in ${relative(MAIN, copyReports(run, out))}`);
+    console.log(
+      `stryker-run: reports in ${relative(MAIN, copyReports(run, out))}`,
+    );
   } finally {
     if (existsSync(EXPORT)) removeOwn(EXPORT, realpathSync(EXPORT));
     const changed = changedFields(before, snapshot());
     if (changed.length > 0) {
-      throw new Error(`the main checkout changed after cleanup (${changed.join(', ')})`);
+      // biome-ignore lint/correctness/noUnsafeFinally: the tripwire must fire even when the run threw; a changed main checkout is the failure that matters most.
+      throw new Error(
+        `the main checkout changed after cleanup (${changed.join(', ')})`,
+      );
     }
   }
   console.log(`stryker-run: Stryker exit code ${code}`);

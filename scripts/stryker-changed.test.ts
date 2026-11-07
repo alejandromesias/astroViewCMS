@@ -3,7 +3,12 @@ import { parseOptions } from './stryker-changed.ts';
 
 describe('parseOptions', () => {
   it('plans the changed files against origin/main by default', () => {
-    expect(parseOptions([])).toEqual({ base: 'origin/main', run: false, all: false, group: undefined });
+    expect(parseOptions([])).toEqual({
+      base: 'origin/main',
+      run: false,
+      all: false,
+      group: undefined,
+    });
   });
 
   it('reads --run, --base, and --all with --group', () => {
@@ -24,8 +29,14 @@ describe('parseOptions', () => {
   it.each([
     [['--base'], '--base needs a value'],
     [['--frobnicate'], 'unknown option: --frobnicate'],
-    [['--group', 'protocol', '--run'], '--group needs --all (a shard covers every file of its group)'],
-    [['--all', '--group', 'sample-site'], '--group must be one of serve, preview, renderer, protocol, contract, cms-server'],
+    [
+      ['--group', 'protocol', '--run'],
+      '--group needs --all (a shard covers every file of its group)',
+    ],
+    [
+      ['--all', '--group', 'sample-site'],
+      '--group must be one of serve, preview, renderer, protocol, contract, cms-server',
+    ],
   ])('rejects %j', (args, message) => {
     expect(() => parseOptions(args)).toThrow(message);
   });

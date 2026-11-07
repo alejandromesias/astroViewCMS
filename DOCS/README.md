@@ -20,6 +20,7 @@ and holds the working rules and commands that apply to every phase.
  How the code works today        PREVIEW-RENDER-SERVER.md (the renderer, the bridge, the routes)
  Rules for code and tests        Guidelines/IMPLEMENTATION-RECOMMENDATIONS.md, Guidelines/TESTING-RECOMMENDATIONS.md
  Quality gates                   Guidelines/QUALITY-TOOLING.md (manual); Historic/QUALITY-TOOLING-PLAN.md (log)
+ CI pipeline                     Guidelines/CI-PIPELINE.md (jobs, merge rules, mutation gate)
  Working notes and analysis      MODULE-GRAPH.md; Historic/MUTATION-WEAK-SPOTS.md; Guidelines/VISUAL-CHECKS-ON-SAMPLE-SITE.md
  Session handoffs                Handoffs/ (history; never edited afterwards)
 ```
@@ -54,7 +55,18 @@ only.
 ## 2. Working rules
 
 - **Ask before committing.** Finish, summarize, ask. The user reviews changes
-  before they land in history.
+  before they land in history. Exception: CI setup work is committed to `main`
+  directly, and an agent may push for it, as far as the user allowed for that
+  task (2026-11-07).
+- **One branch per task, one worktree per branch.** A task lives on
+  `task/<id>-<slug>`, cut from `main`, in its own worktree (section 6). Push the
+  branch and open a pull request: CI runs `fast`, `e2e` and `mutation-diff`
+  (see [CI-PIPELINE.md](Guidelines/CI-PIPELINE.md)). Merge into `main` with a
+  merge commit once all three are green. A wave is a milestone, not a branch: it
+  is closed when `mutation-full` is green, and tagged `wave-<n>-closed`.
+- **Stryker runs in CI.** A task does not wait on a local Stryker run. A local
+  run is the exception (CI-PIPELINE.md section 4) and goes through
+  `scripts/stryker-run.mjs`, never `npx stryker run`.
 - **Follow the design's units.** If a function outside rendering or DOM
   swapping is keyed by a region (or "island"), it's in the wrong place. See
   "When to think in regions, and when not" in SYSTEM-DESIGN.md.
@@ -179,3 +191,5 @@ npm run worktree -- remove <dir> [--force]          # unlink, then git worktree 
   changed them after the branch was cut.
 - **Remove a worktree with `remove`,** not with `git worktree remove` by hand:
   `remove` unlinks the packages first.
+- **CI.** What runs on GitHub, what blocks a merge and how to read it:
+  [CI-PIPELINE.md](Guidelines/CI-PIPELINE.md).

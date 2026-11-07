@@ -20,7 +20,9 @@ import {
   writePlan,
 } from './lib/stryker-reports.ts';
 
-const STRYKER_RUN = fileURLToPath(new URL('./stryker-run.mjs', import.meta.url));
+const STRYKER_RUN = fileURLToPath(
+  new URL('./stryker-run.mjs', import.meta.url),
+);
 
 interface Options {
   base: string;
@@ -30,7 +32,12 @@ interface Options {
 }
 
 export function parseOptions(args: readonly string[]): Options {
-  const options: Options = { base: 'origin/main', run: false, all: false, group: undefined };
+  const options: Options = {
+    base: 'origin/main',
+    run: false,
+    all: false,
+    group: undefined,
+  };
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     if (arg === '--run') options.run = true;
@@ -44,7 +51,10 @@ export function parseOptions(args: readonly string[]): Options {
     } else throw new Error(`unknown option: ${arg ?? ''}`);
   }
   if (options.group !== undefined) {
-    if (!options.all) throw new Error('--group needs --all (a shard covers every file of its group)');
+    if (!options.all)
+      throw new Error(
+        '--group needs --all (a shard covers every file of its group)',
+      );
     if (!GROUP_NAMES.includes(options.group)) {
       throw new Error(`--group must be one of ${GROUP_NAMES.join(', ')}`);
     }
@@ -53,14 +63,29 @@ export function parseOptions(args: readonly string[]): Options {
 }
 
 function gitLines(args: string[]): string[] {
-  const result = spawnSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8', windowsHide: true });
-  if (result.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${result.stderr.trim()}`);
-  return result.stdout.split('\n').map((line) => line.trim()).filter((line) => line !== '');
+  const result = spawnSync('git', args, {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  if (result.status !== 0)
+    throw new Error(`git ${args.join(' ')} failed: ${result.stderr.trim()}`);
+  return result.stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
 }
 
 function mutateList(): string[] {
-  const config: unknown = JSON.parse(readFileSync(join(REPO_ROOT, 'stryker.config.json'), 'utf8'));
-  if (typeof config !== 'object' || config === null || !('mutate' in config) || !Array.isArray(config.mutate)) {
+  const config: unknown = JSON.parse(
+    readFileSync(join(REPO_ROOT, 'stryker.config.json'), 'utf8'),
+  );
+  if (
+    typeof config !== 'object' ||
+    config === null ||
+    !('mutate' in config) ||
+    !Array.isArray(config.mutate)
+  ) {
     throw new Error('stryker.config.json has no mutate list');
   }
   return config.mutate.map(String);
@@ -73,32 +98,61 @@ function plan(options: Options): { plan: Plan; mergeBase: string | undefined } {
   if (options.all) {
     changed = gitLines(['ls-files', '--', '*.ts']);
   } else {
-    const found = spawnSync('git', ['rev-parse', '--verify', '--quiet', options.base], { cwd: REPO_ROOT });
-    if (found.status !== 0) throw new Error(`${options.base} not found; run git fetch origin main first`);
+    const found = spawnSync(
+      'git',
+      ['rev-parse', '--verify', '--quiet', options.base],
+      { cwd: REPO_ROOT },
+    );
+    if (found.status !== 0)
+      throw new Error(
+        `${options.base} not found; run git fetch origin main first`,
+      );
     mergeBase = gitLines(['merge-base', options.base, 'HEAD'])[0];
-    if (mergeBase === undefined) throw new Error(`no merge base of ${options.base} and HEAD`);
-    changed = gitLines(['diff', '--name-only', '--diff-filter=ACMR', mergeBase, 'HEAD']);
+    if (mergeBase === undefined)
+      throw new Error(`no merge base of ${options.base} and HEAD`);
+    changed = gitLines([
+      'diff',
+      '--name-only',
+      '--diff-filter=ACMR',
+      mergeBase,
+      'HEAD',
+    ]);
   }
   const full = planFiles(changed, mutateList());
   const selected: Plan =
     options.group === undefined
       ? full
-      : { groups: full.groups[options.group] ? { [options.group]: full.groups[options.group] } : {}, dropped: full.dropped };
-  const scope = options.all ? 'every source file' : `changed files since ${options.base}`;
-  console.log(`stryker-changed: ${scope}, ${Object.values(selected.groups).flat().length} to mutate`);
+      : {
+          groups: full.groups[options.group]
+            ? { [options.group]: full.groups[options.group] }
+            : {},
+          dropped: full.dropped,
+        };
+  const scope = options.all
+    ? 'every source file'
+    : `changed files since ${options.base}`;
+  console.log(
+    `stryker-changed: ${scope}, ${Object.values(selected.groups).flat().length} to mutate`,
+  );
   for (const [group, files] of Object.entries(selected.groups)) {
     console.log(`  ${group} (${files.length}): ${files.join(', ')}`);
   }
-  if (selected.dropped.length > 0) console.log(`  not mutated: ${selected.dropped.length} file(s)`);
+  if (selected.dropped.length > 0)
+    console.log(`  not mutated: ${selected.dropped.length} file(s)`);
   return { plan: selected, mergeBase };
 }
 
 function clean(options: Options): void {
   // A shard clears only its own group; a full or diff run clears every report.
-  rmSync(options.group === undefined ? REPORT_ROOT : join(REPORT_ROOT, options.group), {
-    recursive: true,
-    force: true,
-  });
+  rmSync(
+    options.group === undefined
+      ? REPORT_ROOT
+      : join(REPORT_ROOT, options.group),
+    {
+      recursive: true,
+      force: true,
+    },
+  );
 }
 
 function runGroups(groups: Record<string, string[]>): number {
@@ -108,10 +162,17 @@ function runGroups(groups: Record<string, string[]>): number {
     const result = spawnSync(
       process.execPath,
       [STRYKER_RUN, `stryker.${group}.config.mjs`, '--mutate', files.join(',')],
-      { cwd: REPO_ROOT, stdio: 'inherit', windowsHide: true, env: { ...process.env, AVC_STRYKER_OUT: out } },
+      {
+        cwd: REPO_ROOT,
+        stdio: 'inherit',
+        windowsHide: true,
+        env: { ...process.env, AVC_STRYKER_OUT: out },
+      },
     );
     if (result.status !== 0) {
-      console.error(`stryker-changed: group ${group} failed (exit ${result.status ?? 'signal'})`);
+      console.error(
+        `stryker-changed: group ${group} failed (exit ${result.status ?? 'signal'})`,
+      );
       return result.status ?? 1;
     }
   }
@@ -129,16 +190,26 @@ function main(args: readonly string[]): number {
   // A shard leaves the judgement to the merge job of mutation-full.yml.
   if (options.group !== undefined) return 0;
   const mode = options.all ? 'full' : 'diff';
-  const verdict = judgeRun({ mode, root: REPORT_ROOT, plan: options.all ? undefined : planned, waivers: readWaivers(WAIVERS_FILE) });
+  const verdict = judgeRun({
+    mode,
+    root: REPORT_ROOT,
+    plan: options.all ? undefined : planned,
+    waivers: readWaivers(WAIVERS_FILE),
+  });
   publish(verdict, mode, REPORT_ROOT);
   return verdict.failures.length > 0 ? 1 : 0;
 }
 
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
+) {
   try {
     process.exitCode = main(process.argv.slice(2));
   } catch (error) {
-    console.error(`stryker-changed: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(
+      `stryker-changed: ${error instanceof Error ? error.message : String(error)}`,
+    );
     process.exitCode = 2;
   }
 }

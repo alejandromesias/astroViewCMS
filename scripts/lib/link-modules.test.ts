@@ -39,8 +39,14 @@ beforeEach(() => {
   write(join(main, 'node_modules', '.bin', 'vitest.cmd'), 'shim');
   write(join(main, 'node_modules', '.vite', 'cache.json'), 'main cache');
   write(join(main, 'preview-protocol', 'src', 'index.ts'), 'main protocol');
-  workspaceLink(join(main, 'node_modules', 'preview-protocol'), join(main, 'preview-protocol'));
-  write(join(worktree, 'preview-protocol', 'src', 'index.ts'), 'worktree protocol');
+  workspaceLink(
+    join(main, 'node_modules', 'preview-protocol'),
+    join(main, 'preview-protocol'),
+  );
+  write(
+    join(worktree, 'preview-protocol', 'src', 'index.ts'),
+    'worktree protocol',
+  );
   mkdirSync(worktree, { recursive: true });
 });
 
@@ -52,22 +58,37 @@ describe('linkModules', () => {
   it('points third-party packages at the main folder', () => {
     linkModules(main, worktree);
     const path = join(worktree, 'node_modules', 'left-pad', 'index.js');
-    expect(lstatSync(join(worktree, 'node_modules', 'left-pad')).isSymbolicLink()).toBe(true);
+    expect(
+      lstatSync(join(worktree, 'node_modules', 'left-pad')).isSymbolicLink(),
+    ).toBe(true);
     expect(readFileSync(path, 'utf8')).toBe('main left-pad');
   });
 
   it('points workspace packages at the worktree, not at main', () => {
     linkModules(main, worktree);
     const linked = join(worktree, 'node_modules', 'preview-protocol');
-    expect(realpathSync(linked)).toBe(realpathSync(join(worktree, 'preview-protocol')));
-    expect(readFileSync(join(linked, 'src', 'index.ts'), 'utf8')).toBe('worktree protocol');
+    expect(realpathSync(linked)).toBe(
+      realpathSync(join(worktree, 'preview-protocol')),
+    );
+    expect(readFileSync(join(linked, 'src', 'index.ts'), 'utf8')).toBe(
+      'worktree protocol',
+    );
   });
 
   it('does not link dot-entries, and copies .bin', () => {
     linkModules(main, worktree);
     expect(existsSync(join(worktree, 'node_modules', '.vite'))).toBe(false);
-    expect(lstatSync(join(worktree, 'node_modules', '.bin', 'vitest.cmd')).isSymbolicLink()).toBe(false);
-    expect(readFileSync(join(worktree, 'node_modules', '.bin', 'vitest.cmd'), 'utf8')).toBe('shim');
+    expect(
+      lstatSync(
+        join(worktree, 'node_modules', '.bin', 'vitest.cmd'),
+      ).isSymbolicLink(),
+    ).toBe(false);
+    expect(
+      readFileSync(
+        join(worktree, 'node_modules', '.bin', 'vitest.cmd'),
+        'utf8',
+      ),
+    ).toBe('shim');
   });
 
   it('links scoped packages one by one inside a real scope folder', () => {
@@ -75,7 +96,9 @@ describe('linkModules', () => {
     const scope = join(worktree, 'node_modules', '@scope');
     expect(lstatSync(scope).isSymbolicLink()).toBe(false);
     expect(lstatSync(join(scope, 'pkg')).isSymbolicLink()).toBe(true);
-    expect(readFileSync(join(scope, 'pkg', 'index.js'), 'utf8')).toBe('main scoped');
+    expect(readFileSync(join(scope, 'pkg', 'index.js'), 'utf8')).toBe(
+      'main scoped',
+    );
   });
 
   it('writes the marker and reports what it did', () => {
@@ -89,13 +112,28 @@ describe('linkModules', () => {
     linkModules(main, worktree);
     const second = linkModules(main, worktree);
     expect(second.linked).toBe(0);
-    expect(readFileSync(join(worktree, 'node_modules', 'left-pad', 'index.js'), 'utf8')).toBe('main left-pad');
+    expect(
+      readFileSync(
+        join(worktree, 'node_modules', 'left-pad', 'index.js'),
+        'utf8',
+      ),
+    ).toBe('main left-pad');
   });
 
   it('refuses a node_modules that was not made by this module', () => {
-    write(join(worktree, 'node_modules', 'real-pkg', 'index.js'), 'real install');
-    expect(() => linkModules(main, worktree)).toThrow(/exists and is not a linked folder/);
-    expect(readFileSync(join(worktree, 'node_modules', 'real-pkg', 'index.js'), 'utf8')).toBe('real install');
+    write(
+      join(worktree, 'node_modules', 'real-pkg', 'index.js'),
+      'real install',
+    );
+    expect(() => linkModules(main, worktree)).toThrow(
+      /exists and is not a linked folder/,
+    );
+    expect(
+      readFileSync(
+        join(worktree, 'node_modules', 'real-pkg', 'index.js'),
+        'utf8',
+      ),
+    ).toBe('real install');
   });
 });
 
@@ -105,9 +143,18 @@ describe('removeLinkedModules', () => {
     const removed = removeLinkedModules(worktree);
     expect(removed).toBeGreaterThan(0);
     expect(existsSync(join(worktree, 'node_modules'))).toBe(false);
-    expect(readFileSync(join(main, 'node_modules', 'left-pad', 'index.js'), 'utf8')).toBe('main left-pad');
-    expect(readFileSync(join(main, 'preview-protocol', 'src', 'index.ts'), 'utf8')).toBe('main protocol');
-    expect(readFileSync(join(main, 'node_modules', '@scope', 'pkg', 'index.js'), 'utf8')).toBe('main scoped');
+    expect(
+      readFileSync(join(main, 'node_modules', 'left-pad', 'index.js'), 'utf8'),
+    ).toBe('main left-pad');
+    expect(
+      readFileSync(join(main, 'preview-protocol', 'src', 'index.ts'), 'utf8'),
+    ).toBe('main protocol');
+    expect(
+      readFileSync(
+        join(main, 'node_modules', '@scope', 'pkg', 'index.js'),
+        'utf8',
+      ),
+    ).toBe('main scoped');
   });
 
   it('returns 0 when there is nothing to remove', () => {

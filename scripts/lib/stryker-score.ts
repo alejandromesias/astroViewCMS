@@ -52,17 +52,24 @@ export function countsByFile(report: unknown): Map<string, MutantCounts> {
   const counts = new Map<string, MutantCounts>();
   for (const [file, entry] of Object.entries(report.files)) {
     if (!isRecord(entry) || !Array.isArray(entry.mutants)) {
-      throw new Error(`Stryker report entry for ${file} has no \`mutants\` array`);
+      throw new Error(
+        `Stryker report entry for ${file} has no \`mutants\` array`,
+      );
     }
     const tally: MutantCounts = { detected: 0, valid: 0 };
     for (const mutant of entry.mutants) {
       if (!isRecord(mutant) || typeof mutant.status !== 'string') {
-        throw new Error(`Stryker report entry for ${file} has a mutant without a status`);
+        throw new Error(
+          `Stryker report entry for ${file} has a mutant without a status`,
+        );
       }
       if (mutant.status === 'Killed' || mutant.status === 'Timeout') {
         tally.detected += 1;
         tally.valid += 1;
-      } else if (mutant.status === 'Survived' || mutant.status === 'NoCoverage') {
+      } else if (
+        mutant.status === 'Survived' ||
+        mutant.status === 'NoCoverage'
+      ) {
         tally.valid += 1;
       }
     }
@@ -73,7 +80,8 @@ export function countsByFile(report: unknown): Map<string, MutantCounts> {
 
 // Parses .mutation-waivers.json: an array of { file, floor, reason, task }. Throws on any other shape.
 export function parseWaivers(value: unknown): Waiver[] {
-  if (!Array.isArray(value)) throw new Error('.mutation-waivers.json must be an array');
+  if (!Array.isArray(value))
+    throw new Error('.mutation-waivers.json must be an array');
   return value.map((item, index) => {
     if (
       !isRecord(item) ||
@@ -82,21 +90,34 @@ export function parseWaivers(value: unknown): Waiver[] {
       typeof item.reason !== 'string' ||
       typeof item.task !== 'string'
     ) {
-      throw new Error(`waiver ${index} needs file (string), floor (number), reason and task (strings)`);
+      throw new Error(
+        `waiver ${index} needs file (string), floor (number), reason and task (strings)`,
+      );
     }
     if (!(item.floor >= 0 && item.floor < FILE_FLOOR)) {
-      throw new Error(`waiver ${index} (${item.file}): floor must be 0 or more and under ${FILE_FLOOR}`);
+      throw new Error(
+        `waiver ${index} (${item.file}): floor must be 0 or more and under ${FILE_FLOOR}`,
+      );
     }
     if (item.reason.trim() === '' || item.task.trim() === '') {
-      throw new Error(`waiver ${index} (${item.file}): reason and task must not be empty`);
+      throw new Error(
+        `waiver ${index} (${item.file}): reason and task must not be empty`,
+      );
     }
-    return { file: item.file, floor: item.floor, reason: item.reason, task: item.task };
+    return {
+      file: item.file,
+      floor: item.floor,
+      reason: item.reason,
+      task: item.task,
+    };
   });
 }
 
 function scoreOf(counts: MutantCounts): number | undefined {
   // Multiplies before dividing, so whole-number scores are exact (11 of 20 is 55, not 55.00000000000001).
-  return counts.valid === 0 ? undefined : (counts.detected * 100) / counts.valid;
+  return counts.valid === 0
+    ? undefined
+    : (counts.detected * 100) / counts.valid;
 }
 
 // Judges the files. `expected` maps each group to the files the run should have mutated; `reported`
@@ -113,15 +134,25 @@ export function judge(input: {
   const { mode, expected, reported, counts, waivers } = input;
   const failures: string[] = [];
   const waiverOf = new Map(waivers.map((waiver) => [waiver.file, waiver]));
-  const files = mode === 'full' ? [...counts.keys()].sort() : [...expected.values()].flat().sort();
+  const files =
+    mode === 'full'
+      ? [...counts.keys()].sort()
+      : [...expected.values()].flat().sort();
 
   for (const [group, groupFiles] of expected) {
     if (!reported.has(group)) {
-      failures.push(`no Stryker report for group ${group}: the run did not finish`);
+      failures.push(
+        `no Stryker report for group ${group}: the run did not finish`,
+      );
       continue;
     }
-    const mutated = groupFiles.some((file) => (counts.get(file)?.valid ?? 0) > 0);
-    if (!mutated) failures.push(`Stryker mutated nothing for group ${group}: check its run`);
+    const mutated = groupFiles.some(
+      (file) => (counts.get(file)?.valid ?? 0) > 0,
+    );
+    if (!mutated)
+      failures.push(
+        `Stryker mutated nothing for group ${group}: check its run`,
+      );
   }
 
   const rows: Row[] = files.map((file) => {
@@ -134,7 +165,9 @@ export function judge(input: {
     else if (mode === 'diff' && score < floor) status = 'fail';
     else if (mode === 'full' && score < FILE_FLOOR) status = 'under-80';
     if (status === 'fail') {
-      failures.push(`${file} scores ${score?.toFixed(2)}, under its floor of ${floor}`);
+      failures.push(
+        `${file} scores ${score?.toFixed(2)}, under its floor of ${floor}`,
+      );
     }
     return {
       file,
@@ -149,12 +182,17 @@ export function judge(input: {
   });
 
   const total = rows.reduce(
-    (sum, row) => ({ detected: sum.detected + row.detected, valid: sum.valid + row.valid }),
+    (sum, row) => ({
+      detected: sum.detected + row.detected,
+      valid: sum.valid + row.valid,
+    }),
     { detected: 0, valid: 0 },
   );
   const overall = scoreOf(total);
   if (overall !== undefined && overall < OVERALL_FLOOR) {
-    failures.push(`the ${mode === 'diff' ? 'changed set' : 'whole run'} scores ${overall.toFixed(2)} overall, under ${OVERALL_FLOOR}`);
+    failures.push(
+      `the ${mode === 'diff' ? 'changed set' : 'whole run'} scores ${overall.toFixed(2)} overall, under ${OVERALL_FLOOR}`,
+    );
   }
   return { rows, overall, failures };
 }

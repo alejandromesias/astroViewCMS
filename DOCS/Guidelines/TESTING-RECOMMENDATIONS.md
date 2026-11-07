@@ -50,22 +50,24 @@ Many surviving mutants were in code whose effect the test could not see.
 
 A file can score well only through other files' tests and still have no direct test. `media.ts` and `keys.ts` were like this. When you add `foo.ts`, add `foo.test.ts` next to it.
 
-## 7. Running Stryker on new work
+## 7. Mutation testing (Stryker)
 
-- Make sure the file's tests pass first: `npx vitest run <file>`.
-- **Never run `npx stryker run` yourself.** A raw run puts its sandbox inside the repo, where a git call from a test or a mutant can reach the main checkout and change its branch, refs or config (it has happened three times; see WORKPLAN-PHASE-2.md, 2.1h standing risk). Run Stryker only through the script, from the repo root:
+Stryker runs in CI, not in your task. See `DOCS/Guidelines/CI-PIPELINE.md`.
+
+- **Your part:** write the tests as sections 1 to 6 say, make sure the file's tests pass (`npx vitest run <file>`), push the branch. The `mutation-diff` job scores the source files you changed. It fails when the changed set is under 75, or a changed file is under 80 (a file's floor can be lowered only by `.mutation-waivers.json`, with a reason and the task that classified the survivors).
+- **Done when:** the survivors of your changed files are killed or classified (equivalent mutant, or noise), and the job is green. The survivors, with the original and the changed code, are in the job log. The score that counts is the CI one, not the green test run.
+- **Never run `npx stryker run` yourself.** A raw run puts its sandbox inside the repo, where a git call from a test or a mutant can reach the main checkout and change its branch, refs or config (it has happened three times; see WORKPLAN-PHASE-2.md, 2.1h standing risk).
+- **A local run is the exception:** a tight loop on one file that should take under 10 minutes, or while CI is down or out of minutes. Never a full run. Commit first (the script refuses a dirty tree), then, from the repo root:
   `node scripts/stryker-run.mjs <config> --mutate <files>`
-  - `<config>` is `stryker.cms-server.config.mjs` for `cms-server` files, or `stryker.serve.config.mjs` for `preview-render-server/src/serve/` files.
-  - `--mutate` is required (comma-separated files or globs). The script adds `--force` itself, so every score is a fresh, full score for those files.
-  - **Commit or stash first.** The script refuses a dirty tree, because it exports `HEAD`. Do not commit or switch branches while it runs.
-  - It runs a copy of `HEAD` under `%TEMP%\avc-stryker\` with no git repository above it, checks the main checkout's branch, `HEAD`, refs, local config and `node_modules` before and after, and copies nothing back if one changed.
+  - `<config>` is the group's config: `stryker.cms-server.config.mjs`, `stryker.serve.config.mjs` (`preview-render-server/src/serve/` and `preview-config.ts`), `stryker.preview.config.mjs` (`src/manifest/`), `stryker.renderer.config.mjs` (the rest of `preview-render-server/src/`), `stryker.protocol.config.mjs` or `stryker.contract.config.mjs`. `node scripts/stryker-changed.ts` prints the group of each changed file.
+  - `--mutate` is required (comma-separated files or globs). The script adds `--force`, so every score is a fresh, full score for those files.
+  - It runs a copy of `HEAD` under `%TEMP%\avc-stryker\` with no git repository above it, checks the main checkout's branch, `HEAD`, refs, local config and `node_modules` before and after, and copies nothing back if one changed. Do not commit or switch branches while it runs.
   - If it refuses or reports a change, stop and report its message. Do not retry and do not fall back to `npx stryker run`.
-  - A run takes tens of minutes (about 40 for a file of 200 mutants). Run one at a time, in the background if your tool allows it.
-- Results are in `reports/stryker-runs/<stamp>/`. The survivors, with the original and the changed code, are in the run's console output (clear-text report). Score with the table's `% Mutation score` row for your file; ignore other rows.
-- The result that counts is the Stryker re-run, not the green test run.
+  - A run takes tens of minutes for a file of 200 mutants. Run one at a time, in the background if your tool allows it.
+  - Results are in `reports/stryker-runs/<stamp>/`. Score with the table's `% Mutation score` row for your file; ignore other rows.
 - To check a survivor by hand, apply the mutant in the file, run that test file, then restore the file with `git checkout -- <file>`. Do this only with no Stryker run in progress.
 - Mutants in module-level constants ("static" mutants) often survive under the Vitest runner, because modules are not reloaded for each mutant. Check them by hand and treat them as noise.
-- Floors: coverage floors are per package (root `vitest.config.ts`): 80 lines, 90 functions, 80 branches and 80 statements for every package (decided 2026-11-02; see QUALITY-TOOLING.md). Stryker fails the run below 75% (`break`); above 90% is healthy and below 80% needs attention (`high` 90, `low` 80; see QUALITY-TOOLING.md).
+- Floors: coverage floors are per package (root `vitest.config.ts`): 80 lines, 90 functions, 80 branches and 80 statements for every package (decided 2026-11-02; see QUALITY-TOOLING.md). Mutation: 75 for the changed set and 80 per changed file (`mutation-diff`), 75 for the whole repo (`mutation-full`); above 90 is healthy.
 
 ## 8. Agent and shell notes
 
@@ -80,4 +82,4 @@ A file can score well only through other files' tests and still have no direct t
 - [ ] Regexes have near-miss negatives, and tables are covered with `it.each`.
 - [ ] Prototype keys are tried wherever user keys are accepted.
 - [ ] At least one test uses the real default of each injected dependency.
-- [ ] Stryker was re-run on the changed files, and the survivors were read.
+- [ ] `mutation-diff` is green, and the survivors of the changed files were read.

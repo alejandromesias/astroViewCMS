@@ -41,7 +41,10 @@ function unlinkLink(path: string): void {
 
 function junction(target: string, path: string, summary: LinkSummary): void {
   if (existsSync(path) || isLink(path)) {
-    if (!isLink(path)) throw new Error(`${path} is a real folder, not a link; refusing to replace it`);
+    if (!isLink(path))
+      throw new Error(
+        `${path} is a real folder, not a link; refusing to replace it`,
+      );
     if (realpathSync(path) === realpathSync(target)) return;
     unlinkLink(path);
   }
@@ -110,17 +113,25 @@ function linkLevel(
 // Builds worktreeRoot/node_modules from mainRoot/node_modules. Safe to run again: links already
 // in place are left alone. Refuses a node_modules that is not one of ours (no marker), so a real
 // install is never mixed with junctions.
-export function linkModules(mainRoot: string, worktreeRoot: string): LinkSummary {
+export function linkModules(
+  mainRoot: string,
+  worktreeRoot: string,
+): LinkSummary {
   const mainReal = realpathSync(mainRoot);
   const src = join(mainReal, 'node_modules');
   const dst = join(worktreeRoot, 'node_modules');
   if (existsSync(dst) && !existsSync(join(dst, MARKER))) {
-    throw new Error(`${dst} exists and is not a linked folder; remove it or use --own-install`);
+    throw new Error(
+      `${dst} exists and is not a linked folder; remove it or use --own-install`,
+    );
   }
   mkdirSync(dst, { recursive: true });
   const summary: LinkSummary = { linked: 0, copied: 0 };
   linkLevel(src, dst, mainReal, worktreeRoot, summary);
-  writeFileSync(join(dst, MARKER), 'linked by scripts/worktree.ts (WORKPLAN 2.1n)\n');
+  writeFileSync(
+    join(dst, MARKER),
+    'linked by scripts/worktree.ts (WORKPLAN 2.1n)\n',
+  );
   return summary;
 }
 

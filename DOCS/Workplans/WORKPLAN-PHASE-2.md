@@ -48,9 +48,17 @@ to, so independent work can start together:
 
 Rules for running tasks in parallel:
 
-- One git worktree and branch per task, cut from the latest `main`. Merge
-  when the task's own tests and `npm run check` (fast) pass. Commits still
-  wait for the user's go-ahead (README section 2).
+- One git worktree and branch per task, cut from the latest `main`. Push the
+  branch for CI and merge (merge commit) when `fast`, `e2e` and `mutation-diff`
+  are green (CI-PIPELINE.md). Commits still wait for the user's go-ahead
+  (README section 2).
+- **The mutation part of "Done when" (since 2026-11-07):** the survivors of the
+  task's changed files are killed or classified, and `mutation-diff` is green.
+  No local Stryker run is needed; a local run is the exception
+  (TESTING-RECOMMENDATIONS.md section 7). Older tasks that say "Stryker run"
+  mean this.
+- **A wave is a milestone, not a branch.** It is closed when `mutation-full` is
+  green on `main`, and tagged `wave-<n>-closed`.
 - Tasks are sized for one agent session. A task's "Done when" is its whole
   review checklist.
 - **Shared files to watch** (two parallel tasks editing them will collide,
@@ -1051,7 +1059,7 @@ Steps, in order:
 - **File ownership.** `scripts/stryker-changed.ts`, `scripts/stryker-summary.ts`, `scripts/lib/stryker-plan.ts`, `scripts/lib/stryker-score.ts`, `scripts/lib/stryker-reports.ts` (and their tests), `scripts/stryker-run.mjs`, `scripts/lib/link-modules.ts` (the `.bin` symlinks on POSIX), the six triage configs and their Vitest configs (`renderer`, `protocol` and `contract` new), `.mutation-waivers.json`, the `mutation-diff` job in `ci.yml`, `.github/workflows/mutation-full.yml`, `scripts/check.ts` (`--mutation`), `knip.json`.
 - **Result (2026-11-07, verified on CI).** Commits `3a76a29` (the code) and two knip fixes after it, `25fe1a8` and the next one. The blocking gate was seen both ways on throwaway branches (deleted after the check): green, `index.ts` at 97.22% (a comment-only test change, passed); red, `index.ts` at 73.20% (a new function covered but with weak assertions: failed on the file floor and the changed-set floor, `mutation-diff` exited 1). The first red attempt failed in `fast` on coverage, not on the gate; the fix was the test, not the gate. Knip reported two entries in `knip.json` as redundant (`scripts/stryker-summary.ts` and `scripts/stryker-changed.ts`, both reached from the scripts' imports and tests); both are removed. Still open: the whole-repo `mutation-full` run (dispatched 2026-11-07 on `main`, run 42392688637), to compare with the 2.1h numbers and to confirm each shard finishes within 330 minutes.
 
-#### 2.1m Policy and documents for the CI workflow — after 2.1k (the final numbers come from 2.1l) · docs, the user reviews (added 2026-11-07)
+#### 2.1m Policy and documents for the CI workflow — after 2.1k (the final numbers come from 2.1l) · docs, the user reviews · written 2026-11-07, review pending
 
 - **Why.** The rules for tasks, waves and Stryker change with CI. They must be written where the agents and the user read them.
 - **Change.**
@@ -1064,6 +1072,7 @@ Steps, in order:
 - **Verify.** `npm run lint` and `npm run format:check` pass with the new scope. Read CI-PIPELINE.md against `ci.yml` and `mutation-full.yml` as built. A grep of DOCS finds no wave-branch wording left.
 - **Done when.** The user has reviewed the CI document and the README text. The numbers in CI-PIPELINE.md match the last 2.1l run.
 - **File ownership.** The documents above, `biome.json`, and the scripts whose formatting changes.
+- **Result (2026-11-07).** Written: `DOCS/Guidelines/CI-PIPELINE.md`; README section 2 (one branch per task, merge commit, wave tag, CI exception to the commit rule, Stryker in CI), the document map and section 6; TESTING-RECOMMENDATIONS section 7 and its checklist; QUALITY-TOOLING (a "Where it runs" column, the `--mutation` and `--all` rows, the Stryker pointers, the incremental-cache sentence); this workplan's section 2 (parallel rules, the mutation part of "Done when", the wave rule). `biome.json` now covers `scripts/` and `vitest.*.ts`: 19 files were formatted (formatting only) and one lint error was fixed with a reasoned ignore (the tripwire throw in `finally` of `stryker-run.mjs`). `lint`, `format:check`, the 74 scripts tests and `knip` pass. Left for the user: review CI-PIPELINE.md and the README text.
 
 #### 2.1o Repository hardening: ruleset, dependency updates, security scans — after 2.1l · [user] [ci] (added 2026-11-07)
 

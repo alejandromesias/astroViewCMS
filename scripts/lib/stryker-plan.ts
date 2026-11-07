@@ -9,7 +9,10 @@ import path from 'node:path';
 const RULES: ReadonlyArray<{ group: string; prefixes: readonly string[] }> = [
   {
     group: 'serve',
-    prefixes: ['preview-render-server/src/serve/', 'preview-render-server/src/preview-config.ts'],
+    prefixes: [
+      'preview-render-server/src/serve/',
+      'preview-render-server/src/preview-config.ts',
+    ],
   },
   { group: 'preview', prefixes: ['preview-render-server/src/manifest/'] },
   { group: 'renderer', prefixes: ['preview-render-server/src/'] },
@@ -21,7 +24,9 @@ const RULES: ReadonlyArray<{ group: string; prefixes: readonly string[] }> = [
 export const GROUP_NAMES: readonly string[] = RULES.map((rule) => rule.group);
 
 export function groupOf(file: string): string | undefined {
-  return RULES.find((rule) => rule.prefixes.some((prefix) => file.startsWith(prefix)))?.group;
+  return RULES.find((rule) =>
+    rule.prefixes.some((prefix) => file.startsWith(prefix)),
+  )?.group;
 }
 
 // True when the base config's `mutate` list selects the file: some pattern matches, and no `!` pattern does.
@@ -77,13 +82,18 @@ export function planFiles(
   for (const source of [...sources].sort()) {
     const group = groupOf(source);
     if (group === undefined) {
-      throw new Error(`no Stryker group for ${source}; add a rule in scripts/lib/stryker-plan.ts`);
+      throw new Error(
+        `no Stryker group for ${source}; add a rule in scripts/lib/stryker-plan.ts`,
+      );
     }
     byGroup.set(group, [...(byGroup.get(group) ?? []), source]);
   }
   return {
     groups: Object.fromEntries(
-      GROUP_NAMES.filter((name) => byGroup.has(name)).map((name) => [name, byGroup.get(name) ?? []]),
+      GROUP_NAMES.filter((name) => byGroup.has(name)).map((name) => [
+        name,
+        byGroup.get(name) ?? [],
+      ]),
     ),
     dropped: dropped.sort(),
   };

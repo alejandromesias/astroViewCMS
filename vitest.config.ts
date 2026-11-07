@@ -20,10 +20,30 @@ export default defineConfig({
       // package, so a weak package cannot hide behind strong ones. A file that cannot reasonably
       // meet them may be excluded below, only after the user approves it.
       thresholds: {
-        'preview-render-server/**': { lines: 80, functions: 90, branches: 80, statements: 80 },
-        'preview-protocol/**': { lines: 80, functions: 90, branches: 80, statements: 80 },
-        'preview-contract/**': { lines: 80, functions: 90, branches: 80, statements: 80 },
-        'cms-server/**': { lines: 80, functions: 90, branches: 80, statements: 80 },
+        'preview-render-server/**': {
+          lines: 80,
+          functions: 90,
+          branches: 80,
+          statements: 80,
+        },
+        'preview-protocol/**': {
+          lines: 80,
+          functions: 90,
+          branches: 80,
+          statements: 80,
+        },
+        'preview-contract/**': {
+          lines: 80,
+          functions: 90,
+          branches: 80,
+          statements: 80,
+        },
+        'cms-server/**': {
+          lines: 80,
+          functions: 90,
+          branches: 80,
+          statements: 80,
+        },
       },
       include: [
         'preview-render-server/src/**',

@@ -37,23 +37,23 @@ tests for it; the full unit suite is for a person running the checks.
 
 ## Overview
 
-| Tool | What it guards | Config | Gate? |
-| --- | --- | --- | --- |
-| Strict `tsc` flags | type holes | `preview-render-server/tsconfig.json` | gate |
-| Biome | code style and common mistakes | `biome.json` | gate |
-| Unit tests and coverage floors | every package's unit tests pass, and each package stays above its line, function, branch and statement floor | `vitest.config.ts` (root), `vitest.projects.ts` | gate |
-| Zod at the boundaries | untrusted input | code pattern | gate (tested at runtime) |
-| osv-scanner | known vulnerabilities in dependencies | `osv-scanner.toml` | gate |
-| Knip | dead code, unused exports and dependencies | `knip.json` | gate (should print nothing) |
-| dependency-cruiser | import rules: client stays browser-safe, protocol is a leaf, read-only request path, cycles, tests | `.dependency-cruiser.cjs` | gate |
-| Module graph (dependency-cruiser) | nothing: diagrams for people, an edge list for agents | `.dependency-cruiser-graph.cjs`, `scripts/graph.ts` | neither (a view) |
-| Budget tests | bridge size, render latency, memory growth | tests | gate |
-| Browser tests | the preview in a real Chromium: hydration, morphing, styles, editor origins | `preview-render-server/vitest.browser.config.ts` | gate |
-| Memory metric | rss and private memory of one preview process, idle, after warm-up, after renders | `scripts/measure-memory.mjs` | neither (a number to record) |
-| Stryker | whether the tests catch changes to the code | `stryker.config.json` | gate in `--mutation` (score floor) |
+| Tool | What it guards | Config | Gate? | Where it runs |
+| --- | --- | --- | --- | --- |
+| Strict `tsc` flags | type holes | `preview-render-server/tsconfig.json` | gate | local, CI `fast` |
+| Biome | code style and common mistakes | `biome.json` | gate | local, pre-commit, CI `fast` |
+| Unit tests and coverage floors | every package's unit tests pass, and each package stays above its line, function, branch and statement floor | `vitest.config.ts` (root), `vitest.projects.ts` | gate | local, CI `fast` |
+| Zod at the boundaries | untrusted input | code pattern | gate (tested at runtime) | in the unit tests |
+| osv-scanner | known vulnerabilities in dependencies | `osv-scanner.toml` | gate | local (if installed), CI `fast` |
+| Knip | dead code, unused exports and dependencies | `knip.json` | gate (should print nothing) | local, CI `fast` |
+| dependency-cruiser | import rules: client stays browser-safe, protocol is a leaf, read-only request path, cycles, tests | `.dependency-cruiser.cjs` | gate | local, pre-commit, CI `fast` |
+| Module graph (dependency-cruiser) | nothing: diagrams for people, an edge list for agents | `.dependency-cruiser-graph.cjs`, `scripts/graph.ts` | neither (a view) | local |
+| Budget tests | bridge size, render latency, memory growth | tests | gate | local `--e2e`, CI `e2e` |
+| Browser tests | the preview in a real Chromium: hydration, morphing, styles, editor origins | `preview-render-server/vitest.browser.config.ts` | gate | local `--e2e`, CI `e2e` |
+| Memory metric | rss and private memory of one preview process, idle, after warm-up, after renders | `scripts/measure-memory.mjs` | neither (a number to record) | local |
+| Stryker | whether the tests catch changes to the code | `stryker.config.json`, `stryker.<group>.config.mjs`, `.mutation-waivers.json` | gate (75 changed set, 80 per changed file) | CI `mutation-diff`, CI `mutation-full`; local only as an exception |
 
-"Gate" means a failure should stop a change from landing (and, once there is
-CI, fail the build). "Report" means the output needs a human reading it.
+"Gate" means a failure should stop a change from landing (and fails the
+build in CI; see [CI-PIPELINE.md](CI-PIPELINE.md)). "Report" means the output needs a human reading it.
 
 ### How each tool is applied here
 
@@ -202,8 +202,8 @@ behaves the same on Windows and a Linux CI). Flags go after `--` and combine:
 | --- | --- | --- |
 | `--fast` (default) | tsc for the four packages, biome lint, biome format, unit tests and coverage floors (every package, one run), knip, depcruise, osv-scanner | ~38 s (measured 2026-11-02: the unit tests and coverage step 25 s, the rest 13 s; 2026-11-01 measured 127 s for the same steps, not explained) |
 | `--e2e` | the fast set, then e2e and the budget tests, and the browser suite | the fast set plus ~77 s (measured 2026-11-02: e2e 46 s, browser 31 s) |
-| `--mutation` | `npx stryker run` (incremental) | ~29 s when nothing changed; see below |
-| `--all` | everything above (the coverage floors run in the fast set) | ~710 s wall (measured 2026-11-02: Stryker 594 s, the other steps 115 s; the run fails on the Stryker score, see [Stryker](#stryker-mutation-testing)) |
+| `--mutation` | `node scripts/stryker-changed.ts --run`: Stryker on the files the branch changed (commit first), judged like the `mutation-diff` job | minutes to tens of minutes; see [CI-PIPELINE.md](CI-PIPELINE.md) |
+| `--all` | everything above (the coverage floors run in the fast set) | the fast set plus e2e plus the changed-files mutation run |
 
 Example: `npm run check -- --e2e --mutation`. An unknown flag exits with code 2.
 
@@ -216,7 +216,8 @@ The `depcruise` step enforces the import rules listed in the [annex](#annex-depe
 - Stryker shows `report`, but fails the run when its score is under
   `thresholds.break`.
 - If `osv-scanner` is not on PATH, that step is `skipped` with the install
-  command, and the run does not fail. CI will install it.
+  command, and the run does not fail locally. With `CI` set a missing tool fails
+  the step, and CI installs osv-scanner at a pinned version.
 - **Who runs it:** the "targeted tests only" rule in `CLAUDE.md` applies to
   agent sessions. This script is where the full unit suite runs, started by a
   person. Agents do not run `npm run check` unless asked.
@@ -329,10 +330,14 @@ that behaviour down).
 - **Context:** [MUTATION-WEAK-SPOTS.md](../Historic/MUTATION-WEAK-SPOTS.md) is the record
   of the first full run and the work that followed it, with the weakest files
   and function-level hot spots. Use it to see what has already been judged noise.
-- **One file:** `npx stryker run --mutate "preview-render-server/src/overlay/dates.ts"`
+- **One file (local, the exception):** `node scripts/stryker-run.mjs stryker.renderer.config.mjs --mutate "preview-render-server/src/overlay/dates.ts"`
   takes seconds to a few minutes depending on the file.
-- **Full run:** `npx stryker run`. A first, non-incremental run takes a long
-  time (tens of minutes). With the baseline below, later runs are quick.
+- **Where it runs:** in CI (`mutation-diff` on every branch, `mutation-full`
+  nightly); see [CI-PIPELINE.md](CI-PIPELINE.md). Locally only through
+  `scripts/stryker-run.mjs`, never `npx stryker run`. The history below is from
+  before CI.
+- **Full run (history):** `npx stryker run` took tens of minutes on the first,
+  non-incremental run.
 - **Last full run:** 2026-10-28, 90.74% overall (34 files, 992 tests; was
   77.55% on the first run). The latest incremental run (2684 mutants, 970
   tests) scored 91.83%. **Latest run: 2026-10-31** (`npm run check -- --all`, 161 s
@@ -365,10 +370,10 @@ rules that came from it:
 4. **Agents.** Builder briefs for agents that may run Stryker carry the same rule. Agents that
    edit code run with `isolation: "worktree"`, but a Stryker run still goes through the script.
 
-Configs: `stryker.cms-server.config.mjs`, `stryker.serve.config.mjs`. Output: `reports/stryker-runs/<stamp>/`
+Configs: one per group (`stryker.<group>.config.mjs`, groups in CI-PIPELINE.md section 3). Output: `reports/stryker-runs/<stamp>/`
 (`run.json` has the config, arguments and `HEAD`), plus the console output. Each run starts
 from an empty incremental file, so the accumulated `reports/stryker-triage-*.json` files are
-not updated. The script has no way to run the whole repo; use `--mutate` with globs.
+not updated. `--mutate` is required; the whole repo runs in CI as `mutation-full`.
 
 ### Incremental mode
 
@@ -382,8 +387,9 @@ not updated. The script has no way to run the whole repo; use `--mutate` with gl
   small edit to a widely used test file can still mean a long run.
 - Delete `reports/stryker-incremental.json` to force a full run, or pass
   `--force` to re-run everything while still updating the file.
-- A fresh clone has no baseline, so its first run is a full run. A future CI
-  would have to cache this file between runs to benefit from incremental mode.
+- A fresh clone has no baseline, so its first run is a full run. CI does not use
+  incremental mode: `stryker-run.mjs` always passes `--force`, so every score is
+  fresh. Whether the nightly should cache a baseline is decided in WORKPLAN 2.1p.
 
 ## Browser suite
 

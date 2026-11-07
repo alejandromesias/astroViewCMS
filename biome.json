@@ -11,6 +11,8 @@
       "preview-protocol/**",
       "preview-contract/**",
       "cms-server/**",
+      "scripts/**",
+      "vitest.*.ts",
       "!**/dist",
       "!**/node_modules",
       "!**/test/fixtures"

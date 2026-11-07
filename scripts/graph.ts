@@ -15,7 +15,11 @@ const FOLDERS = `-S "^(preview-render-server|preview-protocol|preview-contract|c
 const PACKAGES = `-S "^node_modules/(@[^/]+/[^/]+|[^/]+)"`;
 
 function cruise(args: string): string {
-  const run = spawnSync(`${BASE} ${args}`, { shell: true, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+  const run = spawnSync(`${BASE} ${args}`, {
+    shell: true,
+    encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
+  });
   if (run.status !== 0) {
     process.stderr.write(run.stderr);
     throw new Error(`depcruise ${args} exited with ${run.status}`);
@@ -39,7 +43,10 @@ function dedupeEdges(text: string, arrow: string): string {
 }
 
 function escapeHtml(text: string): string {
-  return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+  return text
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
 }
 
 const folders = dedupeEdges(cruise(`-T mermaid ${INTERNAL} ${FOLDERS}`), '-->');
@@ -69,4 +76,6 @@ Generated ${new Date().toISOString().slice(0, 10)} by <code>npm run graph</code>
 mkdirSync(OUT, { recursive: true });
 writeFileSync(`${OUT}/modules.html`, html);
 writeFileSync(`${OUT}/deps.txt`, deps);
-console.log(`Wrote ${OUT}/modules.html and ${OUT}/deps.txt (${deps.trim().split('\n').length} edges)`);
+console.log(
+  `Wrote ${OUT}/modules.html and ${OUT}/deps.txt (${deps.trim().split('\n').length} edges)`,
+);

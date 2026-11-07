@@ -28,7 +28,9 @@ function postsFromArgs(args) {
   for (const arg of args) {
     const match = /^--posts=(\d+)$/.exec(arg);
     if (!match || Number(match[1]) < 1) {
-      console.error(`Unknown argument "${arg}". Usage: npm run measure:listing -- [--posts=N] (N >= 1, default ${DEFAULT_POSTS}).`);
+      console.error(
+        `Unknown argument "${arg}". Usage: npm run measure:listing -- [--posts=N] (N >= 1, default ${DEFAULT_POSTS}).`,
+      );
       process.exit(2);
     }
     posts = Number(match[1]);
@@ -47,7 +49,11 @@ const AGENT_VARS = [
 ];
 // The same build-time fields as preview-render-server/sites/sample-site.config.ts.
 const BUILD_TIME_FIELDS = {
-  'data:src/config/config.json': ['site.base_url', 'site.base_path', 'site.trailing_slash'],
+  'data:src/config/config.json': [
+    'site.base_url',
+    'site.base_path',
+    'site.trailing_slash',
+  ],
   'data:src/config/theme.json': ['*'],
 };
 
@@ -71,7 +77,8 @@ function freePort() {
 async function waitForListening(port, server, output, timeoutMs = 20_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (server.exitCode !== null) throw new Error(`server exited:\n${output()}`);
+    if (server.exitCode !== null)
+      throw new Error(`server exited:\n${output()}`);
     const up = await new Promise((resolve) => {
       const socket = net.connect(port, '127.0.0.1');
       socket.once('connect', () => {
@@ -87,15 +94,21 @@ async function waitForListening(port, server, output, timeoutMs = 20_000) {
 }
 
 async function renderOnce(baseUrl, pathname) {
-  const res = await fetch(`${baseUrl}/__preview/render?path=${encodeURIComponent(pathname)}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ documents: {} }),
-  });
+  const res = await fetch(
+    `${baseUrl}/__preview/render?path=${encodeURIComponent(pathname)}`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ documents: {} }),
+    },
+  );
   if (res.status !== 200) throw new Error(`${pathname} answered ${res.status}`);
   const body = await res.json();
-  const paths = Number(/paths;dur=([\d.]+)/.exec(res.headers.get('server-timing') ?? '')?.[1]);
-  if (!Number.isFinite(paths)) throw new Error(`${pathname} has no Server-Timing paths value`);
+  const paths = Number(
+    /paths;dur=([\d.]+)/.exec(res.headers.get('server-timing') ?? '')?.[1],
+  );
+  if (!Number.isFinite(paths))
+    throw new Error(`${pathname} has no Server-Timing paths value`);
   return { render: body.renderMs, paths };
 }
 
@@ -113,7 +126,8 @@ let server;
 try {
   fs.cpSync(SAMPLE_DIR, copyDir, {
     recursive: true,
-    filter: (src) => !['node_modules', 'dist', '.astro'].includes(path.basename(src)),
+    filter: (src) =>
+      !['node_modules', 'dist', '.astro'].includes(path.basename(src)),
   });
   fs.symlinkSync(path.join(ROOT, 'node_modules'), modulesLink, 'junction');
 
@@ -123,12 +137,17 @@ try {
     `export default ${JSON.stringify({ root: copyDir, regions: {}, buildTimeFields: BUILD_TIME_FIELDS, port: 4401 })};\n`,
   );
 
-  const generated = spawnSync(process.execPath, ['scripts/generate-posts.mjs', String(POSTS)], {
-    cwd: copyDir,
-    encoding: 'utf8',
-    timeout: 60_000,
-  });
-  if (generated.status !== 0) throw new Error(`generate-posts failed:\n${generated.stderr}`);
+  const generated = spawnSync(
+    process.execPath,
+    ['scripts/generate-posts.mjs', String(POSTS)],
+    {
+      cwd: copyDir,
+      encoding: 'utf8',
+      timeout: 60_000,
+    },
+  );
+  if (generated.status !== 0)
+    throw new Error(`generate-posts failed:\n${generated.stderr}`);
 
   const build = spawnSync(process.execPath, ['src/build.ts', configFile], {
     cwd: SERVER_DIR,
@@ -136,13 +155,19 @@ try {
     encoding: 'utf8',
     timeout: 300_000,
   });
-  if (build.status !== 0) throw new Error(`build failed:\n${build.stdout}\n${build.stderr}`);
+  if (build.status !== 0)
+    throw new Error(`build failed:\n${build.stdout}\n${build.stderr}`);
 
   const port = await freePort();
   let output = '';
   server = spawn(process.execPath, ['src/start.ts', configFile], {
     cwd: SERVER_DIR,
-    env: { ...env, HOST: '127.0.0.1', PORT: String(port), PREVIEW_INSECURE: '1' },
+    env: {
+      ...env,
+      HOST: '127.0.0.1',
+      PORT: String(port),
+      PREVIEW_INSECURE: '1',
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.stdout.on('data', (chunk) => (output += chunk));
@@ -157,23 +182,35 @@ try {
   for (const pathname of PAGES) {
     await renderOnce(baseUrl, pathname); // first render is untimed (cold paths, 20 ms in D7)
     const samples = [];
-    for (let i = 0; i < RENDERS; i++) samples.push(await renderOnce(baseUrl, pathname));
+    for (let i = 0; i < RENDERS; i++)
+      samples.push(await renderOnce(baseUrl, pathname));
     const renderMedian = median(samples.map((s) => s.render));
     const pathsMedian = median(samples.map((s) => s.paths));
     rows.push({ pathname, renderMedian, pathsMedian });
   }
 
-  console.log(`${POSTS} posts, ${RENDERS} renders per page after warm-up, ${process.platform}`);
-  console.log('page'.padEnd(16), 'render ms'.padStart(10), 'paths ms'.padStart(10), 'paths share'.padStart(12));
+  console.log(
+    `${POSTS} posts, ${RENDERS} renders per page after warm-up, ${process.platform}`,
+  );
+  console.log(
+    'page'.padEnd(16),
+    'render ms'.padStart(10),
+    'paths ms'.padStart(10),
+    'paths share'.padStart(12),
+  );
   for (const row of rows) {
     console.log(
       row.pathname.padEnd(16),
       row.renderMedian.toFixed(1).padStart(10),
       row.pathsMedian.toFixed(1).padStart(10),
-      `${((100 * row.pathsMedian) / row.renderMedian).toFixed(0)}%`.padStart(12),
+      `${((100 * row.pathsMedian) / row.renderMedian).toFixed(0)}%`.padStart(
+        12,
+      ),
     );
   }
-  const flagged = rows.filter((row) => row.renderMedian > FLAG_MS).map((row) => row.pathname);
+  const flagged = rows
+    .filter((row) => row.renderMedian > FLAG_MS)
+    .map((row) => row.pathname);
   console.log(
     flagged.length > 0
       ? `FLAG: median render over ${FLAG_MS} ms: ${flagged.join(', ')} (D7: cache the paths)`

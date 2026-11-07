@@ -42,7 +42,8 @@ function privateBytes(pid) {
       { encoding: 'utf8' },
     );
     const bytes = Number.parseInt(ps.stdout.trim(), 10);
-    if (!Number.isFinite(bytes)) throw new Error(`no private working set for ${pid}: ${ps.stderr}`);
+    if (!Number.isFinite(bytes))
+      throw new Error(`no private working set for ${pid}: ${ps.stderr}`);
     return bytes;
   }
   if (process.platform === 'linux') {
@@ -50,7 +51,10 @@ function privateBytes(pid) {
     const kb = rollup
       .split('\n')
       .filter((line) => /^Private_(Clean|Dirty):/.test(line))
-      .reduce((sum, line) => sum + Number.parseInt(line.split(/\s+/)[1], 10), 0);
+      .reduce(
+        (sum, line) => sum + Number.parseInt(line.split(/\s+/)[1], 10),
+        0,
+      );
     return kb * 1024;
   }
   throw new Error(`private memory is not read on ${process.platform}`);
@@ -70,7 +74,8 @@ function freePort() {
 async function waitForListening(port, server, output, timeoutMs = 20_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (server.exitCode !== null) throw new Error(`server exited:\n${output()}`);
+    if (server.exitCode !== null)
+      throw new Error(`server exited:\n${output()}`);
     const up = await new Promise((resolve) => {
       const socket = net.connect(port, '127.0.0.1');
       socket.once('connect', () => {
@@ -104,22 +109,35 @@ try {
     encoding: 'utf8',
     timeout: 180_000,
   });
-  if (build.status !== 0) throw new Error(`build failed:\n${build.stdout}\n${build.stderr}`);
+  if (build.status !== 0)
+    throw new Error(`build failed:\n${build.stdout}\n${build.stderr}`);
 
   const port = await freePort();
   let output = '';
-  server = spawn(process.execPath, ['--expose-gc', 'src/start.ts', SITE_CONFIG], {
-    cwd: SERVER_DIR,
-    env: { ...env, HOST: '127.0.0.1', PORT: String(port), PREVIEW_INSECURE: '1' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  server = spawn(
+    process.execPath,
+    ['--expose-gc', 'src/start.ts', SITE_CONFIG],
+    {
+      cwd: SERVER_DIR,
+      env: {
+        ...env,
+        HOST: '127.0.0.1',
+        PORT: String(port),
+        PREVIEW_INSECURE: '1',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
   server.stdout.on('data', (chunk) => (output += chunk));
   server.stderr.on('data', (chunk) => (output += chunk));
   await waitForListening(port, server, () => output);
 
   const baseUrl = `http://127.0.0.1:${port}`;
   const home = JSON.parse(
-    fs.readFileSync(path.join(ROOT, 'sample-site/src/content/landing/home-v2.json'), 'utf8'),
+    fs.readFileSync(
+      path.join(ROOT, 'sample-site/src/content/landing/home-v2.json'),
+      'utf8',
+    ),
   );
   const rows = [await measure('idle', server.pid, baseUrl)];
 
@@ -129,18 +147,28 @@ try {
 
   for (let i = 0; i < RENDERS; i++) {
     home.blocks[0].title = `Memory edit ${i}`;
-    const res = await fetch(`${baseUrl}/__preview/render?path=${encodeURIComponent(`/${HOME}`)}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ documents: { [HOME]: home } }),
-    });
-    if (res.status !== 200) throw new Error(`render ${i} answered ${res.status}`);
+    const res = await fetch(
+      `${baseUrl}/__preview/render?path=${encodeURIComponent(`/${HOME}`)}`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ documents: { [HOME]: home } }),
+      },
+    );
+    if (res.status !== 200)
+      throw new Error(`render ${i} answered ${res.status}`);
     await res.text();
   }
   rows.push(await measure(`after ${RENDERS} renders`, server.pid, baseUrl));
 
-  console.log(`preview server pid ${server.pid}, ${SITE_CONFIG}, ${process.platform}`);
-  console.log('stage'.padEnd(20), 'rss MB'.padStart(8), 'private MB'.padStart(12));
+  console.log(
+    `preview server pid ${server.pid}, ${SITE_CONFIG}, ${process.platform}`,
+  );
+  console.log(
+    'stage'.padEnd(20),
+    'rss MB'.padStart(8),
+    'private MB'.padStart(12),
+  );
   for (const row of rows) {
     console.log(
       row.stage.padEnd(20),
