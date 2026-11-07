@@ -43,6 +43,12 @@ checks above. Repository admins can bypass it ("always"), so direct pushes by
 the admin still land; other contributors need a green pull request. A red
 guarded push by the admin is not stopped by the ruleset: CI shows it.
 
+The local pre-commit hook (`.githooks/pre-commit`, about 7 seconds) is the fast tier
+in front of CI: two typechecks, `lint`, `format:check` and `depcruise`, all of which
+`fast` runs again. CI is the gate; the hook only saves a red run. Enable it per
+clone with `git config core.hooksPath .githooks`, and keep that setting: the
+Stryker tripwire (`.githooks/reference-transaction`) needs it too.
+
 ## 3. Mutation testing on a branch
 
 `node scripts/stryker-changed.ts --run` (the `mutation-diff` job, and
