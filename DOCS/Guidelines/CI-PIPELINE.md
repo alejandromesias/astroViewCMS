@@ -10,7 +10,7 @@ in section 8.
 
 | Workflow | Trigger | Job | What it runs | Limit |
 | --- | --- | --- | --- | --- |
-| `ci.yml` | push to `main`, pull request, by hand | `fast` | `npm run check -- --fast`: tsc (4 packages), Biome, unit tests with coverage floors, Knip, dependency-cruiser, osv-scanner | 25 min |
+| `ci.yml` | push to `main`, pull request, by hand | `fast` | `npm run check -- --fast`: tsc (5 packages, the sample site included), Biome, unit tests with coverage floors, Knip, dependency-cruiser, osv-scanner | 25 min |
 | | | `e2e` (needs `fast`) | cms-server end-to-end, preview end-to-end and budgets, browser suite (Chromium) | 40 min |
 | | | `mutation-diff` (needs `fast`) | Stryker on the source files the branch changed, then the judgement (section 3) | 240 min |
 | `mutation-full.yml` | nightly 03:17 UTC, by hand | `shard` x6 | Stryker on every file of one group each | 330 min each |

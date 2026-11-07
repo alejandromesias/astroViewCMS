@@ -141,6 +141,7 @@ build in CI; see [CI-PIPELINE.md](CI-PIPELINE.md)). "Report" means the output ne
 | Typecheck, contract | `npm run typecheck -w preview-contract` | seconds |
 | Unit tests, contract | `npm run test -w preview-contract` | seconds |
 | Typecheck, cms-server | `npm run typecheck -w cms-server` | seconds |
+| Typecheck, sample site | `npm run typecheck -w sample-site` | seconds |
 | Unit tests, cms-server | `npm run test -w cms-server` | seconds |
 | Unit tests and coverage floors, all packages | `npm run coverage` (root `vitest.config.ts`: one run, prints the coverage summary, fails under any package's floor) | ~25 s (measured 2026-11-02: 24.6 to 25.5 s) |
 | Lint | `node_modules/.bin/biome lint` | ~2 s |
@@ -200,7 +201,7 @@ behaves the same on Windows and a Linux CI). Flags go after `--` and combine:
 
 | Flag | Runs | Time |
 | --- | --- | --- |
-| `--fast` (default) | tsc for the four packages, biome lint, biome format, unit tests and coverage floors (every package, one run), knip, depcruise, osv-scanner | ~38 s (measured 2026-11-02: the unit tests and coverage step 25 s, the rest 13 s; 2026-11-01 measured 127 s for the same steps, not explained) |
+| `--fast` (default) | tsc for the five packages (the sample site included), biome lint, biome format, unit tests and coverage floors (every package, one run), knip, depcruise, osv-scanner | ~38 s (measured 2026-11-02: the unit tests and coverage step 25 s, the rest 13 s; 2026-11-01 measured 127 s for the same steps, not explained) |
 | `--e2e` | the fast set, then e2e and the budget tests, and the browser suite | the fast set plus ~77 s (measured 2026-11-02: e2e 46 s, browser 31 s) |
 | `--mutation` | `node scripts/stryker-changed.ts --run`: Stryker on the files the branch changed (commit first), judged like the `mutation-diff` job | minutes to tens of minutes; see [CI-PIPELINE.md](CI-PIPELINE.md) |
 | `--all` | everything above (the coverage floors run in the fast set) | the fast set plus e2e plus the changed-files mutation run |

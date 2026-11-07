@@ -36,6 +36,11 @@ const FAST: Step[] = [
     command: 'npm run typecheck -w cms-server',
     kind: 'gate',
   },
+  {
+    name: 'tsc sample-site',
+    command: 'npm run typecheck -w sample-site',
+    kind: 'gate',
+  },
   { name: 'biome lint', command: 'npm run lint', kind: 'gate' },
   { name: 'biome format', command: 'npm run format:check', kind: 'gate' },
   // Every package's unit tests in one run, with the per-package coverage floors in vitest.config.ts.
