@@ -43,7 +43,7 @@ first).
 When a phase starts, its items move out of SYSTEM-DESIGN section 12 into its
 design or plan, and section 12 keeps a one-line pointer.
 
-**Current phase: 2** (design approved, plan written, not started). Read SYSTEM-DESIGN.md (sections 1 to 6, 9, 11),
+**Current phase: 2** (waves 1 to 6 closed; wave 7 under way; the CI setup is done, see CI-PIPELINE.md). Read SYSTEM-DESIGN.md (sections 1 to 6, 9, 11),
 then PHASE-2-DESIGN.md, then WORKPLAN-PHASE-2.md. Older code comments say
 "WORKPLAN task 1.x": those tasks are in WORKPLAN-PHASE-0-1.md.
 
@@ -55,10 +55,9 @@ only.
 ## 2. Working rules
 
 - **Ask before committing to `main`.** Finish, summarize, ask. The user reviews
-  changes before they land in `main`'s history. Exceptions: CI setup work is
-  committed to `main` directly, and an agent may push for it, as far as the user
-  allowed for that task (2026-11-07); and on a task branch an agent commits and
-  pushes on its own (2026-11-07), so the pull request is where the user reviews.
+  changes before they land in `main`'s history. The exception is a commit the user
+  names in the same message. On a task branch an agent commits and pushes on its
+  own (2026-11-07), so the pull request is where the user reviews.
 - **One branch per task, one worktree per branch.** A task lives on
   `task/<id>-<slug>`, cut from `main`, in its own worktree (section 6). Push the
   branch and open a pull request: CI runs `fast`, `e2e` and `mutation-diff`
