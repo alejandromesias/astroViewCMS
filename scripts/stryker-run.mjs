@@ -6,10 +6,10 @@
 // --full is the whole-repo run (WORKPLAN-PHASE-2 2.1h, the lead's full run); it needs stryker.config.json and no --mutate.
 // Refuses a dirty tree and a run without --mutate or --full. Runs are always --force. Before and after the run
 // it compares the main checkout's branch, HEAD, refs, local config and root node_modules; if any
-// changed, nothing is copied back. Results go to reports/stryker-runs/<stamp>/.
+// changed, nothing is copied back. Results go to reports/stryker-runs/<stamp>/, or to AVC_STRYKER_OUT
+// (a folder under reports/) when set: scripts/stryker-changed.ts sets it per group (WORKPLAN 2.1l).
 import { spawn, spawnSync } from 'node:child_process';
 import {
-  copyFileSync,
   cpSync,
   existsSync,
   lstatSync,
@@ -18,14 +18,13 @@ import {
   readFileSync,
   realpathSync,
   rmdirSync,
-  statSync,
-  symlinkSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { linkModules } from './lib/link-modules.ts';
 
 const MAIN = realpathSync(fileURLToPath(new URL('..', import.meta.url)));
 const pkg = JSON.parse(readFileSync(join(MAIN, 'package.json'), 'utf8'));
@@ -34,6 +33,15 @@ const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 const ROOT = join(realpathSync(tmpdir()), 'avc-stryker');
 const EXPORT = join(ROOT, stamp);
 let interrupted = false;
+
+// Where the run's reports go: AVC_STRYKER_OUT (inside the main checkout's reports/) or the stamped folder.
+function reportFolder() {
+  const given = process.env.AVC_STRYKER_OUT;
+  if (given === undefined || given === '') return join(MAIN, 'reports', 'stryker-runs', stamp);
+  const out = resolve(MAIN, given);
+  if (!within(out, join(MAIN, 'reports'))) throw new Error(`AVC_STRYKER_OUT must be inside ${join(MAIN, 'reports')}`);
+  return out;
+}
 
 function git(cwd, argv, env = process.env) {
   return spawnSync('git', argv, { cwd, env, encoding: 'utf8', windowsHide: true });
@@ -94,23 +102,13 @@ function exportHead() {
   if (tar.status !== 0) throw new Error(`tar failed: ${tar.stderr}`);
 }
 
-// Each node_modules of the main checkout becomes a folder of its own in EXPORT, whose entries are
-// junctions to the main checkout's packages: nothing is installed or copied. A workspace package
-// is linked to the export's own copy instead, so tests and mutants use the same source.
+// Each node_modules of the main checkout becomes one in EXPORT, whose entries are junctions to the main
+// checkout's packages (scripts/lib/link-modules.ts, the same code the worktrees use): nothing is installed
+// or copied. A workspace package is linked to the export's own copy instead, so tests and mutants use the
+// same source.
 function linkNodeModules() {
   for (const dir of ['', ...WORKSPACES]) {
-    const from = join(MAIN, dir, 'node_modules');
-    if (!existsSync(from)) continue;
-    const to = join(EXPORT, dir, 'node_modules');
-    mkdirSync(to);
-    for (const name of readdirSync(from)) {
-      const target = realpathSync(join(from, name));
-      const dest = join(to, name);
-      const workspace = WORKSPACES.find((ws) => target === join(MAIN, ws));
-      if (workspace !== undefined) symlinkSync(join(EXPORT, workspace), dest, 'junction');
-      else if (statSync(target).isDirectory()) symlinkSync(target, dest, 'junction');
-      else copyFileSync(target, dest);
-    }
+    if (existsSync(join(MAIN, dir, 'node_modules'))) linkModules(join(MAIN, dir), join(EXPORT, dir));
   }
 }
 
@@ -146,8 +144,7 @@ function runStryker(config, args) {
   });
 }
 
-function copyReports(run) {
-  const out = join(MAIN, 'reports', 'stryker-runs', stamp);
+function copyReports(run, out) {
   mkdirSync(out, { recursive: true });
   if (existsSync(join(EXPORT, 'reports'))) cpSync(join(EXPORT, 'reports'), out, { recursive: true });
   writeFileSync(join(out, 'run.json'), `${JSON.stringify(run, null, 2)}\n`);
@@ -193,6 +190,7 @@ async function main() {
     throw new Error(`uncommitted changes in the main checkout; commit or stash them first:\n${dirty}`);
   }
 
+  const out = reportFolder();
   const before = snapshot();
   const run = { stamp, config, args: rest, head: before.head, branch: before.branch, exitCode: null };
   console.log(`stryker-run: export ${EXPORT}`);
@@ -208,7 +206,7 @@ async function main() {
       throw new Error(`the main checkout changed during the run (${changed.join(', ')}); nothing copied back`);
     }
     run.exitCode = code;
-    console.log(`stryker-run: reports in ${relative(MAIN, copyReports(run))}`);
+    console.log(`stryker-run: reports in ${relative(MAIN, copyReports(run, out))}`);
   } finally {
     if (existsSync(EXPORT)) removeOwn(EXPORT, realpathSync(EXPORT));
     const changed = changedFields(before, snapshot());

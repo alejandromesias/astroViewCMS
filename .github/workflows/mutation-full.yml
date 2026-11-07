@@ -1,0 +1,71 @@
+# Whole-repo mutation run (WORKPLAN 2.1l), nightly and by hand. One shard per Stryker group; each shard runs every
+# file of its group with that group's config (scripts/lib/stryker-plan.ts). The merge job judges the whole run: it
+# fails under the overall floor of 75 and lists the files under 80. Its summary.json is the per-file baseline.
+name: mutation-full
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shard:
+    name: mutation ${{ matrix.group }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        # The groups of scripts/lib/stryker-plan.ts. A new group needs a line here too.
+        group: [serve, preview, renderer, protocol, contract, cms-server]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: CI git identity (the git tests commit)
+        run: |
+          git config --global user.name "astroViewCMS CI"
+          git config --global user.email "ci@users.noreply.github.com"
+      - name: Install dependencies
+        run: npm ci
+      - name: Stryker, every file of the group
+        run: node scripts/stryker-changed.ts --all --group ${{ matrix.group }} --run
+      - name: Upload the group's reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-${{ matrix.group }}
+          path: reports/mutation-diff/${{ matrix.group }}
+          retention-days: 90
+          if-no-files-found: ignore
+
+  merge:
+    name: whole-run verdict and baseline
+    needs: shard
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+      - name: Download the shard reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mutation-*
+          path: reports/mutation-diff
+      - name: Judge the whole run
+        run: node scripts/stryker-summary.ts --full
+      - name: Upload the per-file baseline
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-baseline
+          path: reports/mutation-diff/summary.json
+          retention-days: 90

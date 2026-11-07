@@ -1,6 +1,6 @@
-# CI, stage 1 (WORKPLAN 2.1k). Gates: `fast` (the npm run check --fast set) and `e2e`
-# (end-to-end and browser suites). Stage 2 adds `mutation-diff` (2.1l). Runs on
-# push to main, pull requests and by hand. Read-only token: no secret is needed.
+# CI (WORKPLAN 2.1k and 2.1l). Gates: `fast` (the npm run check --fast set), `e2e` (end-to-end and browser
+# suites) and `mutation-diff` (Stryker on the files the branch changed). The nightly whole-repo run is
+# mutation-full.yml. Runs on push to main, pull requests and by hand. Read-only token: no secret is needed.
 name: CI
 
 on:
@@ -75,3 +75,36 @@ jobs:
         run: npm run test:e2e -w preview-render-server
       - name: browser suite
         run: npm run test:browser -w preview-render-server
+
+  mutation-diff:
+    # Stryker on the source files this branch changed (against origin/main). Blocks when the changed set scores
+    # under 75 overall, or a file under 80 unless .mutation-waivers.json lowers its floor (WORKPLAN 2.1l).
+    # On main the changed set is empty, so the job passes at once.
+    name: mutation on changed files
+    needs: fast
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: CI git identity (the git tests commit)
+        run: |
+          git config --global user.name "astroViewCMS CI"
+          git config --global user.email "ci@users.noreply.github.com"
+      - name: Install dependencies
+        run: npm ci
+      - name: Stryker on the changed files
+        run: node scripts/stryker-changed.ts --run
+      - name: Upload the Stryker reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-diff
+          path: reports/mutation-diff
+          retention-days: 14
+          if-no-files-found: ignore

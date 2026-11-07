@@ -9,5 +9,8 @@ export default {
   ...base,
   vitest: { ...base.vitest, configFile: 'vitest.mutation.serve.config.ts' },
   incrementalFile: 'reports/stryker-triage-serve.json',
-  reporters: ['clear-text', 'progress'],
+  reporters: ['clear-text', 'progress', 'json'],
+  // The JSON report is judged by scripts/lib/stryker-reports.ts (WORKPLAN 2.1l), so Stryker never fails on the score.
+  jsonReporter: { fileName: 'reports/mutation/triage-serve.json' },
+  thresholds: { ...base.thresholds, break: null },
 };

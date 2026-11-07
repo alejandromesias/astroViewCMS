@@ -8,6 +8,7 @@ import {
   lstatSync,
   mkdirSync,
   readdirSync,
+  readlinkSync,
   realpathSync,
   rmdirSync,
   symlinkSync,
@@ -81,7 +82,13 @@ function linkLevel(
     if (name === '.bin') {
       mkdirSync(to, { recursive: true });
       for (const shim of readdirSync(from)) {
-        copyFileSync(join(from, shim), join(to, shim));
+        const entry = join(from, shim);
+        // POSIX bins are symlinks with relative targets; a copy would break their require paths.
+        if (process.platform !== 'win32' && lstatSync(entry).isSymbolicLink()) {
+          symlinkSync(readlinkSync(entry), join(to, shim));
+        } else {
+          copyFileSync(entry, join(to, shim));
+        }
         summary.copied += 1;
       }
       continue;

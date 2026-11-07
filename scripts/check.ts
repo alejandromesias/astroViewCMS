@@ -45,9 +45,10 @@ const E2E: Step[] = [
   { name: 'browser', command: 'npm run test:browser -w preview-render-server', kind: 'gate' },
 ];
 
-// A crash fails the run, and so does a score under `thresholds.break` in stryker.config.json (step 10c).
+// The changed files of the branch (against origin/main), each scored by its Stryker group (WORKPLAN 2.1l). Commit
+// first. The whole repo runs as `mutation-full` in CI, not here; see DOCS/Guidelines/CI-PIPELINE.md.
 const MUTATION: Step[] = [
-  { name: 'stryker', command: 'npx stryker run', kind: 'report' },
+  { name: 'mutation (changed files)', command: 'node scripts/stryker-changed.ts --run', kind: 'gate' },
 ];
 
 const FLAGS = ['--fast', '--e2e', '--mutation', '--all'];
