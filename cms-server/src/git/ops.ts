@@ -35,7 +35,7 @@ import {
 export type { ChangedPath, ChangeStatus } from './sync.ts';
 
 /** Why a fetch failed. The kinds are `ensureRepo`'s `RepoError` kinds, and the message is redacted. */
-export interface SyncError {
+interface SyncError {
   kind: RepoErrorKind;
   message: string;
 }

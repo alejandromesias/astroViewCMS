@@ -47,7 +47,7 @@ interface ChangedDocument {
 }
 
 /** A changed `file()` file whose parse failed and that the bundle holds no document of, so no document can carry the error. */
-export interface FileError {
+interface FileError {
   readonly path: string;
   readonly error: DocumentError;
 }

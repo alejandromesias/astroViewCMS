@@ -11,13 +11,13 @@ export interface Clock {
 }
 
 /** The real timers. */
-export const systemClock: Clock = {
+const systemClock: Clock = {
   setTimeout: (callback, ms) => setTimeout(callback, ms),
   clearTimeout: (handle) => clearTimeout(handle as NodeJS.Timeout),
 };
 
 /** How long a waiter may wait, in ms. Sized for saves and syncs. */
-export const DEFAULT_LOCK_TIMEOUT_MS = 30_000;
+const DEFAULT_LOCK_TIMEOUT_MS = 30_000;
 
 /** A waiter gave up. `holder` is the operation that held the lock when the wait ended. */
 export class LockTimeoutError extends Error {

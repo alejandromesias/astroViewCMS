@@ -4,10 +4,10 @@
 // Object.hasOwn, never with a plain object lookup.
 
 /** The markers a schema puts on a field (the `cms` keyword). */
-export type CmsMarker = 'reference' | 'image';
+type CmsMarker = 'reference' | 'image';
 
 /** One segment of a path from the document root: an object key or an array index. */
-export type PathSegment = string | number;
+type PathSegment = string | number;
 
 /**
  * One marked field of a value: where it is, its marker, and the value there, passed untouched. A reference hit

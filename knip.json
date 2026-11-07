@@ -3,7 +3,17 @@
   "ignoreWorkspaces": ["sample-site"],
   "ignoreBinaries": ["osv-scanner", "tsc", "vitest"],
   "workspaces": {
-    ".": { "entry": ["vitest.config.ts", "vitest.mutation.config.ts", "scripts/**/*.test.ts"], "ignoreDependencies": ["@swc/core"] },
+    ".": {
+      "entry": [
+        "vitest.config.ts",
+        "vitest.mutation*.config.ts",
+        "stryker.*.config.mjs",
+        "scripts/stryker-run.mjs",
+        "cms.config.example.ts",
+        "scripts/**/*.test.ts"
+      ],
+      "ignoreDependencies": ["@swc/core"]
+    },
     "preview-render-server": {
       "entry": [
         "sites/*.config.ts",
@@ -29,7 +39,8 @@
     },
     "cms-server": {
       "entry": ["src/**/*.test.ts", "test/**/*.test.ts", "editor/editor.ts", "editor/**/*.test.ts"],
-      "project": ["src/**", "test/**", "editor/**"]
+      "project": ["src/**", "test/**", "editor/**"],
+      "ignore": ["test/fixtures/**"]
     }
   }
 }

@@ -34,7 +34,7 @@ export interface SaveStop {
 }
 
 /** The 200 answer of a save (WORKPLAN 2.5c item 10). `warnings` stays empty until 2.7c. */
-export interface SaveBody {
+interface SaveBody {
   readonly revisions: Record<string, string>;
   readonly warnings: readonly string[];
   readonly rebuild: boolean;

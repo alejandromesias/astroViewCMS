@@ -5,7 +5,7 @@ import { collectionOf, documentKey } from '../documents/paths.ts';
 import { type SchemaNode, walkMarkers } from '../schema/walk.ts';
 
 /** A document as the index reads it: its key, and its value (the whole file's value, or one entry of a shared file). */
-export interface IndexedDocument {
+interface IndexedDocument {
   readonly key: string;
   readonly value: unknown;
 }
