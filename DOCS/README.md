@@ -63,7 +63,9 @@ only.
   `task/<id>-<slug>`, cut from `main`, in its own worktree (section 6). Push the
   branch and open a pull request: CI runs `fast`, `e2e` and `mutation-diff`
   (see [CI-PIPELINE.md](Guidelines/CI-PIPELINE.md)). Merge into `main` with a
-  merge commit once all three are green. A wave is a milestone, not a branch: it
+  merge commit once all three are green. For now the user merges the pull
+  request; agents report when it is green and leave it open. (Revisit this rule
+  to let agents merge.) A wave is a milestone, not a branch: it
   is closed when `mutation-full` is green, and tagged `wave-<n>-closed`.
 - **Watch the pipeline.** After a push, read `fast`, `e2e` and `mutation-diff`
   with `gh pr checks` or `gh run list`, and fix failures on the branch. Kill or
