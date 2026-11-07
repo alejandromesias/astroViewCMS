@@ -9,7 +9,6 @@
         "vitest.mutation*.config.ts",
         "stryker.*.config.mjs",
         "scripts/stryker-run.mjs",
-        "scripts/stryker-changed.ts",
         "cms.config.example.ts",
         "scripts/**/*.test.ts"
       ],
