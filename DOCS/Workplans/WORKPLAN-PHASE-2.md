@@ -1074,7 +1074,7 @@ Steps, in order:
 - **File ownership.** The documents above, `biome.json`, and the scripts whose formatting changes.
 - **Result (2026-11-07).** Written: `DOCS/Guidelines/CI-PIPELINE.md`; README section 2 (one branch per task, merge commit, wave tag, CI exception to the commit rule, Stryker in CI), the document map and section 6; TESTING-RECOMMENDATIONS section 7 and its checklist; QUALITY-TOOLING (a "Where it runs" column, the `--mutation` and `--all` rows, the Stryker pointers, the incremental-cache sentence); this workplan's section 2 (parallel rules, the mutation part of "Done when", the wave rule). `biome.json` now covers `scripts/` and `vitest.*.ts`: 19 files were formatted (formatting only) and one lint error was fixed with a reasoned ignore (the tripwire throw in `finally` of `stryker-run.mjs`). `lint`, `format:check`, the 74 scripts tests and `knip` pass. Left for the user: review CI-PIPELINE.md and the README text.
 
-#### 2.1o Repository hardening: ruleset, dependency updates, security scans — after 2.1l · [user] [ci] (added 2026-11-07)
+#### 2.1o Repository hardening: ruleset, dependency updates, security scans — after 2.1l · [user] [ci] · repo side done 2026-11-07, ruleset set, PR-block check pending
 
 - **Why.** The gates exist, but nothing stops a merge yet, and actions and dependencies update without anyone looking.
 - **Change.**

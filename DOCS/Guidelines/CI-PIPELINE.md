@@ -34,8 +34,11 @@ in section 8.
 | `e2e` | yes (since 2026-11-07; the job no longer has `continue-on-error`) |
 | `mutation-full` | no. It runs after the merge, and a wave is closed only when it is green (section 4) |
 
-The repository ruleset that makes these required status checks is task 2.1o;
-until it is set, the rule is a convention: merge when all three are green.
+The repository ruleset "main protection" (set 2026-11-07) requires a pull request
+for `main`, merge commits only, no force push and no deletion, and the three
+checks above. Repository admins can bypass it ("always"), so direct pushes by
+the admin still land; other contributors need a green pull request. A red
+guarded push by the admin is not stopped by the ruleset: CI shows it.
 
 ## 3. Mutation testing on a branch
 
