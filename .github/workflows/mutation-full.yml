@@ -50,6 +50,10 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # actions: read lets the trend step download the last runs' baselines (WORKPLAN 2.1p).
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
@@ -69,3 +73,24 @@ jobs:
           name: mutation-baseline
           path: reports/mutation-diff/summary.json
           retention-days: 90
+      - name: Trend of the last 10 whole-repo runs (not a gate)
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p reports/trend
+          # This run first; its baseline is not an artifact of another run yet.
+          if [ -f reports/mutation-diff/summary.json ]; then
+            mkdir -p "reports/trend/$(date -u +%Y-%m-%dT%H-%M)-current"
+            cp reports/mutation-diff/summary.json "reports/trend/$(date -u +%Y-%m-%dT%H-%M)-current/"
+          fi
+          gh run list --workflow mutation-full.yml --status success --limit 10 \
+            --json databaseId,createdAt,headSha \
+            -q '.[] | "\(.databaseId) \(.createdAt) \(.headSha[0:7])"' > reports/trend/runs.txt
+          while read -r id created sha; do
+            dir="reports/trend/${created//:/-}-$sha"
+            mkdir -p "$dir"
+            gh run download "$id" -n mutation-baseline -D "$dir" </dev/null || rm -rf "$dir"
+          done < reports/trend/runs.txt
+          node scripts/trend.ts $(find reports/trend -mindepth 1 -maxdepth 1 -type d | sort) >> "$GITHUB_STEP_SUMMARY"

@@ -1074,7 +1074,7 @@ Steps, in order:
 - **File ownership.** The documents above, `biome.json`, and the scripts whose formatting changes.
 - **Result (2026-11-07).** Written: `DOCS/Guidelines/CI-PIPELINE.md`; README section 2 (one branch per task, merge commit, wave tag, CI exception to the commit rule, Stryker in CI), the document map and section 6; TESTING-RECOMMENDATIONS section 7 and its checklist; QUALITY-TOOLING (a "Where it runs" column, the `--mutation` and `--all` rows, the Stryker pointers, the incremental-cache sentence); this workplan's section 2 (parallel rules, the mutation part of "Done when", the wave rule). `biome.json` now covers `scripts/` and `vitest.*.ts`: 19 files were formatted (formatting only) and one lint error was fixed with a reasoned ignore (the tripwire throw in `finally` of `stryker-run.mjs`). `lint`, `format:check`, the 74 scripts tests and `knip` pass. Left for the user: review CI-PIPELINE.md and the README text.
 
-#### 2.1o Repository hardening: ruleset, dependency updates, security scans — after 2.1l · [user] [ci] · repo side done 2026-11-07, ruleset set, PR-block check pending
+#### 2.1o Repository hardening: ruleset, dependency updates, security scans — after 2.1l · [user] [ci] · DONE 2026-11-07 (see Result; two settings are the user's)
 
 - **Why.** The gates exist, but nothing stops a merge yet, and actions and dependencies update without anyone looking.
 - **Change.**
@@ -1088,8 +1088,9 @@ Steps, in order:
 - **Verify.** A test pull request with a red `fast` cannot merge (with the user's go-ahead to push). `actionlint` fails on a deliberately broken workflow line (reverted). Dependabot and CodeQL show their first runs.
 - **Done when.** The ruleset is active and verified; the SHAs are in place; the first Dependabot and CodeQL results are visible; the admin-bypass decision is recorded.
 - **File ownership.** `.github/dependabot.yml`, `.github/workflows/codeql.yml`, the pins, the `actionlint` step and the SARIF step in `ci.yml`, GitHub settings (the user).
+- **Result (2026-11-07).** Repo side done: every action pinned to a full SHA (`ci.yml`, `mutation-full.yml`, the new workflows); `actionlint` v1.7.12 as a step of `fast` (checksum checked; the run passed); `security.yml` with CodeQL (JavaScript and TypeScript, passed) and osv-scanner SARIF (passed); `.github/dependabot.yml` for npm and github-actions (its first runs passed). Ruleset `main protection` (id 26765420) is active: pull request required, merge commits only, no force push or deletion, required checks `fast gates`, `e2e and browser`, `mutation on changed files`; admin bypass is on ("always") for the repository admin role. That decision is the user's (2026-11-07). Blocking verified: throwaway PR #9 with a deliberate failure showed `fast gates` failed and the merge state `BLOCKED`; PR and branch closed and deleted, not merged. Left to the user: fork pull-request workflow approval, Dependabot alerts and security updates, private vulnerability reporting (`SECURITY.md` is in the repo and points to it).
 
-#### 2.1p Extra runs and trends — after 2.1l · [ci] · not a gate (added 2026-11-07)
+#### 2.1p Extra runs and trends — after 2.1l · [ci] · not a gate · DONE 2026-11-07 (see Result)
 
 - **Why.** Some checks are worth tracking over time without blocking a merge.
 - **Change.**
@@ -1099,6 +1100,7 @@ Steps, in order:
 - **Verify.** A week of nightly artifacts; the Windows run green at least twice.
 - **Done when.** The trend shows in the summary, and the cache decision is recorded.
 - **File ownership.** `.github/workflows/windows.yml`, the trend and cache steps in `mutation-full.yml`, any trend helper in `scripts/`.
+- **Result (2026-11-07).** `.github/workflows/windows.yml`: weekly `npm run coverage` on `windows-latest` with `CI=true`, not a required check. `.github/workflows/nightly.yml`: nightly memory of one preview process and the listing-route tripwire, printed to a 90-day artifact (`continue-on-error`; the numbers are text until a few nights show which matter). Trend: `mutation-full`'s merge job ends with a table of the last 10 successful whole-repo runs, read from their `mutation-baseline` artifacts (`scripts/trend.ts`, 2 tests, run on the real baseline of run 42392688637: 94.23%, 7 under 80). The download step is untested until the next whole-repo run. Stryker cache decision: no cache for now; `--force` stays, because the incremental and forced scores have not yet been compared on two runs (the rule above). Recorded in CI-PIPELINE.md section 8. Verification still open: a week of nightly artifacts, and the Windows run green at least twice.
 
 ### 2.2 Format codecs — after 2.1a · ∥ 2.3, 2.1b to 2.1d, 2.0
 

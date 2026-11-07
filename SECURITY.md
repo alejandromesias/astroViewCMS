@@ -1,14 +1,16 @@
-# Security Policy
+# Security policy
 
-## Reporting a Vulnerability
+## Reporting a vulnerability
 
-If you discover a security vulnerability, please do **not** open a public issue.
-Instead, email us privately at: `support@maravostudio.com`
+Please do not report a security problem in a public issue. Report it privately
+through the **Security** tab of this repository: **Report a vulnerability**
+(private vulnerability reporting).
 
-Please include:
+Include what you found, the steps to reproduce it, and the commit you tested.
+We will confirm that we received it and keep you informed while we work on a
+fix. We cannot promise a fixed response time yet.
 
-- Type of issue (e.g., SQL injection, cross-site scripting)
-- Full paths of source file(s) related to the issue
-- Step-by-step instructions to reproduce the issue
+## Supported versions
 
-You will receive an initial response within 48 hours. We will coordinate the disclosure timeline with you.
+The project is pre-release. Only the latest commit on `main` is supported, and
+fixes go there.

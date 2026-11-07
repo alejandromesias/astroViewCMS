@@ -1,0 +1,37 @@
+# Weekly unit run on Windows (WORKPLAN 2.1p). Not a required check: a red run here is the signal. The code is written on
+# Windows, and CRLF, path, case and symlink differences show there first. CI=true makes a skipped symlink test fail.
+name: windows
+
+on:
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: unit tests on Windows
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Unit tests and coverage floors
+        run: npm run coverage
+      - name: Upload the coverage report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-coverage
+          path: reports/coverage
+          retention-days: 14
+          if-no-files-found: ignore

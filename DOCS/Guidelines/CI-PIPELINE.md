@@ -15,6 +15,9 @@ in section 8.
 | | | `mutation-diff` (needs `fast`) | Stryker on the source files the branch changed, then the judgement (section 3) | 240 min |
 | `mutation-full.yml` | nightly 03:17 UTC, by hand | `shard` x6 | Stryker on every file of one group each | 330 min each |
 | | | `merge` | judges the whole run, keeps the per-file baseline | 15 min |
+| `windows.yml` | weekly, Monday 05:23 UTC, by hand | `unit` | `npm run coverage` on `windows-latest` (not a gate) | 40 min |
+| `nightly.yml` | nightly 02:37 UTC, by hand | `measure` | memory of one preview process and the listing-route tripwire, printed to artifacts (not a gate, `continue-on-error`) | 45 min |
+| `security.yml` | push to `main`, weekly, by hand | `codeql`, `osv-sarif` | CodeQL for JavaScript and TypeScript; osv-scanner results as SARIF in the Security tab (reports, not gates) | 30 min, 10 min |
 
 - Every workflow has `permissions: contents: read`, uses no secret and runs on
   `pull_request`, never `pull_request_target`. The repo is public.
@@ -150,10 +153,23 @@ in the `matrix` of `mutation-full.yml`.
 - **`e2e` fails the build of `sample-site`:** `npm run build` refuses a
   non-empty `.build/sample-site` with no `bundle.json`. See QUALITY-TOOLING.md.
 
-## 8. Not built yet
+## 8. Hardening and extras
 
-- Repository ruleset, Dependabot, SHA-pinned actions, actionlint, CodeQL, OSV
-  upload and secret scanning: task 2.1o (some steps are the user's, in GitHub
-  settings).
-- A weekly run on `windows-latest`, trend artifacts and the Stryker incremental
-  cache for the nightly: task 2.1p. Today every Stryker run uses `--force`.
+- **Repository (2.1o).** Done in the repo: every action pinned to a full commit SHA
+  with its version in a comment; `actionlint` as a step of `fast`; CodeQL and the
+  osv-scanner SARIF in `security.yml`; Dependabot for npm and github-actions
+  (`.github/dependabot.yml`, weekly, minor and patch grouped). The ruleset
+  `main protection` is active, with admin bypass (section 2), and a red pull request
+  was seen to be `BLOCKED` (PR #9, closed). Done in GitHub settings by the user:
+  fork pull-request approval, Dependabot alerts, private vulnerability reporting.
+- **Trends (2.1p).** `mutation-full` ends with a trend table of the last 10
+  successful whole-repo runs, read from their `mutation-baseline` artifacts (not a
+  gate; `scripts/trend.ts`). The nightly measurements are text, not JSON: the
+  numbers are read by hand until a few nights show which ones matter.
+- **Stryker cache (2.1p decision, 2026-11-07).** No cache. Every Stryker run keeps
+  `--force`, so each score is fresh. A cached baseline can go stale: a stale one once
+  made a run take 9 minutes and reuse only 281 of 2684 mutants (QUALITY-TOOLING,
+  2026-10-31). The cache is reconsidered only when the trend shows the incremental
+  and forced scores within 0.5 points on two runs, and this section is updated then.
+- **Windows.** Weekly unit run on `windows-latest`. Not a required check; the run
+  page is the signal.
