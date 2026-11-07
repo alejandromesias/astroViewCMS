@@ -25,7 +25,7 @@ before writing tests, [TESTING-RECOMMENDATIONS.md](../Guidelines/TESTING-RECOMME
 |---|---|
 | Phase 2 design | approved by the user, 2026-10-31 |
 | Decisions D17 to D22 | logged in SYSTEM-DESIGN section 11 |
-| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); 2.1g (codecs scope; the rest of its scope moved to 2.1h with deadlines), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a done 2026-11-03 (wave 5 complete, branch `phase-2-wave-5`); 2.0j, 2.1h, 2.5b, 2.5c, 2.6a, 2.9a, 2.10a done 2026-11-03 to 2026-11-06 (wave 6 complete, branch `phase-2-wave-6`); next: wave 7 (2.6b, 2.9c, 2.10b, then 2.1j last); the rest not started |
+| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); 2.1g (codecs scope; the rest of its scope moved to 2.1h with deadlines), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a done 2026-11-03 (wave 5 complete, branch `phase-2-wave-5`); 2.0j, 2.1h, 2.5b, 2.5c, 2.6a, 2.9a, 2.10a done 2026-11-03 to 2026-11-06 (wave 6 complete, branch `phase-2-wave-6`); next: wave 7: 2.1n (worktree tooling) first, then 2.1k (CI stage 1); 2.1l and 2.1m next (CI stage 2 and the policy); 2.6b, 2.9c and 2.10b after 2.1k; 2.1o after 2.1l; 2.1j last; 2.1p later; the rest not started |
 
 **Done when:** every row of PHASE-2-DESIGN.md section 1 passes. Section 5
 below maps each row to the test that proves it.
@@ -44,6 +44,7 @@ to, so independent work can start together:
   suite. The machine has little memory (README section 3), so run **one**
   `[build]` task at a time. Unit-only tasks parallelize freely.
 - **`[user]`**: needs the user (a decision, an approval, a manual run).
+- **`[ci]`**: runs on GitHub Actions, so it is verified by a push. Each push needs the user's go-ahead (user, 2026-11-07). CI setup is committed to `main` directly, as the user allowed for this work; other tasks go through their branch.
 
 Rules for running tasks in parallel:
 
@@ -971,6 +972,37 @@ Steps, in order:
   - **Left on disk (gitignored, from the manual run):** `.dev/`, `cms.config.ts`, `.cms/` at the
     repo root.
 
+#### 2.1n Worktree tooling: one task, one worktree, shared `node_modules` — first in wave 7 (added 2026-11-07)
+
+- **Why.** Every task now runs on its own branch `task/<id>-<slug>` in its own worktree (WORKPLAN section 2). A new worktree has no `node_modules`. Linking the root `node_modules` as a whole would make the workspace imports (`cms-server`, `preview-protocol`, …) resolve to the main checkout's source, so a worktree's tests would run the wrong code without any error. The folder each worktree uses must be built from junctions: third-party packages point at the main folder (nothing is copied or reinstalled), workspace packages point at the worktree's own folders.
+- **Layout.** Worktrees live in `C:\Users\aleja\DesignWork\CMSProject\avc-wt\<id>`, outside the repo. The main checkout stays on `main` and is used for merging, reading and the occasional local Stryker run.
+- **Change.**
+  - `scripts/lib/link-modules.ts`: `linkModules(mainRoot, worktreeRoot)` builds `<worktree>/node_modules`. Third-party top-level entries become junctions to the main entry. Scope folders (`@x`) become real folders with one junction per package. A workspace link in main (a link whose target is under main) becomes a junction to the same package in the worktree. `.bin` is copied, not linked. Dot-entries (caches such as `.vite`, `.vitest`) are not linked. It writes the marker `node_modules/.avc-linked`. `unlinkModules(worktreeRoot)` removes the junctions as links, never following them.
+  - `scripts/worktree.ts` (`npm run worktree -- <command>`):
+    - `new <id> <slug> [--own-install]`: adds the worktree and branch `task/<id>-<slug>` from local `main`, then links. `--own-install` runs `npm ci` there instead, for a task that changes `package.json` or the lockfile.
+    - `link [<dir>] [--replace]`: refuses when the dependency fields of the worktree's `package.json`, or its `package-lock.json`, differ from main's (such a task uses `--own-install`; scripts do not count), and refuses a `node_modules` that is not its own linked folder. `--replace` removes the folder's own `node_modules` first (never main's), to go back to shared packages after an install.
+    - `remove <dir> [--force]`: unlinks first, then `git worktree remove`. It keeps the branch and refuses a dirty tree unless `--force`.
+    - `guard`: exits 1 when `node_modules/.avc-linked` exists.
+  - `package.json`: scripts `worktree` and `preinstall` (`node scripts/worktree.ts guard`). In a linked worktree `npm install` stops at the guard; `npm ci` is not stopped (see Verify).
+  - `vitest.projects.ts`: a `scripts` project for `scripts/**/*.test.ts`. `knip.json`: the root entry lists `scripts/**/*.test.ts`.
+  - `DOCS/README.md`: a "Worktrees" section (layout, commands, the no-install rule). The old wave-branch working rule is replaced in 2.1m.
+- **Not changed.** `scripts/stryker-run.mjs` keeps its own junction code until 2.1l, which moves it onto the shared module. Nothing is run through Stryker here.
+- **Tests** (each in its own temp folder; the `new` and `remove` tests use a temp git repo, as the 2.1d harness does):
+  1. Third-party entries resolve to the main folder's files.
+  2. Workspace entries resolve into the worktree (`realpath`), not into main.
+  3. Dot-entries are not linked; `.bin` is copied.
+  4. Scoped packages are linked per package.
+  5. `unlinkModules` leaves main's files, and a sentinel file in main, intact.
+  6. `linkModules` run twice gives the same result.
+  7. `link` refuses a lockfile difference.
+  8. `guard` exits 1 with the marker and 0 without.
+  9. `new` creates a real worktree on `task/<id>-<slug>` from `main`, and `remove` deletes it and keeps the branch.
+- **Verify.** `node_modules/.bin/vitest run --project scripts`; `npm run knip` clean for the new files; `npm run depcruise` clean. Biome does not cover `scripts/` (its `files.includes` lists the packages only), so the new files are not format-checked; extending Biome to `scripts/` is a follow-up for 2.1m. Bootstrap: the worktree had no `node_modules`, so `node scripts/worktree.ts link` (run inside it) built it, 599 packages linked and 129 files copied.
+- **Checked 2026-11-07, in scratch folders (never in a linked worktree).** `npm install` runs the root `preinstall`, and the guard stops it with exit 1, but npm first prunes the folder's links. `npm ci` is not stopped by the guard, and it also prunes the links and reinstalls. Neither npm command follows a junction: a sentinel file behind a junction into an outside folder survived both. Main's packages are therefore safe. A worktree that was installed into needs `link --replace` to share packages again.
+- **Done when.** The tests pass. `new` and `remove` run end to end on a throwaway task in a temp repo. The README section matches the commands.
+- **File ownership.** `scripts/worktree.ts`, `scripts/lib/link-modules.ts` and their tests, root `package.json` (two scripts), `vitest.projects.ts`, `knip.json` (one entry), `DOCS/README.md` (the new section), and this workplan entry.
+- **Order.** First in wave 7. The CI tasks and 2.6b, 2.9c and 2.10b each start in a worktree from this tool.
+
 #### 2.1j Clone isolation: `runGit` gets `GIT_DIR` and `GIT_WORK_TREE` — after 2.1h, 2.6b, 2.9c, 2.10b · last in wave 7 (added 2026-11-06)
 
 - **Why.** Standing-risk step 6 (the 2026-11-04 action plan under 2.1h). The clone's git calls find their repo from `cwd` alone. In production `.cms/` may sit inside the developer's site repo. A lost `cwd` would then run `checkout --force` and `clean -fd` on the developer's work.
@@ -981,6 +1013,78 @@ Steps, in order:
 - **Done when.** The tests pass. `repo.ts` and `ops.ts` score at least their current 99.10 and 96.74, or each new survivor is classified in the Result. The parent-repo test shows the parent unchanged.
 - **File ownership.** `repo.ts`, `ops.ts`, their tests and the test helpers. `exec.ts` only if a test needs it, and then named in the Result.
 - **Order.** Last in wave 7, after 2.6b, 2.9c and 2.10b, and not in parallel with them. The user asked on 2026-11-06 for it to be scheduled, which answers the "ask the user first" in the standing-risk step.
+
+#### 2.1k CI stage 1: the fast gates and e2e on GitHub Actions — after 2.1n · [ci] (added 2026-11-07)
+
+- **Why.** No CI exists (`.github/workflows` is absent), so the gates run only when someone remembers. The repo is becoming public: no secrets are needed, workflows run on `pull_request` (never `pull_request_target`), and every workflow declares `permissions: contents: read`.
+- **Change.**
+  - `.node-version` with `26`, read by `actions/setup-node` (the local Node is 26.12.1).
+  - `.github/workflows/ci.yml`: triggers `push` to `main`, `pull_request` and `workflow_dispatch`. Top-level `permissions: contents: read`. A `concurrency` group per ref that cancels superseded pull-request runs.
+  - Job `fast` (`ubuntu-latest`, `timeout-minutes: 25`): checkout, `setup-node` with `node-version-file` and `cache: npm`, osv-scanner installed at a pinned version, a CI git identity (the git tests commit), `npm ci`, `npm run check -- --fast`, then the coverage report uploaded as an artifact (14 days).
+  - Job `e2e` (`needs: fast`, `timeout-minutes: 40`): `npx playwright install --with-deps chromium` (the browser provider is Playwright, `preview-render-server/vitest.browser.config.ts`), then `npm run test:e2e -w cms-server`, `npm run test:e2e -w preview-render-server` and `npm run test:browser -w preview-render-server`. It runs these directly, not `check -- --e2e`, so the fast set does not run twice. The job is `continue-on-error: true` until the wave 5 `sample-site` build exit 1 is explained; removing that line is part of Done.
+  - `scripts/check.ts`: when `CI` is set, a `skipped` step counts as a failure. Locally a missing tool is still a skip with its install hint.
+  - Symlink tests: `cms-server/src/documents/read.test.ts:82`, `preview-render-server/src/serve/static.test.ts:217` and `:234` throw instead of skipping when `CI` is set (HANDOFF-2026-11-06, item 7b). The mode-600 test (`cms-server/src/config/secrets.test.ts:350`) keeps its skip on Windows; it runs on Linux.
+  - Linux failures (path separators, case, shims, file modes, the 20 s timeout in `changes-routes`) are fixed in the code or the test. No skip is added to hide one. A real limit is written down with its cause.
+  - Actions use major-version tags for now; full-SHA pinning is in 2.1o.
+- **Verify.** Locally: `CI=1 npm run check -- --fast` with osv-scanner absent exits 1 and names the skipped step. With the user's go-ahead, on a pushed branch: `fast` is green; a deliberately failing assertion turns it red (reverted before merge); `e2e` runs.
+- **Done when.** `fast` is green on `main`. `e2e` is green, or its `continue-on-error` line is removed with the `sample-site` cause written in QUALITY-TOOLING.md. The coverage artifact exists. The CI log has no `skipped` step. The three symlink tests run on Linux and pass.
+- **Notes.** The 2.1n `preinstall` guard passes in CI, since no marker exists there. If `npm ci` hits npm 11's blocked install scripts (`@swc/core` and optional native binaries), approve the package as README section 3 describes, and only after it fails.
+- **File ownership.** `.node-version`, `.github/workflows/ci.yml`, `scripts/check.ts`, the three symlink tests and the Linux fixes they need, `DOCS/Guidelines/QUALITY-TOOLING.md` (the skip rule and the `e2e` note).
+
+#### 2.1l CI stage 2: mutation testing on GitHub runners — after 2.1k and 2.1n · [ci] (added 2026-11-07)
+
+- **Why.** Stryker is the slowest check: one large file takes about 40 minutes, and `repo.ts` hit the 2-hour limit in 2.1h. It moves to CI, so a task does not wait on it. The blocking rules (user, 2026-11-07): the job fails when the changed files score under 75 overall, or when a changed file scores under 80 unless `.mutation-waivers.json` lowers its floor.
+- **Change.**
+  - `scripts/stryker-changed.mjs`: lists the `src` files the branch changed against the merge base with `origin/main`. A changed `foo.test.ts` counts as a change to `foo.ts`. Files outside the Stryker `mutate` globs are dropped. The rest are grouped by triage config: `src/serve/` → `stryker.serve.config.mjs`; `cms-server` → `stryker.cms-server.config.mjs`; `src/manifest` and `src/revision` → `stryker.preview.config.mjs`. The triage configs do not yet cover all of `preview-render-server` or `preview-protocol`, so 2.1l adds the missing Vitest projects (one triage config per package, shaped like the existing three) before those files can run through the script.
+  - `scripts/stryker-run.mjs`: its junction code moves to `scripts/lib/link-modules.ts` (2.1n), so there is one implementation. `--force` stays, so every score is fresh. The JSON reporter is added to the triage configs, so the summary can read it.
+  - `scripts/stryker-summary.mjs`: reads the JSON reports, prints one row per file (score, killed, survived, no coverage) and the changed-set total, exits 1 under the floors, and writes the table to `$GITHUB_STEP_SUMMARY`.
+  - `.mutation-waivers.json`: `[{ file, floor, reason, task }]`. The reason names the WORKPLAN task that classified the survivors. It starts empty; an entry is added only when a real run needs one.
+  - `scripts/check.ts`: `--mutation` runs the changed-files check, the same as CI, not a whole-repo `npx stryker run`. The whole repo runs as `mutation-full` in CI.
+  - Job `mutation-diff` in `ci.yml` (`needs: fast`, `timeout-minutes: 240`, `fetch-depth: 0`): runs `stryker-changed`, then `stryker-run.mjs` once per group, then the summary. It uploads `reports/stryker-runs` (14 days). With no changed `src` file it exits green with a message.
+  - `.github/workflows/mutation-full.yml`: `schedule` (nightly) and `workflow_dispatch`. A matrix of shards by folder, each with `timeout-minutes: 330`. A final job merges the shard reports into a per-file baseline artifact (90 days) and a summary. It fails under the overall floor of 75 and lists the files under 80.
+- **Verify.** Unit tests in `scripts/` (the `scripts` project from 2.1n) for `stryker-changed` (test-to-source mapping, dropped files, grouping) and `stryker-summary` (floors, a waiver lowers only its own file's floor, the overall floor). Locally: `node scripts/stryker-changed.mjs` prints the groups for a branch, with no Stryker run. With the user's go-ahead: a branch that touches one small file, and one that touches a file under 80, show the two outcomes; one manual `mutation-full` run is compared with the 2.1h numbers.
+- **Done when.** Both blocking outcomes are seen on pushed branches (green and red). Each `mutation-full` shard finishes within its limit and produces the baseline artifact. `stryker-run.mjs` uses the shared module. `check.ts --mutation` runs the changed-files check.
+- **File ownership.** `scripts/stryker-changed.mjs`, `scripts/stryker-summary.mjs`, `scripts/stryker-run.mjs`, the triage configs (and the new per-package ones), `.mutation-waivers.json`, the `mutation-diff` job in `ci.yml`, `.github/workflows/mutation-full.yml`, `scripts/check.ts` (`--mutation`).
+
+#### 2.1m Policy and documents for the CI workflow — after 2.1k (the final numbers come from 2.1l) · docs, the user reviews (added 2026-11-07)
+
+- **Why.** The rules for tasks, waves and Stryker change with CI. They must be written where the agents and the user read them.
+- **Change.**
+  - New `DOCS/Guidelines/CI-PIPELINE.md`: the jobs and triggers; which checks block a merge; the three levels of mutation testing (every change locally, every pushed branch in CI, wave close in CI); when a local Stryker run is allowed (a tight loop on one file expected to take under 10 minutes, or while CI is down or out of minutes; never a full run; never `npx stryker run`); how to read the summary and the artifacts; how to add a gate (a script in `scripts/`, a step or job in `ci.yml`, a row in QUALITY-TOOLING.md); troubleshooting (Linux-only failures, budget flakes, skipped gates); the later additions (2.1o, 2.1p).
+  - `DOCS/README.md`: section 2 gets one branch per task (`task/<id>-<slug>`) and one worktree; merge by pull request into `main`, with a merge commit, once CI is green; a wave is a milestone, closed by a green `mutation-full` and a tag `wave-<n>-closed`; the "commit only when asked" rule gets the CI exception; the wave-branch wording goes. Section 6 links to CI-PIPELINE.md.
+  - `DOCS/Guidelines/TESTING-RECOMMENDATIONS.md` §7: rewritten around CI, with local Stryker as the exception. The checklist's last line matches.
+  - `DOCS/Guidelines/QUALITY-TOOLING.md`: a "Where it runs" column (local or a CI job) in the overview table. "Running everything" and "Stryker" point to CI-PIPELINE.md. The sentence on a future CI caching the incremental file is replaced by the 2.1p decision.
+  - `DOCS/Workplans/WORKPLAN-PHASE-2.md` section 2: parallel rules (push branches for CI; merge when `fast` and `mutation-diff` are green); the mutation part of "Done when" (changed-file survivors killed or classified, the job green); the wave close rule.
+  - `biome.json`: `files.includes` extended to `scripts/**` and the root `vitest.*.ts` files. Existing scripts that fail are fixed or excluded one by one; Biome has never checked them.
+- **Verify.** `npm run lint` and `npm run format:check` pass with the new scope. Read CI-PIPELINE.md against `ci.yml` and `mutation-full.yml` as built. A grep of DOCS finds no wave-branch wording left.
+- **Done when.** The user has reviewed the CI document and the README text. The numbers in CI-PIPELINE.md match the last 2.1l run.
+- **File ownership.** The documents above, `biome.json`, and the scripts whose formatting changes.
+
+#### 2.1o Repository hardening: ruleset, dependency updates, security scans — after 2.1l · [user] [ci] (added 2026-11-07)
+
+- **Why.** The gates exist, but nothing stops a merge yet, and actions and dependencies update without anyone looking.
+- **Change.**
+  - A ruleset for `main`, set by the user in GitHub settings (the exact steps go in CI-PIPELINE.md): a pull request is required; the status checks `fast` and `mutation-diff` are required (`e2e` once it blocks); merge commits only; no force push; no deletion. Whether admin bypass stays on for emergencies is the user's decision here.
+  - `.github/dependabot.yml`: `npm` (root, weekly, minor and patch grouped) and `github-actions` (weekly).
+  - Third-party actions pinned to full commit SHAs, the version in a comment, so a moved tag cannot change a gate.
+  - `actionlint` on the workflow files, as a step of `fast`.
+  - A CodeQL workflow for JavaScript and TypeScript (on push to `main` and weekly).
+  - osv-scanner results as SARIF in the Security tab, using the same `osv-scanner.toml` ignores.
+  - Secret scanning and push protection, turned on in GitHub settings (the user).
+- **Verify.** A test pull request with a red `fast` cannot merge (with the user's go-ahead to push). `actionlint` fails on a deliberately broken workflow line (reverted). Dependabot and CodeQL show their first runs.
+- **Done when.** The ruleset is active and verified; the SHAs are in place; the first Dependabot and CodeQL results are visible; the admin-bypass decision is recorded.
+- **File ownership.** `.github/dependabot.yml`, `.github/workflows/codeql.yml`, the pins, the `actionlint` step and the SARIF step in `ci.yml`, GitHub settings (the user).
+
+#### 2.1p Extra runs and trends — after 2.1l · [ci] · not a gate (added 2026-11-07)
+
+- **Why.** Some checks are worth tracking over time without blocking a merge.
+- **Change.**
+  - A weekly unit run on `windows-latest` (`npm run coverage` only). The codebase is developed on Windows, and CRLF or path differences would show there first.
+  - A nightly trend: the `mutation-full` per-file scores, and the budget and memory numbers from `scripts/measure-memory.mjs` and `scripts/measure-listing-routes.mjs`, as a JSON artifact per run. The job summary shows the last 10 values.
+  - A Stryker baseline cache for the nightly: the nightly drops `--force` and caches `reports/stryker-incremental.json`, keyed by the lockfile hash and the shard. Today the script forces every run, because a stale baseline once made a run take 9 minutes and reuse only 281 of 2684 mutants (QUALITY-TOOLING, 2026-10-31). The cache is used only once the trend shows the incremental and forced scores agree within 0.5 points on two runs. The decision, either way, is written into CI-PIPELINE.md.
+- **Verify.** A week of nightly artifacts; the Windows run green at least twice.
+- **Done when.** The trend shows in the summary, and the cache decision is recorded.
+- **File ownership.** `.github/workflows/windows.yml`, the trend and cache steps in `mutation-full.yml`, any trend helper in `scripts/`.
 
 ### 2.2 Format codecs — after 2.1a · ∥ 2.3, 2.1b to 2.1d, 2.0
 
