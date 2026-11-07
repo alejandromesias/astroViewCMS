@@ -93,4 +93,5 @@ jobs:
             mkdir -p "$dir"
             gh run download "$id" -n mutation-baseline -D "$dir" </dev/null || rm -rf "$dir"
           done < reports/trend/runs.txt
-          node scripts/trend.ts $(find reports/trend -mindepth 1 -maxdepth 1 -type d | sort) >> "$GITHUB_STEP_SUMMARY"
+          mapfile -t folders < <(find reports/trend -mindepth 1 -maxdepth 1 -type d | sort)
+          node scripts/trend.ts "${folders[@]}" >> "$GITHUB_STEP_SUMMARY"
