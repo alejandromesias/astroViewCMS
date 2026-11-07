@@ -9,7 +9,7 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "typecheck": "tsc",
+    "typecheck": "astro sync && tsc",
     "generate:posts": "node scripts/generate-posts.mjs 100",
     "clean:posts": "node scripts/generate-posts.mjs clean"
   },
