@@ -86,8 +86,10 @@ for (const step of steps) {
   console.log(`\n=== ${step.name}: ${step.command}`);
   const started = Date.now();
   if (step.requires && spawnSync(step.requires.probe, { stdio: 'ignore', shell: true }).status !== 0) {
-    console.log(`skipped: not installed. Install with: ${step.requires.hint}`);
-    results.push({ name: step.name, status: 'skipped', seconds: 0, note: step.requires.hint });
+    // On CI a missing tool fails the run: a skipped gate must not look like a passing one (WORKPLAN 2.1k).
+    const onCi = Boolean(process.env.CI);
+    console.log(`${onCi ? 'failed' : 'skipped'}: not installed. Install with: ${step.requires.hint}`);
+    results.push({ name: step.name, status: onCi ? 'fail' : 'skipped', seconds: 0, note: step.requires.hint });
     continue;
   }
   const code = run(step.command);

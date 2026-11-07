@@ -90,7 +90,13 @@ describe('readFileOnce', () => {
       );
     } catch (error) {
       // Creating a symlink needs a privilege some Windows accounts lack; the check cannot run there.
-      if (error instanceof Error && 'code' in error && error.code === 'EPERM')
+      // On CI the privilege is there, so a refusal is a failure, not a skip (WORKPLAN 2.1k).
+      if (
+        !process.env.CI &&
+        error instanceof Error &&
+        'code' in error &&
+        error.code === 'EPERM'
+      )
         return ctx.skip();
       throw error;
     }

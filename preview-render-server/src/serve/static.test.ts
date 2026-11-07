@@ -69,7 +69,8 @@ async function start(): Promise<{ port: number }> {
 }
 
 // Creates a link and returns true. Returns false when the OS refuses it (on Windows a
-// file symlink needs developer mode or a privilege), so the test can skip. Other errors throw.
+// file symlink needs developer mode or a privilege), so the test can skip. On CI a refusal
+// throws instead (WORKPLAN 2.1k). Other errors throw.
 function tryLink(
   target: string,
   link: string,
@@ -80,7 +81,8 @@ function tryLink(
     return true;
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
-    if (code === 'EPERM' || code === 'EEXIST') return false;
+    if (code === 'EEXIST' || (code === 'EPERM' && !process.env.CI))
+      return false;
     throw error;
   }
 }

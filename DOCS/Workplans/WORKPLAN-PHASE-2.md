@@ -25,7 +25,7 @@ before writing tests, [TESTING-RECOMMENDATIONS.md](../Guidelines/TESTING-RECOMME
 |---|---|
 | Phase 2 design | approved by the user, 2026-10-31 |
 | Decisions D17 to D22 | logged in SYSTEM-DESIGN section 11 |
-| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); 2.1g (codecs scope; the rest of its scope moved to 2.1h with deadlines), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a done 2026-11-03 (wave 5 complete, branch `phase-2-wave-5`); 2.0j, 2.1h, 2.5b, 2.5c, 2.6a, 2.9a, 2.10a done 2026-11-03 to 2026-11-06 (wave 6 complete, branch `phase-2-wave-6`); next: wave 7: 2.1n (worktree tooling) first, then 2.1k (CI stage 1); 2.1l and 2.1m next (CI stage 2 and the policy); 2.6b, 2.9c and 2.10b after 2.1k; 2.1o after 2.1l; 2.1j last; 2.1p later; the rest not started |
+| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); 2.1g (codecs scope; the rest of its scope moved to 2.1h with deadlines), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a done 2026-11-03 (wave 5 complete, branch `phase-2-wave-5`); 2.0j, 2.1h, 2.5b, 2.5c, 2.6a, 2.9a, 2.10a done 2026-11-03 to 2026-11-06 (wave 6 complete, branch `phase-2-wave-6`); wave 7: 2.1n done 2026-11-07 (`b72080b`); 2.1k written 2026-11-07, verified on GitHub after the first push; next 2.1l and 2.1m (CI stage 2 and the policy); 2.6b, 2.9c and 2.10b after 2.1k is green; 2.1o after 2.1l; 2.1j last; 2.1p later; the rest not started |
 
 **Done when:** every row of PHASE-2-DESIGN.md section 1 passes. Section 5
 below maps each row to the test that proves it.
@@ -972,7 +972,7 @@ Steps, in order:
   - **Left on disk (gitignored, from the manual run):** `.dev/`, `cms.config.ts`, `.cms/` at the
     repo root.
 
-#### 2.1n Worktree tooling: one task, one worktree, shared `node_modules` — first in wave 7 (added 2026-11-07)
+#### 2.1n Worktree tooling: one task, one worktree, shared `node_modules` — first in wave 7 · DONE 2026-11-07 (added 2026-11-07)
 
 - **Why.** Every task now runs on its own branch `task/<id>-<slug>` in its own worktree (WORKPLAN section 2). A new worktree has no `node_modules`. Linking the root `node_modules` as a whole would make the workspace imports (`cms-server`, `preview-protocol`, …) resolve to the main checkout's source, so a worktree's tests would run the wrong code without any error. The folder each worktree uses must be built from junctions: third-party packages point at the main folder (nothing is copied or reinstalled), workspace packages point at the worktree's own folders.
 - **Layout.** Worktrees live in `C:\Users\aleja\DesignWork\CMSProject\avc-wt\<id>`, outside the repo. The main checkout stays on `main` and is used for merging, reading and the occasional local Stryker run.
@@ -1002,6 +1002,7 @@ Steps, in order:
 - **Done when.** The tests pass. `new` and `remove` run end to end on a throwaway task in a temp repo. The README section matches the commands.
 - **File ownership.** `scripts/worktree.ts`, `scripts/lib/link-modules.ts` and their tests, root `package.json` (two scripts), `vitest.projects.ts`, `knip.json` (one entry), `DOCS/README.md` (the new section), and this workplan entry.
 - **Order.** First in wave 7. The CI tasks and 2.6b, 2.9c and 2.10b each start in a worktree from this tool.
+- **Result (2026-11-07, `b72080b`).** 17 tests in the `scripts` project pass. The bootstrap was the tool itself: `link` in the worktree linked 599 packages and copied 129 files. The lockfile check compares dependency fields only. `npm install` is stopped by the guard and `npm ci` is not; neither follows a junction (sentinel check). `link --replace` was added for recovery. `remove` on the real worktree unlinked 787 entries, and main kept its 484 entries. Knip is clean for the new files after the `knip.json` entry. Biome does not cover `scripts/`; that is a 2.1m follow-up. The branch was merged to `main` by fast-forward, and the worktree removed with the tool.
 
 #### 2.1j Clone isolation: `runGit` gets `GIT_DIR` and `GIT_WORK_TREE` — after 2.1h, 2.6b, 2.9c, 2.10b · last in wave 7 (added 2026-11-06)
 
@@ -1014,7 +1015,7 @@ Steps, in order:
 - **File ownership.** `repo.ts`, `ops.ts`, their tests and the test helpers. `exec.ts` only if a test needs it, and then named in the Result.
 - **Order.** Last in wave 7, after 2.6b, 2.9c and 2.10b, and not in parallel with them. The user asked on 2026-11-06 for it to be scheduled, which answers the "ask the user first" in the standing-risk step.
 
-#### 2.1k CI stage 1: the fast gates and e2e on GitHub Actions — after 2.1n · [ci] (added 2026-11-07)
+#### 2.1k CI stage 1: the fast gates and e2e on GitHub Actions — after 2.1n · [ci] · written 2026-11-07, GitHub verification pending (added 2026-11-07)
 
 - **Why.** No CI exists (`.github/workflows` is absent), so the gates run only when someone remembers. The repo is becoming public: no secrets are needed, workflows run on `pull_request` (never `pull_request_target`), and every workflow declares `permissions: contents: read`.
 - **Change.**
@@ -1030,6 +1031,7 @@ Steps, in order:
 - **Done when.** `fast` is green on `main`. `e2e` is green, or its `continue-on-error` line is removed with the `sample-site` cause written in QUALITY-TOOLING.md. The coverage artifact exists. The CI log has no `skipped` step. The three symlink tests run on Linux and pass.
 - **Notes.** The 2.1n `preinstall` guard passes in CI, since no marker exists there. If `npm ci` hits npm 11's blocked install scripts (`@swc/core` and optional native binaries), approve the package as README section 3 describes, and only after it fails.
 - **File ownership.** `.node-version`, `.github/workflows/ci.yml`, `scripts/check.ts`, the three symlink tests and the Linux fixes they need, `DOCS/Guidelines/QUALITY-TOOLING.md` (the skip rule and the `e2e` note).
+- **Status (2026-11-07).** Written: `.node-version`; `.github/workflows/ci.yml` with `fast` and `e2e`; osv-scanner pinned to v2.7.0 and checked against the release's SHA256SUMS; the CI skip rule in `scripts/check.ts`; the three symlink tests, which fail on a refused link when `CI` is set. Checked locally: with `CI` unset the symlink tests give 46 passed and 3 skipped; with `CI=1` on Windows the three fail with `EPERM`, as intended; `ci.yml` parses and has jobs `fast` and `e2e`. Not run here: `npm run check -- --fast` (agent rule: targeted tests only). Pending a push: the `fast` job green, the Linux fixes and the `e2e` decision.
 
 #### 2.1l CI stage 2: mutation testing on GitHub runners — after 2.1k and 2.1n · [ci] (added 2026-11-07)
 
