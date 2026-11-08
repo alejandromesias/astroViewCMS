@@ -2,11 +2,11 @@
 // bundle holds the documents the test gives. A stage that reads real files passes its own working copy as siteFolder.
 // Test code only.
 
+import type { FieldError, MediaInfo } from 'preview-protocol';
 import { vi } from 'vitest';
 import type { Bundle, DocumentEntry } from '../../src/bundle/read.ts';
 import type { ChangesetRepo } from '../../src/documents/changeset.ts';
 import type { RepoTx } from '../../src/git/ops.ts';
-import type { FieldError, MediaInfo } from 'preview-protocol';
 import type { PreviewClient, SaveContext } from '../../src/save/context.ts';
 import { createDeleteGuard } from '../../src/save/delete-guard.ts';
 import { silentLog } from './repo.ts';
