@@ -33,7 +33,7 @@ and pull requests (the user merges). Items run before 2.9c unless noted.
 | q4 | CI extras | done, #13 merged |
 | q5 | Tag `wave-6-closed` | waiting for the user's OK |
 | q6 | Cleanup of branches, worktrees, temp folder | done 2026-11-07 |
-| q7 | TypeScript back to 6.0.3 | PR #14 open, clean; waiting for the user's merge |
+| q7 | TypeScript back to 6.0.3 | done, #14 merged 2026-11-08 |
 | q8 | Windows flake in `pipeline.test.ts` | open; CI decides |
 
 ### q1. Docs (one PR): done, #10 merged
@@ -100,9 +100,9 @@ Was checked before deleting:
 - `%TEMP%\avc-stryker` (the Stryker export folder) and the stale
   `preview-render-server/.build/sample-site`.
 
-### q7. TypeScript back to 6.0.3: PR #14, open and clean
+### q7. TypeScript back to 6.0.3: done, #14 merged 2026-11-08
 
-dependency-cruiser cannot use TypeScript 7 and skipped TypeScript sources (its warning on every run). Pinned `~6.0.3` in the two workspaces and as a root devDependency; Dependabot ignores major TypeScript updates. Checked locally: five `tsc`, depcruise, knip, lint and format. **Waiting for the user's merge.**
+dependency-cruiser cannot use TypeScript 7 and skipped TypeScript sources (its warning on every run). Pinned `~6.0.3` in the two workspaces and as a root devDependency; Dependabot ignores major TypeScript updates. Checked locally: five `tsc`, depcruise, knip, lint and format. The user merged it.
 
 ### q8. Windows flake in `cms-server/src/save/pipeline.test.ts`
 
@@ -110,4 +110,4 @@ Local full coverage run on Windows (2026-11-07): the test timed out at 5000 ms, 
 
 ## Order
 
-q5 waits for the user's OK (the tag). q7 waits for the user's merge. q3's `app.ts` floor must be merged before 2.9c. q8 only if CI shows the flake. Delete this file when q3 and q5 are done and q7 is merged.
+q5 waits for the user's OK (the tag). q3's `app.ts` floor must be merged before 2.9c. q8 only if CI shows the flake. Delete this file when q3 and q5 are done.
