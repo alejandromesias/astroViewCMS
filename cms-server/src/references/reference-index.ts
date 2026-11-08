@@ -78,7 +78,7 @@ function setOf(map: Map<string, Set<string>>, key: string): Set<string> {
  * (its collection is `data:<folder>`, which has no schema) or a collection with no schema points at nothing. A
  * reference hit with no collection (the schema names none) names no document either.
  */
-function targetsOf(
+export function targetsOf(
   key: string,
   value: unknown,
   schemaOf: CollectionSchemaOf,

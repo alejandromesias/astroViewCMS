@@ -11,7 +11,8 @@ import { GitError } from '../git/exec.ts';
 import type { Repo } from '../git/ops.ts';
 import { type Logger, logger } from '../log.ts';
 import { parseSaveBody } from '../save/body.ts';
-import type { PreviewClient } from '../save/context.ts';
+import type { DeleteGuard, PreviewClient } from '../save/context.ts';
+import { createDeleteGuard } from '../save/delete-guard.ts';
 import { saveChanges } from '../save/pipeline.ts';
 import { BodyTooLargeError, readBody } from './body.ts';
 import { withBundle } from './bundle-routes.ts';
@@ -24,11 +25,12 @@ export const MAX_BODY_BYTES = 4 * 1024 * 1024;
 // The content type of a save body: JSON, with or without parameters.
 const JSON_TYPE = /^application\/json\s*(;|$)/i;
 
-/** What PUT needs beyond the repo: the config's collections, the preview node, and the log (the real logger by default). */
+/** What PUT needs beyond the repo: the config's collections, the preview node, the log (the real logger by default), and the delete guard (2.6b; one is made per app by default). */
 export interface SaveRouteDeps {
   readonly config: Pick<CmsConfig, 'collections'>;
   readonly preview: PreviewClient;
   readonly log?: Logger;
+  readonly guard?: DeleteGuard | undefined;
 }
 
 /** What the change routes read. PUT is registered only when `save` is given. */
@@ -68,6 +70,8 @@ export function registerChangeRoutes(app: Hono, deps: ChangeRouteDeps): void {
   if (deps.save !== undefined) {
     const save = deps.save;
     const log = save.log ?? logger;
+    // One guard for the app: its reference index is built once per bundle, and kept across saves.
+    const guard = save.guard ?? createDeleteGuard();
     app.put('/api/changes', async (c) => {
       const request = c.req.raw;
       const rejection = rejectUnlessContentType(request, JSON_TYPE);
@@ -101,6 +105,7 @@ export function registerChangeRoutes(app: Hono, deps: ChangeRouteDeps): void {
             preview: save.preview,
             media: deps.media,
             log,
+            guard,
           },
           deps.repo,
         );

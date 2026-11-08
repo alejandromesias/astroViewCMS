@@ -15,7 +15,9 @@ import { fakeTx, previewSays } from '../../test/helpers/save-context.ts';
 import { directoryBundleSource } from '../bundle/source.ts';
 import { GitError } from '../git/exec.ts';
 import type { Repo } from '../git/ops.ts';
-import type { PreviewClient } from '../save/context.ts';
+import { createReferenceIndex } from '../references/reference-index.ts';
+import type { DeleteGuard, PreviewClient } from '../save/context.ts';
+import { createDeleteGuard } from '../save/delete-guard.ts';
 import { createApp } from './app.ts';
 import { MAX_BODY_BYTES, registerChangeRoutes } from './changes-routes.ts';
 
@@ -145,6 +147,7 @@ describe('GET /api/changes', () => {
 async function saveApp(
   preview: PreviewClient,
   bundle?: string,
+  guard?: DeleteGuard,
 ): Promise<{ app: Hono; siteFolder: string; repoDir: string }> {
   const root = await makeTestRoot();
   folders.push(root);
@@ -159,7 +162,7 @@ async function saveApp(
     bundle: directoryBundleSource(bundle ?? (await bundleFolder())),
     workingCopy: state.siteFolder,
     repo: saves,
-    save: { config, preview },
+    save: { config, preview, guard },
   });
   return { app, siteFolder: state.siteFolder, repoDir: state.repoDir };
 }
@@ -185,6 +188,102 @@ function anaUpdate(before: string, name: string): string {
     ],
   });
 }
+
+// The delete guard on PUT (PHASE-2-DESIGN 4.3): the sample's posts blog-1 and blog-3 name the author Ana.
+describe('PUT /api/changes: the delete guard', () => {
+  const ANA_KEY = 'authors/ana-torres';
+  const BLOG_3 = 'src/content/blog/blog-3.md';
+
+  // A deletion of Ana at her revision in the working copy now.
+  async function deleteAna(siteFolder: string): Promise<string> {
+    const ana = await readFile(join(siteFolder, ANA), 'utf8');
+    return JSON.stringify({
+      changes: [
+        { document: ANA_KEY, baseRevision: revisionOf(ana), deleted: true },
+      ],
+    });
+  }
+
+  it('answers 409 referenced-by with the posts that name the author, and writes nothing', async () => {
+    const { app, siteFolder, repoDir } = await saveApp(previewSays());
+    const res = await put(app, await deleteAna(siteFolder));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toStrictEqual({
+      error: 'referenced-by',
+      document: ANA_KEY,
+      referrers: ['blog/blog-1', 'blog/blog-3'],
+    });
+    expect(await git(repoDir, ['status', '--porcelain'])).toBe('');
+  });
+
+  it('answers 200 when the same save clears the author from both posts', async () => {
+    const { app, siteFolder } = await saveApp(previewSays());
+    const ana = await readFile(join(siteFolder, ANA), 'utf8');
+    const posts = await Promise.all(
+      [
+        { document: 'blog/blog-1', path: BLOG_1 },
+        { document: 'blog/blog-3', path: BLOG_3 },
+      ].map(async ({ document, path }) => ({
+        document,
+        baseRevision: revisionOf(await readFile(join(siteFolder, path))),
+        deleted: false,
+        data: { data: { title: 'Ana is gone' }, body: 'Body\n' },
+      })),
+    );
+    const res = await put(
+      app,
+      JSON.stringify({
+        changes: [
+          { document: ANA_KEY, baseRevision: revisionOf(ana), deleted: true },
+          ...posts,
+        ],
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(Object.keys((await res.json()).revisions).sort()).toStrictEqual([
+      'blog/blog-1',
+      'blog/blog-3',
+    ]);
+  });
+
+  it('answers 200 when the same save deletes the author and both posts', async () => {
+    const { app, siteFolder } = await saveApp(previewSays());
+    const ana = await readFile(join(siteFolder, ANA), 'utf8');
+    const blog1 = await readFile(join(siteFolder, BLOG_1));
+    const blog3 = await readFile(join(siteFolder, BLOG_3));
+    const res = await put(
+      app,
+      JSON.stringify({
+        changes: [
+          { document: ANA_KEY, baseRevision: revisionOf(ana), deleted: true },
+          {
+            document: 'blog/blog-1',
+            baseRevision: revisionOf(blog1),
+            deleted: true,
+          },
+          {
+            document: 'blog/blog-3',
+            baseRevision: revisionOf(blog3),
+            deleted: true,
+          },
+        ],
+      }),
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it('builds no index for a save without a deletion, and uses the app guard for a deletion', async () => {
+    const makeIndex = vi.fn(createReferenceIndex);
+    const guard = createDeleteGuard({ makeIndex });
+    const { app, siteFolder } = await saveApp(previewSays(), undefined, guard);
+    const before = await readFile(join(siteFolder, ANA), 'utf8');
+    expect((await put(app, anaUpdate(before, 'Ana T.'))).status).toBe(200);
+    expect(makeIndex).not.toHaveBeenCalled();
+    const res = await put(app, await deleteAna(siteFolder));
+    expect(res.status).toBe(409);
+    expect(makeIndex).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('PUT /api/changes', () => {
   it('saves an update, commits it with one line per document, and answers the new revision', async () => {

@@ -22,6 +22,7 @@ import {
   type Supervisor,
   type SupervisorOptions,
 } from './preview/supervisor.ts';
+import { createDeleteGuard } from './save/delete-guard.ts';
 import { previewNotReady } from './save/validate.ts';
 import { startServer } from './server.ts';
 
@@ -159,7 +160,7 @@ export async function run(
     // One set of repo operations per start, so the lock covers every save of this start.
     repo: openRepo({ config, cmsDir, state: repo }),
     // The preview client is 2.9d's. Until it is in place every save answers 503 preview-unavailable.
-    save: { config, preview: previewNotReady },
+    save: { config, preview: previewNotReady, guard: createDeleteGuard() },
   };
   const supervisor = deps.createSupervisor({
     port: previewPort,

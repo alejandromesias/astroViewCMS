@@ -17,11 +17,12 @@ import {
 import { BundleError } from '../bundle/read.ts';
 import { directoryBundleSource } from '../bundle/source.ts';
 import { createBundleStore } from '../bundle/store.ts';
-import type { Repo, RepoTx } from '../git/ops.ts';
 import { writeFileAtomic } from '../fs/atomic.ts';
+import type { Repo, RepoTx } from '../git/ops.ts';
 import type { SaveChange } from './body.ts';
 import { checkRevisions } from './conflicts.ts';
-import type { SaveStage, SaveStop } from './context.ts';
+import type { DeleteGuard, SaveStage, SaveStop } from './context.ts';
+import { checkDeleteGuard, createDeleteGuard } from './delete-guard.ts';
 import { runStages, SAVE_STAGES, saveChanges } from './pipeline.ts';
 import { planChanges } from './plan.ts';
 import { validateChanges } from './validate.ts';
@@ -65,17 +66,51 @@ function inputOf(
       cmsOrigin: 'http://cms.localhost:4400',
     },
     log: silentLog(),
+    guard: createDeleteGuard(),
   };
 }
 
 describe('SAVE_STAGES', () => {
-  it('runs the revision check, the planning, the validation and the write, in that order', () => {
+  it('runs the revision check, the delete guard, the planning, the validation and the write, in that order', () => {
     expect(SAVE_STAGES).toStrictEqual([
       checkRevisions,
+      checkDeleteGuard,
       planChanges,
       validateChanges,
       writeChanges,
     ]);
+  });
+});
+
+describe('the delete guard in a save', () => {
+  it("hands the save its guard, and runs the guard hook after the commit, before the save's own hooks", async () => {
+    const order: string[] = [];
+    const guard: DeleteGuard = {
+      indexOf: vi.fn(),
+      applySave: vi.fn(() => {
+        order.push('guard');
+      }),
+    };
+    let seen: DeleteGuard | undefined;
+    const own = vi.fn(async () => {
+      order.push('own');
+    });
+    const answer = await saveChanges(
+      { ...inputOf([], async () => bundleOf([])), guard, afterCommit: [own] },
+      lockedRepo(fakeTx(), []),
+      {
+        stages: [
+          (ctx) => {
+            seen = ctx.guard;
+            return Promise.resolve(undefined);
+          },
+          writeChanges,
+        ],
+      },
+    );
+    expect(answer.status).toBe(200);
+    expect(seen).toBe(guard);
+    expect(order).toStrictEqual(['guard', 'own']);
   });
 });
 
@@ -219,6 +254,7 @@ describe('saveChanges', () => {
           cmsOrigin: 'http://cms.localhost:4400',
         },
         log: silentLog(),
+        guard: createDeleteGuard(),
       },
       repo,
       {
