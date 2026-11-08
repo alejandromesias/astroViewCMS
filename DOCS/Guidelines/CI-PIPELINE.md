@@ -26,7 +26,7 @@ in section 8.
 - A tool that is missing on CI **fails** the step: with `CI` set, `check.ts`
   turns "skipped" into "failed". The four symlink tests also fail instead of
   skipping, so nothing that is skipped locally is skipped in CI.
-- Node comes from `.node-version`. Actions use major-version tags for now.
+- Node comes from `.node-version`. Actions are pinned to full commit SHAs (section 8).
 
 ## 2. What blocks a merge
 
@@ -179,3 +179,6 @@ in the `matrix` of `mutation-full.yml`.
   and forced scores within 0.5 points on two runs, and this section is updated then.
 - **Windows.** Weekly unit run on `windows-latest`. Not a required check; the run
   page is the signal.
+- **Dependency updates.** A Dependabot pull request changes no source file, so
+  `mutation-diff` tests nothing for it. A Vitest or Stryker bump shows up only in the
+  nightly `mutation-full` run.
