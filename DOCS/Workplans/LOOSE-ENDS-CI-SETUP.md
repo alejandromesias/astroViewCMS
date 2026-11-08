@@ -19,6 +19,7 @@ and pull requests (the user merges). Items run before 2.9c unless noted.
 - **Local rules:** "never run the full Vitest suite" stays (CI runs it). "Run Stryker
   only through the script" now applies to local runs only.
 - **Deleting the stale branches and worktrees (q6) is approved.**
+- **TypeScript back to 6.0.3** (user, 2026-11-07, q7). dependency-cruiser cannot use 7 and skipped TypeScript sources; Dependabot ignores major TypeScript bumps until it can.
 - **Skipped on purpose:** nightly skip when `main` is unchanged (saves about 36 min a
   night, not worth it).
 
@@ -26,14 +27,16 @@ and pull requests (the user merges). Items run before 2.9c unless noted.
 
 | # | Item | State |
 | --- | --- | --- |
-| q1 | Docs, one PR (below) | open |
-| q2 | Sample site JSX setting | open |
-| q3 | Mutation floors | open |
-| q4 | CI: CodeQL on PRs, e2e artifacts on failure | open |
+| q1 | Docs | done, #10 merged |
+| q2 | Sample site JSX setting | done, #11 merged |
+| q3 | Mutation floors | partly done, #12 merged; `app.ts` floor open |
+| q4 | CI extras | done, #13 merged |
 | q5 | Tag `wave-6-closed` | waiting for the user's OK |
-| q6 | Cleanup of branches, worktrees, temp folder | open |
+| q6 | Cleanup of branches, worktrees, temp folder | done 2026-11-07 |
+| q7 | TypeScript back to 6.0.3 | done, #14 merged 2026-11-08 |
+| q8 | Windows flake in `pipeline.test.ts` | open; CI decides |
 
-### q1. Docs (one PR)
+### q1. Docs (one PR): done, #10 merged
 
 - CI-PIPELINE section 1: remove "Actions use major-version tags for now" (actions
   are pinned to full SHAs, section 8).
@@ -49,7 +52,7 @@ and pull requests (the user merges). Items run before 2.9c unless noted.
   so the mutation check tests nothing for them; a Vitest or Stryker bump shows up in
   the nightly run.
 
-### q2. Sample site JSX setting
+### q2. Sample site JSX setting: done, #11 merged
 
 Set `"jsx": "react-jsx"` and `"jsxImportSource": "react"` in
 `sample-site/tsconfig.json`, revert the `import React` in
@@ -58,7 +61,7 @@ Set `"jsx": "react-jsx"` and `"jsxImportSource": "react"` in
 CI is green. Reason: the sample site stands in for user sites; the CMS must not need
 edits to their components.
 
-### q3. Mutation floors
+### q3. Mutation floors: partly done, #12 merged (the `app.ts` floor is open)
 
 - Remove `main.ts` and `memory-route.ts` from the `mutate` list (`stryker.config.json`
   and the group configs that list them). Check `stryker-plan.ts` still plans every
@@ -70,11 +73,10 @@ edits to their components.
   `preview-render-server/src/bundle.ts` 45, `overlay/errors.ts` 57.
   Scores are from the full run `42392688637`.
 
-### q4. CI extras
+### q4. CI extras: done, #13 merged (the upload is not yet seen on a failing run)
 
-- `security.yml`: add `pull_request` to the CodeQL trigger (about 2 minutes).
-- `ci.yml` `e2e` job: upload Playwright traces and test output as an artifact when
-  the job fails.
+- `security.yml`: CodeQL and the osv SARIF also run on `pull_request` to `main`.
+- `ci.yml` `e2e` job: each suite's Vitest output goes to `e2e-output/` (tee), and the folder is uploaded when the job fails. No Playwright trace: no config enables one.
 
 ### q5. Tag `wave-6-closed`
 
@@ -82,9 +84,11 @@ The full run `42392688637` was green with an overall 94.2, which meets the rule 
 closing a wave (CI-PIPELINE section 4). Tag the commit that run covered and push the
 tag. **Not done: needs the user's OK.**
 
-### q6. Cleanup (approved)
+### q6. Cleanup (approved): done 2026-11-07
 
-Before deleting, check each item for commits that are not on `main` and report any.
+Deleted: the two agent worktrees and their branches, the merged local and remote branches listed below, and all of `.build`. Kept: `parked/per-island-save` and the `task/loose-q*` branches until their PRs merged. Two worktree folders needed removal by path after a lock; `git worktree remove` had already deleted their tracked files, which is recoverable from the branch commits (patch-equivalent on `main`).
+
+Was checked before deleting:
 
 - Local branches: `phase-2-wave-4`, `phase-2-wave-5`, `phase-2-wave-6`,
   `quality/mutation-followups`, `docs/handoff-and-design-updates`.
@@ -96,7 +100,14 @@ Before deleting, check each item for commits that are not on `main` and report a
 - `%TEMP%\avc-stryker` (the Stryker export folder) and the stale
   `preview-render-server/.build/sample-site`.
 
+### q7. TypeScript back to 6.0.3: done, #14 merged 2026-11-08
+
+dependency-cruiser cannot use TypeScript 7 and skipped TypeScript sources (its warning on every run). Pinned `~6.0.3` in the two workspaces and as a root devDependency; Dependabot ignores major TypeScript updates. Checked locally: five `tsc`, depcruise, knip, lint and format. The user merged it.
+
+### q8. Windows flake in `cms-server/src/save/pipeline.test.ts`
+
+Local full coverage run on Windows (2026-11-07): the test timed out at 5000 ms, then `EBUSY` on `rmdir` of its temp folder. It passes alone (8 of 8). Decided: let CI on Linux settle it; not investigated. Investigate if it fails in CI or recurs.
+
 ## Order
 
-q1, q2, q3 and q4 are independent task branches. q5 waits for the user's OK. q6 last,
-or any time. 2.9c starts after q3's `app.ts` item is merged.
+q5 waits for the user's OK (the tag). q3's `app.ts` floor must be merged before 2.9c. q8 only if CI shows the flake. Delete this file when q3 and q5 are done.
