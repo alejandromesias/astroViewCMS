@@ -33,7 +33,7 @@ and pull requests (the user merges). Items run before 2.9c unless noted.
 | --- | --- | --- |
 | q1 | Docs | done, #10 merged |
 | q2 | Sample site JSX setting | done, #11 merged |
-| q3 | Mutation floors | done; `app.ts` at 100 in #16 (open until it merges) |
+| q3 | Mutation floors | done, #12 and #16 merged 2026-11-08 |
 | q4 | CI extras | done, #13 merged |
 | q5 | Tag `wave-6-closed` | done 2026-11-08 on `34d33bd` |
 | q6 | Cleanup of branches, worktrees, temp folder | done 2026-11-07 |
@@ -112,9 +112,8 @@ Local full coverage run on Windows (2026-11-07): the test timed out at 5000 ms, 
 
 ## Still open
 
-- **q3:** `app.ts` floor, PR #16. Merge it; nothing else is needed for q3.
 - **q8:** the Windows flake. Only if CI shows it again.
 
 ## Order
 
-q3's PR #16 comes before 2.9c, since 2.9c adds `/api/status` to `app.ts`. Nothing else is ordered.
+q3 is merged, so 2.9c can start. Nothing else is ordered.
