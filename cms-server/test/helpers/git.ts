@@ -75,8 +75,14 @@ export async function makeTestRoot(): Promise<string> {
 }
 
 /** Removes a folder made by makeTestRoot, with everything in it. */
+// Windows keeps a file locked for a moment after a git child exits (EBUSY, EPERM); maxRetries waits it out.
 export async function removeTestRoot(root: string): Promise<void> {
-  await rm(root, { recursive: true, force: true });
+  await rm(root, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 200,
+  });
 }
 
 /**
