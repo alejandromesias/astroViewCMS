@@ -8,6 +8,7 @@ import type { FileOp } from '../documents/plan-write.ts';
 import type { FileReads } from '../documents/read.ts';
 import type { RepoTx } from '../git/ops.ts';
 import type { Logger } from '../log.ts';
+import type { ReferenceIndex } from '../references/reference-index.ts';
 import type { SaveChange } from './body.ts';
 
 /**
@@ -51,6 +52,17 @@ export type SaveAnswer =
  */
 export type AfterCommitHook = (ctx: SaveContext) => Promise<void>;
 
+/**
+ * The delete guard of the app (PHASE-2-DESIGN 4.3): the reference index of the bundle, built lazily from the working
+ * copy and kept in step with each save. Its methods are implemented in delete-guard.ts.
+ */
+export interface DeleteGuard {
+  /** The index of the save's bundle. Built on the first call, and again when a failed update left it stale. May reject. */
+  indexOf(ctx: SaveContext): Promise<ReferenceIndex>;
+  /** Puts the save's written values into the index, after the commit. A throw marks the index stale and is rethrown. */
+  applySave(ctx: SaveContext): void;
+}
+
 /** What the stages share. The inputs are set before the lock; the stages fill in the outputs, in order. */
 export interface SaveContext {
   readonly changes: readonly SaveChange[];
@@ -67,6 +79,8 @@ export interface SaveContext {
   /** Writes one file atomically (fs/atomic.ts). A test passes a fake that fails. */
   readonly writeFile: (file: string, text: string) => Promise<void>;
   readonly afterCommit: readonly AfterCommitHook[];
+  /** The delete guard (2.6b): the stage reads the index from it, and the after-commit hook updates it. */
+  readonly guard: DeleteGuard;
   /** The file reads of the save before its writes. Shared by the revision check and the planning. */
   readonly reads: FileReads;
   /** The values of the documents before the save, by key. Set by the revision check for each known document. */

@@ -17,6 +17,7 @@ import type { AppDeps } from './http/app.ts';
 import type { Logger } from './log.ts';
 import type { Supervisor, SupervisorOptions } from './preview/supervisor.ts';
 import { describeError, parseArgs, portOf, type RunDeps, run } from './run.ts';
+import type { DeleteGuard } from './save/context.ts';
 import { previewNotReady } from './save/validate.ts';
 import { startServer as listen } from './server.ts';
 
@@ -230,7 +231,11 @@ describe('run', () => {
           bundle: expect.any(Object) as BundleSource,
           workingCopy: 'repo',
           repo: expect.any(Object) as Repo,
-          save: { config: expect.any(Object), preview: previewNotReady },
+          save: {
+            config: expect.any(Object),
+            preview: previewNotReady,
+            guard: expect.any(Object) as DeleteGuard,
+          },
         },
         4400,
       );
