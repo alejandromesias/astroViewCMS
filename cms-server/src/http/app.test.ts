@@ -70,6 +70,20 @@ describe('createApp', () => {
     expect(await response.json()).toEqual({ error: 'no-bundle' });
   });
 
+  it.each([
+    { missing: 'a bundle source', deps: { workingCopy: WORKING_COPY, repo } },
+    { missing: 'a working copy', deps: { bundle: noBundle, repo } },
+  ])(
+    'registers no change routes without $missing, even with a repo',
+    async ({ deps }) => {
+      const response = await createApp({ ...fakeAppDeps(), ...deps }).request(
+        '/api/changes',
+      );
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({ error: 'not_found' });
+    },
+  );
+
   it('answers a JSON 404 for an unknown path', async () => {
     const response = await createApp(fakeAppDeps()).request('/nope');
     expect(response.status).toBe(404);
