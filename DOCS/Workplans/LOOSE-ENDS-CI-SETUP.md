@@ -1,6 +1,10 @@
 # Loose ends from CI setup
 
-Temporary tracker. Delete this file when every item is DONE. It is separate from
+> **Deprecated 2026-11-08.** Not maintained any more. The items that are still open are
+> listed under "Still open" below; everything else is done. Keep this file for the history;
+> do not add to it. New work goes through its own task branch and PR, as DOCS/README.md section 2 says.
+
+Temporary tracker. It is separate from
 WORKPLAN-PHASE-2.md on purpose. Source of truth for the rules: DOCS/README.md
 section 2 and DOCS/Guidelines/CI-PIPELINE.md. Everything goes through task branches
 and pull requests (the user merges). Items run before 2.9c unless noted.
@@ -29,9 +33,9 @@ and pull requests (the user merges). Items run before 2.9c unless noted.
 | --- | --- | --- |
 | q1 | Docs | done, #10 merged |
 | q2 | Sample site JSX setting | done, #11 merged |
-| q3 | Mutation floors | partly done, #12 merged; `app.ts` floor open |
+| q3 | Mutation floors | done, #12 and #16 merged 2026-11-08 |
 | q4 | CI extras | done, #13 merged |
-| q5 | Tag `wave-6-closed` | waiting for the user's OK |
+| q5 | Tag `wave-6-closed` | done 2026-11-08 on `34d33bd` |
 | q6 | Cleanup of branches, worktrees, temp folder | done 2026-11-07 |
 | q7 | TypeScript back to 6.0.3 | done, #14 merged 2026-11-08 |
 | q8 | Windows flake in `pipeline.test.ts` | open; CI decides |
@@ -78,11 +82,9 @@ edits to their components.
 - `security.yml`: CodeQL and the osv SARIF also run on `pull_request` to `main`.
 - `ci.yml` `e2e` job: each suite's Vitest output goes to `e2e-output/` (tee), and the folder is uploaded when the job fails. No Playwright trace: no config enables one.
 
-### q5. Tag `wave-6-closed`
+### q5. Tag `wave-6-closed`: done 2026-11-08
 
-The full run `42392688637` was green with an overall 94.2, which meets the rule for
-closing a wave (CI-PIPELINE section 4). Tag the commit that run covered and push the
-tag. **Not done: needs the user's OK.**
+The full run `42392688637` (success, overall 94.2) covered `34d33bd`; the annotated tag is on that commit and pushed.
 
 ### q6. Cleanup (approved): done 2026-11-07
 
@@ -108,6 +110,10 @@ dependency-cruiser cannot use TypeScript 7 and skipped TypeScript sources (its w
 
 Local full coverage run on Windows (2026-11-07): the test timed out at 5000 ms, then `EBUSY` on `rmdir` of its temp folder. It passes alone (8 of 8). Decided: let CI on Linux settle it; not investigated. Investigate if it fails in CI or recurs.
 
+## Still open
+
+- **q8:** the Windows flake. Only if CI shows it again.
+
 ## Order
 
-q5 waits for the user's OK (the tag). q3's `app.ts` floor must be merged before 2.9c. q8 only if CI shows the flake. Delete this file when q3 and q5 are done.
+q3 is merged, so 2.9c can start. Nothing else is ordered.
