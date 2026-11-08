@@ -2,11 +2,23 @@
 // worktrees. Changes run inside `Repo.locked`, one at a time, through the mutex. Reads that only compare commits
 // do not lock. Callers pass site-relative paths and get them back site-relative: `siteDir` is joined and stripped
 // here and nowhere else.
-import { mkdir } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, posix, resolve } from 'node:path';
-import { type Bundle, BundleError } from '../bundle/read.ts';
+import {
+  type Bundle,
+  BundleError,
+  type DocumentEntry,
+} from '../bundle/read.ts';
 import type { BundleStore } from '../bundle/store.ts';
 import type { CmsConfig } from '../config/schema.ts';
+import { changesetOf } from '../documents/changeset.ts';
+import { type FileOp, planWrite } from '../documents/plan-write.ts';
+import {
+  commitParagraphs,
+  planReapply,
+  trailersOf,
+} from '../documents/reapply.ts';
 import {
   assertRef,
   assertRelativePath,
@@ -18,10 +30,13 @@ import {
 } from './exec.ts';
 import { createMutex, type Mutex } from './mutex.ts';
 import {
+  moveWork,
   type RepoErrorKind,
   type RepoState,
   repoErrorOf,
   WORK,
+  WORK_NEXT,
+  WORK_REF,
 } from './repo.ts';
 import {
   type ChangedPath,
@@ -32,7 +47,7 @@ import {
 } from './sync.ts';
 
 // The types live in sync.ts, which this file imports. sync.ts cannot import this file back (a cycle).
-export type { ChangedPath, ChangeStatus } from './sync.ts';
+export type { ChangedPath } from './sync.ts';
 
 /** Why a fetch failed. The kinds are `ensureRepo`'s `RepoError` kinds, and the message is redacted. */
 interface SyncError {
@@ -57,7 +72,12 @@ export type FetchResult =
   | { ok: false; syncError: SyncError };
 
 export interface OpenRepoOptions {
-  config: Pick<CmsConfig, 'site' | 'remote' | 'branch' | 'siteDir'>;
+  /**
+   * `collections` and `media` are read only by the re-apply (2.10b). A caller that never re-applies may leave them out;
+   * a re-apply without them is refused, rather than guessed.
+   */
+  config: Pick<CmsConfig, 'site' | 'remote' | 'branch' | 'siteDir'> &
+    Partial<Pick<CmsConfig, 'collections' | 'media'>>;
   /** The `.cms` folder. Worktrees go in `<cmsDir>/<site>/worktrees`. */
   cmsDir: string;
   /** What `ensureRepo` returned for this start. */
@@ -83,6 +103,13 @@ export interface RepoTx {
    * one, the change is `code`.
    */
   fetch(bundles: BundleStore): Promise<FetchResult>;
+  /**
+   * Rebuilds `cms/work` as `upstream` plus the saved changeset (2.10b): one commit on `upstream`, with the saved
+   * documents written into the upstream text. Returns the new tip of `cms/work` (`upstream` itself when nothing is
+   * saved). Built with plumbing, so no worktree changes until the move. Throws when a saved document cannot be read or
+   * there is no bundle; the saves then stay on `cms/work`. Read `bundles` once, for the documents of the save.
+   */
+  reapply(upstream: string, bundles: BundleStore): Promise<string>;
   /**
    * Puts `paths` back as HEAD has them (2.5c): unstages them, checks out the ones HEAD has, and removes the ones it
    * does not have (files a failed save wrote). Site-relative, as `commitSave`. A path that matches nothing is ignored.
@@ -112,6 +139,12 @@ export interface Repo {
 /** The trailer that a re-apply save writes for each document it overwrote (2.10b). */
 const OVERWROTE_TRAILER = 'CMS-Overwrote';
 
+/** What a re-apply writes into the index: the planned file operations, and the trailers of the commit. */
+interface Saves {
+  readonly ops: readonly FileOp[];
+  readonly trailers: ReadonlyMap<string, string>;
+}
+
 /** Makes the operations for one start. `exec` and `mutex` default to the real git and a new lock. */
 export function openRepo({
   config,
@@ -125,11 +158,18 @@ export function openRepo({
   const scope = siteScope(siteDir);
   const worktreesDir = join(cmsDir, site, 'worktrees');
   // Runs git in the clone. Every call goes through `runGit`, so the git settings and the timeout are the same everywhere.
-  const git = (args: readonly string[]): Promise<string> =>
-    runGit(args, { cwd: state.repoDir, exec });
+  // `env` adds variables to this one call (2.10b: `GIT_INDEX_FILE` for the temporary index).
+  const git = (
+    args: readonly string[],
+    env?: NodeJS.ProcessEnv,
+  ): Promise<string> =>
+    runGit(args, { cwd: state.repoDir, exec, env: env ?? {} });
   // The same, with stdout kept as bytes (a blob's content, which may hold invalid UTF-8 or a BOM).
-  const gitBytes = (args: readonly string[]): Promise<Buffer> =>
-    runGit(args, { cwd: state.repoDir, exec, binary: true });
+  const gitBytes = (
+    args: readonly string[],
+    env?: NodeJS.ProcessEnv,
+  ): Promise<Buffer> =>
+    runGit(args, { cwd: state.repoDir, exec, env: env ?? {}, binary: true });
 
   // The commit `cms/work` and `origin/<branch>` share. `fetch` compares it with `origin/<branch>` for `reapply`.
   async function mergeBase(): Promise<string> {
@@ -162,7 +202,173 @@ export function openRepo({
     }
   }
 
+  // Compares the two commits with the merge base, so upstream's new commits do not show as reversed edits.
+  async function changedPaths(): Promise<ChangedPath[]> {
+    const output = await git([
+      'diff',
+      '--name-status',
+      '-z',
+      '--no-renames',
+      `origin/${branch}...${WORK}`,
+      '--',
+      scope,
+    ]);
+    return parseNameStatus(output, scope);
+  }
+
+  // Oldest first, so a later line (a newer save) replaces an earlier one in `parseOverwrote`.
+  async function overwrittenSince(): Promise<Map<string, string>> {
+    const output = await git([
+      'log',
+      '--reverse',
+      `--format=%(trailers:key=${OVERWROTE_TRAILER},valueonly)`,
+      `origin/${branch}..${WORK}`,
+    ]);
+    return parseOverwrote(output);
+  }
+
+  // The file operations and trailers of the saved changeset, planned on `upstream` (2.10b). Nothing is planned when no
+  // path changed. Reads only, so a save that cannot be planned fails before anything is written.
+  async function plannedSaves(
+    changed: readonly ChangedPath[],
+    upstream: string,
+    bundles: BundleStore,
+    configured: CmsConfig['collections'],
+  ): Promise<Saves> {
+    if (changed.length === 0) return { ops: [], trailers: new Map() };
+    const bundle = await bundles.current();
+    if (bundle === null)
+      throw new Error(
+        `There is no bundle to re-apply the saves on. The saves stay on ${WORK}.`,
+      );
+    const older = await overwrittenSince();
+    const changeset = await changesetOf({
+      bundle,
+      repo: { changedPaths, mergeBase, showAtBytes, overwrittenSince },
+      siteFolder: state.siteFolder,
+    });
+    const base = await mergeBase();
+    // The bundle's documents, and the documents this save created (not in the bundle yet): both have a file.
+    const records = new Map<string, DocumentEntry>(bundle.documents);
+    for (const record of changeset.createdRecords)
+      records.set(record.key, record);
+    const plan = await planReapply(changeset, records, {
+      upstream: (path) => showAtBytes(upstream, path),
+      base: (path) => showAtBytes(base, path),
+    });
+    const ops = await planWrite(plan.changes, {
+      // A file the save makes again starts from its blank text; any other file starts from upstream's text.
+      readText: async (path) => {
+        const blank = plan.blank.get(path);
+        if (blank !== undefined) return blank;
+        const bytes = await showAtBytes(upstream, path);
+        return bytes === null ? null : bytes.toString('utf8');
+      },
+      documents: records,
+      collections: bundle.collections,
+      config: { collections: configured },
+    });
+    return {
+      ops,
+      trailers: trailersOf(changeset, plan.overwritten, upstream, older),
+    };
+  }
+
+  // Rebuilds `cms/work` as `upstream` plus the saved changeset, in one commit (2.10b, PHASE-2-DESIGN 4.2). Runs under
+  // the lock, with `cms/work` checked out. The commit is built with plumbing: a temporary index in its own folder under
+  // `tmp/`, outside the clone's files, so no worktree is touched. `cms/work-next` exists only once the commit is
+  // complete, and then `moveWork` makes `cms/work` it. Returns the new tip.
+  async function reapply(
+    upstream: string,
+    bundles: BundleStore,
+  ): Promise<string> {
+    assertRef(upstream);
+    const { media, collections } = reapplyConfigOf(config);
+    const head = (await git(['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
+    if (head !== WORK)
+      throw new Error(
+        `HEAD is on ${head}, not ${WORK}. A re-apply needs ${WORK} checked out.`,
+      );
+    const oldTip = (await git(['rev-parse', WORK_REF])).trim();
+    const changed = await changedPaths();
+    const saves = await plannedSaves(changed, upstream, bundles, collections);
+    const dir = join(cmsDir, site, 'tmp', `reapply-${randomUUID()}`);
+    await mkdir(dir, { recursive: true });
+    try {
+      // The index starts as upstream's tree, so a path that the save does not change keeps upstream's version.
+      const env = { GIT_INDEX_FILE: join(dir, 'index') };
+      await git(['read-tree', upstream], env);
+      const removals: string[] = [];
+      const sets: string[] = [];
+      let blobs = 0;
+      for (const op of saves.ops) {
+        const full = repoPath(scope, op.path);
+        if (op.op === 'delete') {
+          removals.push(full);
+          continue;
+        }
+        blobs += 1;
+        const sha = await blobOf(op.text, join(dir, `blob-${blobs}`));
+        sets.push('--cacheinfo', `100644,${sha},${full}`);
+      }
+      // A saved image is restored from the old tip, and an image the save deleted is removed (2.10b).
+      for (const { path } of changed) {
+        if (!path.startsWith(`${media.folder}/`)) continue;
+        const full = repoPath(scope, path);
+        const blob = await blobAt(oldTip, full);
+        if (blob === null) removals.push(full);
+        else sets.push('--cacheinfo', `${blob.mode},${blob.sha},${full}`);
+      }
+      if (removals.length > 0)
+        await git(['update-index', '--force-remove', '--', ...removals], env);
+      if (sets.length > 0) await git(['update-index', '--add', ...sets], env);
+      const tree = (await git(['write-tree'], env)).trim();
+      const upstreamTree = (
+        await git(['rev-parse', `${upstream}^{tree}`])
+      ).trim();
+      // No difference from upstream: no commit, and cms/work moves to upstream.
+      const next =
+        tree === upstreamTree
+          ? upstream
+          : (
+              await git([
+                'commit-tree',
+                tree,
+                '-p',
+                upstream,
+                ...commitParagraphs(upstream, saves.trailers).flatMap(
+                  (paragraph) => ['-m', paragraph],
+                ),
+              ])
+            ).trim();
+      await git(['update-ref', WORK_NEXT, next]);
+      await moveWork(git, oldTip, WORK_NEXT);
+      return next;
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  // Stores `text` as a blob, with its exact bytes (no filters). `git hash-object` reads a file or stdin, and `runGit`
+  // gives no stdin, so the text goes through `file`, a file in the re-apply's folder. Returns the blob's sha.
+  async function blobOf(text: string, file: string): Promise<string> {
+    await writeFile(file, text);
+    return (await git(['hash-object', '-w', '--no-filters', file])).trim();
+  }
+
+  // The mode and sha of the blob at `full` in `ref`, or null when there is none (a folder is none, as is a missing path).
+  async function blobAt(
+    ref: string,
+    full: string,
+  ): Promise<{ mode: string; sha: string } | null> {
+    const listed = await git(['ls-tree', '-z', ref, '--', full]);
+    const [, mode, sha] = /^(\d{6}) blob ([0-9a-f]+)\t/.exec(listed) ?? [];
+    if (mode === undefined || sha === undefined) return null;
+    return { mode, sha };
+  }
+
   const tx: RepoTx = {
+    reapply,
     // Fetches `origin`, then classifies the change. Every failure is returned as a sync error, never thrown.
     async fetch(bundles) {
       try {
@@ -267,36 +473,28 @@ export function openRepo({
 
   return {
     locked: (holder, work) => mutex.run(holder, () => work(tx)),
-    // Compares the two commits with the merge base, so upstream's new commits do not show as reversed edits.
-    async changedPaths() {
-      const output = await git([
-        'diff',
-        '--name-status',
-        '-z',
-        '--no-renames',
-        `origin/${branch}...${WORK}`,
-        '--',
-        scope,
-      ]);
-      return parseNameStatus(output, scope);
-    },
+    changedPaths,
     async showAt(ref, path) {
       const bytes = await showAtBytes(ref, path);
       return bytes === null ? null : bytes.toString('utf8');
     },
     showAtBytes,
     mergeBase,
-    // Oldest first, so a later line (a newer save) replaces an earlier one in `parseOverwrote`.
-    async overwrittenSince() {
-      const output = await git([
-        'log',
-        '--reverse',
-        `--format=%(trailers:key=${OVERWROTE_TRAILER},valueonly)`,
-        `origin/${branch}..${WORK}`,
-      ]);
-      return parseOverwrote(output);
-    },
+    overwrittenSince,
   };
+}
+
+// The config a re-apply reads (2.10b): the saved images' folder and the collections' entry formats. Without them the
+// re-apply is refused, since it would have to guess where the images are.
+function reapplyConfigOf(config: OpenRepoOptions['config']): {
+  media: CmsConfig['media'];
+  collections: CmsConfig['collections'];
+} {
+  if (config.media === undefined || config.collections === undefined)
+    throw new Error(
+      'A re-apply needs media and collections in the config given to openRepo',
+    );
+  return { media: config.media, collections: config.collections };
 }
 
 // The current bundle, or null when there is none or its files cannot be read. An unreadable bundle counts as none,

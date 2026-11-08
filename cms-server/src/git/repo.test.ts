@@ -19,7 +19,7 @@ import {
 } from '../../test/helpers/git.ts';
 import { parseConfig } from '../config/schema.ts';
 import type { Logger } from '../log.ts';
-import type { ExecFn } from './exec.ts';
+import { type ExecFn, realExec } from './exec.ts';
 import { ensureRepo } from './repo.ts';
 
 // Each test runs real git against local bare remotes, and one start takes several git calls.
@@ -573,6 +573,161 @@ describe('a clone folder that is not its own repo', () => {
       name: 'RepoError',
       kind: 'failed',
       message: expect.stringContaining('timed out after'),
+    });
+  });
+});
+
+describe('ensureRepo finishes an unfinished re-apply (WORKPLAN 2.10b)', () => {
+  // Seeded once per file, as the first describe does.
+  let seedRoot: string;
+  let remote: string;
+
+  beforeAll(async () => {
+    seedRoot = await makeTestRoot();
+    remote = await seedRemote(seedRoot, { source: 'git-site' });
+  }, 60_000);
+
+  afterAll(async () => {
+    await removeTestRoot(seedRoot);
+  });
+
+  // The refs under refs/heads/cms/ of the clone, as git lists them.
+  async function cmsRefsOf(repoDir: string): Promise<string[]> {
+    const listed = await git(repoDir, [
+      'for-each-ref',
+      '--format=%(refname)',
+      'refs/heads/cms/',
+    ]);
+    return listed.split('\n').filter((ref) => ref !== '');
+  }
+
+  // Makes a child of the tip of cms/work that adds `file`. Returns the tip and the child. HEAD is on cms/work at the tip.
+  async function childOfWork(
+    repoDir: string,
+    file: string,
+  ): Promise<{ tip: string; child: string }> {
+    const tip = (await git(repoDir, ['rev-parse', 'cms/work'])).trim();
+    await git(repoDir, ['checkout', '--quiet', '--detach', tip]);
+    await writeFile(join(repoDir, file), `${file}\n`);
+    await git(repoDir, ['add', '--all']);
+    await git(repoDir, ['commit', '--message', `commit: ${file}`]);
+    const child = (await git(repoDir, ['rev-parse', 'HEAD'])).trim();
+    await git(repoDir, ['checkout', '--quiet', '--force', 'cms/work']);
+    return { tip, child };
+  }
+
+  // Moves cms/work to `sha` and checks it out, so HEAD and the working copy are at `sha`.
+  async function setWork(repoDir: string, sha: string): Promise<void> {
+    await git(repoDir, ['update-ref', 'refs/heads/cms/work', sha]);
+    await git(repoDir, ['checkout', '--quiet', '--force', 'cms/work']);
+  }
+
+  it('moves cms/work to work-next when cms/work still has the old tip (work-prev)', async () => {
+    const root = await newRoot();
+    const config = configFor(remote);
+    const cmsDir = cmsDirOf(root);
+    const repoDir = repoDirOf(root);
+    await ensureRepo({ config, cmsDir, log: spyLog() });
+    const { tip, child } = await childOfWork(repoDir, 'saved.md');
+    await git(repoDir, ['update-ref', 'refs/heads/cms/work-next', child]);
+    await git(repoDir, ['update-ref', 'refs/heads/cms/work-prev', tip]);
+    const log = spyLog();
+    await ensureRepo({ config, cmsDir, log });
+    expect(await git(repoDir, ['rev-parse', 'cms/work'])).toBe(`${child}\n`);
+    expect(await readFile(join(repoDir, 'saved.md'), 'utf8')).toBe(
+      'saved.md\n',
+    );
+    expect(await cmsRefsOf(repoDir)).toEqual(['refs/heads/cms/work']);
+    expect(log.warn).not.toHaveBeenCalled();
+  });
+
+  it('deletes both refs when the move had already happened', async () => {
+    const root = await newRoot();
+    const config = configFor(remote);
+    const cmsDir = cmsDirOf(root);
+    const repoDir = repoDirOf(root);
+    await ensureRepo({ config, cmsDir, log: spyLog() });
+    const { tip, child } = await childOfWork(repoDir, 'saved.md');
+    await git(repoDir, ['update-ref', 'refs/heads/cms/work-next', child]);
+    await git(repoDir, ['update-ref', 'refs/heads/cms/work-prev', tip]);
+    await setWork(repoDir, child);
+    const log = spyLog();
+    await ensureRepo({ config, cmsDir, log });
+    expect(await git(repoDir, ['rev-parse', 'cms/work'])).toBe(`${child}\n`);
+    expect(await cmsRefsOf(repoDir)).toEqual(['refs/heads/cms/work']);
+    expect(log.warn).not.toHaveBeenCalled();
+  });
+
+  it('keeps cms/work when it is neither the old tip nor the re-applied commit, and logs both shas', async () => {
+    const root = await newRoot();
+    const config = configFor(remote);
+    const cmsDir = cmsDirOf(root);
+    const repoDir = repoDirOf(root);
+    await ensureRepo({ config, cmsDir, log: spyLog() });
+    const first = await childOfWork(repoDir, 'saved.md');
+    const second = await childOfWork(repoDir, 'other.md');
+    await git(repoDir, ['update-ref', 'refs/heads/cms/work-next', first.child]);
+    await git(repoDir, ['update-ref', 'refs/heads/cms/work-prev', first.tip]);
+    await setWork(repoDir, second.child);
+    const log = spyLog();
+    await ensureRepo({ config, cmsDir, log });
+    expect(await git(repoDir, ['rev-parse', 'cms/work'])).toBe(
+      `${second.child}\n`,
+    );
+    expect(await cmsRefsOf(repoDir)).toEqual(['refs/heads/cms/work']);
+    expect(log.warn).toHaveBeenCalledWith(
+      'An unfinished re-apply left cms/work on a commit that is neither its old tip nor the re-applied commit, so cms/work was kept. The re-applied commit stays in the object store.',
+      { kept: second.child, reapplied: first.child },
+    );
+  });
+
+  it('deletes a leftover work-prev once the move has finished', async () => {
+    const root = await newRoot();
+    const config = configFor(remote);
+    const cmsDir = cmsDirOf(root);
+    const repoDir = repoDirOf(root);
+    await ensureRepo({ config, cmsDir, log: spyLog() });
+    const tip = (await git(repoDir, ['rev-parse', 'cms/work'])).trim();
+    await git(repoDir, ['update-ref', 'refs/heads/cms/work-prev', tip]);
+    await ensureRepo({ config, cmsDir, log: spyLog() });
+    expect(await git(repoDir, ['rev-parse', 'cms/work'])).toBe(`${tip}\n`);
+    expect(await cmsRefsOf(repoDir)).toEqual(['refs/heads/cms/work']);
+  });
+
+  it('creates cms/work at work-next when cms/work is missing', async () => {
+    const root = await newRoot();
+    const config = configFor(remote);
+    const cmsDir = cmsDirOf(root);
+    const repoDir = repoDirOf(root);
+    await ensureRepo({ config, cmsDir, log: spyLog() });
+    const { tip, child } = await childOfWork(repoDir, 'saved.md');
+    await git(repoDir, ['checkout', '--quiet', '--detach', tip]);
+    await git(repoDir, ['update-ref', '-d', 'refs/heads/cms/work']);
+    await git(repoDir, ['update-ref', 'refs/heads/cms/work-next', child]);
+    const log = spyLog();
+    await ensureRepo({ config, cmsDir, log });
+    expect(await git(repoDir, ['rev-parse', 'cms/work'])).toBe(`${child}\n`);
+    expect(await readFile(join(repoDir, 'saved.md'), 'utf8')).toBe(
+      'saved.md\n',
+    );
+    expect(await cmsRefsOf(repoDir)).toEqual(['refs/heads/cms/work']);
+  });
+  it('fails when reading a ref fails for a reason other than a missing ref', async () => {
+    const root = await newRoot();
+    const config = configFor(remote);
+    const cmsDir = cmsDirOf(root);
+    await ensureRepo({ config, cmsDir, log: spyLog() });
+    // The ref read is killed by the timeout: that is an error, not "the ref is missing".
+    const killed: ExecFn = (file, args, options) =>
+      args.includes('--verify')
+        ? Promise.reject(Object.assign(new Error('killed'), { killed: true }))
+        : realExec(file, args, options);
+    await expect(
+      ensureRepo({ config, cmsDir, log: spyLog(), exec: killed }),
+    ).rejects.toMatchObject({
+      kind: 'failed',
+      message:
+        'git rev-parse --verify --quiet refs/heads/cms/work-next timed out after 60000 ms',
     });
   });
 });

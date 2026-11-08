@@ -19,6 +19,12 @@ import {
 
 /** The branch that holds the saves. Only the CMS writes it. */
 export const WORK = 'cms/work';
+/** The full ref of `WORK`. */
+export const WORK_REF = `refs/heads/${WORK}`;
+/** The re-applied `cms/work`, made before the move (2.10b). It exists only while a re-apply is unfinished. */
+export const WORK_NEXT = 'refs/heads/cms/work-next';
+/** The old tip of `cms/work`, kept until the move is done (2.10b). It exists only while a re-apply is unfinished. */
+const WORK_PREV = 'refs/heads/cms/work-prev';
 // A clone of a large site can take minutes. The other git calls keep the 60 s default of `runGit`.
 const CLONE_TIMEOUT_MS = 5 * 60_000;
 // Remote URLs that name GitHub: HTTPS, `ssh://`, or the SCP form `git@github.com:owner/repo`.
@@ -69,6 +75,7 @@ interface Identity {
   readonly email: string;
 }
 
+/** Runs git in the clone and resolves with its stdout. */
 type Git = (args: readonly string[]) => Promise<string>;
 
 /**
@@ -126,10 +133,7 @@ async function syncRepo(
   }
   await setConfig(git, identity, hooksDir, join(repoDir, '.git', 'config'));
   await git(['fetch', 'origin']);
-  if (!(await refExists(git, `refs/heads/${WORK}`)))
-    await git(['branch', WORK, `origin/${branch}`]);
-
-  // Before the checkout, because `checkout --force` throws the changes away.
+  // Before the checkout, because `checkout --force` throws the changes away. Read before any ref moves below.
   const dirty = pathsOf(
     await git([
       'status',
@@ -139,6 +143,11 @@ async function syncRepo(
       '--no-renames',
     ]),
   );
+  // An unfinished re-apply (2.10b) is finished before cms/work is looked at. It moves refs only; the checkout below
+  // makes the working copy match.
+  await finishReapply(git, log);
+  if (!(await refExists(git, WORK_REF)))
+    await git(['branch', WORK, `origin/${branch}`]);
   await git(['checkout', '--force', WORK]);
   await git(['clean', '-fd']);
   // A crash can leave a worktree whose folder is gone, and its record stays in the repo. Prune it here (2.3c).
@@ -260,6 +269,56 @@ async function refExists(git: Git, ref: string): Promise<boolean> {
     return true;
   } catch (error: unknown) {
     if (error instanceof GitError && error.kind === 'failed') return false;
+    throw error;
+  }
+}
+
+/**
+ * Moves `cms/work` to `next` (a full ref), the way a re-apply does it (2.10b): keeps the old tip `oldTip` on
+ * `WORK_PREV`, resets the branch and the working copy to `next`, then deletes both leftover refs. The caller has
+ * `cms/work` checked out. Each step can be repeated, so a crash in between is finished by `finishReapply`.
+ */
+export async function moveWork(
+  git: Git,
+  oldTip: string,
+  next: string,
+): Promise<void> {
+  await git(['update-ref', WORK_PREV, oldTip]);
+  await git(['reset', '--hard', next]);
+  await git(['update-ref', '-d', WORK_NEXT]);
+  await git(['update-ref', '-d', WORK_PREV]);
+}
+
+/**
+ * Finishes a re-apply that a crash left unfinished (2.10b). It needs no network and never discards a save: when
+ * `WORK_NEXT` exists and `cms/work` is its old tip (`WORK_PREV`) or `WORK_NEXT` itself, `cms/work` moves to it. When
+ * `cms/work` is neither, it is kept and the log says so; the re-applied commit stays in the object store. Only
+ * `WORK_PREV` left means the move finished, so it is deleted. The move here is ref-only: the checkout that follows in
+ * `syncRepo` makes the working copy match. A missing `cms/work` moves too, since a re-applied commit is not lost.
+ */
+async function finishReapply(git: Git, log: Logger): Promise<void> {
+  const next = await refSha(git, WORK_NEXT);
+  const prev = await refSha(git, WORK_PREV);
+  if (next !== null) {
+    const work = await refSha(git, WORK_REF);
+    if (work === null || work === prev || work === next)
+      await git(['update-ref', WORK_REF, next]);
+    else
+      log.warn(
+        'An unfinished re-apply left cms/work on a commit that is neither its old tip nor the re-applied commit, so cms/work was kept. The re-applied commit stays in the object store.',
+        { kept: work, reapplied: next },
+      );
+    await git(['update-ref', '-d', WORK_NEXT]);
+  }
+  if (prev !== null) await git(['update-ref', '-d', WORK_PREV]);
+}
+
+/** The sha a ref points to, or null when the ref does not exist. */
+async function refSha(git: Git, ref: string): Promise<string | null> {
+  try {
+    return (await git(['rev-parse', '--verify', '--quiet', ref])).trim();
+  } catch (error: unknown) {
+    if (error instanceof GitError && error.kind === 'failed') return null;
     throw error;
   }
 }

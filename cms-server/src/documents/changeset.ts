@@ -10,7 +10,8 @@ import {
   revisionOf,
 } from 'preview-contract';
 import type { Bundle, DocumentEntry } from '../bundle/read.ts';
-import type { ChangeStatus, Repo } from '../git/ops.ts';
+// The types come from sync.ts, not ops.ts: ops.ts imports this file (the re-apply, 2.10b), so importing it back is a cycle.
+import type { ChangedPath, ChangeStatus } from '../git/sync.ts';
 import {
   collectionOf,
   formatOfPath,
@@ -28,14 +29,19 @@ import {
 } from './read.ts';
 import { type DocumentError, entryRevision, errorOf } from './revision.ts';
 
-/** What the changeset reads from the repo: the changed paths, the merge base, bytes at it, and the trailers. */
-export type ChangesetRepo = Pick<
-  Repo,
-  'changedPaths' | 'mergeBase' | 'showAtBytes' | 'overwrittenSince'
->;
+/**
+ * What the changeset reads from the repo: the changed paths, the merge base, bytes at it, and the trailers. A `Repo`
+ * (git/ops.ts) has these, with the same shapes.
+ */
+export interface ChangesetRepo {
+  changedPaths(): Promise<ChangedPath[]>;
+  mergeBase(): Promise<string>;
+  showAtBytes(ref: string, path: string): Promise<Buffer | null>;
+  overwrittenSince(): Promise<ReadonlyMap<string, string>>;
+}
 
 /** One document that differs. `value` is absent when it was deleted or cannot be read, and `error` says why it cannot. */
-interface ChangedDocument {
+export interface ChangedDocument {
   readonly key: string;
   readonly status: ChangeStatus;
   /** The revision at the merge base, or null when the document was not there. */
