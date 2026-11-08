@@ -18,7 +18,7 @@ import { parseConfig } from '../config/schema.ts';
 import { openRepo, type Repo } from '../git/ops.ts';
 import { ensureRepo } from '../git/repo.ts';
 import type { Logger } from '../log.ts';
-import { changesetOf } from './changeset.ts';
+import { changesetOf, changesetWithTombstones } from './changeset.ts';
 
 // Each test makes its own remote and clone, so one test takes a few git calls.
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
@@ -256,7 +256,7 @@ describe('changesetOf: documents with a file of their own', () => {
     });
   });
 
-  it('reports a deleted file the bundle does not hold, with a record of its base revision', async () => {
+  it('reports a deleted file the bundle does not hold, with no created record', async () => {
     const h = await harness();
     await rm(join(h.siteFolder, BLOG_B));
     await save(h, [BLOG_B], 'delete b');
@@ -268,7 +268,36 @@ describe('changesetOf: documents with a file of their own', () => {
           baseRevision: revisionOf(POST_B),
         },
       ],
-      createdRecords: [
+      createdRecords: [],
+      fileErrors: [],
+    });
+  });
+
+  it('gives a deleted file the bundle lacks a tombstone, and a deleted file the bundle holds none (2.10h)', async () => {
+    const h = await harness();
+    await rm(join(h.siteFolder, BLOG_B));
+    await save(h, [BLOG_B], 'delete b');
+    const unbundled = await changesetWithTombstones({
+      bundle: {
+        documents: new Map<string, DocumentEntry>(),
+        collections: bundleOf().collections,
+      },
+      repo: h.repo,
+      siteFolder: h.siteFolder,
+    });
+    expect(unbundled).toStrictEqual({
+      changeset: {
+        documents: [
+          {
+            key: 'blog/post-b',
+            status: 'deleted',
+            baseRevision: revisionOf(POST_B),
+          },
+        ],
+        createdRecords: [],
+        fileErrors: [],
+      },
+      tombstones: [
         {
           key: 'blog/post-b',
           file: BLOG_B,
@@ -277,6 +306,16 @@ describe('changesetOf: documents with a file of their own', () => {
           revision: revisionOf(POST_B),
         },
       ],
+    });
+    expect(await changes(h)).toStrictEqual({
+      documents: [
+        {
+          key: 'blog/post-b',
+          status: 'deleted',
+          baseRevision: revisionOf(POST_B),
+        },
+      ],
+      createdRecords: [],
       fileErrors: [],
     });
   });
@@ -697,7 +736,7 @@ describe('changesetOf: entries of a file() file', () => {
     });
   });
 
-  it('gives a removed entry the bundle lacks a record of its base revision', async () => {
+  it('reports a removed entry the bundle lacks as deleted, with no created record', async () => {
     const h = await harness();
     await edit(h, PEOPLE, '[\n  { "id": "ana", "name": "Ana" }\n]\n');
     await save(h, [PEOPLE], 'remove kofi');
@@ -709,18 +748,27 @@ describe('changesetOf: entries of a file() file', () => {
           baseRevision: revisionOfEntry({ name: 'Kofi' }),
         },
       ],
-      createdRecords: [
-        {
-          key: 'people/kofi',
-          file: PEOPLE,
-          format: 'json',
-          entryKey: 'kofi',
-          buildTime: false,
-          revision: revisionOfEntry({ name: 'Kofi' }),
-        },
-      ],
+      createdRecords: [],
       fileErrors: [],
     });
+    const { tombstones } = await changesetWithTombstones({
+      bundle: {
+        documents: new Map<string, DocumentEntry>(),
+        collections: bundleOf().collections,
+      },
+      repo: h.repo,
+      siteFolder: h.siteFolder,
+    });
+    expect(tombstones).toStrictEqual([
+      {
+        key: 'people/kofi',
+        file: PEOPLE,
+        format: 'json',
+        entryKey: 'kofi',
+        buildTime: false,
+        revision: revisionOfEntry({ name: 'Kofi' }),
+      },
+    ]);
   });
 
   it('does not report an upstream change to another entry of the same file', async () => {

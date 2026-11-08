@@ -62,9 +62,9 @@ interface FileError {
 export interface Changeset {
   readonly documents: readonly ChangedDocument[];
   /**
-   * A record for each changed document the bundle does not hold, whatever its status (2.10h): the saves created it, or
-   * upstream added it after the bundle was built. 2.5c's `ctx.documents` and 2.10b's re-apply find its file here. A
-   * document the bundle holds has no record.
+   * A record for each changed document the bundle does not hold (2.10h): the saves created it, or upstream added it after
+   * the bundle was built. 2.5c's `ctx.documents` finds its file here. A document the bundle holds has no record, and a
+   * document the save deleted has a tombstone instead (`changesetWithTombstones`).
    */
   readonly createdRecords: readonly DocumentEntry[];
   /** Changed shared files that fail to parse and hold no bundle document. Without this, a broken new file is not listed. */
@@ -129,11 +129,27 @@ interface Env {
 }
 
 /** The changed documents of the save, in the order of the changed paths, with their trailers. */
-export async function changesetOf({
+export async function changesetOf(input: ChangesetInput): Promise<Changeset> {
+  return (await changesetWithTombstones(input)).changeset;
+}
+
+/** The changeset of a save, and the tombstones of the documents it deletes (2.10h). */
+export interface ChangesetWithTombstones {
+  readonly changeset: Changeset;
+  /**
+   * The records of the documents the save deleted that the bundle does not hold. The re-apply needs their files to delete
+   * the upstream copies. They are not in `createdRecords`: a save that saw a deleted document would plan a recreate of its
+   * key as an update (save/plan.ts), and the delete guard would count it.
+   */
+  readonly tombstones: readonly DocumentEntry[];
+}
+
+/** `changesetOf`, with the tombstones of the save (2.10h). Only the re-apply reads them. */
+export async function changesetWithTombstones({
   bundle,
   repo,
   siteFolder,
-}: ChangesetInput): Promise<Changeset> {
+}: ChangesetInput): Promise<ChangesetWithTombstones> {
   const env: Env = {
     base: await repo.mergeBase(),
     repo,
@@ -154,13 +170,24 @@ export async function changesetOf({
     fileErrors.push(...(found.fileErrors ?? []));
   }
   const overwritten = await repo.overwrittenSince();
+  // A record of a document the save deleted is a tombstone, not a live record (2.10h).
+  const deleted = new Set(
+    documents
+      .filter((document) => document.status === 'deleted')
+      .map((document) => document.key),
+  );
   return {
-    documents: documents.map((document) => {
-      const sha = overwritten.get(document.key);
-      return sha === undefined ? document : { ...document, overwritten: sha };
-    }),
-    createdRecords,
-    fileErrors,
+    changeset: {
+      documents: documents.map((document) => {
+        const sha = overwritten.get(document.key);
+        return sha === undefined ? document : { ...document, overwritten: sha };
+      }),
+      createdRecords: createdRecords.filter(
+        (record) => !deleted.has(record.key),
+      ),
+      fileErrors,
+    },
+    tombstones: createdRecords.filter((record) => deleted.has(record.key)),
   };
 }
 
