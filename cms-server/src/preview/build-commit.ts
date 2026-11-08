@@ -237,7 +237,7 @@ export function createBuilder(options: BuildCommitOptions): BuildFn {
     await mkdir(logsDir, { recursive: true });
     await writeFile(path.join(logsDir, `${bundleId}.log`), logOf(job, outcome));
     try {
-      await collectBundles(bundlesDir, keptBundles());
+      await collectBundles(bundlesDir, keptBundles(), { log });
     } catch (error: unknown) {
       log.warn('Could not collect the old bundles', {
         bundleId,

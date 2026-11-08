@@ -5,6 +5,8 @@ import { makeTestRoot, removeTestRoot } from '../../test/helpers/git.ts';
 import type { Logger } from '../log.ts';
 import {
   collectBundles,
+  type ManifestTime,
+  readManifestTime,
   removeBundle,
   removeIncompleteBundles,
 } from './bundles.ts';
@@ -36,6 +38,33 @@ async function makeBundle(
   await writeFile(file, '{}\n');
   const time = new Date(writtenMs);
   await utimes(file, time, time);
+}
+
+// A logger that keeps its warnings, for the cases that check what was logged.
+function recordingLog(): {
+  log: Logger;
+  warnings: { message: string; fields: unknown }[];
+} {
+  const warnings: { message: string; fields: unknown }[] = [];
+  const log: Logger = {
+    info: () => undefined,
+    error: () => undefined,
+    warn: (message, fields) => {
+      warnings.push({ message, fields });
+    },
+  };
+  return { log, warnings };
+}
+
+// A manifest reader that fails with EACCES for the bundle `id`, and reads every other bundle for real.
+function unreadableFor(id: string): ManifestTime {
+  return (file) => {
+    if (file.includes(`${path.sep}${id}${path.sep}`))
+      return Promise.reject(
+        Object.assign(new Error('permission denied'), { code: 'EACCES' }),
+      );
+    return readManifestTime(file);
+  };
 }
 
 describe('collectBundles', () => {
@@ -185,6 +214,64 @@ describe('removeIncompleteBundles', () => {
       {
         message: 'Could not delete a leftover bundle',
         fields: { bundleId: 'a-stuck', error: 'locked by another process' },
+      },
+    ]);
+  });
+});
+
+describe('a bundle.json that cannot be read', () => {
+  it('reads a missing bundle.json as undefined, and rejects with any other stat error', async () => {
+    await makeBundle('partial', false);
+    expect(
+      await readManifestTime(
+        path.join(bundles, 'partial', 'manifest', 'bundle.json'),
+      ),
+    ).toBeUndefined();
+    // A path with a null byte fails to stat with a code other than ENOENT, on every platform.
+    await expect(
+      readManifestTime(path.join(bundles, 'bad\0bundle.json')),
+    ).rejects.toMatchObject({ code: 'ERR_INVALID_ARG_VALUE' });
+  });
+
+  it('keeps a complete bundle whose bundle.json cannot be read, logs it, and still removes an incomplete one', async () => {
+    await makeBundle('stuck', true, 2_000_000);
+    await makeBundle('gone', false);
+    const { log, warnings } = recordingLog();
+    const removed = await removeIncompleteBundles(bundles, {
+      log,
+      manifestTime: unreadableFor('stuck'),
+    });
+    expect(removed).toEqual(['gone']);
+    expect((await readdir(bundles)).sort()).toEqual(['stuck', 'stuck-regions']);
+    expect(warnings).toEqual([
+      {
+        message: 'Could not read a bundle, so it is kept',
+        fields: { bundleId: 'stuck', error: 'permission denied' },
+      },
+    ]);
+  });
+
+  it('keeps a bundle whose bundle.json cannot be read, though it is older than the two newest, and logs it', async () => {
+    await makeBundle('stuck', true, 1_000_000);
+    await makeBundle('b', true, 2_000_000);
+    await makeBundle('c', true, 3_000_000);
+    const { log, warnings } = recordingLog();
+    await collectBundles(bundles, new Set<string>(), {
+      log,
+      manifestTime: unreadableFor('stuck'),
+    });
+    expect((await readdir(bundles)).sort()).toEqual([
+      'b',
+      'b-regions',
+      'c',
+      'c-regions',
+      'stuck',
+      'stuck-regions',
+    ]);
+    expect(warnings).toEqual([
+      {
+        message: 'Could not read a bundle, so it is kept',
+        fields: { bundleId: 'stuck', error: 'permission denied' },
       },
     ]);
   });
