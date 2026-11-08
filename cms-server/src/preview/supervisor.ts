@@ -9,6 +9,8 @@ import net from 'node:net';
 import path from 'node:path';
 import { previewConfigSchema } from 'preview-contract';
 import type { Secrets } from '../config/secrets.ts';
+// The shared allowlist of child environments (WORKPLAN 2.9c): the node's set is the one without the build's extras.
+import { childEnvironment as inheritedEnvironment } from './child-env.ts';
 
 /** A built bundle folder the node can serve: `.cms/<site>/bundles/<bundleId>/`. */
 export interface BundleRef {
@@ -119,16 +121,6 @@ const STABLE_MS = 60_000;
 const MAX_DELAY_MS = 30_000;
 const READ_TIMEOUT_MS = 2_000;
 const STDERR_KEPT = 4_000;
-// The variables a node may inherit: the search path, the temp folders and, on
-// Windows, the system folders. Everything else of cms-server stays out.
-const INHERITED = new Set([
-  'PATH',
-  'TEMP',
-  'TMP',
-  'TMPDIR',
-  'SYSTEMROOT',
-  'WINDIR',
-]);
 const STOPPED_RESULT: StartResult = {
   ok: false,
   error: 'The node was stopped before it was ready',
@@ -155,14 +147,8 @@ export function childEnvironment(
     readonly secrets: Secrets;
   },
 ): NodeJS.ProcessEnv {
-  const inherited = Object.fromEntries(
-    Object.entries(parent).filter(
-      ([name, value]) =>
-        value !== undefined && INHERITED.has(name.toUpperCase()),
-    ),
-  );
   return {
-    ...inherited,
+    ...inheritedEnvironment(parent, 'node'),
     PREVIEW_EDITOR_ORIGINS: settings.editorOrigin,
     PREVIEW_TOKEN_SECRET: settings.secrets.previewTokenSecret,
     PREVIEW_INTERNAL_SECRET: settings.secrets.previewInternalSecret,

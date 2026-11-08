@@ -2,7 +2,11 @@ import { mkdir, readdir, utimes, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { makeTestRoot, removeTestRoot } from '../../test/helpers/git.ts';
-import { collectBundles, removeBundle } from './bundles.ts';
+import {
+  collectBundles,
+  removeBundle,
+  removeIncompleteBundles,
+} from './bundles.ts';
 
 let root: string;
 let bundles: string;
@@ -91,6 +95,65 @@ describe('collectBundles', () => {
       'c',
       'c-regions',
     ]);
+  });
+
+  it('keeps a bundle named in keep, with its region folder, though it is older than the two newest', async () => {
+    await makeBundle('served', true, 1_000_000);
+    await makeBundle('b', true, 2_000_000);
+    await makeBundle('c', true, 3_000_000);
+    await collectBundles(bundles, new Set(['served']));
+    expect((await readdir(bundles)).sort()).toEqual([
+      'b',
+      'b-regions',
+      'c',
+      'c-regions',
+      'served',
+      'served-regions',
+    ]);
+  });
+
+  it('keeps a folder named in keep even when it did not finish, and ignores a name in keep with no folder', async () => {
+    await makeBundle('x', false);
+    await makeBundle('b', true, 2_000_000);
+    await makeBundle('c', true, 3_000_000);
+    await collectBundles(bundles, new Set(['x', 'nothing']));
+    expect((await readdir(bundles)).sort()).toEqual([
+      'b',
+      'b-regions',
+      'c',
+      'c-regions',
+      'x',
+      'x-regions',
+    ]);
+  });
+});
+
+describe('removeIncompleteBundles', () => {
+  it('removes the folders with no bundle.json, with their region folders, and keeps the complete ones', async () => {
+    await makeBundle('partial', false);
+    await makeBundle('done', true, 2_000_000);
+    expect(await removeIncompleteBundles(bundles)).toEqual(['partial']);
+    expect((await readdir(bundles)).sort()).toEqual(['done', 'done-regions']);
+  });
+
+  it('removes a region folder whose bundle folder is gone', async () => {
+    await mkdir(path.join(bundles, 'gone-regions'));
+    expect(await removeIncompleteBundles(bundles)).toEqual(['gone']);
+    expect(await readdir(bundles)).toEqual([]);
+  });
+
+  it('returns nothing when the bundles folder does not exist yet', async () => {
+    expect(
+      await removeIncompleteBundles(path.join(bundles, 'not-yet')),
+    ).toEqual([]);
+  });
+
+  it('fails when the bundles path is a file, not a folder', async () => {
+    const file = path.join(root, 'plain-file');
+    await writeFile(file, 'not a folder');
+    await expect(removeIncompleteBundles(file)).rejects.toMatchObject({
+      code: 'ENOTDIR',
+    });
   });
 });
 

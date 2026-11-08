@@ -1,16 +1,18 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { mkdir, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeTestRoot, removeTestRoot } from '../../test/helpers/git.ts';
 import type { Logger } from '../log.ts';
 import {
   type BuildCommitOptions,
   type BuildExit,
-  childEnvironment,
   createBuilder,
   defaultSpawn,
   type SpawnBuild,
+  signalProcessGroup,
+  treeKillCommand,
   type WorktreeLock,
 } from './build-commit.ts';
 import type { BuildJob } from './build-runner.ts';
@@ -30,6 +32,8 @@ const PARENT = {
   GIT_DIR: '/repo/.git',
   GITHUB_TOKEN: 'leaked',
 };
+// The pid of the fake child. Its process group is recorded in `groupKills`, never signalled for real.
+const CHILD_PID = 4321;
 const ALLOWED = new Set([
   'PATH',
   'TEMP',
@@ -38,7 +42,15 @@ const ALLOWED = new Set([
   'SYSTEMROOT',
   'WINDIR',
   'NODE_OPTIONS',
+  'ASTRO_TELEMETRY_DISABLED',
 ]);
+// The environment of a build given PARENT: the allowlisted names of PARENT, and the telemetry switch.
+const BUILD_ENV = {
+  PATH: '/bin',
+  TMPDIR: '/tmp',
+  NODE_OPTIONS: '--max-old-space-size=4096',
+  ASTRO_TELEMETRY_DISABLED: '1',
+};
 
 interface SpawnCall {
   readonly command: string;
@@ -61,6 +73,7 @@ let buildScript: string;
 let events: string[];
 let spawned: SpawnCall[];
 let kills: NodeJS.Signals[];
+let groupKills: number[];
 let logged: LogCall[];
 
 beforeEach(async () => {
@@ -70,6 +83,7 @@ beforeEach(async () => {
   events = [];
   spawned = [];
   kills = [];
+  groupKills = [];
   logged = [];
 });
 
@@ -99,9 +113,11 @@ function fakeRepo(addError?: Error, removeError?: Error): WorktreeLock {
   };
 }
 
-// A child that ends with `exit` at once, or never ends (`'never'`) until it is killed. Each spawn is recorded.
+// A child that ends with `exit` at once, or never ends (`'never'`) until it is killed. Each spawn is recorded. The child
+// reports CHILD_PID as its pid, or no pid at all when `withPid` is false (a process that could not be started).
 function fakeSpawn(
   exit: BuildExit | 'never' = { code: 0, signal: null, output: '' },
+  withPid = true,
 ): SpawnBuild {
   return (command, args, options) => {
     spawned.push({ command, args, cwd: options.cwd, env: options.env });
@@ -111,6 +127,7 @@ function fakeSpawn(
     });
     if (exit !== 'never') end(exit);
     return {
+      pid: withPid ? CHILD_PID : undefined,
       exited,
       kill: (signal) => {
         kills.push(signal);
@@ -129,6 +146,27 @@ function recordingLog(): Logger {
   return { info: record('info'), warn: record('warn'), error: record('error') };
 }
 
+// True once no process has `pid`, polled every 50 ms for up to `ms`.
+async function stoppedWithin(pid: number, ms: number): Promise<boolean> {
+  for (let waited = 0; waited <= ms; waited += 50) {
+    if (!isRunning(pid)) return true;
+    await sleep(50);
+  }
+  return false;
+}
+
+// Whether a process with `pid` exists. Signal 0 checks for it and sends nothing.
+function isRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// The builder of the tests. Its platform is POSIX unless a case says otherwise, and its process-group signal is recorded,
+// so no case signals a real process.
 function builderWith(overrides: Partial<BuildCommitOptions> = {}) {
   return createBuilder({
     repo: fakeRepo(),
@@ -140,6 +178,10 @@ function builderWith(overrides: Partial<BuildCommitOptions> = {}) {
     spawn: fakeSpawn(),
     parentEnv: PARENT,
     log: recordingLog(),
+    platform: 'linux',
+    signalGroup: (pgid) => {
+      groupKills.push(pgid);
+    },
     ...overrides,
   });
 }
@@ -186,11 +228,7 @@ describe('createBuilder', () => {
           'b1',
         ],
         cwd: path.join(root, 'renderer'),
-        env: {
-          PATH: '/bin',
-          TMPDIR: '/tmp',
-          NODE_OPTIONS: '--max-old-space-size=4096',
-        },
+        env: BUILD_ENV,
       },
     ]);
   });
@@ -231,6 +269,7 @@ describe('createBuilder', () => {
       TMPDIR: '/tmp',
       SYSTEMROOT: 'C:\\Windows',
       NODE_OPTIONS: '--max-old-space-size=4096',
+      ASTRO_TELEMETRY_DISABLED: '1',
     });
   });
 
@@ -400,6 +439,124 @@ describe('createBuilder', () => {
     expect(existsSync(bundleDir('b1'))).toBe(true);
   });
 
+  it('kills the whole tree of a build over the timeout with taskkill on Windows, then the build itself', async () => {
+    const build = builderWith({
+      spawn: fakeSpawn('never'),
+      timeoutMs: 20,
+      platform: 'win32',
+    });
+    await build(JOB);
+    expect(spawned.slice(1)).toEqual([
+      {
+        command: 'taskkill',
+        args: ['/PID', '4321', '/T', '/F'],
+        cwd: path.join(root, 'renderer'),
+        env: BUILD_ENV,
+      },
+    ]);
+    expect(groupKills).toEqual([]);
+    expect(kills).toEqual(['SIGKILL']);
+  });
+
+  it('signals the process group of a build over the timeout where there is no taskkill, then the build itself', async () => {
+    await builderWith({ spawn: fakeSpawn('never'), timeoutMs: 20 })(JOB);
+    expect(spawned).toHaveLength(1);
+    expect(groupKills).toEqual([4321]);
+    expect(kills).toEqual(['SIGKILL']);
+  });
+
+  it('uses the platform of the machine when none is given', async () => {
+    await createBuilder({
+      repo: fakeRepo(),
+      cmsDir,
+      site: SITE,
+      siteDir: SITE_DIR,
+      siteConfig: SITE_CONFIG,
+      buildScript,
+      spawn: fakeSpawn('never'),
+      parentEnv: PARENT,
+      log: recordingLog(),
+      timeoutMs: 20,
+      signalGroup: (pgid) => {
+        groupKills.push(pgid);
+      },
+    })(JOB);
+    const onWindows = process.platform === 'win32';
+    expect(spawned.slice(1).map((call) => call.command)).toEqual(
+      onWindows ? ['taskkill'] : [],
+    );
+    expect(groupKills).toEqual(onWindows ? [] : [4321]);
+  });
+
+  it('kills only the build over the timeout when it has no process id', async () => {
+    await builderWith({
+      spawn: fakeSpawn('never', false),
+      timeoutMs: 20,
+    })(JOB);
+    expect(spawned).toHaveLength(1);
+    expect(groupKills).toEqual([]);
+    expect(kills).toEqual(['SIGKILL']);
+  });
+
+  it('kills a real build over the timeout together with the process it started', async () => {
+    // A stand-in build: it starts a grandchild that sleeps, writes the grandchild's pid to the file named by its
+    // first argument (the site config here), and then sleeps itself.
+    const script = path.join(root, 'renderer', 'src', 'grandchild.mjs');
+    await mkdir(path.dirname(script), { recursive: true });
+    await writeFile(
+      script,
+      [
+        "import { spawn } from 'node:child_process';",
+        "import { writeFileSync } from 'node:fs';",
+        "const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore', windowsHide: true });",
+        'writeFileSync(process.argv[2], String(grandchild.pid));',
+        'setInterval(() => {}, 1000);',
+        '',
+      ].join('\n'),
+    );
+    const pidFile = path.join(root, 'grandchild.pid');
+    const build = createBuilder({
+      repo: fakeRepo(),
+      cmsDir,
+      site: SITE,
+      siteDir: SITE_DIR,
+      siteConfig: pidFile,
+      buildScript: script,
+      parentEnv: process.env,
+      log: recordingLog(),
+      timeoutMs: 2_000,
+    });
+    expect(await build(JOB)).toEqual({
+      bundleId: 'b1',
+      dir: bundleDir('b1'),
+      ok: false,
+      firstError: {
+        file: null,
+        message: 'The build did not finish within 2000 ms',
+      },
+    });
+    const grandchild = Number(await readFile(pidFile, 'utf8'));
+    expect(await stoppedWithin(grandchild, 5_000)).toBe(true);
+  }, 30_000);
+
+  it('keeps a bundle the node serves, though it is older than the two newest', async () => {
+    for (const [id, written] of [
+      ['served', 1_000_000],
+      ['mid', 2_000_000],
+      ['new', 3_000_000],
+    ] as const) {
+      const file = path.join(bundleDir(id), 'manifest', 'bundle.json');
+      await mkdir(path.dirname(file), { recursive: true });
+      await writeFile(file, '{}\n');
+      const time = new Date(written);
+      await utimes(file, time, time);
+    }
+    await builderWith({ keptBundles: () => new Set(['served']) })(JOB);
+    expect(existsSync(bundleDir('served'))).toBe(true);
+    expect(existsSync(bundleDir('mid'))).toBe(true);
+    expect(existsSync(bundleDir('new'))).toBe(true);
+  });
+
   it('leaves no timer behind when the build ends before the timeout', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
@@ -514,6 +671,7 @@ describe('createBuilder', () => {
   it('logs when the old bundles cannot be collected, and the build result stands', async () => {
     // The child replaces the bundles folder with a file, so the folder cannot be listed.
     const spawn: SpawnBuild = () => ({
+      pid: undefined,
       exited: rm(bundlesDir(), { recursive: true, force: true })
         .then(() => writeFile(bundlesDir(), 'not a folder'))
         .then(() => ({ code: 0, signal: null, output: '' })),
@@ -599,26 +757,48 @@ describe('defaultSpawn', () => {
   });
 });
 
-describe('childEnvironment', () => {
-  it('drops an allowlisted name that has no value', () => {
-    expect(
-      Object.keys(childEnvironment({ PATH: undefined, TMP: '/t' })),
-    ).toEqual(['TMP']);
-  });
-
-  it('keeps only the allowlisted names, matched without case', () => {
-    expect(
-      childEnvironment({
-        Path: '/bin',
-        SystemRoot: 'C:\\Windows',
-        WINDIR: 'C:\\Windows',
-        LOGNAME: 'me',
-        HOME: '/home/me',
-      }),
-    ).toEqual({
-      Path: '/bin',
-      SystemRoot: 'C:\\Windows',
-      WINDIR: 'C:\\Windows',
+describe('treeKillCommand', () => {
+  it('is taskkill with the pid, /T and /F on Windows', () => {
+    expect(treeKillCommand(4321, 'win32')).toEqual({
+      command: 'taskkill',
+      args: ['/PID', '4321', '/T', '/F'],
     });
   });
+
+  it.each(['linux', 'darwin'] as const)(
+    'is none on %s, where the process group is signalled instead',
+    (platform) => {
+      expect(treeKillCommand(4321, platform)).toBeUndefined();
+    },
+  );
+});
+
+describe('signalProcessGroup', () => {
+  it('does not throw when the group has already ended', () => {
+    expect(() => signalProcessGroup(999_999_999)).not.toThrow();
+  });
+
+  // POSIX only: Windows has no process groups, and its tree kill is taskkill (treeKillCommand).
+  it.skipIf(process.platform === 'win32')(
+    'sends SIGKILL to the group, so a process that ignores SIGTERM dies too',
+    async () => {
+      const child = defaultSpawn(
+        process.execPath,
+        [
+          '-e',
+          "process.on('SIGTERM', () => undefined); setInterval(() => undefined, 1000);",
+        ],
+        { cwd: root, env: {} },
+      );
+      // Give the child time to install its SIGTERM handler.
+      await sleep(300);
+      signalProcessGroup(child.pid as number);
+      const outcome = await Promise.race([
+        child.exited,
+        sleep(5_000).then(() => 'still running' as const),
+      ]);
+      expect(outcome).toEqual({ code: null, signal: 'SIGKILL', output: '' });
+    },
+    15_000,
+  );
 });

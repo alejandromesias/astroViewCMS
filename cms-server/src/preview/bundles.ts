@@ -1,9 +1,10 @@
 // Garbage collection of the bundle folders (WORKPLAN 2.9a, PHASE-2-DESIGN 4.4). A build writes
 // `<bundles>/<bundleId>/`, and its region wrappers go to the sibling `<bundles>/<bundleId>-regions/`
-// (site-config.ts). The collection keeps the two newest complete bundles and removes the rest: older
-// bundles, the folders of builds that did not finish, and their region folders. The newest complete
-// bundle is the last good build, so it is one of the two. It runs inside the build runner, where no
-// other build writes a folder.
+// (site-config.ts). The collection keeps the two newest complete bundles and the ids the caller keeps (the
+// served and the last good bundle, WORKPLAN 2.9c), and removes the rest: older bundles, the folders of builds
+// that did not finish, and their region folders. The newest complete bundle is the last good build, so it is one
+// of the two. It runs inside the build runner, where no other build writes a folder. The start-up sweep
+// (sweep.ts) uses removeIncompleteBundles.
 import { readdir, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -24,10 +25,14 @@ export async function removeBundle(
 }
 
 /**
- * Keeps the newest `KEPT_BUNDLES` complete bundles in `bundlesDir` and removes everything else. Newest
- * means the latest write of the bundle's `bundle.json`. Folders without that file are removed.
+ * Keeps the newest `KEPT_BUNDLES` complete bundles and every id in `keep` (the bundle the node serves, and the last
+ * good one: a rollback can make the served bundle older than the two newest), and removes everything else. Newest
+ * means the latest write of the bundle's `bundle.json`. Folders without that file are removed unless they are in `keep`.
  */
-export async function collectBundles(bundlesDir: string): Promise<void> {
+export async function collectBundles(
+  bundlesDir: string,
+  keep: ReadonlySet<string> = new Set<string>(),
+): Promise<void> {
   const ids = new Set((await readdir(bundlesDir)).map(bundleIdOf));
   const complete: { id: string; written: number }[] = [];
   for (const id of ids) {
@@ -39,8 +44,34 @@ export async function collectBundles(bundlesDir: string): Promise<void> {
     complete.slice(0, KEPT_BUNDLES).map((bundle) => bundle.id),
   );
   for (const id of ids) {
-    if (!kept.has(id)) await removeBundle(bundlesDir, id);
+    if (!kept.has(id) && !keep.has(id)) await removeBundle(bundlesDir, id);
   }
+}
+
+/**
+ * Removes every bundle folder, and its region folder, that has no bundle.json: the leftovers of builds that did not
+ * finish. Returns the ids removed. A missing bundles folder has nothing to remove. Run at start-up only, when no build
+ * writes a folder.
+ */
+export async function removeIncompleteBundles(
+  bundlesDir: string,
+): Promise<string[]> {
+  const names = await readdir(bundlesDir).catch((error: unknown) =>
+    isMissing(error) ? [] : Promise.reject(error),
+  );
+  const removed: string[] = [];
+  for (const id of new Set(names.map(bundleIdOf))) {
+    if ((await mtimeOf(path.join(bundlesDir, id, MANIFEST))) === undefined) {
+      await removeBundle(bundlesDir, id);
+      removed.push(id);
+    }
+  }
+  return removed;
+}
+
+// True for the error of a path that does not exist.
+function isMissing(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }
 
 // The bundle a folder belongs to: `<id>-regions` belongs to `<id>`.
