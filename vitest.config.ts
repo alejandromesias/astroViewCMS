@@ -60,6 +60,10 @@ export default defineConfig({
         // end-to-end suite, not unit tests.
         'preview-render-server/src/build.ts',
         'preview-render-server/src/start.ts',
+        // Startup and route glue with no unit-level execution (loaded by the process or by URL).
+        // Mutation excludes the same files (stryker.config.json).
+        'cms-server/src/main.ts',
+        'preview-render-server/src/dev/memory-route.ts',
         'preview-render-server/test-editor/editor.astro',
         // Import virtual modules only a real build can load (or are bound
         // to them in a line or two): covered by the end-to-end suite.
