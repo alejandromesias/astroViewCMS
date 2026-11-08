@@ -58,6 +58,14 @@ only.
   changes before they land in `main`'s history. The exception is a commit the user
   names in the same message. On a task branch an agent commits and pushes on its
   own (2026-11-07), so the pull request is where the user reviews.
+  **Docs exception (2026-11-08):** a change that touches only files under `DOCS/` may
+  be committed and pushed straight to `main`, but only when the user asks for it in
+  that message ("commit and push to main"). Never on the agent's own initiative.
+  A change with any file outside `DOCS/` goes through a pull request. The
+  `.githooks/pre-push` hook refuses a push to `main` that changes anything outside
+  `DOCS/`. It works only with `core.hooksPath` set to `.githooks`, and `--no-verify`
+  is not allowed. Changes to the exception itself (this rule, the hook) go through
+  a pull request.
 - **One branch per task, one worktree per branch.** A task lives on
   `task/<id>-<slug>`, cut from `main`, in its own worktree (section 6). Push the
   branch and open a pull request: CI runs `fast`, `e2e` and `mutation-diff`
