@@ -1,0 +1,28 @@
+#!/bin/sh
+# Direct pushes to main are limited to the DOCS folder (DOCS/README.md section 2, "Ask before
+# committing to main"). Everything else goes through a task branch and a pull request. Git passes
+# one line per ref on stdin: <local ref> <local sha> <remote ref> <remote sha>. Only repos whose
+# core.hooksPath is .githooks run this hook.
+zero=0000000000000000000000000000000000000000
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$remote_ref" = "refs/heads/main" ] || continue
+  [ "$local_sha" = "$zero" ] && continue
+  if [ "$remote_sha" = "$zero" ]; then
+    echo "pre-push: refused, creating main on the remote is not allowed" >&2
+    status=1
+    continue
+  fi
+  if ! files=$(git diff --name-only "$remote_sha" "$local_sha" 2>/dev/null); then
+    echo "pre-push: refused, cannot compare with the remote main (run git fetch)" >&2
+    status=1
+    continue
+  fi
+  outside=$(printf '%s\n' "$files" | grep -v '^DOCS/' | grep -v '^$')
+  if [ -n "$outside" ]; then
+    echo "pre-push: refused, direct pushes to main may only change files under DOCS/. Open a pull request for:" >&2
+    printf '%s\n' "$outside" >&2
+    status=1
+  fi
+done
+exit $status
