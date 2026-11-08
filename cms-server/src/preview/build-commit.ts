@@ -16,6 +16,7 @@ import type {
   BuildResult,
 } from './build-runner.ts';
 import { collectBundles, removeBundle } from './bundles.ts';
+import { childEnvironment } from './child-env.ts';
 
 /** The part of `Repo` that adds and removes worktrees. `Repo.locked` has this shape. */
 export interface WorktreeLock {
@@ -32,10 +33,20 @@ export interface BuildExit {
   readonly output: string;
 }
 
-/** The part of a child process the build uses. `exited` settles once, when the output is complete. */
+/**
+ * The part of a child process the build uses. `exited` settles once, when the output is complete. `pid` is undefined
+ * when the process could not be started.
+ */
 export interface BuildChild {
+  readonly pid: number | undefined;
   readonly exited: Promise<BuildExit>;
   kill(signal: NodeJS.Signals): void;
+}
+
+/** A program and its arguments, as the spawn seam takes them. */
+export interface Command {
+  readonly command: string;
+  readonly args: readonly string[];
 }
 
 export type SpawnBuild = (
@@ -60,6 +71,15 @@ export interface BuildCommitOptions {
   readonly parentEnv?: NodeJS.ProcessEnv;
   /** How long one build may run, in ms. Default 10 minutes. */
   readonly timeoutMs?: number;
+  /** The platform the tree kill is for. Default: process.platform. */
+  readonly platform?: NodeJS.Platform;
+  /** Sends SIGKILL to a process group, by the group id (POSIX). Default: `signalProcessGroup`. */
+  readonly signalGroup?: (pgid: number) => void;
+  /**
+   * The bundle ids that collection must keep: the one the node serves and the last good one (WORKPLAN 2.9c). Read
+   * after each build. Default: none.
+   */
+  readonly keptBundles?: () => ReadonlySet<string>;
   readonly log?: Logger;
 }
 
@@ -68,17 +88,6 @@ const DEFAULT_BUILD_SCRIPT = path.resolve(
   '../../../preview-render-server/src/build.ts',
 );
 const DEFAULT_TIMEOUT_MS = 10 * 60_000;
-// The variables a build may inherit: the search path, the temp folders, the Windows system folders and
-// NODE_OPTIONS. Nothing else of cms-server reaches the build: no tokens, no SSH_AUTH_SOCK, no GIT_* settings.
-const INHERITED = new Set([
-  'PATH',
-  'TEMP',
-  'TMP',
-  'TMPDIR',
-  'SYSTEMROOT',
-  'WINDIR',
-  'NODE_OPTIONS',
-]);
 // Astro writes colour codes even into a pipe. They are removed before the output is read.
 // biome-ignore lint/suspicious/noControlCharactersInRegex: the escape character starts a colour code
 const COLOUR_CODE = /\u001b\[[0-9;]*m/g;
@@ -104,7 +113,27 @@ export function createBuilder(options: BuildCommitOptions): BuildFn {
   const spawnBuild = options.spawn ?? defaultSpawn;
   const parentEnv = options.parentEnv ?? process.env;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const platform = options.platform ?? process.platform;
+  const signalGroup = options.signalGroup ?? signalProcessGroup;
+  const keptBundles = options.keptBundles ?? (() => new Set<string>());
   const log = options.log ?? logger;
+
+  // Kills the whole process tree of a build that ran over: `taskkill /T` on Windows, the process group elsewhere
+  // (defaultSpawn starts each build as a group leader). On Windows the build is killed only after taskkill has
+  // finished: `taskkill /T` lists the children, and a build killed first could leave them unlisted. The build itself
+  // is killed last, so a tree kill that fails still ends the build.
+  async function killBuild(child: BuildChild): Promise<void> {
+    if (child.pid !== undefined) {
+      const kill = treeKillCommand(child.pid, platform);
+      if (kill === undefined) signalGroup(child.pid);
+      else
+        await spawnBuild(kill.command, kill.args, {
+          cwd,
+          env: childEnvironment(parentEnv, 'build'),
+        }).exited;
+    }
+    child.kill('SIGKILL');
+  }
 
   // Runs build.ts on the site folder of `worktree`, and reads its first error from the output.
   async function runChild(worktree: string, job: BuildJob): Promise<Outcome> {
@@ -121,7 +150,7 @@ export function createBuilder(options: BuildCommitOptions): BuildFn {
     ];
     const child = spawnBuild(process.execPath, args, {
       cwd,
-      env: childEnvironment(parentEnv),
+      env: childEnvironment(parentEnv, 'build'),
     });
     let timer: NodeJS.Timeout | undefined;
     const expired = new Promise<'timeout'>((resolve) => {
@@ -129,7 +158,7 @@ export function createBuilder(options: BuildCommitOptions): BuildFn {
     });
     const first = await Promise.race([child.exited, expired]);
     clearTimeout(timer);
-    if (first === 'timeout') child.kill('SIGKILL');
+    if (first === 'timeout') await killBuild(child);
     const exit = await child.exited;
     if (first === 'timeout') {
       return failure(exit.output, {
@@ -208,7 +237,7 @@ export function createBuilder(options: BuildCommitOptions): BuildFn {
     await mkdir(logsDir, { recursive: true });
     await writeFile(path.join(logsDir, `${bundleId}.log`), logOf(job, outcome));
     try {
-      await collectBundles(bundlesDir);
+      await collectBundles(bundlesDir, keptBundles(), { log });
     } catch (error: unknown) {
       log.warn('Could not collect the old bundles', {
         bundleId,
@@ -225,14 +254,29 @@ export function createBuilder(options: BuildCommitOptions): BuildFn {
   };
 }
 
-/** The environment of the build: the allowlisted variables of `parent`, and no others. */
-export function childEnvironment(parent: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return Object.fromEntries(
-    Object.entries(parent).filter(
-      ([name, value]) =>
-        value !== undefined && INHERITED.has(name.toUpperCase()),
-    ),
-  );
+/**
+ * The command that kills the whole tree of `pid` on Windows: `taskkill /PID <pid> /T /F`. Undefined on the other
+ * platforms, where the process group is signalled instead.
+ */
+export function treeKillCommand(
+  pid: number,
+  platform: NodeJS.Platform,
+): Command | undefined {
+  return platform === 'win32'
+    ? { command: 'taskkill', args: ['/PID', String(pid), '/T', '/F'] }
+    : undefined;
+}
+
+/**
+ * Sends SIGKILL to the process group `pgid`. The build's pid is its group id, because defaultSpawn starts it as a
+ * group leader, so everything the build started dies with it. A group that has already ended is not an error.
+ */
+export function signalProcessGroup(pgid: number): void {
+  try {
+    process.kill(-pgid, 'SIGKILL');
+  } catch {
+    // The group ended on its own between the timeout and this call.
+  }
 }
 
 function failure(output: string, firstError: BuildError): Outcome {
@@ -289,7 +333,10 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** The real child: stdin is closed, and stdout and stderr are kept together in the order they arrive. */
+/**
+ * The real child: stdin is closed, and stdout and stderr are kept together in the order they arrive. On POSIX the
+ * child leads its own process group, which is what `signalProcessGroup` signals.
+ */
 export function defaultSpawn(
   command: string,
   args: readonly string[],
@@ -300,6 +347,7 @@ export function defaultSpawn(
     env: options.env,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
+    detached: process.platform !== 'win32',
   });
   let output = '';
   const collect = (chunk: string): void => {
@@ -318,6 +366,7 @@ export function defaultSpawn(
     proc.once('close', (code, signal) => resolve({ code, signal, output }));
   });
   return {
+    pid: proc.pid,
     exited,
     kill: (signal) => {
       proc.kill(signal);
