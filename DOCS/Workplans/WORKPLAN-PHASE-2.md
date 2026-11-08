@@ -25,7 +25,7 @@ before writing tests, [TESTING-RECOMMENDATIONS.md](../Guidelines/TESTING-RECOMME
 |---|---|
 | Phase 2 design | approved by the user, 2026-10-31 |
 | Decisions D17 to D22 | logged in SYSTEM-DESIGN section 11 |
-| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); 2.1g (codecs scope; the rest of its scope moved to 2.1h with deadlines), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a done 2026-11-03 (wave 5 complete, branch `phase-2-wave-5`); 2.0j, 2.1h, 2.5b, 2.5c, 2.6a, 2.9a, 2.10a done 2026-11-03 to 2026-11-06 (wave 6 complete, branch `phase-2-wave-6`); wave 7: 2.1n done 2026-11-07 (`b72080b`); 2.1k written 2026-11-07, verified on GitHub after the first push; next 2.1l and 2.1m (CI stage 2 and the policy); 2.6b, 2.9c and 2.10b after 2.1k is green; 2.1o after 2.1l; 2.1j last; 2.1p later; the rest not started |
+| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); 2.1g (codecs scope; the rest of its scope moved to 2.1h with deadlines), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a done 2026-11-03 (wave 5 complete, branch `phase-2-wave-5`); 2.0j, 2.1h, 2.5b, 2.5c, 2.6a, 2.9a, 2.10a done 2026-11-03 to 2026-11-06 (wave 6 complete, branch `phase-2-wave-6`); wave 7: 2.1k to 2.1p done 2026-11-07 (CI and quality pipeline; 2.1p verification pending); next 2.6b, 2.9c-A and 2.10b in parallel, then 2.9c-B after 2.6b merges, 2.1j last (wave 7 review, 2026-11-08); the rest not started |
 
 **Done when:** every row of PHASE-2-DESIGN.md section 1 passes. Section 5
 below maps each row to the test that proves it.
@@ -116,6 +116,8 @@ parallel; 2.5a waits for 2.1g.
 Wave 6 order (2026-11-03, revised after review): 2.1h part 1 comes first in the wave, in this order: `repo.ts` (seed `repo.test.ts` from a small fixture), the `core.hooksPath` guard in `repo.ts`, then `codecs/by-format.ts`, `manifest/documents.ts` and `preview-contract/src/revision.ts`. `documents/` waits for 2.5b's revision split, and `plan-write.ts` waits for 2.5b to close (2.5b and 2.0j both change it). 2.1h must finish `repo.ts` before 2.5b. 2.5b may start in parallel with the tests, but is not closed before `repo.ts` has a score. 2.6a, 2.9a and 2.10a do not wait for 2.1h.
 
 Wave 6/7/8 reorder (2026-11-04): 2.5c moved from wave 7 to wave 6. Its gates are met: 2.0h, 2.0j, 2.5a and 2.5b are done, and `server.ts` was scored in 2.1h 2a (93.2%). Order inside wave 6: 2.10a first (it adds `tx.fetch` to `git/ops.ts`), then 2.5c alone in `http/`, `save/` and `ops.ts` (it adds `tx.restore`); 2.6a and 2.9a run in parallel with either, since 2.6a works in `references/`, `schema/walk.ts` and `documents/paths.ts`. Wave 7 is then 2.6b, 2.9c and 2.10b, and 2.1j last (added 2026-11-06, the standing-risk step 6: it changes the clone's git calls in `repo.ts` and `ops.ts`, so it runs after the wave's other tasks, not in parallel with them). Wave 8 is 2.7b, 2.7c and 2.9d. 2.6b, 2.7b and 2.7c each add a stage to the same pipeline array, so 2.6b runs apart from 2.7b and 2.7c.
+
+Wave 7 order (review, 2026-11-08): 2.9c is split into 2.9c-A (the 2.9a carry-overs, no `run.ts` edit) and 2.9c-B (state, triggers, `BundleSource`, status, and the `run.ts` wiring). 2.6b, 2.9c-A and 2.10b run in parallel, each in its own `npm run worktree` branch. 2.9c-B starts after 2.6b merges, because both edit `run.ts`. 2.1j runs last, after all of them have merged, because 2.10b changes the `ops.ts` closures that 2.1j scopes. The decisions are in each task's "From the wave 7 review" block.
 
 **Critical path** (the longest chain; it decides the elapsed time): 2.0a →
 2.1a → 2.3a → 2.3b → 2.3c → 2.5b → 2.5c → 2.9d → 2.9e → 2.10d → 2.10e →
@@ -1022,7 +1024,11 @@ Steps, in order:
 - **Verify.** Targeted tests only: `git/exec`, `git/repo`, `git/ops` (CLAUDE.md: no full suite). Biome on the changed files. Stryker through `scripts/stryker-run.mjs`, one file at a time, for `repo.ts` and `ops.ts`: the new env literals add mutants. Budget up to 2 hours per file (the `repo.ts` run hit the 2-hour limit in 2.1h).
 - **Done when.** The tests pass. `repo.ts` and `ops.ts` score at least their current 99.10 and 96.74, or each new survivor is classified in the Result. The parent-repo test shows the parent unchanged.
 - **File ownership.** `repo.ts`, `ops.ts`, their tests and the test helpers. `exec.ts` only if a test needs it, and then named in the Result.
-- **Order.** Last in wave 7, after 2.6b, 2.9c and 2.10b, and not in parallel with them. The user asked on 2026-11-06 for it to be scheduled, which answers the "ask the user first" in the standing-risk step.
+- **From the wave 7 review (2026-11-08):**
+  - **Merge the env, never replace it.** 2.10b adds a per-call `env` to the `git` and `gitBytes` closures in `ops.ts` (for `GIT_INDEX_FILE`). 2.1j merges the clone variables into it: `{ ...callEnv, GIT_DIR, GIT_WORK_TREE }`, the clone variables last. `runGit` already merges with `process.env` (`exec.ts`), so nothing changes there.
+  - **Test (1) is generic.** Spy on `exec` and assert that every clone call carries both variables, including the calls 2.10b adds, and that a call with its own env still carries it.
+  - **No clone call runs in a worktree.** `worktreeAdd` and `worktreeRemove` run from the clone, and a build spawns `astro`, not git. Keep it so: a git call with `cwd` in a worktree through the clone's closure would use the main clone's `GIT_DIR` and land there. 2.10b builds `cms/work-next` with plumbing, not in a worktree, for this reason.
+- **Order.** Last in wave 7, after 2.6b, 2.9c (A and B) and 2.10b, and not in parallel with them. The user asked on 2026-11-06 for it to be scheduled, which answers the "ask the user first" in the standing-risk step.
 
 #### 2.1k CI stage 1: the fast gates and e2e on GitHub Actions — after 2.1n · [ci] · DONE 2026-11-07 (see Result)
 
@@ -2011,6 +2017,11 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   - **Who builds the index.** `rebuild(documents)` takes values; nothing reads them yet. 2.6b reads the bundle's documents plus the changeset's `createdRecords` from the working copy (2.6a scope) once, lazily on the first guarded delete or at start, and again when a failed hook marked the index stale. Lazy is preferred: start stays fast and needs no `run.ts` edit beyond registering the stage.
   - **`run.ts` is shared with 2.9c** in wave 7. If 2.6b must edit it, keep it to the registration line and merge 2.6b first.
   - The guard reads the referrers' **new** values from the changeset being saved (a referrer cleared in the same save no longer points), so it runs on `ctx` before `planChanges`, as the slot says.
+- **From the wave 7 review (2026-11-08):** supersedes "needs no `run.ts` edit" above.
+  - **Who holds the index.** `SaveContext` carries no index and `SAVE_STAGES` is static. `run.ts` builds one guard object (the lazy index plus a stale flag) and passes it in `save: {…}`; the stage reads it from `ctx`, and the after-commit hook updates it or sets the flag. This is more than the registration line, so 2.6b merges before 2.9c-B.
+  - **New referrers in the same save.** A document the changeset creates or updates that newly points at a document the same changeset deletes also answers `409 referenced-by`. Export `targetsOf` from `references/reference-index.ts` and check each changed value's targets against the changeset's deletions.
+  - **Several blocked deletions.** The answer keeps design 4.3's shape with one `document`: the first blocked key in sort order, with its referrers.
+  - **Mutation floors.** `pipeline.ts`, `run.ts` and `reference-index.ts` change, so each needs 80 on the PR's mutation check (CI-PIPELINE section 3).
 
 ### 2.7 Media — after 2.1c · ∥ everything
 
@@ -2600,6 +2611,9 @@ Design 4.4, 5.6.
 
 #### 2.9c State, triggers and status — after 2.9a, 2.9b, 2.4a, 2.1h, 2.1i
 
+- **Split (wave 7 review, 2026-11-08).** Two tasks, two PRs:
+  - **2.9c-A, the carry-overs** (∥ 2.6b and 2.10b): builder checklist items 1 to 5 below. The start-up sweep (item 3) and the `astro` check (item 5) are delivered as tested functions; 2.9c-A does not edit `run.ts`.
+  - **2.9c-B, state, triggers and status** (after 2.6b merges): the state file, the real `BundleSource`, the trigger function, rollback, `GET /api/status`, and the `run.ts` wiring of the sweep and the `astro` check.
 - `.cms/<site>/state.json`, written atomically: current and last-good
   bundle, protocol-rebuild attempts per `bundleId`.
 - The real `BundleSource`, replacing 2.1i's `--bundle` directory in
@@ -2622,9 +2636,17 @@ Design 4.4, 5.6.
   2. Process-tree kill on timeout in `build-commit.ts`: `taskkill /PID <pid> /T /F` on win32, `kill(-pid)` or `child.kill()` elsewhere. Unit test on the spawn seam (the kill command is the one given), plus a small real child that spawns a grandchild and dies with it.
   3. Start-up sweep: remove leftover `build-*` worktrees (`tx.worktreeRemove`, then the Node delete as the fallback), and leftover bundle folders with no `bundle.json`. Test: a crash leftover is gone after start.
   4. `collectBundles(bundlesDir, keep)` with the served and last-good ids; the runner passes them. Test: a served bundle older than the two newest survives a build.
-  5. The `astro` start-up check above, in `run.ts`, with its test.
-  6. Then the state file, triggers and status.
-  the mutation check on the PR is green (CI-PIPELINE section 3): `build-commit.ts`, `bundles.ts`, `child-env.ts`, and the new state module.
+  5. The `astro` start-up check above, with its test (a function; 2.9c-B calls it from `run.ts`).
+  6. Then the state file, triggers and status (2.9c-B).
+  The mutation check on each PR is green (CI-PIPELINE section 3): `build-commit.ts`, `bundles.ts`, `child-env.ts`, and the new state module.
+- **From the wave 7 review (2026-11-08), for 2.9c-B:**
+  - **Every trigger builds `cms/work` HEAD**, after any re-apply. The preview shows upstream plus the saved changeset (design 4.2); build-time fields and generated routes come from the bundle; design 4.4's three-dot sync diff already assumes bundles built from `cms/work` commits. After a publish `cms/work` is the pushed commit, so the rule covers it. The trigger function takes a reason, never a commit: `first-start | save-rebuild | protocol-mismatch | sync-code | publish`. It resolves `cms/work` to a SHA under the repo lock and builds that SHA in a worktree outside the lock.
+  - **`state.json`**: `{ current, lastGood, protocolAttempts: { [bundleId]: n } }`. Each bundle entry also records `baseCommit`, the `origin/<branch>` SHA it was built on, so a later sync can diff from it if a pruned `siteCommit` ever shows up. Parsed with Zod. A missing or corrupt file counts as empty and is logged, never a crash.
+  - **`--bundle` stays** as an explicit override (the 2.1i e2e and `run.test.ts` use it); the real source is the default. With `--bundle` the builder and every trigger are off. A save that answers `rebuild: true` reports it and builds nothing, and `GET /api/status` says the builder is off.
+  - **Rollback.** A failed swap restarts the last-good bundle's node. The failed bundle never enters `state.json`; its error is in the status.
+  - **Status fields owned elsewhere.** `lastSync` and `syncError` (2.10g), `upstreamBuildFailed` (2.10f), publish state (2.10d). 2.9c-B exposes a state holder with setters and tests it with fakes.
+  - **`stop()`.** `main.ts` already wires `stop()` to SIGINT and SIGTERM through `signals.ts` (HANDOFF-2026-11-06 item 9 is partly stale). Missing: the build runner gets a `stop()` that kills an in-flight build's process tree, and the CMS's `stop()` calls it.
+  - **Start-up sweep** (2.9c-A item 3) also removes leftover temporary index files in `.cms/<site>/tmp/` (2.10b).
 - **Done when:** a test per trigger with fakes; the mismatch rebuild happens
   once and then reports the error. A bundle built before this phase (no
   `bundle.json`) counts as a mismatch. The checklist above passes.
@@ -2698,6 +2720,23 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
   deleted); reformats the file (the codec writes into the new formatting);
   pushes nothing relevant (no-op); a crash after `cms/work-next` is made;
   two syncs in a row keep the first sync's `CMS-Overwrote` trailer.
+- **From the wave 7 review (2026-11-08):**
+  - **`cms/work-next` is built with plumbing, never in a worktree** (see 2.1j). A temporary index (`GIT_INDEX_FILE`) in `.cms/<site>/tmp/`, outside the clone's `repo/` folder so `status` and `clean -fd` never see it, deleted after use; the 2.9c-A start-up sweep removes leftovers. Blobs from the planned texts, then `write-tree`, `commit-tree` and `update-ref refs/heads/cms/work-next`. The ref exists only after the commit is complete.
+  - **Per-call env.** The `git` and `gitBytes` closures in `ops.ts` take only `args` today; add a per-call `env` for `GIT_INDEX_FILE`. 2.1j later merges the clone variables into it; neither task replaces the other's env.
+  - **The move.** `update-ref cms/work-prev <old cms/work tip>`, then `reset --hard cms/work-next` in the clone (moves `cms/work` and the working copy), then delete both refs.
+  - **Start-up rule** (in `ensureRepo`, `repo.ts`): finish, never discard. It needs no network and is idempotent.
+    - `work-next` exists and `cms/work` equals `work-prev` or `work-next`: move `cms/work` to `work-next` with the same reset, then delete both refs.
+    - `work-next` exists and `cms/work` equals neither: keep `cms/work`, delete both refs, log it.
+    - Only `work-prev` is left: the move finished; delete it.
+  - **Input.** The saved documents come from `changesetOf`, including `createdRecords`: a document the CMS created is not in the old bundle's `documents` map, and the re-apply needs its record to find its file. `planWrite` is pure and needs no working copy: pass `readText = tx.showAt('origin/<branch>', path)` and the bundle's documents plus the created records.
+  - **Known limit (accepted for phase 2).** `planWrite` finds each file through the bundle's map, which describes an older commit. A document the developer renamed or moved upstream is missing at its old path, so it is recreated there: a duplicate. Same handling as the "deletes a document the CMS edited" scenario.
+  - **A document the CMS deleted that upstream edited** stays deleted and records a `CMS-Overwrote` trailer: the CMS delete wins.
+  - **A `file()` file that upstream deleted** is recreated with only the saved entries.
+  - **Saved images.** 2.7b doesn't exist yet; test the restore with hand-made commits.
+  - **Empty changeset.** `cms/work` moves to upstream with no commit.
+  - **API.** One `tx.reapply(upstream)` inside the lock. 2.10d and 2.10g call it; 2.10c rebuilds the reference index after it.
+  - **Order.** 2.1j waits for 2.10b to merge (both change `ops.ts`; 2.1j also `repo.ts`).
+  - **Mutation floors.** `ops.ts` and `repo.ts` need 80 on the PR's mutation check.
 - **Done when:** all of those pass against the harness.
 
 #### 2.10c Guard recheck after a sync — after 2.6b, 2.10b
@@ -2757,6 +2796,7 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
 - **Done when:** the developer pushes a broken component; the CMS user still
   publishes a content edit and is told; adding a *second* break in the same
   changeset is blocked under `always`. [build]
+- **From the wave 7 review (2026-11-08):** "Sync builds the new upstream tip" now reads: sync builds `cms/work` HEAD after the re-apply (2.9c-B, every trigger builds `cms/work`). When that build fails, build the `origin/<branch>` tip once to tell whose failure it is. If the tip fails too, record `upstreamBuildFailed { sha: <origin SHA>, firstError }`. If the tip passes, the saved changeset breaks the build, and that is reported instead.
 
 #### 2.10g Poll loop — after 2.10a, 2.9e
 
