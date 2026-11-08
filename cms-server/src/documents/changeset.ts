@@ -79,10 +79,14 @@ export interface ChangesetInput {
   readonly siteFolder: string;
 }
 
-/** What one file of the changeset gives: its documents, and the ones it creates. */
+/**
+ * What one file of the changeset gives: its documents, the records of the ones it creates, and the tombstones of the ones
+ * it deletes (2.10h). A deleted document's record never goes into `createdRecords`.
+ */
 interface Found {
   readonly documents: ChangedDocument[];
   readonly createdRecords: DocumentEntry[];
+  readonly tombstones?: DocumentEntry[];
   readonly fileErrors?: readonly FileError[];
 }
 
@@ -160,6 +164,7 @@ export async function changesetWithTombstones({
   const byFile = documentsByFile(bundle.documents.values());
   const documents: ChangedDocument[] = [];
   const createdRecords: DocumentEntry[] = [];
+  const tombstones: DocumentEntry[] = [];
   const fileErrors: FileError[] = [];
   for (const { path } of await repo.changedPaths()) {
     const unit = unitOf(path, byFile, bundle.collections);
@@ -167,27 +172,20 @@ export async function changesetWithTombstones({
     const found = await unitChanges(unit, env);
     documents.push(...found.documents);
     createdRecords.push(...found.createdRecords);
+    tombstones.push(...(found.tombstones ?? []));
     fileErrors.push(...(found.fileErrors ?? []));
   }
   const overwritten = await repo.overwrittenSince();
-  // A record of a document the save deleted is a tombstone, not a live record (2.10h).
-  const deleted = new Set(
-    documents
-      .filter((document) => document.status === 'deleted')
-      .map((document) => document.key),
-  );
   return {
     changeset: {
       documents: documents.map((document) => {
         const sha = overwritten.get(document.key);
         return sha === undefined ? document : { ...document, overwritten: sha };
       }),
-      createdRecords: createdRecords.filter(
-        (record) => !deleted.has(record.key),
-      ),
+      createdRecords,
       fileErrors,
     },
-    tombstones: createdRecords.filter((record) => deleted.has(record.key)),
+    tombstones,
   };
 }
 
@@ -280,9 +278,10 @@ async function ownFile(
   if (after === null)
     return {
       documents: [{ key, status: 'deleted', baseRevision }],
+      createdRecords: [],
       // The file is gone, so `current` is the merge base's file: its revision is the base revision (the re-apply deletes
-      // the upstream file of this record).
-      createdRecords: recordsOf(env, {
+      // the upstream file of this record, and only the re-apply reads it).
+      tombstones: recordsOf(env, {
         key,
         file: path,
         format,
@@ -351,6 +350,7 @@ async function sharedFile(
     };
   const documents: ChangedDocument[] = [];
   const createdRecords: DocumentEntry[] = [];
+  const tombstones: DocumentEntry[] = [];
   const ids = [...new Set([...wasEntries.keys(), ...nowEntries.keys()])].sort();
   for (const id of ids) {
     const was = wasEntries.get(id);
@@ -367,7 +367,7 @@ async function sharedFile(
       documents.push({ key, status: 'deleted', baseRevision });
       // A deleted id is one the merge base had, so `was` is set: its revision is the base revision (2.10h).
       if (was !== undefined)
-        createdRecords.push(
+        tombstones.push(
           ...recordsOf(env, {
             key,
             file: path,
@@ -392,7 +392,7 @@ async function sharedFile(
       }),
     );
   }
-  return { documents, createdRecords };
+  return { documents, createdRecords, tombstones };
 }
 
 /** The bytes of `path` at the merge base, read as the format says. Null when the file was not there. */

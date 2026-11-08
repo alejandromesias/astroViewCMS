@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { revisionOf } from 'preview-contract';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -149,6 +149,68 @@ describe('runStages', () => {
     });
     expect(order).toStrictEqual(['first', 'second']);
   });
+});
+
+// A document upstream added after the bundle was built, which the CMS then edited on cms/work (2.10h). The save deletes
+// it and creates it again: the recreate has no document in the save (its deletion left a tombstone), so it is a create
+// and writes the file (save/plan.ts `writeOf`).
+describe('a document upstream added and the bundle lacks (2.10h)', () => {
+  it('creates it again after a save deleted it, and writes the file', async () => {
+    const root = await makeTestRoot();
+    folders.push(root);
+    const upstream = '{"name":"Upstream"}\n';
+    const { repo, state, config } = await saveRepoIn(root, {
+      'src/content/authors/new-one.json': upstream,
+    });
+    const bundles = createBundleStore(
+      directoryBundleSource(await bundleFolder()),
+    );
+    const file = join(state.siteFolder, 'src/content/authors/new-one.json');
+    const save = (changes: SaveChange[]) =>
+      saveChanges(
+        {
+          changes,
+          bundles,
+          siteFolder: state.siteFolder,
+          config,
+          preview: previewSays(),
+          media: {
+            mediaFile: join(root, 'media.json'),
+            cmsOrigin: 'http://cms.localhost:4400',
+          },
+          log: silentLog(),
+          guard: createDeleteGuard(),
+        },
+        repo,
+      );
+    // The re-applied edit: the CMS version of the upstream document is on cms/work, as a sync leaves it.
+    const edited = '{"name":"Edited"}\n';
+    await writeFile(file, edited);
+    await repo.locked('save', (tx) =>
+      tx.commitSave(['src/content/authors/new-one.json'], 'cms: edit new-one'),
+    );
+    const deleted = await save([
+      {
+        document: 'authors/new-one',
+        baseRevision: revisionOf(edited),
+        deleted: true,
+        data: {},
+      },
+    ]);
+    expect(deleted.status).toBe(200);
+    const recreated = await save([
+      {
+        document: 'authors/new-one',
+        baseRevision: null,
+        deleted: false,
+        data: { name: 'Recreated' },
+      },
+    ]);
+    expect(recreated.status).toBe(200);
+    expect(JSON.parse(await readFile(file, 'utf8'))).toStrictEqual({
+      name: 'Recreated',
+    });
+  }, 30_000);
 });
 
 describe('saveChanges', () => {
