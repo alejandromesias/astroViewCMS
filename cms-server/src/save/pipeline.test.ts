@@ -237,5 +237,6 @@ describe('saveChanges', () => {
     });
     expect(await readFile(anaPath, 'utf8')).toBe(before);
     expect(await git(state.repoDir, ['status', '--porcelain'])).toBe('');
-  });
+    // Real git and disk writes: under the full run's load on Windows this ran past the 5 s default (q8).
+  }, 30_000);
 });
