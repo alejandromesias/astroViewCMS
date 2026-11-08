@@ -1171,6 +1171,8 @@ describe('openRepo: fetch', () => {
 const ANA = 'src/content/authors/ana.json';
 const HOME = 'src/content/pages/home.json';
 const TESTIMONIALS = 'src/content/testimonials.json';
+// A document the CMS creates (not in the bundle), which the developer also adds upstream (2.10h).
+const BO = 'src/content/authors/bo.json';
 const PNG_HERO = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff, 0x10]);
 // A sha that is not in the clone, for the calls that refuse before they read it.
 const OLD_SHA = 'd'.repeat(40);
@@ -1218,11 +1220,13 @@ const REAPPLY_COLLECTIONS = {
   testimonials: { loader: { kind: 'file', pattern: TESTIMONIALS } },
 };
 
-// A store over the bundle above, with a new bundle id.
-async function reapplyBundles(): Promise<BundleStore> {
+// A store over the bundle above, with a new bundle id. `documents` replaces the bundle's documents, as a rebuild does.
+async function reapplyBundles(
+  documents: readonly object[] = REAPPLY_DOCUMENTS,
+): Promise<BundleStore> {
   const dir = await bundleFolder({
     'bundle.json': `${JSON.stringify({ bundleId: 'reapply-2026-11-08', siteCommit: null, protocolVersion: 2, astroVersion: '7.4.2', builtAt: '2026-11-08T00:00:00.000Z' }, null, 2)}\n`,
-    'documents.json': JSON.stringify(REAPPLY_DOCUMENTS),
+    'documents.json': JSON.stringify(documents),
     'schema.json': JSON.stringify(REAPPLY_COLLECTIONS),
   });
   return createBundleStore(directoryBundleSource(dir));
@@ -1802,6 +1806,85 @@ describe('openRepo: reapply (WORKPLAN 2.10b)', () => {
     ).toEqual({ name: 'Bo' });
     expect(await parentOf(fixture)).toBe(pushed);
     expect(await repo.overwrittenSince()).toEqual(new Map());
+  });
+
+  it('re-applies a document the CMS created that upstream also added, on a second sync before any rebuild (2.10h)', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    await cmsWrite(fixture, repo, BO, '{"name":"Bo"}\n', 'create bo');
+    const added = await pushAsDeveloper(
+      root,
+      { [`site/${BO}`]: '{"name":"Bo, upstream"}\n' },
+      'dev: add bo',
+    );
+    await syncAndReapply(fixture, bundles);
+    expect(JSON.parse(await workText(fixture, BO))).toEqual({ name: 'Bo' });
+    expect(await repo.overwrittenSince()).toEqual(
+      new Map([['authors/bo', added]]),
+    );
+    await cmsWrite(fixture, repo, BO, '{"name":"Bo M."}\n', 'edit bo');
+    const pushed = await pushAsDeveloper(
+      root,
+      { 'site/src/content/pages/home.json': '{"title":"Hello"}\n' },
+      'dev: home',
+    );
+    await syncAndReapply(fixture, bundles);
+    expect(JSON.parse(await workText(fixture, BO))).toEqual({ name: 'Bo M.' });
+    expect(await parentOf(fixture)).toBe(pushed);
+  });
+
+  it('keeps re-applying a document the CMS created once a rebuild holds it (2.10h)', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    await cmsWrite(fixture, repo, BO, '{"name":"Bo"}\n', 'create bo');
+    await pushAsDeveloper(
+      root,
+      { [`site/${BO}`]: '{"name":"Bo, upstream"}\n' },
+      'dev: add bo',
+    );
+    await syncAndReapply(fixture, bundles);
+    const rebuilt = await reapplyBundles([
+      ...REAPPLY_DOCUMENTS,
+      {
+        key: 'authors/bo',
+        file: BO,
+        format: 'json',
+        buildTime: false,
+        revision: 'x',
+      },
+    ]);
+    await cmsWrite(fixture, repo, BO, '{"name":"Bo M."}\n', 'edit bo');
+    await pushAsDeveloper(
+      root,
+      { 'site/src/content/pages/home.json': '{"title":"Hello"}\n' },
+      'dev: home',
+    );
+    await syncAndReapply(fixture, rebuilt);
+    expect(JSON.parse(await workText(fixture, BO))).toEqual({ name: 'Bo M.' });
+  });
+
+  it('re-applies a delete of a document the CMS created that upstream also added, on the next sync (2.10h)', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    await cmsWrite(fixture, repo, BO, '{"name":"Bo"}\n', 'create bo');
+    await pushAsDeveloper(
+      root,
+      { [`site/${BO}`]: '{"name":"Bo, upstream"}\n' },
+      'dev: add bo',
+    );
+    await syncAndReapply(fixture, bundles);
+    await cmsWrite(fixture, repo, BO, null, 'delete bo');
+    const pushed = await pushAsDeveloper(
+      root,
+      { 'site/src/content/pages/home.json': '{"title":"Hello"}\n' },
+      'dev: home',
+    );
+    await syncAndReapply(fixture, bundles);
+    expect(await workHas(fixture, BO)).toBe(false);
+    expect(await parentOf(fixture)).toBe(pushed);
   });
 
   it('writes no commit and runs no index edit when nothing is saved', async () => {

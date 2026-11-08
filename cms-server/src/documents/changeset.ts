@@ -61,13 +61,18 @@ interface FileError {
 /** The changeset: the changed documents, and the documents created on cms/work in the bundle's shape. */
 export interface Changeset {
   readonly documents: readonly ChangedDocument[];
-  /** Documents that the save created and the bundle does not hold, for 2.5c's `ctx.documents`. */
+  /**
+   * A record for each changed document the bundle does not hold, whatever its status (2.10h): the saves created it, or
+   * upstream added it after the bundle was built. 2.5c's `ctx.documents` and 2.10b's re-apply find its file here. A
+   * document the bundle holds has no record.
+   */
   readonly createdRecords: readonly DocumentEntry[];
   /** Changed shared files that fail to parse and hold no bundle document. Without this, a broken new file is not listed. */
   readonly fileErrors: readonly FileError[];
 }
 
 export interface ChangesetInput {
+  /** The bundle's documents decide which changed documents get a record (2.10h): those whose key it does not hold. */
   readonly bundle: Pick<Bundle, 'documents' | 'collections'>;
   readonly repo: ChangesetRepo;
   /** The site folder of the working copy, where the files of cms/work are read. */
@@ -119,6 +124,8 @@ interface Env {
   readonly repo: ChangesetRepo;
   readonly siteFolder: string;
   readonly reads: FileReads;
+  /** The bundle's documents, by key: a changed document whose key is here gets no record (2.10h). */
+  readonly bundled: ReadonlyMap<string, DocumentEntry>;
 }
 
 /** The changed documents of the save, in the order of the changed paths, with their trailers. */
@@ -132,6 +139,7 @@ export async function changesetOf({
     repo,
     siteFolder,
     reads: new Map(),
+    bundled: bundle.documents,
   };
   const byFile = documentsByFile(bundle.documents.values());
   const documents: ChangedDocument[] = [];
@@ -245,24 +253,39 @@ async function ownFile(
   if (after === null)
     return {
       documents: [{ key, status: 'deleted', baseRevision }],
-      createdRecords: [],
+      // The file is gone, so `current` is the merge base's file: its revision is the base revision (the re-apply deletes
+      // the upstream file of this record).
+      createdRecords: recordsOf(env, {
+        key,
+        file: path,
+        format,
+        buildTime: false,
+        revision: revisionOf(current.bytes),
+      }),
     };
   const status: ChangeStatus = before === null ? 'created' : 'modified';
   const reading = readingOf(after.parse(), format);
   const document: ChangedDocument = { key, status, baseRevision, ...reading };
+  // A document that does not parse has no record: its error is reported by the changeset, and the re-apply refuses it.
   const created =
-    status === 'created' && !('error' in reading)
-      ? [
-          {
-            key,
-            file: path,
-            format,
-            buildTime: false,
-            revision: revisionOf(after.bytes),
-          },
-        ]
-      : [];
+    'error' in reading
+      ? []
+      : recordsOf(env, {
+          key,
+          file: path,
+          format,
+          buildTime: false,
+          revision: revisionOf(after.bytes),
+        });
   return { documents: [document], createdRecords: created };
+}
+
+/**
+ * The records to add for one changed document (2.10h): the record itself when the bundle does not hold its key, and none
+ * when it does, since the bundle's own entry has the file.
+ */
+function recordsOf(env: Env, record: DocumentEntry): DocumentEntry[] {
+  return env.bundled.has(record.key) ? [] : [record];
 }
 
 /**
@@ -315,19 +338,32 @@ async function sharedFile(
     const baseRevision = was?.revision ?? null;
     if (now === undefined) {
       documents.push({ key, status: 'deleted', baseRevision });
+      // A deleted id is one the merge base had, so `was` is set: its revision is the base revision (2.10h).
+      if (was !== undefined)
+        createdRecords.push(
+          ...recordsOf(env, {
+            key,
+            file: path,
+            format,
+            entryKey: id,
+            buildTime: false,
+            revision: was.revision,
+          }),
+        );
       continue;
     }
     const status: ChangeStatus = was === undefined ? 'created' : 'modified';
     documents.push({ key, status, baseRevision, value: now.entry });
-    if (status === 'created' && record === undefined)
-      createdRecords.push({
+    createdRecords.push(
+      ...recordsOf(env, {
         key,
         file: path,
         format,
         entryKey: id,
         buildTime: false,
         revision: now.revision,
-      });
+      }),
+    );
   }
   return { documents, createdRecords };
 }
