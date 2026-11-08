@@ -70,8 +70,7 @@ only.
   with `gh pr checks` or `gh run list`, and fix failures on the branch. Kill or
   classify Stryker survivors. A task is not done while a check is red or
   pending. An agent commits to its task branch, pushes it and opens the pull
-  request on its own; it never pushes to `main` directly (the CI-setup
-  exception above aside).
+  request on its own; it never pushes to `main` directly.
 - **Stryker runs in CI.** A task does not wait on a local Stryker run. A local
   run is the exception (CI-PIPELINE.md section 4) and goes through
   `scripts/stryker-run.mjs`, never `npx stryker run`.

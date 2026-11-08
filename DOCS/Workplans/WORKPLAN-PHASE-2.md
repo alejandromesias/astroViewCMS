@@ -44,7 +44,7 @@ to, so independent work can start together:
   suite. The machine has little memory (README section 3), so run **one**
   `[build]` task at a time. Unit-only tasks parallelize freely.
 - **`[user]`**: needs the user (a decision, an approval, a manual run).
-- **`[ci]`**: runs on GitHub Actions, so it is verified by a push. Each push needs the user's go-ahead (user, 2026-11-07). CI setup is committed to `main` directly, as the user allowed for this work; other tasks go through their branch.
+- **`[ci]`**: runs on GitHub Actions, so it is verified by a push. CI setup goes through a task branch and a pull request, like every other task (DOCS/README.md section 2).
 
 Rules for running tasks in parallel:
 
