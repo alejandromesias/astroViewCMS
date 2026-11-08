@@ -7,6 +7,7 @@
 // (sweep.ts) uses removeIncompleteBundles.
 import { readdir, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { type Logger, logger } from '../log.ts';
 
 /** How many complete bundles stay. */
 const KEPT_BUNDLES = 2;
@@ -48,25 +49,49 @@ export async function collectBundles(
   }
 }
 
+/** The options of `removeIncompleteBundles`. Both have the real default. */
+export interface IncompleteOptions {
+  /** Where a bundle that cannot be removed is logged. Default: the cms-server logger. */
+  readonly log?: Logger;
+  /** Removes one bundle's folders. Default: `removeBundle` in the bundles folder. */
+  readonly remove?: (bundleId: string) => Promise<void>;
+}
+
 /**
  * Removes every bundle folder, and its region folder, that has no bundle.json: the leftovers of builds that did not
- * finish. Returns the ids removed. A missing bundles folder has nothing to remove. Run at start-up only, when no build
- * writes a folder.
+ * finish. Returns the ids removed. A bundle that cannot be removed is logged with its id and error, left out of the
+ * result, and the others are still removed. A missing bundles folder has nothing to remove. Run at start-up only,
+ * when no build writes a folder.
  */
 export async function removeIncompleteBundles(
   bundlesDir: string,
+  {
+    log = logger,
+    remove = (bundleId) => removeBundle(bundlesDir, bundleId),
+  }: IncompleteOptions = {},
 ): Promise<string[]> {
   const names = await readdir(bundlesDir).catch((error: unknown) =>
     isMissing(error) ? [] : Promise.reject(error),
   );
   const removed: string[] = [];
   for (const id of new Set(names.map(bundleIdOf))) {
-    if ((await mtimeOf(path.join(bundlesDir, id, MANIFEST))) === undefined) {
-      await removeBundle(bundlesDir, id);
+    if ((await mtimeOf(path.join(bundlesDir, id, MANIFEST))) !== undefined)
+      continue;
+    try {
+      await remove(id);
       removed.push(id);
+    } catch (error: unknown) {
+      log.warn('Could not delete a leftover bundle', {
+        bundleId: id,
+        error: messageOf(error),
+      });
     }
   }
   return removed;
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 // True for the error of a path that does not exist.

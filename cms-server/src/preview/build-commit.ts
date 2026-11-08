@@ -119,17 +119,18 @@ export function createBuilder(options: BuildCommitOptions): BuildFn {
   const log = options.log ?? logger;
 
   // Kills the whole process tree of a build that ran over: `taskkill /T` on Windows, the process group elsewhere
-  // (defaultSpawn starts each build as a group leader). The build itself is killed last, so a tree kill that fails
-  // still ends the build.
-  function killBuild(child: BuildChild): void {
+  // (defaultSpawn starts each build as a group leader). On Windows the build is killed only after taskkill has
+  // finished: `taskkill /T` lists the children, and a build killed first could leave them unlisted. The build itself
+  // is killed last, so a tree kill that fails still ends the build.
+  async function killBuild(child: BuildChild): Promise<void> {
     if (child.pid !== undefined) {
       const kill = treeKillCommand(child.pid, platform);
       if (kill === undefined) signalGroup(child.pid);
       else
-        spawnBuild(kill.command, kill.args, {
+        await spawnBuild(kill.command, kill.args, {
           cwd,
           env: childEnvironment(parentEnv, 'build'),
-        });
+        }).exited;
     }
     child.kill('SIGKILL');
   }
@@ -157,7 +158,7 @@ export function createBuilder(options: BuildCommitOptions): BuildFn {
     });
     const first = await Promise.race([child.exited, expired]);
     clearTimeout(timer);
-    if (first === 'timeout') killBuild(child);
+    if (first === 'timeout') await killBuild(child);
     const exit = await child.exited;
     if (first === 'timeout') {
       return failure(exit.output, {

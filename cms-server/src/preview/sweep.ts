@@ -60,7 +60,10 @@ export async function sweepLeftovers({
     )
       worktrees.push(name);
   }
-  const bundles = await removeIncompleteBundles(path.join(siteRoot, 'bundles'));
+  const bundles = await removeIncompleteBundles(
+    path.join(siteRoot, 'bundles'),
+    { log },
+  );
   const temp = await clearFolder(path.join(siteRoot, 'tmp'), log, deleteFolder);
   return { worktrees, bundles, temp };
 }

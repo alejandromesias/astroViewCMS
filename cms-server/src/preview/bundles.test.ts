@@ -2,6 +2,7 @@ import { mkdir, readdir, utimes, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { makeTestRoot, removeTestRoot } from '../../test/helpers/git.ts';
+import type { Logger } from '../log.ts';
 import {
   collectBundles,
   removeBundle,
@@ -154,6 +155,38 @@ describe('removeIncompleteBundles', () => {
     await expect(removeIncompleteBundles(file)).rejects.toMatchObject({
       code: 'ENOTDIR',
     });
+  });
+
+  it('logs a bundle that cannot be removed, leaves it out of the result, and still removes the other one', async () => {
+    await makeBundle('a-stuck', false);
+    await makeBundle('b-other', false);
+    const warnings: { message: string; fields: unknown }[] = [];
+    const log: Logger = {
+      info: () => undefined,
+      error: () => undefined,
+      warn: (message, fields) => {
+        warnings.push({ message, fields });
+      },
+    };
+    const removed = await removeIncompleteBundles(bundles, {
+      log,
+      remove: async (bundleId) => {
+        if (bundleId === 'a-stuck')
+          throw new Error('locked by another process');
+        await removeBundle(bundles, bundleId);
+      },
+    });
+    expect(removed).toEqual(['b-other']);
+    expect((await readdir(bundles)).sort()).toEqual([
+      'a-stuck',
+      'a-stuck-regions',
+    ]);
+    expect(warnings).toEqual([
+      {
+        message: 'Could not delete a leftover bundle',
+        fields: { bundleId: 'a-stuck', error: 'locked by another process' },
+      },
+    ]);
   });
 });
 

@@ -114,7 +114,8 @@ function fakeRepo(addError?: Error, removeError?: Error): WorktreeLock {
 }
 
 // A child that ends with `exit` at once, or never ends (`'never'`) until it is killed. Each spawn is recorded. The child
-// reports CHILD_PID as its pid, or no pid at all when `withPid` is false (a process that could not be started).
+// reports CHILD_PID as its pid, or no pid at all when `withPid` is false (a process that could not be started). A
+// `taskkill` child ends at once with code 0, as a real one does once it has killed the tree.
 function fakeSpawn(
   exit: BuildExit | 'never' = { code: 0, signal: null, output: '' },
   withPid = true,
@@ -126,6 +127,7 @@ function fakeSpawn(
       end = resolve;
     });
     if (exit !== 'never') end(exit);
+    else if (command === 'taskkill') end({ code: 0, signal: null, output: '' });
     return {
       pid: withPid ? CHILD_PID : undefined,
       exited,
@@ -456,6 +458,56 @@ describe('createBuilder', () => {
     ]);
     expect(groupKills).toEqual([]);
     expect(kills).toEqual(['SIGKILL']);
+  });
+
+  it('kills the build only after the tree-kill command has finished', async () => {
+    // The taskkill child stays open until the test ends it, and the build records each kill, so the order is seen.
+    const order: string[] = [];
+    let finishTaskkill: (value: BuildExit) => void = () => undefined;
+    let endBuild: (value: BuildExit) => void = () => undefined;
+    const spawn: SpawnBuild = (command, args, options) => {
+      spawned.push({ command, args, cwd: options.cwd, env: options.env });
+      if (command === 'taskkill') {
+        return {
+          pid: undefined,
+          exited: new Promise<BuildExit>((resolve) => {
+            finishTaskkill = resolve;
+          }),
+          kill: () => undefined,
+        };
+      }
+      return {
+        pid: CHILD_PID,
+        exited: new Promise<BuildExit>((resolve) => {
+          endBuild = resolve;
+        }),
+        kill: (signal) => {
+          order.push(`build ${signal}`);
+          endBuild({ code: null, signal, output: '' });
+        },
+      };
+    };
+    const pending = builderWith({
+      spawn,
+      timeoutMs: 20,
+      platform: 'win32',
+    })(JOB);
+    await vi.waitFor(() => {
+      expect(spawned.map((call) => call.command)).toContain('taskkill');
+    });
+    expect(order).toEqual([]);
+    order.push('taskkill exited');
+    finishTaskkill({ code: 0, signal: null, output: '' });
+    expect(await pending).toEqual({
+      bundleId: 'b1',
+      dir: bundleDir('b1'),
+      ok: false,
+      firstError: {
+        file: null,
+        message: 'The build did not finish within 20 ms',
+      },
+    });
+    expect(order).toEqual(['taskkill exited', 'build SIGKILL']);
   });
 
   it('signals the process group of a build over the timeout where there is no taskkill, then the build itself', async () => {
