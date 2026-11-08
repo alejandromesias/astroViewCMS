@@ -2811,6 +2811,14 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
 - **Done when:** tests with a fake clock: it polls while active, stops when
   idle, resumes on activity, backs off on errors.
 
+#### 2.10h Re-apply records for CMS-created documents the bundle lacks — after 2.10b · [fix] (added 2026-11-08)
+
+- **Why.** Found in the review of PR #23 (Codex, `372e7f4`, `documents/reapply.ts`). If upstream independently adds a document the CMS created, the first re-apply keeps the CMS version through its `createdRecords` entry. On a later sync, before the bundle is rebuilt, that file is in the merge base, so `changesetOf` sees it as `modified` and does not list it in `createdRecords`. The lookup is empty and `planWrite` fails with "There is no document". Confirmed on `main` (`documents/changeset.ts`: a record is pushed only when the status is `created`).
+- **Change.** `changesetOf` adds a record for every changed document whose key is absent from the bundle's documents, whatever its status relative to the merge base. The check is against the bundle, not the merge base. Records for documents the bundle has stay as they are.
+- **Done when.** Tests: (1) upstream adds a CMS-created document, a first sync re-applies it, a second sync before any rebuild still re-applies an edit to it, and the save succeeds; (2) a document the bundle has and the CMS edited still gets no record; (3) a created document that a later rebuild adds to the bundle drops its record and still re-applies.
+- **File ownership.** `documents/changeset.ts` and its test, `documents/reapply.ts` only if its input changes. No edits to `git/ops.ts` beyond what the fix needs.
+- **Verify.** Targeted tests only (`documents`, `git/ops`, `git/repo`). Mutation floors apply to each changed src file (CI-PIPELINE section 3).
+
 ### 2.11 Test editor on the CMS origin — 2.11a early · 2.11b after 2.9e
 
 Design 5.8. This is still a test tool, not the phase 3 editor.
