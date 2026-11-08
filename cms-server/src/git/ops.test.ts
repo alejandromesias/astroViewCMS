@@ -1,4 +1,11 @@
-import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 import { dirname, join, posix } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -1156,6 +1163,747 @@ describe('openRepo: fetch', () => {
           "Git could not sign in to https://***@github.com/owner/repo.git. Check the machine's git credential helper or SSH key.",
       },
     });
+  });
+});
+
+// The re-apply (WORKPLAN 2.10b). The site is `site`: two JSON documents (authors/ana, pages/home) and a `file()` file
+// of two testimonials. The bundle describes them. The clone's cms/work starts at the seed commit, on main.
+const ANA = 'src/content/authors/ana.json';
+const HOME = 'src/content/pages/home.json';
+const TESTIMONIALS = 'src/content/testimonials.json';
+const PNG_HERO = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff, 0x10]);
+// A sha that is not in the clone, for the calls that refuse before they read it.
+const OLD_SHA = 'd'.repeat(40);
+
+// The bundle's documents and collections. Its other files come from the fixture bundle.
+const REAPPLY_DOCUMENTS = [
+  {
+    key: 'authors/ana',
+    file: ANA,
+    format: 'json',
+    buildTime: false,
+    revision: 'x',
+  },
+  {
+    key: 'pages/home',
+    file: HOME,
+    format: 'json',
+    buildTime: false,
+    revision: 'x',
+  },
+  {
+    key: 'testimonials/a',
+    file: TESTIMONIALS,
+    format: 'json',
+    entryKey: 'a',
+    buildTime: false,
+    revision: 'x',
+  },
+  {
+    key: 'testimonials/b',
+    file: TESTIMONIALS,
+    format: 'json',
+    entryKey: 'b',
+    buildTime: false,
+    revision: 'x',
+  },
+];
+const REAPPLY_COLLECTIONS = {
+  authors: {
+    loader: { kind: 'glob', pattern: '**/*.json', base: 'src/content/authors' },
+  },
+  pages: {
+    loader: { kind: 'glob', pattern: '**/*.json', base: 'src/content/pages' },
+  },
+  testimonials: { loader: { kind: 'file', pattern: TESTIMONIALS } },
+};
+
+// A store over the bundle above, with a new bundle id.
+async function reapplyBundles(): Promise<BundleStore> {
+  const dir = await bundleFolder({
+    'bundle.json': `${JSON.stringify({ bundleId: 'reapply-2026-11-08', siteCommit: null, protocolVersion: 2, astroVersion: '7.4.2', builtAt: '2026-11-08T00:00:00.000Z' }, null, 2)}\n`,
+    'documents.json': JSON.stringify(REAPPLY_DOCUMENTS),
+    'schema.json': JSON.stringify(REAPPLY_COLLECTIONS),
+  });
+  return createBundleStore(directoryBundleSource(dir));
+}
+
+// The site with its documents and an image, and the bundle that describes them.
+async function reapplySite(
+  root: string,
+): Promise<{ fixture: Fixture; bundles: BundleStore }> {
+  const fixture = await fixtureIn(root, 'site', {
+    'site/src/content/authors/ana.json': `${JSON.stringify({ name: 'Ana', city: 'Lisbon' }, null, 2)}\n`,
+    'site/src/content/pages/home.json': `${JSON.stringify({ title: 'Home' }, null, 2)}\n`,
+    'site/src/content/testimonials.json': `${JSON.stringify(
+      [
+        { id: 'a', text: 'Alpha' },
+        { id: 'b', text: 'Beta' },
+      ],
+      null,
+      2,
+    )}\n`,
+    'site/src/assets/uploads/old.png': 'old image\n',
+  });
+  return { fixture, bundles: await reapplyBundles() };
+}
+
+// Writes a site file as the CMS does (the working copy) and saves it on cms/work. `text` null deletes the file.
+async function cmsWrite(
+  fixture: Fixture,
+  repo: Repo,
+  file: string,
+  text: string | null,
+  message: string,
+): Promise<string | null> {
+  const target = join(fixture.state.siteFolder, file);
+  if (text === null) await rm(target);
+  else await writeFile(target, text);
+  return save(repo, [file], message);
+}
+
+// Commits and pushes a developer's change: `files` (repo paths) are written, or removed when the text is null. The
+// developer's clone is made once per test. Resolves with the pushed commit.
+async function pushAsDeveloper(
+  root: string,
+  files: Record<string, string | null>,
+  message: string,
+): Promise<string> {
+  const dir = join(root, 'developer');
+  if ((await stat(dir).catch(() => null)) === null)
+    await cloneRemote(join(root, 'remote.git'), dir);
+  for (const [file, text] of Object.entries(files)) {
+    const target = join(dir, file);
+    if (text === null) await rm(target);
+    else {
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, text);
+    }
+  }
+  await git(dir, ['add', '--all']);
+  await git(dir, ['commit', '--message', message]);
+  await git(dir, ['push', 'origin', 'HEAD']);
+  return (await git(dir, ['rev-parse', 'HEAD'])).trim();
+}
+
+// A sync as its callers run it: fetch under the lock, then re-apply on the upstream it found. `reapplyExec` replaces
+// git for the re-apply only. Resolves with the upstream and the new tip of cms/work.
+async function syncAndReapply(
+  fixture: Fixture,
+  bundles: BundleStore,
+  reapplyExec?: ExecFn,
+): Promise<{ upstream: string; tip: string }> {
+  const sync = await openRepo(fixture).locked('sync', (tx) =>
+    tx.fetch(bundles),
+  );
+  if (!sync.ok) throw new Error(sync.syncError.message);
+  const reapplier = openRepo(
+    reapplyExec === undefined ? fixture : { ...fixture, exec: reapplyExec },
+  );
+  const tip = await reapplier.locked('reapply', (tx) =>
+    tx.reapply(sync.upstream, bundles),
+  );
+  return { upstream: sync.upstream, tip };
+}
+
+// The text of a site file at cms/work.
+async function workText(fixture: Fixture, file: string): Promise<string> {
+  return git(fixture.state.repoDir, [
+    'show',
+    `${WORK}:${posix.join(fixture.config.siteDir, file)}`,
+  ]);
+}
+
+// Whether a site file exists at cms/work.
+async function workHas(fixture: Fixture, file: string): Promise<boolean> {
+  const listed = await git(fixture.state.repoDir, [
+    'ls-tree',
+    '--name-only',
+    WORK,
+    '--',
+    posix.join(fixture.config.siteDir, file),
+  ]);
+  return listed.trim() !== '';
+}
+
+// The first parent of cms/work.
+async function parentOf(fixture: Fixture): Promise<string> {
+  return (await git(fixture.state.repoDir, ['rev-parse', `${WORK}^`])).trim();
+}
+
+// Every ref under refs/heads/cms/ in the clone, sorted by git.
+async function cmsRefs(fixture: Fixture): Promise<string[]> {
+  const listed = await git(fixture.state.repoDir, [
+    'for-each-ref',
+    '--format=%(refname)',
+    'refs/heads/cms/',
+  ]);
+  return listed.split('\n').filter((ref) => ref !== '');
+}
+
+describe('openRepo: reapply (WORKPLAN 2.10b)', () => {
+  it('re-applies a save on a developer edit to another document, in one commit and with no leftover refs', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    await cmsWrite(
+      fixture,
+      repo,
+      ANA,
+      '{"name":"Ana M.","city":"Lisbon"}\n',
+      'save ana',
+    );
+    const pushed = await pushAsDeveloper(
+      root,
+      { 'site/src/content/pages/home.json': '{"title":"Hello"}\n' },
+      'dev: home',
+    );
+    const { upstream, tip } = await syncAndReapply(fixture, bundles);
+    expect(upstream).toBe(pushed);
+    expect(tip).toBe(await headOf(fixture));
+    expect(await parentOf(fixture)).toBe(pushed);
+    expect(JSON.parse(await workText(fixture, ANA))).toEqual({
+      name: 'Ana M.',
+      city: 'Lisbon',
+    });
+    expect(await workText(fixture, HOME)).toBe('{"title":"Hello"}\n');
+    // The working copy is moved too, not only the branch.
+    expect(await readFile(join(fixture.state.siteFolder, HOME), 'utf8')).toBe(
+      '{"title":"Hello"}\n',
+    );
+    expect(await repo.overwrittenSince()).toEqual(new Map());
+    expect(await cmsRefs(fixture)).toEqual(['refs/heads/cms/work']);
+  });
+
+  it('lets the saved document win whole over a developer edit to another field of it, and records the overwrite', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    await cmsWrite(
+      fixture,
+      repo,
+      ANA,
+      '{"name":"Ana M.","city":"Lisbon"}\n',
+      'save ana',
+    );
+    const pushed = await pushAsDeveloper(
+      root,
+      {
+        'site/src/content/authors/ana.json': '{"name":"Ana","city":"Porto"}\n',
+      },
+      'dev: city',
+    );
+    await syncAndReapply(fixture, bundles);
+    expect(JSON.parse(await workText(fixture, ANA))).toEqual({
+      name: 'Ana M.',
+      city: 'Lisbon',
+    });
+    expect(await repo.overwrittenSince()).toEqual(
+      new Map([['authors/ana', pushed]]),
+    );
+  });
+
+  it('keeps a developer edit to another entry of the same file() file, and the saved entry', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    await cmsWrite(
+      fixture,
+      repo,
+      TESTIMONIALS,
+      `${JSON.stringify(
+        [
+          { id: 'a', text: 'Alpha CMS' },
+          { id: 'b', text: 'Beta' },
+        ],
+        null,
+        2,
+      )}\n`,
+      'save a',
+    );
+    await pushAsDeveloper(
+      root,
+      {
+        'site/src/content/testimonials.json': `${JSON.stringify(
+          [
+            { id: 'a', text: 'Alpha' },
+            { id: 'b', text: 'Beta dev' },
+          ],
+          null,
+          2,
+        )}\n`,
+      },
+      'dev: b',
+    );
+    await syncAndReapply(fixture, bundles);
+    expect(JSON.parse(await workText(fixture, TESTIMONIALS))).toEqual([
+      { id: 'a', text: 'Alpha CMS' },
+      { id: 'b', text: 'Beta dev' },
+    ]);
+    expect(await repo.overwrittenSince()).toEqual(new Map());
+  });
+
+  it('recreates a document the CMS edited that the developer deleted, and records the overwrite', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    await cmsWrite(
+      fixture,
+      repo,
+      ANA,
+      '{"name":"Ana M.","city":"Lisbon"}\n',
+      'save ana',
+    );
+    const pushed = await pushAsDeveloper(
+      root,
+      { 'site/src/content/authors/ana.json': null },
+      'dev: remove ana',
+    );
+    await syncAndReapply(fixture, bundles);
+    expect(JSON.parse(await workText(fixture, ANA))).toEqual({
+      name: 'Ana M.',
+      city: 'Lisbon',
+    });
+    expect(await repo.overwrittenSince()).toEqual(
+      new Map([['authors/ana', pushed]]),
+    );
+  });
+
+  it('keeps a document the CMS deleted deleted, though the developer edited it, and records the overwrite', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    await cmsWrite(fixture, repo, HOME, null, 'delete home');
+    const pushed = await pushAsDeveloper(
+      root,
+      { 'site/src/content/pages/home.json': '{"title":"Hello"}\n' },
+      'dev: home',
+    );
+    await syncAndReapply(fixture, bundles);
+    expect(await workHas(fixture, HOME)).toBe(false);
+    expect(await repo.overwrittenSince()).toEqual(
+      new Map([['pages/home', pushed]]),
+    );
+  });
+
+  it('writes a saved document into the developer reformatting of its file, in that formatting', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    await cmsWrite(
+      fixture,
+      repo,
+      ANA,
+      '{"name":"Ana M.","city":"Lisbon"}\n',
+      'save ana',
+    );
+    await pushAsDeveloper(
+      root,
+      {
+        'site/src/content/authors/ana.json': `${JSON.stringify({ name: 'Ana', city: 'Lisbon' }, null, 4)}\n`,
+      },
+      'dev: reformat',
+    );
+    await syncAndReapply(fixture, bundles);
+    expect(await workText(fixture, ANA)).toBe(
+      `${JSON.stringify({ name: 'Ana M.', city: 'Lisbon' }, null, 4)}\n`,
+    );
+  });
+
+  it('re-applies a save as a no-op when the developer pushed nothing the save touches', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    await cmsWrite(
+      fixture,
+      repo,
+      ANA,
+      '{"name":"Ana M.","city":"Lisbon"}\n',
+      'save ana',
+    );
+    const pushed = await pushAsDeveloper(
+      root,
+      { 'docs/notes.md': 'notes\n' },
+      'dev: notes',
+    );
+    await syncAndReapply(fixture, bundles);
+    expect(JSON.parse(await workText(fixture, ANA))).toEqual({
+      name: 'Ana M.',
+      city: 'Lisbon',
+    });
+    expect(await parentOf(fixture)).toBe(pushed);
+    expect(await repo.overwrittenSince()).toEqual(new Map());
+  });
+
+  it('finishes, at start-up, a re-apply that a crash stopped after cms/work-next was made', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    await cmsWrite(
+      fixture,
+      repo,
+      ANA,
+      '{"name":"Ana M.","city":"Lisbon"}\n',
+      'save ana',
+    );
+    const before = await headOf(fixture);
+    await pushAsDeveloper(
+      root,
+      { 'site/src/content/pages/home.json': '{"title":"Hello"}\n' },
+      'dev: home',
+    );
+    // The move's reset fails, as if the process stopped after cms/work-next and cms/work-prev were made.
+    const crash: ExecFn = (file, args, options) =>
+      args.includes('reset')
+        ? Promise.reject(new Error('crash'))
+        : realExec(file, args, options);
+    await expect(syncAndReapply(fixture, bundles, crash)).rejects.toThrow(
+      'crash',
+    );
+    expect(await cmsRefs(fixture)).toEqual([
+      'refs/heads/cms/work',
+      'refs/heads/cms/work-next',
+      'refs/heads/cms/work-prev',
+    ]);
+    expect(await headOf(fixture)).toBe(before);
+    const next = (
+      await git(fixture.state.repoDir, [
+        'rev-parse',
+        'refs/heads/cms/work-next',
+      ])
+    ).trim();
+    await ensureRepo({
+      config: fixture.config,
+      cmsDir: fixture.cmsDir,
+      log: silentLog(),
+    });
+    expect(await headOf(fixture)).toBe(next);
+    expect(await cmsRefs(fixture)).toEqual(['refs/heads/cms/work']);
+    expect(JSON.parse(await workText(fixture, ANA))).toEqual({
+      name: 'Ana M.',
+      city: 'Lisbon',
+    });
+  });
+
+  it("keeps the first sync's CMS-Overwrote trailer through a second sync", async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    await cmsWrite(
+      fixture,
+      repo,
+      ANA,
+      '{"name":"Ana M.","city":"Lisbon"}\n',
+      'save ana',
+    );
+    const first = await pushAsDeveloper(
+      root,
+      {
+        'site/src/content/authors/ana.json': '{"name":"Ana","city":"Porto"}\n',
+      },
+      'dev: city',
+    );
+    await syncAndReapply(fixture, bundles);
+    const second = await pushAsDeveloper(
+      root,
+      { 'docs/notes.md': 'later\n' },
+      'dev: notes',
+    );
+    await syncAndReapply(fixture, bundles);
+    expect(await parentOf(fixture)).toBe(second);
+    expect(await repo.overwrittenSince()).toEqual(
+      new Map([['authors/ana', first]]),
+    );
+  });
+
+  it('recreates a file() file the developer deleted, with only the saved entries', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    await cmsWrite(
+      fixture,
+      repo,
+      TESTIMONIALS,
+      `${JSON.stringify(
+        [
+          { id: 'a', text: 'Alpha CMS' },
+          { id: 'b', text: 'Beta' },
+        ],
+        null,
+        2,
+      )}\n`,
+      'save a',
+    );
+    const pushed = await pushAsDeveloper(
+      root,
+      { 'site/src/content/testimonials.json': null },
+      'dev: remove testimonials',
+    );
+    await syncAndReapply(fixture, bundles);
+    expect(JSON.parse(await workText(fixture, TESTIMONIALS))).toEqual([
+      { id: 'a', text: 'Alpha CMS' },
+    ]);
+    expect(await repo.overwrittenSince()).toEqual(
+      new Map([['testimonials/a', pushed]]),
+    );
+  });
+
+  it('adds a saved entry back when the developer removed it from its file', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    await cmsWrite(
+      fixture,
+      repo,
+      TESTIMONIALS,
+      `${JSON.stringify(
+        [
+          { id: 'a', text: 'Alpha CMS' },
+          { id: 'b', text: 'Beta' },
+        ],
+        null,
+        2,
+      )}\n`,
+      'save a',
+    );
+    const pushed = await pushAsDeveloper(
+      root,
+      {
+        'site/src/content/testimonials.json': `${JSON.stringify([{ id: 'b', text: 'Beta' }], null, 2)}\n`,
+      },
+      'dev: drop a',
+    );
+    await syncAndReapply(fixture, bundles);
+    expect(JSON.parse(await workText(fixture, TESTIMONIALS))).toEqual([
+      { id: 'b', text: 'Beta' },
+      { id: 'a', text: 'Alpha CMS' },
+    ]);
+    expect(await repo.overwrittenSince()).toEqual(
+      new Map([['testimonials/a', pushed]]),
+    );
+  });
+
+  it('leaves a duplicate when the developer renamed a document the CMS edited (an accepted limit)', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    await cmsWrite(fixture, repo, HOME, '{"title":"Home CMS"}\n', 'save home');
+    await pushAsDeveloper(
+      root,
+      {
+        'site/src/content/pages/home.json': null,
+        'site/src/content/pages/home-2.json': '{"title":"Home"}\n',
+      },
+      'dev: rename home',
+    );
+    await syncAndReapply(fixture, bundles);
+    expect(JSON.parse(await workText(fixture, HOME))).toEqual({
+      title: 'Home CMS',
+    });
+    expect(await workText(fixture, 'src/content/pages/home-2.json')).toBe(
+      '{"title":"Home"}\n',
+    );
+  });
+
+  it('restores a saved image from the old tip, and removes an image the save deleted', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    const siteFolder = fixture.state.siteFolder;
+    await mkdir(join(siteFolder, 'src/assets/uploads'), { recursive: true });
+    await writeFile(join(siteFolder, 'src/assets/uploads/hero.png'), PNG_HERO);
+    await rm(join(siteFolder, 'src/assets/uploads/old.png'));
+    await save(
+      repo,
+      ['src/assets/uploads/hero.png', 'src/assets/uploads/old.png'],
+      'save images',
+    );
+    await pushAsDeveloper(root, { 'docs/notes.md': 'notes\n' }, 'dev: notes');
+    await syncAndReapply(fixture, bundles);
+    const restored = await readFile(
+      join(fixture.state.siteFolder, 'src/assets/uploads/hero.png'),
+    );
+    expect(restored.equals(PNG_HERO)).toBe(true);
+    expect(await workHas(fixture, 'src/assets/uploads/old.png')).toBe(false);
+  });
+
+  it('moves cms/work to upstream, with no commit, when nothing is saved', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const pushed = await pushAsDeveloper(
+      root,
+      { 'site/src/content/pages/home.json': '{"title":"Hello"}\n' },
+      'dev: home',
+    );
+    const { tip } = await syncAndReapply(fixture, bundles);
+    expect(tip).toBe(pushed);
+    expect(await headOf(fixture)).toBe(pushed);
+    expect(await cmsRefs(fixture)).toEqual(['refs/heads/cms/work']);
+  });
+
+  it('builds the commit in a temporary index under tmp, which is empty again after the move', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    await cmsWrite(
+      fixture,
+      repo,
+      ANA,
+      '{"name":"Ana M.","city":"Lisbon"}\n',
+      'save ana',
+    );
+    await pushAsDeveloper(
+      root,
+      { 'site/src/content/pages/home.json': '{"title":"Hello"}\n' },
+      'dev: home',
+    );
+    const calls: Array<{ args: readonly string[]; env: NodeJS.ProcessEnv }> =
+      [];
+    const recording: ExecFn = (file, args, options) => {
+      calls.push({ args, env: options.env });
+      return realExec(file, args, options);
+    };
+    await syncAndReapply(fixture, bundles, recording);
+    const tmp = join(fixture.cmsDir, 'demo', 'tmp');
+    const index = calls.find((call) => call.args.includes('read-tree'))?.env
+      .GIT_INDEX_FILE;
+    expect(index?.startsWith(tmp)).toBe(true);
+    expect(
+      calls.find((call) => call.args.includes('write-tree'))?.env
+        .GIT_INDEX_FILE,
+    ).toBe(index);
+    expect(await readdir(tmp)).toEqual([]);
+    // Nothing was deleted, so no removal runs; the saved document is added by the index.
+    expect(calls.some((call) => call.args.includes('--force-remove'))).toBe(
+      false,
+    );
+    expect(calls.some((call) => call.args.includes('--add'))).toBe(true);
+  });
+
+  it('writes a document the CMS created into its own file, on top of the developer push', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    await cmsWrite(
+      fixture,
+      repo,
+      'src/content/authors/bo.json',
+      '{"name":"Bo"}\n',
+      'create bo',
+    );
+    const pushed = await pushAsDeveloper(
+      root,
+      { 'site/src/content/pages/home.json': '{"title":"Hello"}\n' },
+      'dev: home',
+    );
+    await syncAndReapply(fixture, bundles);
+    expect(
+      JSON.parse(await workText(fixture, 'src/content/authors/bo.json')),
+    ).toEqual({ name: 'Bo' });
+    expect(await parentOf(fixture)).toBe(pushed);
+    expect(await repo.overwrittenSince()).toEqual(new Map());
+  });
+
+  it('writes no commit and runs no index edit when nothing is saved', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const pushed = await pushAsDeveloper(
+      root,
+      { 'site/src/content/pages/home.json': '{"title":"Hello"}\n' },
+      'dev: home',
+    );
+    const calls: Array<{ args: readonly string[] }> = [];
+    const recording: ExecFn = (file, args, options) => {
+      calls.push({ args });
+      return realExec(file, args, options);
+    };
+    const { tip } = await syncAndReapply(fixture, bundles, recording);
+    expect(tip).toBe(pushed);
+    expect(calls.some((call) => call.args.includes('commit-tree'))).toBe(false);
+    expect(calls.some((call) => call.args.includes('update-index'))).toBe(
+      false,
+    );
+  });
+
+  it('needs no bundle when nothing is saved, and moves cms/work to upstream', async () => {
+    const root = await newRoot();
+    const { fixture } = await reapplySite(root);
+    const pushed = await pushAsDeveloper(
+      root,
+      { 'site/src/content/pages/home.json': '{"title":"Hello"}\n' },
+      'dev: home',
+    );
+    const none: BundleStore = { current: async () => null };
+    const { tip } = await syncAndReapply(fixture, none);
+    expect(tip).toBe(pushed);
+  });
+
+  it('refuses an upstream that is not a ref name', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    await expect(
+      openRepo(fixture).locked('reapply', (tx) => tx.reapply('--all', bundles)),
+    ).rejects.toThrow('invalid ref: "--all"');
+  });
+
+  it('refuses to re-apply when cms/work is not checked out', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    await git(fixture.state.repoDir, ['checkout', '--detach']);
+    await expect(
+      openRepo(fixture).locked('reapply', async (tx) =>
+        tx.reapply(await headOf(fixture), bundles),
+      ),
+    ).rejects.toThrow(
+      'HEAD is on HEAD, not cms/work. A re-apply needs cms/work checked out.',
+    );
+  });
+
+  it('refuses to re-apply saves without a bundle, and leaves cms/work where it was', async () => {
+    const root = await newRoot();
+    const { fixture } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    await cmsWrite(
+      fixture,
+      repo,
+      ANA,
+      '{"name":"Ana M.","city":"Lisbon"}\n',
+      'save ana',
+    );
+    const before = await headOf(fixture);
+    await pushAsDeveloper(root, { 'docs/notes.md': 'notes\n' }, 'dev: notes');
+    const none: BundleStore = { current: async () => null };
+    await expect(syncAndReapply(fixture, none)).rejects.toThrow(
+      'There is no bundle to re-apply the saves on. The saves stay on cms/work.',
+    );
+    expect(await headOf(fixture)).toBe(before);
+  });
+
+  it('refuses to re-apply when the config given to openRepo has no media or collections', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const bare: Pick<CmsConfig, 'site' | 'remote' | 'branch' | 'siteDir'> = {
+      site: fixture.config.site,
+      remote: fixture.config.remote,
+      branch: fixture.config.branch,
+      siteDir: fixture.config.siteDir,
+    };
+    await expect(
+      openRepo({ ...fixture, config: bare }).locked('reapply', (tx) =>
+        tx.reapply(OLD_SHA, bundles),
+      ),
+    ).rejects.toThrow(
+      'A re-apply needs media and collections in the config given to openRepo',
+    );
+    // Media alone is not enough: the collections are read too.
+    const noCollections = { ...bare, media: fixture.config.media };
+    await expect(
+      openRepo({ ...fixture, config: noCollections }).locked('reapply', (tx) =>
+        tx.reapply(OLD_SHA, bundles),
+      ),
+    ).rejects.toThrow(
+      'A re-apply needs media and collections in the config given to openRepo',
+    );
   });
 });
 

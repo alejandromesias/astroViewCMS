@@ -1,11 +1,12 @@
 // Fakes for the save stages (WORKPLAN 2.5c): a SaveContext whose git, preview and file writer are spies, and whose
 // bundle holds the documents the test gives. A stage that reads real files passes its own working copy as siteFolder.
 // Test code only.
+
+import type { FieldError, MediaInfo } from 'preview-protocol';
 import { vi } from 'vitest';
 import type { Bundle, DocumentEntry } from '../../src/bundle/read.ts';
 import type { ChangesetRepo } from '../../src/documents/changeset.ts';
 import type { RepoTx } from '../../src/git/ops.ts';
-import type { FieldError, MediaInfo } from 'preview-protocol';
 import type { PreviewClient, SaveContext } from '../../src/save/context.ts';
 import { silentLog } from './repo.ts';
 
@@ -64,6 +65,9 @@ export function fakeTx(overrides: Partial<RepoTx> = {}): RepoTx {
     worktreeRemove: vi.fn(async () => {}),
     fetch: vi.fn(async () => {
       throw new Error('fetch is not used by a save');
+    }),
+    reapply: vi.fn(async () => {
+      throw new Error('reapply is not used by a save');
     }),
     ...overrides,
   };
