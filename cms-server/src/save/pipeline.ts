@@ -12,12 +12,14 @@ import type { SaveChange } from './body.ts';
 import { checkRevisions } from './conflicts.ts';
 import type {
   AfterCommitHook,
+  DeleteGuard,
   MediaFiles,
   PreviewClient,
   SaveAnswer,
   SaveContext,
   SaveStage,
 } from './context.ts';
+import { checkDeleteGuard, updateIndexAfterCommit } from './delete-guard.ts';
 import { planChanges } from './plan.ts';
 import { validateChanges } from './validate.ts';
 import { writeChanges } from './write.ts';
@@ -25,7 +27,7 @@ import { writeChanges } from './write.ts';
 /** The stages of a save, in order. */
 export const SAVE_STAGES: readonly SaveStage[] = [
   checkRevisions,
-  // 2.6b: the delete guard (PHASE-2-DESIGN 4.3) goes here.
+  checkDeleteGuard,
   planChanges,
   validateChanges,
   // 2.7b: staged images move into place here. 2.7c: warnings are collected here.
@@ -42,6 +44,8 @@ export interface SaveInput {
   readonly media: MediaFiles;
   readonly log: Logger;
   readonly afterCommit?: readonly AfterCommitHook[];
+  /** The app's delete guard (2.6b): one per app, so that its index is built once per bundle. */
+  readonly guard: DeleteGuard;
 }
 
 /** The parts of a save that a test replaces: the stages, and the file writer (the real one by default). */
@@ -105,7 +109,8 @@ export function saveChanges(
         media: input.media,
         log: input.log,
         writeFile,
-        afterCommit: input.afterCommit ?? [],
+        afterCommit: [updateIndexAfterCommit, ...(input.afterCommit ?? [])],
+        guard: input.guard,
         reads: new Map(),
         stored: new Map(),
         documents: new Map(),

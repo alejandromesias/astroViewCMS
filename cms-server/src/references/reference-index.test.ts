@@ -5,6 +5,7 @@ import { readBundle } from '../bundle/read.ts';
 import {
   type CollectionSchemaOf,
   createReferenceIndex,
+  targetsOf,
 } from './reference-index.ts';
 
 /** The identity of the fixture bundle, as readBundle takes it. */
@@ -21,6 +22,58 @@ async function sampleSchemaOf(): Promise<CollectionSchemaOf> {
   const bundle = await readBundle(FIXTURE_BUNDLE, identity());
   return (name) => bundle.collections.get(name)?.schema;
 }
+
+describe('targetsOf', () => {
+  // One collection with an author reference, and one that names no collection in its reference.
+  const schemas: Record<string, Record<string, unknown>> = {
+    blog: {
+      type: 'object',
+      properties: {
+        author: { type: 'string', cms: 'reference', collection: 'authors' },
+      },
+    },
+    loose: {
+      type: 'object',
+      properties: { author: { type: 'string', cms: 'reference' } },
+    },
+  };
+  const schemaOf: CollectionSchemaOf = (name) =>
+    Object.hasOwn(schemas, name) ? schemas[name] : undefined;
+
+  it.each([
+    [
+      'a string names the author',
+      'blog/blog-1',
+      { author: 'ana' },
+      ['authors/ana'],
+    ],
+    [
+      'an object names the author by its id',
+      'blog/blog-1',
+      { author: { id: 'ana' } },
+      ['authors/ana'],
+    ],
+    ['a number names none', 'blog/blog-1', { author: 5 }, []],
+    ['a missing field names none', 'blog/blog-1', { title: 'x' }, []],
+    ['no value names none', 'blog/blog-1', undefined, []],
+    [
+      'a collection with no schema names none',
+      'authors/ana',
+      { author: 'ana' },
+      [],
+    ],
+    ['a key with no collection names none', 'blog', { author: 'ana' }, []],
+    ['a data key names none', 'data:src/x.json', { author: 'ana' }, []],
+    [
+      'a reference that names no collection names none',
+      'loose/x',
+      { author: 'ana' },
+      [],
+    ],
+  ])('%s', (_label, key, value, expected) => {
+    expect(targetsOf(key, value, schemaOf)).toStrictEqual(new Set(expected));
+  });
+});
 
 describe('the reference index on the sample schemas', () => {
   it('lists the posts that name an author, as a string or as { id }', async () => {
