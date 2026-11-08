@@ -1172,8 +1172,6 @@ const ANA = 'src/content/authors/ana.json';
 const HOME = 'src/content/pages/home.json';
 const TESTIMONIALS = 'src/content/testimonials.json';
 const PNG_HERO = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff, 0x10]);
-// A sha that is not in the clone, for the calls that refuse before they read it.
-const OLD_SHA = 'd'.repeat(40);
 
 // The bundle's documents and collections. Its other files come from the fixture bundle.
 const REAPPLY_DOCUMENTS = [
@@ -1877,33 +1875,6 @@ describe('openRepo: reapply (WORKPLAN 2.10b)', () => {
       'There is no bundle to re-apply the saves on. The saves stay on cms/work.',
     );
     expect(await headOf(fixture)).toBe(before);
-  });
-
-  it('refuses to re-apply when the config given to openRepo has no media or collections', async () => {
-    const root = await newRoot();
-    const { fixture, bundles } = await reapplySite(root);
-    const bare: Pick<CmsConfig, 'site' | 'remote' | 'branch' | 'siteDir'> = {
-      site: fixture.config.site,
-      remote: fixture.config.remote,
-      branch: fixture.config.branch,
-      siteDir: fixture.config.siteDir,
-    };
-    await expect(
-      openRepo({ ...fixture, config: bare }).locked('reapply', (tx) =>
-        tx.reapply(OLD_SHA, bundles),
-      ),
-    ).rejects.toThrow(
-      'A re-apply needs media and collections in the config given to openRepo',
-    );
-    // Media alone is not enough: the collections are read too.
-    const noCollections = { ...bare, media: fixture.config.media };
-    await expect(
-      openRepo({ ...fixture, config: noCollections }).locked('reapply', (tx) =>
-        tx.reapply(OLD_SHA, bundles),
-      ),
-    ).rejects.toThrow(
-      'A re-apply needs media and collections in the config given to openRepo',
-    );
   });
 });
 

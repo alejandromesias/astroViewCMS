@@ -12,6 +12,7 @@ import {
   removeTestRoot,
   seedRemote,
 } from '../../test/helpers/git.ts';
+import { parseConfig } from '../config/schema.ts';
 import { openRepo } from '../git/ops.ts';
 import { ensureRepo } from '../git/repo.ts';
 import type { Logger } from '../log.ts';
@@ -48,13 +49,18 @@ afterEach(async () => {
 async function setUp() {
   const remote = await seedRemote(root);
   const cmsDir = path.join(root, '.cms');
-  const config = {
+  const config = parseConfig({
     site: SITE,
     remote,
     branch: 'main',
     siteDir: '.',
+    previewSiteConfig: 'preview-render-server/sites/sample-site.config.ts',
+    origins: {
+      cms: 'http://cms.localhost:4400',
+      preview: 'http://preview.localhost:4401',
+    },
     git: { author: 'Developer <developer@example.invalid>' },
-  };
+  });
   const state = await ensureRepo({ config, cmsDir, log: SILENT });
   const repo = openRepo({ config, cmsDir, state });
   // The builder's warnings are kept: git must remove a built worktree itself, with no fallback to a Node delete.

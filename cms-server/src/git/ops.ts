@@ -72,12 +72,11 @@ export type FetchResult =
   | { ok: false; syncError: SyncError };
 
 export interface OpenRepoOptions {
-  /**
-   * `collections` and `media` are read only by the re-apply (2.10b). A caller that never re-applies may leave them out;
-   * a re-apply without them is refused, rather than guessed.
-   */
-  config: Pick<CmsConfig, 'site' | 'remote' | 'branch' | 'siteDir'> &
-    Partial<Pick<CmsConfig, 'collections' | 'media'>>;
+  /** `collections` and `media` are read by the re-apply (2.10b): the entry formats and the saved images' folder. */
+  config: Pick<
+    CmsConfig,
+    'site' | 'remote' | 'branch' | 'siteDir' | 'collections' | 'media'
+  >;
   /** The `.cms` folder. Worktrees go in `<cmsDir>/<site>/worktrees`. */
   cmsDir: string;
   /** What `ensureRepo` returned for this start. */
@@ -283,7 +282,7 @@ export function openRepo({
     bundles: BundleStore,
   ): Promise<string> {
     assertRef(upstream);
-    const { media, collections } = reapplyConfigOf(config);
+    const { media, collections } = config;
     const head = (await git(['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
     if (head !== WORK)
       throw new Error(
@@ -482,19 +481,6 @@ export function openRepo({
     mergeBase,
     overwrittenSince,
   };
-}
-
-// The config a re-apply reads (2.10b): the saved images' folder and the collections' entry formats. Without them the
-// re-apply is refused, since it would have to guess where the images are.
-function reapplyConfigOf(config: OpenRepoOptions['config']): {
-  media: CmsConfig['media'];
-  collections: CmsConfig['collections'];
-} {
-  if (config.media === undefined || config.collections === undefined)
-    throw new Error(
-      'A re-apply needs media and collections in the config given to openRepo',
-    );
-  return { media: config.media, collections: config.collections };
 }
 
 // The current bundle, or null when there is none or its files cannot be read. An unreadable bundle counts as none,
