@@ -80,22 +80,27 @@ jobs:
         run: npm ci
       - name: Install Chromium for the browser suite
         run: npx playwright install --with-deps chromium
+      # Each run keeps Vitest's output (the failure diagnostics) in e2e-output/. shell: bash
+      # sets pipefail, so a failing suite still fails the step through tee.
       - name: cms-server end-to-end
-        run: npm run test:e2e -w cms-server
+        shell: bash
+        run: |
+          mkdir -p e2e-output
+          npm run test:e2e -w cms-server 2>&1 | tee e2e-output/cms-server.log
       - name: preview end-to-end and budgets
-        run: npm run test:e2e -w preview-render-server
+        shell: bash
+        run: npm run test:e2e -w preview-render-server 2>&1 | tee e2e-output/preview-e2e.log
       - name: browser suite
-        run: npm run test:browser -w preview-render-server
-      - name: Upload the Playwright output of a failed run
+        shell: bash
+        run: npm run test:browser -w preview-render-server 2>&1 | tee e2e-output/browser.log
+      - name: Upload the test output of a failed run
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: e2e-failure-output
-          path: |
-            **/test-results
-            **/playwright-report
+          name: e2e-output
+          path: e2e-output/
           retention-days: 14
-          if-no-files-found: ignore
+          if-no-files-found: warn
 
   mutation-diff:
     # Stryker on the source files this branch changed (against origin/main). Blocks when the changed set scores
