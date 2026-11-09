@@ -162,6 +162,58 @@ describe('readState', () => {
   });
 });
 
+describe('createStateStore: the writes run in call order', () => {
+  it('a slow first write does not let the older snapshot land last: the second one is the last written', async () => {
+    const file = path.join(dir, 'state.json');
+    const started: string[] = [];
+    const landed: string[] = [];
+    let releaseFirst: () => void = () => undefined;
+    const write = async (_file: string, text: string): Promise<void> => {
+      started.push(text);
+      if (started.length === 1) {
+        await new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+        });
+      }
+      landed.push(text);
+    };
+    const store = createStateStore(file, emptyState(), spyLog(), write);
+    const older = encodeState(servedState());
+    const newer = encodeState(emptyState());
+    const first = store.set(servedState());
+    const second = store.set(emptyState());
+    // The state is the newest one at once, and the second write waits for the first.
+    expect(store.get()).toStrictEqual(emptyState());
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(started).toStrictEqual([older]);
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(landed).toStrictEqual([older, newer]);
+  });
+
+  it('a failed first write is logged, and the second write still lands', async () => {
+    const file = path.join(dir, 'state.json');
+    const landed: string[] = [];
+    let calls = 0;
+    const write = async (_file: string, text: string): Promise<void> => {
+      calls += 1;
+      if (calls === 1) throw new Error('disk full');
+      landed.push(text);
+    };
+    const log = spyLog();
+    const store = createStateStore(file, emptyState(), log, write);
+    await Promise.all([store.set(servedState()), store.set(emptyState())]);
+    expect(log.error).toHaveBeenCalledWith(
+      'Could not write the preview state',
+      {
+        file,
+        error: 'disk full',
+      },
+    );
+    expect(landed).toStrictEqual([encodeState(emptyState())]);
+  });
+});
+
 describe('createStateStore', () => {
   it('writes the file on set, and get answers the state it was given', async () => {
     const file = path.join(dir, 'nested', 'state.json');

@@ -122,26 +122,44 @@ export interface StateStore {
   keptBundles(): ReadonlySet<string>;
 }
 
-/** A store over `file`, starting from `initial` (what readState gave). */
+/** Replaces the state file's text: its folder is made first, then the file is written atomically. The store's default writer. */
+async function writeSnapshot(file: string, text: string): Promise<void> {
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFileAtomic(file, text);
+}
+
+/**
+ * A store over `file`, starting from `initial` (what readState gave). `write` puts a snapshot's text in the file; the
+ * default is writeSnapshot. The writes run one after another, so the last set() is the last file written.
+ */
 export function createStateStore(
   file: string,
   initial: PreviewState,
   log: Logger = logger,
+  write: (file: string, text: string) => Promise<void> = writeSnapshot,
 ): StateStore {
   let state = initial;
+  // The last write asked for. The next one starts only after it has settled, so an older snapshot never lands last.
+  let writes: Promise<void> = Promise.resolve();
   return {
     get: () => state,
-    async set(next) {
+    set(next) {
+      // The state and the text are taken now, in call order: the file gets the snapshot of this call, whenever it writes.
       state = next;
-      try {
-        await mkdir(path.dirname(file), { recursive: true });
-        await writeFileAtomic(file, encodeState(next));
-      } catch (error: unknown) {
-        log.error('Could not write the preview state', {
-          file,
-          error: messageOf(error),
-        });
-      }
+      const text = encodeState(next);
+      // A write that fails is logged here, so the link never rejects and the writes after it still run.
+      const written = writes.then(async () => {
+        try {
+          await write(file, text);
+        } catch (error: unknown) {
+          log.error('Could not write the preview state', {
+            file,
+            error: messageOf(error),
+          });
+        }
+      });
+      writes = written;
+      return written;
     },
     keptBundles() {
       const kept = new Set<string>();
