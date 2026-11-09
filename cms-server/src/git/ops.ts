@@ -17,6 +17,8 @@ import { type FileOp, planWrite } from '../documents/plan-write.ts';
 import {
   commitParagraphs,
   planReapply,
+  type RenamedDocument,
+  renamedDocuments,
   trailersOf,
 } from '../documents/reapply.ts';
 import {
@@ -71,6 +73,16 @@ export type FetchResult =
     }
   | { ok: false; syncError: SyncError };
 
+/**
+ * What `tx.reapply` returns (2.10b, 2.10j). `tip` is the new tip of `cms/work`, `upstream` itself when nothing is saved.
+ * `renamed` lists the saved documents whose file upstream renamed. The save still writes the old path, so the list is
+ * a warning only (the accepted limit of 2.10b).
+ */
+export interface ReapplyResult {
+  readonly tip: string;
+  readonly renamed: readonly RenamedDocument[];
+}
+
 export interface OpenRepoOptions {
   /** `collections` and `media` are read by the re-apply (2.10b): the entry formats and the saved images' folder. */
   config: Pick<
@@ -105,10 +117,11 @@ export interface RepoTx {
   /**
    * Rebuilds `cms/work` as `upstream` plus the saved changeset (2.10b): one commit on `upstream`, with the saved
    * documents written into the upstream text. Returns the new tip of `cms/work` (`upstream` itself when nothing is
-   * saved). Built with plumbing, so no worktree changes until the move. Throws when a saved document cannot be read or
-   * there is no bundle; the saves then stay on `cms/work`. Read `bundles` once, for the documents of the save.
+   * saved) and the saved documents upstream renamed (2.10j). Built with plumbing, so no worktree changes until the
+   * move. Throws when a saved document cannot be read or there is no bundle; the saves then stay on `cms/work`. Read
+   * `bundles` once, for the documents of the save.
    */
-  reapply(upstream: string, bundles: BundleStore): Promise<string>;
+  reapply(upstream: string, bundles: BundleStore): Promise<ReapplyResult>;
   /**
    * Puts `paths` back as HEAD has them (2.5c): unstages them, checks out the ones HEAD has, and removes the ones it
    * does not have (files a failed save wrote). Site-relative, as `commitSave`. A path that matches nothing is ignored.
@@ -138,10 +151,11 @@ export interface Repo {
 /** The trailer that a re-apply save writes for each document it overwrote (2.10b). */
 const OVERWROTE_TRAILER = 'CMS-Overwrote';
 
-/** What a re-apply writes into the index: the planned file operations, and the trailers of the commit. */
+/** What a re-apply writes into the index: the planned file operations, the trailers of the commit, and the renames (2.10j). */
 interface Saves {
   readonly ops: readonly FileOp[];
   readonly trailers: ReadonlyMap<string, string>;
+  readonly renamed: readonly RenamedDocument[];
 }
 
 /** Makes the operations for one start. `exec` and `mutex` default to the real git and a new lock. */
@@ -226,15 +240,16 @@ export function openRepo({
     return parseOverwrote(output);
   }
 
-  // The file operations and trailers of the saved changeset, planned on `upstream` (2.10b). Nothing is planned when no
-  // path changed. Reads only, so a save that cannot be planned fails before anything is written.
+  // The file operations, trailers and renamed documents of the saved changeset, planned on `upstream` (2.10b, 2.10j).
+  // Nothing is planned when no path changed. Reads only, so a save that cannot be planned fails before anything is written.
   async function plannedSaves(
     changed: readonly ChangedPath[],
     upstream: string,
     bundles: BundleStore,
     configured: CmsConfig['collections'],
   ): Promise<Saves> {
-    if (changed.length === 0) return { ops: [], trailers: new Map() };
+    if (changed.length === 0)
+      return { ops: [], trailers: new Map(), renamed: [] };
     const bundle = await bundles.current();
     if (bundle === null)
       throw new Error(
@@ -247,6 +262,12 @@ export function openRepo({
       siteFolder: state.siteFolder,
     });
     const base = await mergeBase();
+    // The renames upstream made since the merge base (2.10j). Git's rename detection is on by `-M`, not by config, so a
+    // rename is found whatever `diff.renames` says. Repo-wide, so a rename into or out of the site folder shows too.
+    const renames = parseRenames(
+      await git(['diff', '-M', '--name-status', '-z', base, upstream]),
+      scope,
+    );
     // The bundle's documents, the documents this save created (not in the bundle yet), and the ones it deleted (their
     // tombstones): all have a file.
     const records = new Map<string, DocumentEntry>(bundle.documents);
@@ -272,17 +293,18 @@ export function openRepo({
     return {
       ops,
       trailers: trailersOf(changeset, plan.overwritten, upstream, older),
+      renamed: renamedDocuments(changeset.documents, records, renames),
     };
   }
 
   // Rebuilds `cms/work` as `upstream` plus the saved changeset, in one commit (2.10b, PHASE-2-DESIGN 4.2). Runs under
   // the lock, with `cms/work` checked out. The commit is built with plumbing: a temporary index in its own folder under
   // `tmp/`, outside the clone's files, so no worktree is touched. `cms/work-next` exists only once the commit is
-  // complete, and then `moveWork` makes `cms/work` it. Returns the new tip.
+  // complete, and then `moveWork` makes `cms/work` it. Returns the new tip and the renamed documents (2.10j).
   async function reapply(
     upstream: string,
     bundles: BundleStore,
-  ): Promise<string> {
+  ): Promise<ReapplyResult> {
     assertRef(upstream);
     const { media, collections } = config;
     const head = (await git(['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
@@ -344,7 +366,7 @@ export function openRepo({
             ).trim();
       await git(['update-ref', WORK_NEXT, next]);
       await moveWork(git, oldTip, WORK_NEXT);
-      return next;
+      return { tip: next, renamed: saves.renamed };
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -535,6 +557,39 @@ export function parseNameStatus(output: string, scope: string): ChangedPath[] {
     });
   }
   return changes;
+}
+
+/**
+ * Reads the renames of `git diff -M --name-status -z` (2.10j). A rename's status is `R<score>`, followed by its source
+ * and its destination paths; every other status has one path. Returns each rename whose source is in the site folder
+ * `scope`, as source to destination, both site-relative (see `fromSite`). A rename from outside the folder is left out:
+ * no saved document lives there.
+ */
+export function parseRenames(
+  output: string,
+  scope: string,
+): Map<string, string> {
+  const fields = output.split('\0').filter((field) => field !== '');
+  const renames = new Map<string, string>();
+  let index = 0;
+  while (index < fields.length) {
+    if ((fields[index] ?? '').startsWith('R')) {
+      const source = fields[index + 1] ?? '';
+      const destination = fields[index + 2] ?? '';
+      if (scope === '.' || source.startsWith(`${scope}/`))
+        renames.set(fromSite(scope, source), fromSite(scope, destination));
+      index += 3;
+    } else index += 2;
+  }
+  return renames;
+}
+
+// A repo path as a path from the site folder (2.10j). Inside the folder it loses the folder; outside, it goes up with
+// `../` once for each folder of the site, so it still reads from the site. With the site at the root, nothing changes.
+function fromSite(scope: string, path: string): string {
+  if (scope === '.') return path;
+  if (path.startsWith(`${scope}/`)) return path.slice(scope.length + 1);
+  return `${'../'.repeat(scope.split('/').length)}${path}`;
 }
 
 // The git path of a site-relative one. The path is checked first, so `..` or an absolute path never reaches git.

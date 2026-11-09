@@ -8,6 +8,7 @@ import {
   commitParagraphs,
   planReapply,
   type ReapplyReads,
+  renamedDocuments,
   trailersOf,
 } from './reapply.ts';
 import { entryRevision } from './revision.ts';
@@ -615,6 +616,56 @@ describe('trailersOf', () => {
     expect([...trailersOf(changeset, new Set(), UPSTREAM, new Map())]).toEqual(
       [],
     );
+  });
+});
+
+describe('renamedDocuments (2.10j)', () => {
+  it('lists each saved document whose file is a rename source, in changeset order, with the file it was at and its new one', () => {
+    expect(
+      renamedDocuments(
+        [
+          { key: ENTRY_A.key, status: 'modified', baseRevision: 'r' },
+          { key: ANA.key, status: 'modified', baseRevision: 'r' },
+        ],
+        recordsOf(ANA, ENTRY_A),
+        new Map([
+          [ANA_PATH, 'src/content/people/ana.json'],
+          [SHARED_PATH, 'src/content/quotes.json'],
+        ]),
+      ),
+    ).toEqual([
+      {
+        key: 'testimonials/a',
+        from: SHARED_PATH,
+        to: 'src/content/quotes.json',
+      },
+      { key: 'authors/ana', from: ANA_PATH, to: 'src/content/people/ana.json' },
+    ]);
+  });
+
+  it('lists a deleted document too, since the delete does not reach the renamed file', () => {
+    expect(
+      renamedDocuments(
+        [{ key: ANA.key, status: 'deleted', baseRevision: 'r' }],
+        recordsOf(ANA),
+        new Map([[ANA_PATH, 'src/content/people/ana.json']]),
+      ),
+    ).toEqual([
+      { key: 'authors/ana', from: ANA_PATH, to: 'src/content/people/ana.json' },
+    ]);
+  });
+
+  it('leaves out a document whose file is not a rename source, and a document with no record', () => {
+    expect(
+      renamedDocuments(
+        [
+          { key: ANA.key, status: 'modified', baseRevision: 'r' },
+          { key: 'authors/zed', status: 'modified', baseRevision: 'r' },
+        ],
+        recordsOf(ANA),
+        new Map([[SHARED_PATH, 'src/content/quotes.json']]),
+      ),
+    ).toEqual([]);
   });
 });
 
