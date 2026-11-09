@@ -32,6 +32,7 @@ import {
 } from './exec.ts';
 import { createMutex, type Mutex } from './mutex.ts';
 import {
+  cloneEnv,
   moveWork,
   type RepoErrorKind,
   type RepoState,
@@ -175,18 +176,25 @@ export function openRepo({
   const scope = siteScope(siteDir);
   const worktreesDir = join(cmsDir, site, 'worktrees');
   // Runs git in the clone. Every call goes through `runGit`, so the git settings and the timeout are the same everywhere.
-  // `env` adds variables to this one call (2.10b: `GIT_INDEX_FILE` for the temporary index).
+  // `env` adds variables to this one call (2.10b: `GIT_INDEX_FILE` for the temporary index). The clone's variables come
+  // last, so a call cannot point git at another repo (2.1j).
+  const cloneVars = cloneEnv(state.repoDir);
   const git = (
     args: readonly string[],
     env?: NodeJS.ProcessEnv,
   ): Promise<string> =>
-    runGit(args, { cwd: state.repoDir, exec, env: env ?? {} });
+    runGit(args, { cwd: state.repoDir, exec, env: { ...env, ...cloneVars } });
   // The same, with stdout kept as bytes (a blob's content, which may hold invalid UTF-8 or a BOM).
   const gitBytes = (
     args: readonly string[],
     env?: NodeJS.ProcessEnv,
   ): Promise<Buffer> =>
-    runGit(args, { cwd: state.repoDir, exec, env: env ?? {}, binary: true });
+    runGit(args, {
+      cwd: state.repoDir,
+      exec,
+      env: { ...env, ...cloneVars },
+      binary: true,
+    });
 
   // The commit `cms/work` and `origin/<branch>` share. `fetch` compares it with `origin/<branch>` for `reapply`.
   async function mergeBase(): Promise<string> {

@@ -79,6 +79,17 @@ interface Identity {
 type Git = (args: readonly string[]) => Promise<string>;
 
 /**
+ * The variables that name the clone at `repoDir` (2.1j). Every call in the clone passes them, so git reads this clone
+ * whatever `cwd` says. The clone itself and the own-repo check do not, because they must find their repo from the folder.
+ */
+export function cloneEnv(repoDir: string): {
+  readonly GIT_DIR: string;
+  readonly GIT_WORK_TREE: string;
+} {
+  return { GIT_DIR: join(repoDir, '.git'), GIT_WORK_TREE: repoDir };
+}
+
+/**
  * Makes the clone ready for this start and returns its state. Any `GitError` from git, and any
  * `url-mismatch`, comes out as a `RepoError` with a kind. Nothing is reset when `origin` does not match.
  */
@@ -110,11 +121,14 @@ async function syncRepo(
   const repoDir = join(siteRoot, 'repo');
   const hooksDir = join(siteRoot, 'no-hooks');
   await mkdir(hooksDir, { recursive: true });
-  const git: Git = (args) => runGit(args, { cwd: repoDir, exec });
+  const git: Git = (args) =>
+    runGit(args, { cwd: repoDir, exec, env: cloneEnv(repoDir) });
+  // Unscoped, for the own-repo check only: `--show-toplevel` must find the repo from the folder (2.1j).
+  const discover: Git = (args) => runGit(args, { cwd: repoDir, exec });
 
   // An existing folder must be its own repo before any git call runs in it. A fresh clone is one already.
   if (await isRepo(repoDir)) {
-    await assertOwnRepo(git, repoDir);
+    await assertOwnRepo(discover, repoDir);
     await checkOrigin(git, remote, branch, repoDir);
   } else {
     await runGit(

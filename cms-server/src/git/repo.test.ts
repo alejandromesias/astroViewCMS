@@ -19,7 +19,7 @@ import {
 } from '../../test/helpers/git.ts';
 import { parseConfig } from '../config/schema.ts';
 import type { Logger } from '../log.ts';
-import { type ExecFn, realExec } from './exec.ts';
+import { type ExecFn, realExec, runGit } from './exec.ts';
 import { ensureRepo } from './repo.ts';
 
 // Each test runs real git against local bare remotes, and one start takes several git calls.
@@ -57,6 +57,20 @@ function failingExec(stderr: string): ExecFn {
         stderr,
       }),
     );
+}
+
+// One git call as `exec` received it: the arguments and the environment.
+interface GitCall {
+  args: readonly string[];
+  env: NodeJS.ProcessEnv;
+}
+
+// An `exec` that records each call, then runs the real git.
+function recordingExec(calls: GitCall[]): ExecFn {
+  return (file, args, options) => {
+    calls.push({ args, env: options.env });
+    return realExec(file, args, options);
+  };
 }
 
 const roots: string[] = [];
@@ -574,6 +588,132 @@ describe('a clone folder that is not its own repo', () => {
       kind: 'failed',
       message: expect.stringContaining('timed out after'),
     });
+  });
+});
+
+describe('ensureRepo keeps its git calls in the clone (WORKPLAN 2.1j)', () => {
+  let seedRoot: string;
+  let remote: string;
+
+  beforeAll(async () => {
+    seedRoot = await makeTestRoot();
+    remote = await seedRemote(seedRoot, { source: 'git-site' });
+  }, 60_000);
+
+  afterAll(async () => {
+    await removeTestRoot(seedRoot);
+  });
+
+  it('runs the clone without the clone variables, and every later call with both', async () => {
+    const root = await newRoot();
+    const repoDir = repoDirOf(root);
+    const calls: GitCall[] = [];
+    await ensureRepo({
+      config: configFor(remote),
+      cmsDir: cmsDirOf(root),
+      exec: recordingExec(calls),
+      log: spyLog(),
+    });
+    const [clone, ...later] = calls;
+    expect(clone?.args).toContain('clone');
+    expect(clone?.env.GIT_DIR).toBe(process.env.GIT_DIR);
+    expect(clone?.env.GIT_WORK_TREE).toBe(process.env.GIT_WORK_TREE);
+    expect(later.length).toBeGreaterThan(0);
+    for (const call of later)
+      expect(call.env).toMatchObject({
+        GIT_DIR: join(repoDir, '.git'),
+        GIT_WORK_TREE: repoDir,
+      });
+  });
+
+  it('runs the own-repo check without the clone variables, and every later call with both', async () => {
+    const root = await newRoot();
+    const repoDir = repoDirOf(root);
+    const config = configFor(remote);
+    const cmsDir = cmsDirOf(root);
+    await ensureRepo({ config, cmsDir, log: spyLog() });
+    const calls: GitCall[] = [];
+    await ensureRepo({
+      config,
+      cmsDir,
+      exec: recordingExec(calls),
+      log: spyLog(),
+    });
+    const check = calls.find((call) => call.args.includes('--show-toplevel'));
+    expect(check).toBeDefined();
+    expect(check?.env.GIT_DIR).toBe(process.env.GIT_DIR);
+    expect(check?.env.GIT_WORK_TREE).toBe(process.env.GIT_WORK_TREE);
+    const later = calls.filter((call) => call !== check);
+    expect(later.length).toBeGreaterThan(0);
+    for (const call of later)
+      expect(call.env).toMatchObject({
+        GIT_DIR: join(repoDir, '.git'),
+        GIT_WORK_TREE: repoDir,
+      });
+  });
+
+  it('a git call with a parent repo as cwd and the clone variables changes only the clone', async () => {
+    const root = await newRoot();
+    const parent = join(root, 'parent');
+    const cmsDir = join(parent, '.cms');
+    const repoDir = join(cmsDir, 'demo', 'repo');
+    await mkdir(parent);
+    await git(parent, ['init']);
+    await git(parent, ['config', 'user.name', 'Parent Owner']);
+    await git(parent, ['config', 'user.email', 'parent@example.test']);
+    await writeFile(join(parent, '.gitignore'), '.cms/\n');
+    await writeFile(join(parent, 'parent.txt'), 'parent\n');
+    await git(parent, ['add', '--all']);
+    await git(parent, ['commit', '--message', 'parent']);
+    await ensureRepo({ config: configFor(remote), cmsDir, log: spyLog() });
+    // Each repo gets an edit to a tracked file and an untracked file.
+    await writeFile(join(repoDir, 'astro.config.mjs'), 'changed\n');
+    await writeFile(join(repoDir, 'clone-junk.txt'), 'junk\n');
+    await writeFile(join(parent, 'parent.txt'), 'edited\n');
+    await writeFile(join(parent, 'parent-junk.txt'), 'junk\n');
+    const parentStatus = await git(parent, ['status', '--porcelain']);
+    expect(parentStatus).toBe(' M parent.txt\n?? parent-junk.txt\n');
+    // The two calls that discard edits, run from the parent's folder with the clone's variables.
+    const clone = { GIT_DIR: join(repoDir, '.git'), GIT_WORK_TREE: repoDir };
+    await runGit(['checkout', '--force', 'cms/work'], {
+      cwd: parent,
+      env: clone,
+    });
+    await runGit(['clean', '-fd'], { cwd: parent, env: clone });
+    expect(await git(repoDir, ['status', '--porcelain'])).toBe('');
+    expect(await git(parent, ['status', '--porcelain'])).toBe(parentStatus);
+    expect(await readFile(join(parent, 'parent.txt'), 'utf8')).toBe('edited\n');
+    expect(await readFile(join(parent, 'parent-junk.txt'), 'utf8')).toBe(
+      'junk\n',
+    );
+  });
+
+  it('passes the clone variables as the backslash paths that join makes on Windows', async () => {
+    const root = await newRoot();
+    // On Windows the backslash makes a second folder level. Elsewhere it is part of one folder name.
+    const cmsDir = join(root, 'win\\cms');
+    const repoDir = join(cmsDir, 'demo', 'repo');
+    const config = configFor(remote);
+    await ensureRepo({ config, cmsDir, log: spyLog() });
+    const calls: GitCall[] = [];
+    await ensureRepo({
+      config,
+      cmsDir,
+      exec: recordingExec(calls),
+      log: spyLog(),
+    });
+    const later = calls.filter(
+      (call) => !call.args.includes('--show-toplevel'),
+    );
+    expect(later.length).toBeGreaterThan(0);
+    for (const call of later)
+      expect(call.env).toMatchObject({
+        GIT_DIR: join(repoDir, '.git'),
+        GIT_WORK_TREE: repoDir,
+      });
+    expect(await git(repoDir, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe(
+      'cms/work\n',
+    );
   });
 });
 
