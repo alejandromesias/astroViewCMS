@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { BundleSource } from '../bundle/source.ts';
 import type { Repo } from '../git/ops.ts';
+import type { StatusSource } from '../preview/status.ts';
 import { registerBundleRoutes } from './bundle-routes.ts';
 import { registerChangeRoutes, type SaveRouteDeps } from './changes-routes.ts';
 import { type EditorRouteDeps, editorRoutes } from './editor-routes.ts';
@@ -18,6 +19,8 @@ export interface AppDeps {
   readonly repo?: Repo;
   // PUT /api/changes (WORKPLAN 2.5c). Registered with `bundle`, `workingCopy` and `repo`.
   readonly save?: SaveRouteDeps | undefined;
+  // The preview status that GET /api/status adds beside the bundle (2.9c). Registered with `bundle` and `workingCopy`.
+  readonly status?: StatusSource | undefined;
 }
 
 // Hono only routes (PHASE-2-DESIGN 4.1): the modules behind the routes don't import Hono.
@@ -26,7 +29,13 @@ export function createApp(deps: AppDeps): Hono {
   app.route('/', editorRoutes(deps.editor));
   app.route('/', mediaRoutes(deps.media));
   if (deps.bundle !== undefined && deps.workingCopy !== undefined)
-    registerBundleRoutes(app, deps.bundle, deps.workingCopy, deps.repo);
+    registerBundleRoutes(
+      app,
+      deps.bundle,
+      deps.workingCopy,
+      deps.repo,
+      deps.status,
+    );
   if (
     deps.bundle !== undefined &&
     deps.workingCopy !== undefined &&

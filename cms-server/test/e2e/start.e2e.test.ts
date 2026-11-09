@@ -100,10 +100,23 @@ describe('run() with the real parts', () => {
 
       const status = await fetch(`${cmsOrigin}/api/status`);
       expect(status.status).toBe(200);
-      expect(await status.json()).toEqual({
+      // The bundle key, and the preview status beside it (2.9c). With --bundle the builder is off; the node serves the bundle.
+      expect(await status.json()).toStrictEqual({
         bundle: {
           bundleId: identity.bundleId,
           siteCommit: identity.siteCommit,
+        },
+        builder: 'off',
+        build: { state: 'off', error: null },
+        node: { state: 'ready', bundleId: identity.bundleId, error: null },
+        lastSync: null,
+        syncError: null,
+        changesetSize: 0,
+        publish: 'idle',
+        errors: {
+          protocolMismatch: null,
+          upstreamBuildFailed: null,
+          swap: null,
         },
       });
 

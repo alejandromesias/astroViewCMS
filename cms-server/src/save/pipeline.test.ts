@@ -46,6 +46,7 @@ function lockedRepo(tx: RepoTx, holders: string[]): Repo {
     showAt: async () => null,
     showAtBytes: async () => null,
     mergeBase: async () => 'base',
+    revParse: () => Promise.reject(new Error('revParse is not used here')),
     overwrittenSince: async () => new Map(),
   };
 }

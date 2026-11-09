@@ -31,6 +31,8 @@ export interface SaveRouteDeps {
   readonly preview: PreviewClient;
   readonly log?: Logger;
   readonly guard?: DeleteGuard | undefined;
+  /** Called after a 200 save whose body asks for a rebuild (`rebuild: true`), so the preview is built again (2.9c). Not awaited. */
+  readonly onRebuild?: (() => void) | undefined;
 }
 
 /** What the change routes read. PUT is registered only when `save` is given. */
@@ -41,6 +43,16 @@ export interface ChangeRouteDeps {
   readonly siteFolder: string;
   readonly media: MediaRouteDeps;
   readonly save?: SaveRouteDeps | undefined;
+}
+
+// True when a save answer's body asks for a rebuild: its `rebuild` flag is true.
+function asksRebuild(body: unknown): boolean {
+  return (
+    typeof body === 'object' &&
+    body !== null &&
+    'rebuild' in body &&
+    body.rebuild === true
+  );
 }
 
 // A git failure while the changes are read: 500 `changes-unavailable`, as GET /api/documents?key= answers it. Other errors are not caught here.
@@ -109,6 +121,9 @@ export function registerChangeRoutes(app: Hono, deps: ChangeRouteDeps): void {
           },
           deps.repo,
         );
+        // A save that changed a build-time field asks for a rebuild. The answer does not wait for the build.
+        if (answer.status === 200 && asksRebuild(answer.body))
+          save.onRebuild?.();
         return c.json(answer.body, answer.status);
       } catch (error: unknown) {
         // A git failure escapes only from the stages before the write (write.ts answers its own), so nothing was written.

@@ -127,6 +127,8 @@ export interface RepoTx {
    * does not have (files a failed save wrote). Site-relative, as `commitSave`. A path that matches nothing is ignored.
    */
   restore(paths: readonly string[]): Promise<void>;
+  /** The full sha that `ref` names (`git rev-parse --verify`). A missing ref throws. The trigger reads `cms/work` this way under the lock (2.9c-B). */
+  revParse(ref: string): Promise<string>;
 }
 
 /** The repo operations of one start. */
@@ -141,6 +143,8 @@ export interface Repo {
   showAtBytes(ref: string, path: string): Promise<Buffer | null>;
   /** The commit `cms/work` and `origin/<branch>` share: the base that `changedPaths` compares with. Read without the lock. */
   mergeBase(): Promise<string>;
+  /** The full sha that `ref` names. A missing ref throws. Read without the lock (2.9c-B). */
+  revParse(ref: string): Promise<string>;
   /**
    * The `CMS-Overwrote` trailers of the saves on `cms/work` that origin does not have, as document key to the
    * upstream sha. When a key repeats, the newest save (and the last line of it) wins. Read without the lock.
@@ -187,6 +191,12 @@ export function openRepo({
   // The commit `cms/work` and `origin/<branch>` share. `fetch` compares it with `origin/<branch>` for `reapply`.
   async function mergeBase(): Promise<string> {
     return (await git(['merge-base', `origin/${branch}`, WORK])).trim();
+  }
+
+  // The full sha that `ref` names. `--verify` makes a missing ref fail rather than print the name back.
+  async function revParse(ref: string): Promise<string> {
+    assertRef(ref);
+    return (await git(['rev-parse', '--verify', ref])).trim();
   }
 
   // The paths that differ between the bundle's commit and `origin/<branch>`, repo-relative. The whole repo is
@@ -392,6 +402,7 @@ export function openRepo({
 
   const tx: RepoTx = {
     reapply,
+    revParse,
     // Fetches `origin`, then classifies the change. Every failure is returned as a sync error, never thrown.
     async fetch(bundles) {
       try {
@@ -503,6 +514,7 @@ export function openRepo({
     },
     showAtBytes,
     mergeBase,
+    revParse,
     overwrittenSince,
   };
 }

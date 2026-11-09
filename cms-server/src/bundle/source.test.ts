@@ -1,4 +1,5 @@
-import { writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -6,7 +7,11 @@ import {
   FIXTURE_BUNDLE,
   removeBundleFolders,
 } from '../../test/helpers/bundle.ts';
-import { directoryBundleSource } from './source.ts';
+import {
+  bundleManifestDir,
+  directoryBundleSource,
+  stateBundleSource,
+} from './source.ts';
 
 afterEach(() => removeBundleFolders());
 
@@ -74,5 +79,72 @@ describe('directoryBundleSource', () => {
       name: 'BundleError',
       message,
     });
+  });
+});
+
+describe('bundleManifestDir', () => {
+  it('is the manifest folder inside the bundle folder', () => {
+    expect(bundleManifestDir(join('x', 'bundles'), 'b-1')).toBe(
+      join('x', 'bundles', 'b-1', 'manifest'),
+    );
+  });
+});
+
+describe('stateBundleSource', () => {
+  /** A bundles folder with the fixture laid out as `<bundleId>/manifest/`, for each id given. */
+  async function bundlesWith(...ids: string[]): Promise<string> {
+    const bundles = await mkdtemp(join(tmpdir(), 'state-source-'));
+    for (const id of ids) {
+      await cp(FIXTURE_BUNDLE, join(bundles, id, 'manifest'), {
+        recursive: true,
+      });
+    }
+    return bundles;
+  }
+
+  it('names the bundle the state gives, read from its manifest folder', async () => {
+    const bundles = await bundlesWith('served');
+    try {
+      expect(
+        await stateBundleSource(bundles, () => 'served').current(),
+      ).toMatchObject({
+        dir: join(bundles, 'served', 'manifest'),
+        identity: { bundleId: 'fixture-2026-11-03' },
+      });
+    } finally {
+      await rm(bundles, { recursive: true, force: true });
+    }
+  });
+
+  it('has no bundle when the state names none', async () => {
+    expect(
+      await stateBundleSource(join('x', 'bundles'), () => null).current(),
+    ).toBeNull();
+  });
+
+  it('has no bundle when the named bundle folder has no bundle.json', async () => {
+    const bundles = await bundlesWith();
+    try {
+      expect(
+        await stateBundleSource(bundles, () => 'absent').current(),
+      ).toBeNull();
+    } finally {
+      await rm(bundles, { recursive: true, force: true });
+    }
+  });
+
+  it('reads the state on each call, so a swap is seen at once', async () => {
+    const bundles = await bundlesWith('first');
+    try {
+      let served: string | null = 'first';
+      const source = stateBundleSource(bundles, () => served);
+      expect((await source.current())?.dir).toBe(
+        join(bundles, 'first', 'manifest'),
+      );
+      served = null;
+      expect(await source.current()).toBeNull();
+    } finally {
+      await rm(bundles, { recursive: true, force: true });
+    }
   });
 });
