@@ -125,6 +125,9 @@ export function createBundleLifecycle(
   let latestSwap = 0;
   // The triggers under way (build, serve and swap). The build state is building while any runs, and idle or failed once the last one ends.
   let inFlight = 0;
+  // Whether the most recent build that ended failed. A nested build (a protocol rebuild) can fail while its outer trigger is
+  // still under way, so the state at the end is read from this, not from the outer trigger's own outcome.
+  let lastBuildFailed = false;
   // One build at a time, and the triggers that wait merge into one queued build. After stop, a queued build is refused.
   const runner = createBuildRunner({
     build: (job) => {
@@ -191,9 +194,7 @@ export function createBundleLifecycle(
       const outcome = await work;
       // The state is idle, or failed, only when this is the last trigger under way. While another one runs it stays building.
       if (inFlight === 1) {
-        status.setBuildState(
-          outcome.kind === 'build-failed' ? 'failed' : 'idle',
-        );
+        status.setBuildState(lastBuildFailed ? 'failed' : 'idle');
       }
       return outcome;
     } finally {
@@ -220,6 +221,7 @@ export function createBundleLifecycle(
       baseOfCommit.set(pair.head, pair.base);
       const result = await runner.request(pair.head);
       if (!result.ok) return buildFailed(buildErrorText(result.firstError));
+      lastBuildFailed = false;
       status.setBuildError(null);
       return await serveOnce(result, inherited);
     } catch (error: unknown) {
@@ -229,6 +231,7 @@ export function createBundleLifecycle(
 
   /** Records a failed build's error in the status, and returns its outcome. The node keeps serving what it served. */
   function buildFailed(error: string): TriggerOutcome {
+    lastBuildFailed = true;
     status.setBuildError(error);
     return { kind: 'build-failed', error };
   }

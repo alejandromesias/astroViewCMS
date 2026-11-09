@@ -936,6 +936,42 @@ describe('the bundles a pending swap keeps from collection (2.9c review)', () =>
   });
 });
 
+describe('the build state after a protocol rebuild (2.9c review)', () => {
+  it('a protocol rebuild that fails leaves the status failed, with its error, once everything has settled', async () => {
+    let builds = 0;
+    const rig = await rigOf({
+      // b-1 mismatches, so a protocol rebuild follows the served bundle; that rebuild fails.
+      versions: new Map([['b-1', 1]]),
+      build: (job) => {
+        builds += 1;
+        return builds === 1 ? okBuild(job) : failedBuild('boom')(job);
+      },
+    });
+    expect(await rig.lifecycle.trigger('publish')).toStrictEqual({
+      kind: 'served',
+      bundleId: 'b-1',
+    });
+    expect(rig.build).toHaveBeenCalledTimes(2);
+    expect((await rig.status.snapshot()).build).toStrictEqual({
+      state: 'failed',
+      error: 'boom',
+    });
+  });
+
+  it('a protocol rebuild that succeeds leaves the status idle', async () => {
+    const rig = await rigOf({ versions: new Map([['b-1', 1]]) });
+    expect(await rig.lifecycle.trigger('publish')).toStrictEqual({
+      kind: 'served',
+      bundleId: 'b-1',
+    });
+    expect(rig.build).toHaveBeenCalledTimes(2);
+    expect((await rig.status.snapshot()).build).toStrictEqual({
+      state: 'idle',
+      error: null,
+    });
+  });
+});
+
 describe('stop', () => {
   it('kills the build in flight, and a build queued behind it is refused and never starts', async () => {
     let release: (result: BuildResult) => void = () => undefined;
