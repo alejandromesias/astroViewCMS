@@ -1,8 +1,8 @@
 // A real clone for the save tests (WORKPLAN 2.5c): a bare remote whose `main` holds the bundle fixture's source files
 // under `site/`, cloned by ensureRepo, so a save commits on cms/work for real. The working copy is `state.siteFolder`.
 // Every git call goes through test/helpers/git.ts. Test code only.
-import { cp, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { cp, mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type CmsConfig, parseConfig } from '../../src/config/schema.ts';
 import { openRepo, type Repo } from '../../src/git/ops.ts';
@@ -22,13 +22,24 @@ export interface SaveRepo {
   readonly config: CmsConfig;
 }
 
-/** A clone of a new remote under `root`, whose site folder is `<root>/repo/site`. Call once per test. */
-export async function saveRepoIn(root: string): Promise<SaveRepo> {
+/**
+ * A clone of a new remote under `root`, whose site folder is `<root>/repo/site`. Call once per test. `extraFiles` (site
+ * paths, text) are written into the seed commit too, so they are in the merge base of every later save.
+ */
+export async function saveRepoIn(
+  root: string,
+  extraFiles: Record<string, string> = {},
+): Promise<SaveRepo> {
   const remote = join(root, 'remote.git');
   const seed = join(root, 'seed');
   await git(root, ['init', '--bare', remote]);
   await mkdir(join(seed, 'site'), { recursive: true });
   await cp(SITE_SOURCE, join(seed, 'site', 'src'), { recursive: true });
+  for (const [path, text] of Object.entries(extraFiles)) {
+    const target = join(seed, 'site', path);
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, text);
+  }
   await git(seed, ['init']);
   await git(seed, ['add', '--all']);
   await git(seed, ['commit', '--message', 'seed: site']);

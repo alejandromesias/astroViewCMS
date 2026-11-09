@@ -61,23 +61,32 @@ interface FileError {
 /** The changeset: the changed documents, and the documents created on cms/work in the bundle's shape. */
 export interface Changeset {
   readonly documents: readonly ChangedDocument[];
-  /** Documents that the save created and the bundle does not hold, for 2.5c's `ctx.documents`. */
+  /**
+   * A record for each changed document the bundle does not hold (2.10h): the saves created it, or upstream added it after
+   * the bundle was built. 2.5c's `ctx.documents` finds its file here. A document the bundle holds has no record, and a
+   * document the save deleted has a tombstone instead (`changesetWithTombstones`).
+   */
   readonly createdRecords: readonly DocumentEntry[];
   /** Changed shared files that fail to parse and hold no bundle document. Without this, a broken new file is not listed. */
   readonly fileErrors: readonly FileError[];
 }
 
 export interface ChangesetInput {
+  /** The bundle's documents decide which changed documents get a record (2.10h): those whose key it does not hold. */
   readonly bundle: Pick<Bundle, 'documents' | 'collections'>;
   readonly repo: ChangesetRepo;
   /** The site folder of the working copy, where the files of cms/work are read. */
   readonly siteFolder: string;
 }
 
-/** What one file of the changeset gives: its documents, and the ones it creates. */
+/**
+ * What one file of the changeset gives: its documents, the records of the ones it creates, and the tombstones of the ones
+ * it deletes (2.10h). A deleted document's record never goes into `createdRecords`.
+ */
 interface Found {
   readonly documents: ChangedDocument[];
   readonly createdRecords: DocumentEntry[];
+  readonly tombstones?: DocumentEntry[];
   readonly fileErrors?: readonly FileError[];
 }
 
@@ -119,23 +128,43 @@ interface Env {
   readonly repo: ChangesetRepo;
   readonly siteFolder: string;
   readonly reads: FileReads;
+  /** The bundle's documents, by key: a changed document whose key is here gets no record (2.10h). */
+  readonly bundled: ReadonlyMap<string, DocumentEntry>;
 }
 
 /** The changed documents of the save, in the order of the changed paths, with their trailers. */
-export async function changesetOf({
+export async function changesetOf(input: ChangesetInput): Promise<Changeset> {
+  return (await changesetWithTombstones(input)).changeset;
+}
+
+/** The changeset of a save, and the tombstones of the documents it deletes (2.10h). */
+export interface ChangesetWithTombstones {
+  readonly changeset: Changeset;
+  /**
+   * The records of the documents the save deleted that the bundle does not hold. The re-apply needs their files to delete
+   * the upstream copies. They are not in `createdRecords`: a save that saw a deleted document would plan a recreate of its
+   * key as an update (save/plan.ts), and the delete guard would count it.
+   */
+  readonly tombstones: readonly DocumentEntry[];
+}
+
+/** `changesetOf`, with the tombstones of the save (2.10h). Only the re-apply reads them. */
+export async function changesetWithTombstones({
   bundle,
   repo,
   siteFolder,
-}: ChangesetInput): Promise<Changeset> {
+}: ChangesetInput): Promise<ChangesetWithTombstones> {
   const env: Env = {
     base: await repo.mergeBase(),
     repo,
     siteFolder,
     reads: new Map(),
+    bundled: bundle.documents,
   };
   const byFile = documentsByFile(bundle.documents.values());
   const documents: ChangedDocument[] = [];
   const createdRecords: DocumentEntry[] = [];
+  const tombstones: DocumentEntry[] = [];
   const fileErrors: FileError[] = [];
   for (const { path } of await repo.changedPaths()) {
     const unit = unitOf(path, byFile, bundle.collections);
@@ -143,16 +172,20 @@ export async function changesetOf({
     const found = await unitChanges(unit, env);
     documents.push(...found.documents);
     createdRecords.push(...found.createdRecords);
+    tombstones.push(...(found.tombstones ?? []));
     fileErrors.push(...(found.fileErrors ?? []));
   }
   const overwritten = await repo.overwrittenSince();
   return {
-    documents: documents.map((document) => {
-      const sha = overwritten.get(document.key);
-      return sha === undefined ? document : { ...document, overwritten: sha };
-    }),
-    createdRecords,
-    fileErrors,
+    changeset: {
+      documents: documents.map((document) => {
+        const sha = overwritten.get(document.key);
+        return sha === undefined ? document : { ...document, overwritten: sha };
+      }),
+      createdRecords,
+      fileErrors,
+    },
+    tombstones,
   };
 }
 
@@ -246,23 +279,39 @@ async function ownFile(
     return {
       documents: [{ key, status: 'deleted', baseRevision }],
       createdRecords: [],
+      // The file is gone, so `current` is the merge base's file: its revision is the base revision (the re-apply deletes
+      // the upstream file of this record, and only the re-apply reads it).
+      tombstones: recordsOf(env, {
+        key,
+        file: path,
+        format,
+        buildTime: false,
+        revision: revisionOf(current.bytes),
+      }),
     };
   const status: ChangeStatus = before === null ? 'created' : 'modified';
   const reading = readingOf(after.parse(), format);
   const document: ChangedDocument = { key, status, baseRevision, ...reading };
+  // A document that does not parse has no record: its error is reported by the changeset, and the re-apply refuses it.
   const created =
-    status === 'created' && !('error' in reading)
-      ? [
-          {
-            key,
-            file: path,
-            format,
-            buildTime: false,
-            revision: revisionOf(after.bytes),
-          },
-        ]
-      : [];
+    'error' in reading
+      ? []
+      : recordsOf(env, {
+          key,
+          file: path,
+          format,
+          buildTime: false,
+          revision: revisionOf(after.bytes),
+        });
   return { documents: [document], createdRecords: created };
+}
+
+/**
+ * The records to add for one changed document (2.10h): the record itself when the bundle does not hold its key, and none
+ * when it does, since the bundle's own entry has the file.
+ */
+function recordsOf(env: Env, record: DocumentEntry): DocumentEntry[] {
+  return env.bundled.has(record.key) ? [] : [record];
 }
 
 /**
@@ -301,6 +350,7 @@ async function sharedFile(
     };
   const documents: ChangedDocument[] = [];
   const createdRecords: DocumentEntry[] = [];
+  const tombstones: DocumentEntry[] = [];
   const ids = [...new Set([...wasEntries.keys(), ...nowEntries.keys()])].sort();
   for (const id of ids) {
     const was = wasEntries.get(id);
@@ -315,21 +365,34 @@ async function sharedFile(
     const baseRevision = was?.revision ?? null;
     if (now === undefined) {
       documents.push({ key, status: 'deleted', baseRevision });
+      // A deleted id is one the merge base had, so `was` is set: its revision is the base revision (2.10h).
+      if (was !== undefined)
+        tombstones.push(
+          ...recordsOf(env, {
+            key,
+            file: path,
+            format,
+            entryKey: id,
+            buildTime: false,
+            revision: was.revision,
+          }),
+        );
       continue;
     }
     const status: ChangeStatus = was === undefined ? 'created' : 'modified';
     documents.push({ key, status, baseRevision, value: now.entry });
-    if (status === 'created' && record === undefined)
-      createdRecords.push({
+    createdRecords.push(
+      ...recordsOf(env, {
         key,
         file: path,
         format,
         entryKey: id,
         buildTime: false,
         revision: now.revision,
-      });
+      }),
+    );
   }
-  return { documents, createdRecords };
+  return { documents, createdRecords, tombstones };
 }
 
 /** The bytes of `path` at the merge base, read as the format says. Null when the file was not there. */

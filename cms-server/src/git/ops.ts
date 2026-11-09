@@ -12,7 +12,7 @@ import {
 } from '../bundle/read.ts';
 import type { BundleStore } from '../bundle/store.ts';
 import type { CmsConfig } from '../config/schema.ts';
-import { changesetOf } from '../documents/changeset.ts';
+import { changesetWithTombstones } from '../documents/changeset.ts';
 import { type FileOp, planWrite } from '../documents/plan-write.ts';
 import {
   commitParagraphs,
@@ -241,16 +241,18 @@ export function openRepo({
         `There is no bundle to re-apply the saves on. The saves stay on ${WORK}.`,
       );
     const older = await overwrittenSince();
-    const changeset = await changesetOf({
+    const { changeset, tombstones } = await changesetWithTombstones({
       bundle,
       repo: { changedPaths, mergeBase, showAtBytes, overwrittenSince },
       siteFolder: state.siteFolder,
     });
     const base = await mergeBase();
-    // The bundle's documents, and the documents this save created (not in the bundle yet): both have a file.
+    // The bundle's documents, the documents this save created (not in the bundle yet), and the ones it deleted (their
+    // tombstones): all have a file.
     const records = new Map<string, DocumentEntry>(bundle.documents);
     for (const record of changeset.createdRecords)
       records.set(record.key, record);
+    for (const record of tombstones) records.set(record.key, record);
     const plan = await planReapply(changeset, records, {
       upstream: (path) => showAtBytes(upstream, path),
       base: (path) => showAtBytes(base, path),
