@@ -123,6 +123,8 @@ export function createBuilder(options: BuildCommitOptions): Builder {
 
   // The build child that is running now, or undefined. Set once it is spawned, cleared once it has exited.
   let running: BuildChild | undefined;
+  // Set by stop(). A build that has not spawned its child yet (its worktree is still being added) starts no child.
+  let stopping = false;
 
   // Kills the whole process tree of a build that ran over: `taskkill /T` on Windows, the process group elsewhere
   // (defaultSpawn starts each build as a group leader). On Windows the build is killed only after taskkill has
@@ -143,11 +145,18 @@ export function createBuilder(options: BuildCommitOptions): Builder {
 
   // Kills the build in flight, if there is one, through killBuild, as a timeout does. Resolves once the kill is sent.
   async function stop(): Promise<void> {
+    stopping = true;
     if (running !== undefined) await killBuild(running);
   }
 
   // Runs build.ts on the site folder of `worktree`, and reads its first error from the output.
   async function runChild(worktree: string, job: BuildJob): Promise<Outcome> {
+    if (stopping) {
+      return failure('', {
+        file: null,
+        message: 'The build was stopped before it started',
+      });
+    }
     const siteFolder = path.join(worktree, siteDir);
     const args = [
       buildScript,

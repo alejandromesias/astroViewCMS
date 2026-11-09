@@ -43,13 +43,15 @@ type TriggerOutcome =
     }
   | { readonly kind: 'stopped' };
 
-/** The part of the repo the lifecycle reads: `cms/work` under the lock, and origin's branch without it. */
+/**
+ * The part of the repo the lifecycle reads. `cms/work` and origin's branch are read together under the lock, so a
+ * trigger's head and base are the pair it saw (a sync cannot move origin between the two reads).
+ */
 export interface LifecycleRepo {
   locked<T>(
     holder: string,
     work: (tx: Pick<RepoTx, 'revParse'>) => Promise<T>,
   ): Promise<T>;
-  revParse(ref: string): Promise<string>;
 }
 
 /** The options of the lifecycle. Each outside call is passed in; `readBundle` has the real default. */
@@ -102,10 +104,26 @@ export function createBundleLifecycle(
     newBundleId,
   } = options;
   let stopped = false;
+  // The base each commit was read with, under the lock, by the trigger that asked for it.
+  const baseOfCommit = new Map<string, string>();
+  // The base of each bundle, by bundleId: the base read with the commit the bundle was built from.
+  const baseOfBundle = new Map<string, string>();
+  // The serve of each bundle, by bundleId. Triggers that share one build result share its serve, so a bundle is swapped in once.
+  const serving = new Map<string, Promise<TriggerOutcome>>();
+  // The triggers still under way, so stop() can wait for them.
+  const working = new Set<Promise<TriggerOutcome>>();
   // One build at a time, and the triggers that wait merge into one queued build. After stop, a queued build is refused.
   const runner = createBuildRunner({
-    build: (job) =>
-      stopped ? Promise.reject(new Error(STOPPING)) : build(job),
+    build: (job) => {
+      if (stopped) return Promise.reject(new Error(STOPPING));
+      const base = baseOfCommit.get(job.commit);
+      // Cannot happen: a trigger reads the base with its commit before it asks the runner for that commit.
+      if (base === undefined) {
+        return Promise.reject(new Error(`No base was read for ${job.commit}`));
+      }
+      baseOfBundle.set(job.bundleId, base);
+      return build(job);
+    },
     ...(newBundleId === undefined ? {} : { newBundleId }),
   });
 
@@ -134,17 +152,35 @@ export function createBundleLifecycle(
     return runBuild(reason, undefined);
   }
 
-  /** Stops the lifecycle, then kills the build in flight. The queued build, if any, is refused by the runner. */
+  /**
+   * Stops the lifecycle: no build starts and no swap follows. The build in flight is killed, the queued one is refused by
+   * the runner, and this waits for the triggers already under way, so none of them swaps after it resolves.
+   */
   async function stop(): Promise<void> {
     stopped = true;
     await build.stop();
+    await Promise.allSettled([...working]);
   }
 
   /**
    * Builds `cms/work` HEAD and serves the result. `inherited` is the protocol count the new bundle takes: set by a
    * protocol rebuild, so the rebuilt bundle's own mismatch is only reported. Every failure is an outcome, not a rejection.
    */
-  async function runBuild(
+  function runBuild(
+    reason: TriggerReason,
+    inherited: number | undefined,
+  ): Promise<TriggerOutcome> {
+    const work = buildAndServe(reason, inherited);
+    working.add(work);
+    void work.then(() => working.delete(work));
+    return work;
+  }
+
+  /**
+   * One trigger's build: reads `cms/work` HEAD and origin's branch together under the lock, waits for the build of that
+   * head, then serves the bundle. Every failure is an outcome, not a rejection.
+   */
+  async function buildAndServe(
     reason: TriggerReason,
     inherited: number | undefined,
   ): Promise<TriggerOutcome> {
@@ -152,13 +188,15 @@ export function createBundleLifecycle(
     log.info('A build was asked for', { reason });
     status.setBuildState('building');
     try {
-      const commit = await repo.locked('build head', (tx) =>
-        tx.revParse(WORK_REF),
-      );
-      const result = await runner.request(commit);
+      const pair = await repo.locked('build head', async (tx) => ({
+        head: await tx.revParse(WORK_REF),
+        base: await tx.revParse(upstreamRef),
+      }));
+      baseOfCommit.set(pair.head, pair.base);
+      const result = await runner.request(pair.head);
       if (!result.ok) return buildFailed(buildErrorText(result.firstError));
       status.setBuildError(null);
-      return await serve(result, inherited);
+      return await serveOnce(result, inherited);
     } catch (error: unknown) {
       return buildFailed(messageOf(error));
     }
@@ -171,16 +209,35 @@ export function createBundleLifecycle(
     return { kind: 'build-failed', error };
   }
 
+  /**
+   * Serves a built bundle once. Triggers that share one build result share its serve, and so its outcome: the node is
+   * swapped once, and each trigger gets the same answer.
+   */
+  function serveOnce(
+    built: BuildResult,
+    inherited: number | undefined,
+  ): Promise<TriggerOutcome> {
+    const shared = serving.get(built.bundleId);
+    if (shared !== undefined) return shared;
+    const served = serveBundle(built, inherited);
+    serving.set(built.bundleId, served);
+    return served;
+  }
+
   /** Swaps the node onto a built bundle. On success the state names it; on failure it is rolled back as the supervisor did. */
-  async function serve(
+  async function serveBundle(
     built: BuildResult,
     inherited: number | undefined,
   ): Promise<TriggerOutcome> {
     const { bundleId, dir } = built;
-    const entry: BundleEntry = {
-      bundleId,
-      baseCommit: await repo.revParse(upstreamRef),
-    };
+    const base = baseOfBundle.get(bundleId);
+    // Cannot happen: the runner builds a bundle only after its base was recorded, in the build wrapper.
+    if (base === undefined) {
+      throw new Error(`No base was read for bundle ${bundleId}`);
+    }
+    // stop() may have come while the build ran. Nothing awaits between this check and the swap, so none can come after it.
+    if (stopped) return { kind: 'stopped' };
+    const entry: BundleEntry = { bundleId, baseCommit: base };
     const swap = await supervisor.swap({ bundleId, dir });
     status.setBuildState('idle');
     if (!swap.ok) {

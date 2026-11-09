@@ -268,7 +268,7 @@ export async function run(
         deps.logger,
       );
     } else {
-      bundleId = (await source.current())?.identity.bundleId ?? null;
+      bundleId = await currentIdOf(source, deps.logger);
       // The first build can take minutes, so the start runs behind the listening server: the node and the status follow it.
       void lifecycle.start().catch((error: unknown) => {
         deps.logger.error('The preview start-up failed', {
@@ -314,6 +314,24 @@ async function startPreview(
     });
   }
   return bundleId;
+}
+
+/**
+ * The id of the bundle the source names, for the start log. A bundle.json that cannot be read is logged and read as none,
+ * so the start goes on: the lifecycle's protocol check then sees the same bundle and rebuilds it.
+ */
+async function currentIdOf(
+  source: BundleSource,
+  log: Logger,
+): Promise<string | null> {
+  try {
+    return (await source.current())?.identity.bundleId ?? null;
+  } catch (error: unknown) {
+    log.warn('The current bundle cannot be read, so the start goes on', {
+      error: describeError(error),
+    });
+    return null;
+  }
 }
 
 /** Closes the server and drops its open connections, so the port is free when this resolves. Resolves at once for a server that is not listening. */

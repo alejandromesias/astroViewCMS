@@ -102,27 +102,36 @@ function memoryStore(initial: PreviewState) {
   } satisfies StateStore & { set: unknown };
 }
 
-/** The repo of the tests: `cms/work` resolves to HEAD, and origin's branch to BASE. Each read is recorded in order. */
-function fakeRepo() {
+/**
+ * The repo of the tests: `cms/work` resolves to HEAD, and origin's branch to `upstream` (BASE, until a test moves it).
+ * Each read is recorded in order. `gate`, when given, holds each read until it resolves (a read that is still pending).
+ */
+function fakeRepo(gate: Promise<void> = Promise.resolve()) {
   const locks: string[] = [];
   const reads: string[] = [];
+  let upstream = BASE;
   const repo: LifecycleRepo = {
     locked: (holder, work) => {
       locks.push(holder);
       const tx: Pick<RepoTx, 'revParse'> = {
-        revParse: (ref) => {
+        revParse: async (ref) => {
+          await gate;
           reads.push(ref);
-          return Promise.resolve(HEAD);
+          return ref === 'origin/main' ? upstream : HEAD;
         },
       };
       return work(tx);
     },
-    revParse: (ref) => {
-      reads.push(ref);
-      return Promise.resolve(ref === 'origin/main' ? BASE : 'unexpected');
+  };
+  return {
+    repo,
+    locks,
+    reads,
+    /** Moves origin's branch, as a sync that fetched a new commit would. */
+    moveUpstream: (sha: string) => {
+      upstream = sha;
     },
   };
-  return { repo, locks, reads };
 }
 
 /** The fixture's bundle.json, parsed, with its protocolVersion set to `protocolVersion`. */
@@ -148,12 +157,14 @@ interface RigOptions {
   /** Replaces the fake reader with `readBundle`. Ignored with `reader: 'real'`. */
   readonly readBundle?: LifecycleOptions['readBundle'];
   readonly bundlesDir?: string;
+  /** Holds every read of the repo until it resolves, so a test can stop the lifecycle while a read is pending. */
+  readonly gate?: Promise<void>;
 }
 
 /** A lifecycle over fakes, with the parts a test checks. Bundle ids are `b-1`, `b-2`, ... in build order. */
 async function rigOf(options: RigOptions = {}) {
   const log = spyLog();
-  const { repo, locks, reads } = fakeRepo();
+  const { repo, locks, reads, moveUpstream } = fakeRepo(options.gate);
   const build = fakeBuilder(options.build);
   const supervisor = fakeSupervisor({
     swap: options.swap,
@@ -197,7 +208,17 @@ async function rigOf(options: RigOptions = {}) {
       return `b-${made}`;
     },
   });
-  return { lifecycle, build, supervisor, store, status, log, locks, reads };
+  return {
+    lifecycle,
+    build,
+    supervisor,
+    store,
+    status,
+    log,
+    locks,
+    reads,
+    moveUpstream,
+  };
 }
 
 /** An entry of the state: a bundle id with the base it was built on. */
@@ -565,6 +586,101 @@ describe('the protocol check', () => {
   });
 });
 
+describe('review fixes: one swap per build, no swap after stop, the base read with the head', () => {
+  it('triggers that share one build result swap the node once, and all get the same outcome', async () => {
+    let release: (result: BuildResult) => void = () => undefined;
+    let calls = 0;
+    const rig = await rigOf({
+      build: (job) => {
+        calls += 1;
+        if (calls === 1) {
+          return new Promise<BuildResult>((resolve) => {
+            release = resolve;
+          });
+        }
+        return okBuild(job);
+      },
+    });
+    const first = rig.lifecycle.trigger('save-rebuild');
+    await settle();
+    // The two triggers queue behind the held build, and the runner merges them into one queued build.
+    const second = rig.lifecycle.trigger('publish');
+    const third = rig.lifecycle.trigger('sync-code');
+    await settle();
+    release({
+      bundleId: 'b-1',
+      dir: path.join(BUNDLES, 'b-1'),
+      ok: true,
+      firstError: null,
+    });
+    expect(await first).toStrictEqual({ kind: 'served', bundleId: 'b-1' });
+    expect(await second).toStrictEqual({ kind: 'served', bundleId: 'b-2' });
+    expect(await third).toStrictEqual({ kind: 'served', bundleId: 'b-2' });
+    expect(rig.supervisor.swap.mock.calls).toStrictEqual([
+      [{ bundleId: 'b-1', dir: path.join(BUNDLES, 'b-1') }],
+      [{ bundleId: 'b-2', dir: path.join(BUNDLES, 'b-2') }],
+    ]);
+  });
+
+  it('stop() while a read is pending: the build is refused, and no swap follows', async () => {
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const rig = await rigOf({ gate });
+    const pending = rig.lifecycle.trigger('publish');
+    await settle();
+    const stopping = rig.lifecycle.stop();
+    open();
+    await stopping;
+    expect(await pending).toStrictEqual({
+      kind: 'build-failed',
+      error: 'The preview is stopping, so no build starts',
+    });
+    expect(rig.build).not.toHaveBeenCalled();
+    expect(rig.supervisor.swap).not.toHaveBeenCalled();
+  });
+
+  it('stop() while the build runs: a build that answers after the stop is not swapped in', async () => {
+    let release: (result: BuildResult) => void = () => undefined;
+    const rig = await rigOf({
+      build: () =>
+        new Promise<BuildResult>((resolve) => {
+          release = resolve;
+        }),
+    });
+    const pending = rig.lifecycle.trigger('publish');
+    await settle();
+    const stopping = rig.lifecycle.stop();
+    release({
+      bundleId: 'b-1',
+      dir: path.join(BUNDLES, 'b-1'),
+      ok: true,
+      firstError: null,
+    });
+    await stopping;
+    expect(await pending).toStrictEqual({ kind: 'stopped' });
+    expect(rig.supervisor.swap).not.toHaveBeenCalled();
+    expect(rig.store.set).not.toHaveBeenCalled();
+  });
+
+  it('the entry keeps the origin SHA read with the head at the trigger, though origin moved during the build', async () => {
+    const moved = 'd'.repeat(40);
+    const rig = await rigOf({
+      build: (job) => {
+        rig.moveUpstream(moved);
+        return okBuild(job);
+      },
+    });
+    expect(await rig.lifecycle.trigger('publish')).toStrictEqual({
+      kind: 'served',
+      bundleId: 'b-1',
+    });
+    expect(rig.store.get().current).toStrictEqual(entry('b-1'));
+    expect(rig.store.get().current?.baseCommit).toBe(BASE);
+  });
+});
+
 describe('stop', () => {
   it('kills the build in flight, and a build queued behind it is refused and never starts', async () => {
     let release: (result: BuildResult) => void = () => undefined;
@@ -578,7 +694,9 @@ describe('stop', () => {
     await settle();
     const queued = rig.lifecycle.trigger('publish');
     await settle();
-    await rig.lifecycle.stop();
+    // stop() waits for the triggers under way, so it is awaited after the held build is released.
+    const stopping = rig.lifecycle.stop();
+    await settle();
     expect(rig.build.stop).toHaveBeenCalledTimes(1);
     // The killed build ends, and the queued build is taken next: the runner refuses it because of stop.
     release({
@@ -596,5 +714,6 @@ describe('stop', () => {
       error: 'The preview is stopping, so no build starts',
     });
     expect(rig.build).toHaveBeenCalledTimes(1);
+    await stopping;
   });
 });

@@ -224,6 +224,33 @@ describe('the stop of a builder (2.9c-B)', () => {
     expect((await pending).ok).toBe(false);
   });
 
+  it('a stop that comes while the worktree is still being added starts no child, and the build fails', async () => {
+    let finishAdd: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      finishAdd = resolve;
+    });
+    const slowRepo: WorktreeLock = {
+      locked: (_holder, work) =>
+        gate.then(() =>
+          work({
+            worktreeAdd: async () => path.join(cmsDir, 'worktree'),
+            worktreeRemove: async () => undefined,
+          }),
+        ),
+    };
+    const build = builderWith({ repo: slowRepo, spawn: fakeSpawn() });
+    const pending = build({ commit: 'c'.repeat(40), bundleId: 'b1' });
+    await build.stop();
+    finishAdd();
+    const result = await pending;
+    expect(spawned).toStrictEqual([]);
+    expect(result.ok).toBe(false);
+    expect(result.firstError).toStrictEqual({
+      file: null,
+      message: 'The build was stopped before it started',
+    });
+  });
+
   it('does nothing when no build is in flight', async () => {
     const build = builderWith();
     await build.stop();

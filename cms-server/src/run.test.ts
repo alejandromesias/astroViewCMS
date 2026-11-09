@@ -1,4 +1,4 @@
-import { cp, readFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
@@ -17,6 +17,7 @@ import type { AppDeps } from './http/app.ts';
 import type { Logger } from './log.ts';
 import type { BuildCommitOptions, Builder } from './preview/build-commit.ts';
 import type { BuildJob, BuildResult } from './preview/build-runner.ts';
+import { encodeState } from './preview/state.ts';
 import type { Supervisor, SupervisorOptions } from './preview/supervisor.ts';
 import type { SweepOptions } from './preview/sweep.ts';
 import { describeError, parseArgs, portOf, type RunDeps, run } from './run.ts';
@@ -279,6 +280,47 @@ describe('run', () => {
       });
     } finally {
       await running.stop();
+    }
+  });
+
+  it('a malformed bundle.json of the current bundle does not reject the start: it is logged, and the protocol check sees it', async () => {
+    const root = await makeTestRoot();
+    try {
+      const configPath = join(root, 'cms.config.ts');
+      const siteDir = join(root, '.cms', 'sample-site');
+      const manifest = join(siteDir, 'bundles', 'broken', 'manifest');
+      await mkdir(manifest, { recursive: true });
+      await writeFile(join(manifest, 'bundle.json'), '{');
+      await writeFile(
+        join(siteDir, 'state.json'),
+        encodeState({
+          current: { bundleId: 'broken', baseCommit: 'a'.repeat(40) },
+          lastGood: null,
+          protocolAttempts: new Map(),
+        }),
+      );
+      const h = harness();
+      const running = await run([configPath], {}, h.deps);
+      try {
+        expect(h.log.warn).toHaveBeenCalledWith(
+          'The current bundle cannot be read, so the start goes on',
+          { error: expect.stringContaining('bundle.json') as string },
+        );
+        // The lifecycle's own read of the same bundle.json is a mismatch, so the protocol check rebuilds it once.
+        await vi.waitFor(() =>
+          expect(h.log.warn).toHaveBeenCalledWith(
+            'The bundle does not match the protocol, so it is rebuilt once',
+            {
+              bundle: 'broken',
+              problem: expect.stringContaining('cannot be read') as string,
+            },
+          ),
+        );
+      } finally {
+        await running.stop();
+      }
+    } finally {
+      await removeTestRoot(root);
     }
   });
 
