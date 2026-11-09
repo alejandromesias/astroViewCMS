@@ -15,7 +15,10 @@ import type { Repo } from './git/ops.ts';
 import type { EnsureRepoOptions, RepoState } from './git/repo.ts';
 import type { AppDeps } from './http/app.ts';
 import type { Logger } from './log.ts';
+import type { BuildCommitOptions, Builder } from './preview/build-commit.ts';
+import type { BuildJob, BuildResult } from './preview/build-runner.ts';
 import type { Supervisor, SupervisorOptions } from './preview/supervisor.ts';
+import type { SweepOptions } from './preview/sweep.ts';
 import { describeError, parseArgs, portOf, type RunDeps, run } from './run.ts';
 import type { DeleteGuard } from './save/context.ts';
 import { previewNotReady } from './save/validate.ts';
@@ -48,6 +51,21 @@ function configOf(): CmsConfig {
 async function fixtureIdentity(): Promise<BundleJson> {
   const text = await readFile(join(FIXTURE_BUNDLE, 'bundle.json'), 'utf8');
   return bundleJsonSchema.parse(JSON.parse(text));
+}
+
+/** A builder whose calls are spies. Its builds answer a failure, since no test here builds for real. `stop` is a spy too. */
+function fakeBuilder(): Builder {
+  return Object.assign(
+    vi.fn(
+      async (job: BuildJob): Promise<BuildResult> => ({
+        bundleId: job.bundleId,
+        dir: job.bundleId,
+        ok: false,
+        firstError: { file: null, message: 'no build in this test' },
+      }),
+    ),
+    { stop: vi.fn(() => Promise.resolve()) },
+  );
 }
 
 /**
@@ -93,6 +111,12 @@ function harness(
       (_dir: string) =>
         options.bundle ?? { current: () => Promise.resolve(null) },
     ),
+    // The builder's start-up and builds are fakes: no git lock, no astro check and no build child.
+    sweepLeftovers: vi.fn((_options: SweepOptions) =>
+      Promise.resolve({ worktrees: [], bundles: [], temp: [] }),
+    ),
+    checkAstroResolves: vi.fn((_siteFolder: string) => '/astro/index.js'),
+    createBuilder: vi.fn((_options: BuildCommitOptions) => fakeBuilder()),
     // The real listen, on a free port: the routes answer over HTTP. The port asked for is only recorded.
     startServer: vi.fn(async (appDeps: AppDeps, _port: number) => {
       const server = await listen(appDeps, 0);
@@ -231,10 +255,12 @@ describe('run', () => {
           bundle: expect.any(Object) as BundleSource,
           workingCopy: 'repo',
           repo: expect.any(Object) as Repo,
+          status: expect.any(Object) as AppDeps['status'],
           save: {
             config: expect.any(Object),
             preview: previewNotReady,
             guard: expect.any(Object) as DeleteGuard,
+            onRebuild: expect.any(Function) as () => void,
           },
         },
         4400,
@@ -256,6 +282,117 @@ describe('run', () => {
     }
   });
 
+  it('with --bundle the builder is off: no sweep, no astro check and no builder, and a save rebuild is only logged', async () => {
+    const root = await makeTestRoot();
+    try {
+      const bundleDir = join(root, 'build');
+      await cp(FIXTURE_BUNDLE, join(bundleDir, 'manifest'), {
+        recursive: true,
+      });
+      const h = harness();
+      const running = await run(
+        ['--bundle', bundleDir, join(root, 'cms.config.ts')],
+        {},
+        { ...h.deps, directoryBundleSource },
+      );
+      try {
+        expect(h.deps.sweepLeftovers).not.toHaveBeenCalled();
+        expect(h.deps.checkAstroResolves).not.toHaveBeenCalled();
+        expect(h.deps.createBuilder).not.toHaveBeenCalled();
+        const appDeps = vi.mocked(h.deps.startServer).mock.calls[0]?.[0];
+        appDeps?.save?.onRebuild?.();
+        expect(h.log.info).toHaveBeenCalledWith(
+          'A save asked for a rebuild, but the builder is off',
+        );
+        expect(await appDeps?.status?.snapshot()).toMatchObject({
+          builder: 'off',
+          build: { state: 'off', error: null },
+        });
+      } finally {
+        await running.stop();
+      }
+    } finally {
+      await removeTestRoot(root);
+    }
+  });
+
+  it('with no --bundle the builder starts up: the sweep and the astro check run on the clone, and the first build is asked for', async () => {
+    const h = harness();
+    const configPath = resolve('site', 'cms.config.ts');
+    const configDir = dirname(configPath);
+    const running = await run([configPath], {}, h.deps);
+    try {
+      expect(h.deps.sweepLeftovers).toHaveBeenCalledWith({
+        repo: expect.any(Object) as Repo,
+        cmsDir: join(configDir, '.cms'),
+        site: 'sample-site',
+        log: h.log,
+      });
+      expect(h.deps.checkAstroResolves).toHaveBeenCalledWith('repo');
+      expect(h.deps.createBuilder).toHaveBeenCalledWith({
+        repo: expect.any(Object) as Repo,
+        cmsDir: join(configDir, '.cms'),
+        site: 'sample-site',
+        siteDir: '.',
+        siteConfig: resolve(
+          configDir,
+          'preview-render-server/sites/sample-site.config.ts',
+        ),
+        keptBundles: expect.any(Function) as () => ReadonlySet<string>,
+        log: h.log,
+      });
+      // With no state yet, nothing is kept.
+      const options = vi.mocked(h.deps.createBuilder).mock.calls[0]?.[0];
+      expect(options?.keptBundles?.()).toStrictEqual(new Set<string>());
+      await vi.waitFor(() =>
+        expect(h.log.info).toHaveBeenCalledWith('A build was asked for', {
+          reason: 'first-start',
+        }),
+      );
+    } finally {
+      await running.stop();
+    }
+  });
+
+  it('a clone the astro check refuses fails the start before anything listens', async () => {
+    const h = harness();
+    h.deps.checkAstroResolves = vi.fn((_siteFolder: string) => {
+      throw new Error('dependencies-missing: astro cannot be resolved');
+    });
+    await expect(run(['site/cms.config.ts'], {}, h.deps)).rejects.toThrow(
+      'dependencies-missing: astro cannot be resolved',
+    );
+    expect(h.deps.startServer).not.toHaveBeenCalled();
+  });
+
+  it('stop() stops the builder, so a build in flight is killed', async () => {
+    const h = harness();
+    const builder = fakeBuilder();
+    const running = await run(
+      ['site/cms.config.ts'],
+      {},
+      { ...h.deps, createBuilder: () => builder },
+    );
+    await running.stop();
+    expect(builder.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('a save that asks for a rebuild starts a build when the builder is on', async () => {
+    const h = harness();
+    const running = await run(['site/cms.config.ts'], {}, h.deps);
+    try {
+      const appDeps = vi.mocked(h.deps.startServer).mock.calls[0]?.[0];
+      appDeps?.save?.onRebuild?.();
+      await vi.waitFor(() =>
+        expect(h.log.info).toHaveBeenCalledWith('A build was asked for', {
+          reason: 'save-rebuild',
+        }),
+      );
+    } finally {
+      await running.stop();
+    }
+  });
+
   it('answers the editor, the media and the data routes', async () => {
     const h = harness();
     const running = await run(['site/cms.config.ts'], {}, h.deps);
@@ -267,7 +404,11 @@ describe('run', () => {
       expect((await fetch(`${base}/editor.css`)).status).toBe(200);
       const status = await fetch(`${base}/api/status`);
       expect(status.status).toBe(200);
-      expect(await status.json()).toEqual({ bundle: null });
+      // The bundle key is null, and the preview status is beside it (2.9c): the builder is on.
+      expect(await status.json()).toMatchObject({
+        bundle: null,
+        builder: 'on',
+      });
       const schema = await fetch(`${base}/api/schema`);
       expect(schema.status).toBe(503);
       expect(await schema.json()).toEqual({ error: 'no-bundle' });
@@ -302,11 +443,14 @@ describe('run', () => {
           dir: resolve(bundleDir),
         });
         const status = await fetch(`${base}/api/status`);
-        expect(await status.json()).toEqual({
+        // The bundle key as before; the preview status beside it says the builder is off (2.9c).
+        expect(await status.json()).toMatchObject({
           bundle: {
             bundleId: identity.bundleId,
             siteCommit: identity.siteCommit,
           },
+          builder: 'off',
+          build: { state: 'off', error: null },
         });
         expect((await fetch(`${base}/api/schema`)).status).toBe(200);
       } finally {

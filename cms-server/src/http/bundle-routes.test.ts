@@ -85,6 +85,52 @@ describe('GET /api/status', () => {
   });
 });
 
+describe('GET /api/status with the preview status (2.9c)', () => {
+  // The status a holder would give: a builder that is on, a ready node, a changeset of three files.
+  const SNAPSHOT = {
+    builder: 'on',
+    build: { state: 'idle', error: null },
+    node: { state: 'ready', bundleId: 'fixture-2026-11-03', error: null },
+    lastSync: null,
+    syncError: null,
+    changesetSize: 3,
+    publish: 'idle',
+    errors: { protocolMismatch: null, upstreamBuildFailed: null, swap: null },
+  } as const;
+
+  it('adds the status beside the bundle key', async () => {
+    const app = createApp({
+      ...fakeAppDeps(),
+      bundle: directoryBundleSource(FIXTURE_BUNDLE),
+      workingCopy: sample,
+      status: { snapshot: () => Promise.resolve(SNAPSHOT) },
+    });
+    const response = await app.request('/api/status');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toStrictEqual({
+      bundle: {
+        bundleId: 'fixture-2026-11-03',
+        siteCommit: '4523c67c55284f8bd3ae1b61caa6d5501ccc77ab',
+      },
+      ...SNAPSHOT,
+    });
+  });
+
+  it('adds the status beside a null bundle as well', async () => {
+    const dir = await bundleFolder({ 'bundle.json': null });
+    const app = createApp({
+      ...fakeAppDeps(),
+      bundle: directoryBundleSource(dir),
+      workingCopy: sample,
+      status: { snapshot: () => Promise.resolve(SNAPSHOT) },
+    });
+    expect(await (await app.request('/api/status')).json()).toStrictEqual({
+      bundle: null,
+      ...SNAPSHOT,
+    });
+  });
+});
+
 describe('GET /api/schema', () => {
   it('lists the collections of schema.json, in the file order', async () => {
     const response = await appOver(FIXTURE_BUNDLE).request('/api/schema');
@@ -465,6 +511,7 @@ describe('GET /api/documents?key=', () => {
         { path: 'src/content/authors/new-one.json', status: 'created' },
       ],
       mergeBase: async () => 'base',
+      revParse: () => Promise.reject(new Error('revParse is not used here')),
       showAtBytes: async () => null,
       overwrittenSince: async () => new Map(),
       locked: () => Promise.reject(new Error('GET takes no lock')),
@@ -503,6 +550,7 @@ describe('GET /api/documents?key=', () => {
           new GitError('failed', 'git diff --name-status failed (exit 128)'),
         ),
       mergeBase: async () => 'base',
+      revParse: () => Promise.reject(new Error('revParse is not used here')),
       showAtBytes: async () => null,
       overwrittenSince: async () => new Map(),
       locked: () => Promise.reject(new Error('GET takes no lock')),
@@ -531,6 +579,7 @@ describe('GET /api/documents?key=', () => {
       const repo: Repo = {
         changedPaths: () => Promise.reject(new Error('boom')),
         mergeBase: async () => 'base',
+        revParse: () => Promise.reject(new Error('revParse is not used here')),
         showAtBytes: async () => null,
         overwrittenSince: async () => new Map(),
         locked: () => Promise.reject(new Error('GET takes no lock')),

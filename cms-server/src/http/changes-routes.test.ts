@@ -41,6 +41,7 @@ afterEach(async () => {
 const repo: Repo = {
   changedPaths: async () => [{ path: BLOG_1, status: 'modified' }],
   mergeBase: async () => 'base',
+  revParse: () => Promise.reject(new Error('revParse is not used here')),
   showAtBytes: async (_ref, path) =>
     path === BLOG_1 ? Buffer.from(OLD) : null,
   overwrittenSince: async () => new Map(),
@@ -148,6 +149,7 @@ async function saveApp(
   preview: PreviewClient,
   bundle?: string,
   guard?: DeleteGuard,
+  onRebuild?: () => void,
 ): Promise<{ app: Hono; siteFolder: string; repoDir: string }> {
   const root = await makeTestRoot();
   folders.push(root);
@@ -162,7 +164,7 @@ async function saveApp(
     bundle: directoryBundleSource(bundle ?? (await bundleFolder())),
     workingCopy: state.siteFolder,
     repo: saves,
-    save: { config, preview, guard },
+    save: { config, preview, guard, onRebuild },
   });
   return { app, siteFolder: state.siteFolder, repoDir: state.repoDir };
 }
@@ -519,6 +521,44 @@ describe('PUT /api/changes', () => {
     );
     expect(res.status).toBe(200);
     expect((await res.json()).rebuild).toBe(true);
+  });
+
+  it('calls onRebuild once after a 200 save that asks for a rebuild (2.9c)', async () => {
+    const asked: string[] = [];
+    const { app, siteFolder } = await saveApp(
+      previewSays(),
+      undefined,
+      undefined,
+      () => asked.push('rebuild'),
+    );
+    const before = await readFile(join(siteFolder, CONFIG), 'utf8');
+    const current = JSON.parse(before);
+    const res = await put(
+      app,
+      JSON.stringify({
+        changes: [
+          {
+            document: 'data:src/config/config.json',
+            baseRevision: revisionOf(before),
+            data: {
+              ...current,
+              site: { ...current.site, base_url: 'https://elsewhere.example' },
+            },
+          },
+        ],
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(asked).toStrictEqual(['rebuild']);
+  });
+
+  it('does not call onRebuild for a save that answers 400', async () => {
+    const asked: string[] = [];
+    const { app } = await saveApp(previewSays(), undefined, undefined, () =>
+      asked.push('rebuild'),
+    );
+    expect((await put(app, '{')).status).toBe(400);
+    expect(asked).toStrictEqual([]);
   });
 
   it('answers 400 invalid-body for a body that is not JSON', async () => {

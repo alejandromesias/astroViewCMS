@@ -62,6 +62,9 @@ export function fakeTx(overrides: Partial<RepoTx> = {}): RepoTx {
   return {
     commitSave: vi.fn(async () => 'sha'),
     restore: vi.fn(async () => {}),
+    revParse: vi.fn(async () => {
+      throw new Error('revParse is not used by a save');
+    }),
     worktreeAdd: vi.fn(async () => '/unused'),
     worktreeRemove: vi.fn(async () => {}),
     fetch: vi.fn(async () => {

@@ -194,6 +194,44 @@ const logPath = (id: string) => path.join(cmsDir, SITE, 'logs', `${id}.log`);
 const worktreeSite = () =>
   path.join(cmsDir, SITE, 'worktrees', 'build-b1', SITE_DIR);
 
+describe('the stop of a builder (2.9c-B)', () => {
+  // Waits until the build has spawned its child, so stop() has a build in flight to kill.
+  async function untilSpawned(): Promise<void> {
+    while (spawned.length === 0) await sleep(5);
+  }
+
+  it('kills the build in flight through its process group, then the build itself, and the build fails', async () => {
+    const build = builderWith({ spawn: fakeSpawn('never') });
+    const pending = build({ commit: 'c'.repeat(40), bundleId: 'b1' });
+    await untilSpawned();
+    await build.stop();
+    expect(groupKills).toStrictEqual([CHILD_PID]);
+    expect(kills).toStrictEqual(['SIGKILL']);
+    expect((await pending).ok).toBe(false);
+  });
+
+  it('runs the tree kill on Windows before the build is killed', async () => {
+    const build = builderWith({
+      spawn: fakeSpawn('never'),
+      platform: 'win32',
+    });
+    const pending = build({ commit: 'c'.repeat(40), bundleId: 'b1' });
+    await untilSpawned();
+    await build.stop();
+    expect(spawned.map((call) => call.command)).toContain('taskkill');
+    expect(groupKills).toStrictEqual([]);
+    expect(kills).toStrictEqual(['SIGKILL']);
+    expect((await pending).ok).toBe(false);
+  });
+
+  it('does nothing when no build is in flight', async () => {
+    const build = builderWith();
+    await build.stop();
+    expect(groupKills).toStrictEqual([]);
+    expect(kills).toStrictEqual([]);
+  });
+});
+
 describe('createBuilder', () => {
   it('builds the commit in a worktree, then removes the worktree', async () => {
     const build = builderWith({

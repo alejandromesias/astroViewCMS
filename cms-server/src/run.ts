@@ -4,12 +4,16 @@
 import type { Server } from 'node:http';
 import { dirname, join, resolve } from 'node:path';
 import { ZodError } from 'zod';
-import { type BundleSource, directoryBundleSource } from './bundle/source.ts';
+import {
+  type BundleSource,
+  directoryBundleSource,
+  stateBundleSource,
+} from './bundle/source.ts';
 import { loadConfig } from './config/load.ts';
 import type { CmsConfig } from './config/schema.ts';
 import { type Env, loadSecrets, type Secrets } from './config/secrets.ts';
 import { type EditorPage, loadEditorPage } from './editor/page.ts';
-import { openRepo } from './git/ops.ts';
+import { openRepo, type Repo } from './git/ops.ts';
 import {
   type EnsureRepoOptions,
   ensureRepo,
@@ -18,10 +22,31 @@ import {
 import type { AppDeps } from './http/app.ts';
 import { type Logger, logger } from './log.ts';
 import {
+  type BuildCommitOptions,
+  type Builder,
+  createBuilder,
+} from './preview/build-commit.ts';
+import {
+  type BundleLifecycle,
+  createBundleLifecycle,
+} from './preview/bundle-lifecycle.ts';
+import { checkAstroResolves } from './preview/dependencies.ts';
+import {
+  createStateStore,
+  readState,
+  type StateStore,
+} from './preview/state.ts';
+import { createStatus } from './preview/status.ts';
+import {
   createSupervisor,
   type Supervisor,
   type SupervisorOptions,
 } from './preview/supervisor.ts';
+import {
+  type SweepOptions,
+  type SweepResult,
+  sweepLeftovers,
+} from './preview/sweep.ts';
 import { createDeleteGuard } from './save/delete-guard.ts';
 import { previewNotReady } from './save/validate.ts';
 import { startServer } from './server.ts';
@@ -47,6 +72,9 @@ export interface RunDeps {
   ensureRepo: (options: EnsureRepoOptions) => Promise<RepoState>;
   loadEditorPage: () => Promise<EditorPage>;
   directoryBundleSource: (dir: string) => BundleSource;
+  sweepLeftovers: (options: SweepOptions) => Promise<SweepResult>;
+  checkAstroResolves: (siteFolder: string) => string;
+  createBuilder: (options: BuildCommitOptions) => Builder;
   startServer: (deps: AppDeps, port: number) => Promise<Server>;
   createSupervisor: (options: SupervisorOptions) => Supervisor;
   logger: Logger;
@@ -58,6 +86,9 @@ export const realDeps: RunDeps = {
   ensureRepo,
   loadEditorPage,
   directoryBundleSource,
+  sweepLeftovers,
+  checkAstroResolves,
+  createBuilder,
   startServer,
   createSupervisor,
   logger,
@@ -65,9 +96,6 @@ export const realDeps: RunDeps = {
 
 const USAGE = 'Usage: node src/main.ts [config-file] [--bundle <folder>]';
 const DEFAULT_CONFIG = 'cms.config.ts';
-
-// Without --bundle there is no bundle: the data routes answer 503 and /api/status answers bundle null.
-const NO_BUNDLE: BundleSource = { current: () => Promise.resolve(null) };
 
 /** Reads the start arguments. The config file defaults to cms.config.ts in the working folder. */
 export function parseArgs(argv: readonly string[]): StartArgs {
@@ -143,10 +171,67 @@ export async function run(
   const secrets = await deps.loadSecrets(siteDir, env);
   const repo = await deps.ensureRepo({ config, cmsDir, log: deps.logger });
   const editorPage = await deps.loadEditorPage();
-  const source =
-    args.bundleDir === undefined
-      ? NO_BUNDLE
-      : deps.directoryBundleSource(join(args.bundleDir, 'manifest'));
+  // One set of repo operations per start, so the lock covers every save of this start.
+  const openedRepo = openRepo({ config, cmsDir, state: repo });
+  const supervisor = deps.createSupervisor({
+    port: previewPort,
+    site: config.site,
+    editorOrigin: config.origins.cms,
+    secrets,
+    siteConfig: resolve(configDir, config.previewSiteConfig),
+  });
+  // The builder is on unless --bundle names a folder. With --bundle there is no lifecycle: no trigger runs (2.9c).
+  const status = createStatus({
+    builder: args.bundleDir === undefined ? 'on' : 'off',
+    node: () => supervisor.status(),
+    changedPaths: () => openedRepo.changedPaths(),
+  });
+  const bundlesDir = join(siteDir, 'bundles');
+  let source: BundleSource;
+  let lifecycle: BundleLifecycle | undefined;
+  if (args.bundleDir !== undefined) {
+    source = deps.directoryBundleSource(join(args.bundleDir, 'manifest'));
+  } else {
+    const store = await prepareBuilder(deps, {
+      repo: openedRepo,
+      cmsDir,
+      site: config.site,
+      siteFolder: repo.siteFolder,
+      stateFile: join(siteDir, 'state.json'),
+    });
+    // The served bundle is the one the state names, so a swap or a rollback changes what the source answers.
+    source = stateBundleSource(
+      bundlesDir,
+      () => store.get().current?.bundleId ?? null,
+    );
+    const builder = deps.createBuilder({
+      repo: openedRepo,
+      cmsDir,
+      site: config.site,
+      siteDir: config.siteDir,
+      siteConfig: resolve(configDir, config.previewSiteConfig),
+      keptBundles: () => store.keptBundles(),
+      log: deps.logger,
+    });
+    lifecycle = createBundleLifecycle({
+      repo: openedRepo,
+      upstreamRef: `origin/${config.branch}`,
+      build: builder,
+      supervisor,
+      state: store,
+      status,
+      bundlesDir,
+      log: deps.logger,
+    });
+  }
+  // A save that asks for a rebuild starts a build. With --bundle there is no builder, so it is only logged.
+  const onRebuild = (): void => {
+    if (lifecycle === undefined) {
+      deps.logger.info('A save asked for a rebuild, but the builder is off');
+    } else {
+      void lifecycle.trigger('save-rebuild');
+    }
+  };
   const appDeps: AppDeps = {
     editor: { page: editorPage, previewOrigin: config.origins.preview },
     media: {
@@ -157,32 +242,40 @@ export async function run(
     bundle: source,
     // The repo's site folder (repoDir joined with the config's siteDir): where the bundle's document files are.
     workingCopy: repo.siteFolder,
-    // One set of repo operations per start, so the lock covers every save of this start.
-    repo: openRepo({ config, cmsDir, state: repo }),
+    repo: openedRepo,
+    status,
     // The preview client is 2.9d's. Until it is in place every save answers 503 preview-unavailable.
-    save: { config, preview: previewNotReady, guard: createDeleteGuard() },
+    save: {
+      config,
+      preview: previewNotReady,
+      guard: createDeleteGuard(),
+      onRebuild,
+    },
   };
-  const supervisor = deps.createSupervisor({
-    port: previewPort,
-    site: config.site,
-    editorOrigin: config.origins.cms,
-    secrets,
-    siteConfig: resolve(configDir, config.previewSiteConfig),
-  });
   const server = await deps.startServer(appDeps, cmsPort);
-  const stop = stopOnce(server, supervisor);
+  const stop = stopOnce(server, supervisor, lifecycle);
   // A server that closes on its own also stops the node. The stop started by stop() is the same one, so it runs once.
   server.once('close', () => {
     void stop();
   });
   let bundleId: string | null;
   try {
-    bundleId = await startPreview(
-      supervisor,
-      source,
-      args.bundleDir,
-      deps.logger,
-    );
+    if (lifecycle === undefined) {
+      bundleId = await startPreview(
+        supervisor,
+        source,
+        args.bundleDir,
+        deps.logger,
+      );
+    } else {
+      bundleId = (await source.current())?.identity.bundleId ?? null;
+      // The first build can take minutes, so the start runs behind the listening server: the node and the status follow it.
+      void lifecycle.start().catch((error: unknown) => {
+        deps.logger.error('The preview start-up failed', {
+          error: describeError(error),
+        });
+      });
+    }
   } catch (error) {
     await stop();
     throw error;
@@ -235,11 +328,39 @@ function closeServer(server: Server): Promise<void> {
   });
 }
 
-/** The stop of a running CMS: the server first, then the node. The first call does the work; later calls return the same promise. */
-function stopOnce(server: Server, supervisor: Supervisor): () => Promise<void> {
+/** The builder's start-up (2.9c): the leftover sweep and the astro check, then the state file. The sweep runs first, so a bundle folder with no bundle.json is gone before the state names it. Returns the state store, read from the file. */
+async function prepareBuilder(
+  deps: RunDeps,
+  start: {
+    readonly repo: Repo;
+    readonly cmsDir: string;
+    readonly site: string;
+    readonly siteFolder: string;
+    readonly stateFile: string;
+  },
+): Promise<StateStore> {
+  await deps.sweepLeftovers({
+    repo: start.repo,
+    cmsDir: start.cmsDir,
+    site: start.site,
+    log: deps.logger,
+  });
+  deps.checkAstroResolves(start.siteFolder);
+  const initial = await readState(start.stateFile, deps.logger);
+  return createStateStore(start.stateFile, initial, deps.logger);
+}
+
+/** The stop of a running CMS: the server first, then the builds, then the node. The first call does the work; later calls return the same promise. */
+function stopOnce(
+  server: Server,
+  supervisor: Supervisor,
+  lifecycle: BundleLifecycle | undefined,
+): () => Promise<void> {
   let stopping: Promise<void> | undefined;
   return () => {
-    stopping ??= closeServer(server).then(() => supervisor.stop());
+    stopping ??= closeServer(server)
+      .then(() => lifecycle?.stop())
+      .then(() => supervisor.stop());
     return stopping;
   };
 }

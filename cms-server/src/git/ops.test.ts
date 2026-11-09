@@ -405,6 +405,21 @@ describe('openRepo: bytes, merge base and trailers', () => {
     await expect(repo.mergeBase()).resolves.toBe(shared);
   });
 
+  it('revParse answers the full sha of a ref, inside the lock as well, and a ref that does not exist throws', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site');
+    const repo = repoOf(fixture);
+    const head = (
+      await git(fixture.state.repoDir, ['rev-parse', 'refs/heads/cms/work'])
+    ).trim();
+    await expect(repo.revParse('refs/heads/cms/work')).resolves.toBe(head);
+    await expect(
+      repo.locked('build head', (tx) => tx.revParse('refs/heads/cms/work')),
+    ).resolves.toBe(head);
+    await expect(repo.revParse('refs/heads/no-such-branch')).rejects.toThrow(
+      /rev-parse/,
+    );
+  });
+
   it('overwrittenSince reads the CMS-Overwrote trailers of the saves that origin lacks, and the newest value wins', async () => {
     const fixture = await fixtureIn(await newRoot(), 'site');
     const repo = repoOf(fixture);

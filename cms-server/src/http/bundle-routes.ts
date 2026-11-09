@@ -19,6 +19,7 @@ import {
   revisionOfDocument,
 } from '../documents/revision.ts';
 import { GitError } from '../git/exec.ts';
+import type { StatusSource } from '../preview/status.ts';
 
 /** One document in the list of GET /api/documents?collection=. `editable` is always a boolean. `revision` is null when the working copy cannot give one, and `error` is set (true) when the document cannot be read. */
 interface DocumentListItem {
@@ -46,12 +47,13 @@ interface DocumentAnswer {
   error?: DocumentError;
 }
 
-/** Registers the bundle routes on `app`. All of them read the bundle through one store; the documents are read from `workingCopy`, the site folder of the working copy. `repo`, when given, lets `GET /api/documents?key=` find a document that a save created (WORKPLAN 2.5c). */
+/** Registers the bundle routes on `app`. All of them read the bundle through one store; the documents are read from `workingCopy`, the site folder of the working copy. `repo`, when given, lets `GET /api/documents?key=` find a document that a save created (WORKPLAN 2.5c). `status`, when given, adds the preview status to GET /api/status (2.9c). */
 export function registerBundleRoutes(
   app: Hono,
   source: BundleSource,
   workingCopy: string,
   repo?: ChangesetRepo,
+  status?: StatusSource,
 ): void {
   const store = createBundleStore(source);
 
@@ -72,8 +74,10 @@ export function registerBundleRoutes(
     ),
   );
 
-  app.get('/api/status', (c) =>
-    withBundle(
+  // The bundle key is as before; the preview status (when given) is added beside it, with or without a bundle.
+  app.get('/api/status', async (c) => {
+    const extra = status === undefined ? {} : await status.snapshot();
+    return withBundle(
       c,
       store,
       ({ identity }) =>
@@ -82,10 +86,11 @@ export function registerBundleRoutes(
             bundleId: identity.bundleId,
             siteCommit: identity.siteCommit,
           },
+          ...extra,
         }),
-      () => c.json({ bundle: null }),
-    ),
-  );
+      () => c.json({ bundle: null, ...extra }),
+    );
+  });
 }
 
 /** Runs `answer` on the current bundle. Without one it runs `missing`, which answers 503 unless a route says otherwise. */

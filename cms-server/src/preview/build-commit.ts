@@ -101,8 +101,11 @@ interface Outcome {
   readonly firstError: BuildError | null;
 }
 
+/** The function that runs one build, plus `stop`, which kills the build in flight (2.9c-B). */
+export type Builder = BuildFn & { stop(): Promise<void> };
+
 /** Makes the function that runs one build. The builds it runs are not concurrent: the build runner queues them. */
-export function createBuilder(options: BuildCommitOptions): BuildFn {
+export function createBuilder(options: BuildCommitOptions): Builder {
   const { repo, cmsDir, site, siteDir, siteConfig } = options;
   const siteRoot = path.join(cmsDir, site);
   const bundlesDir = path.join(siteRoot, 'bundles');
@@ -117,6 +120,9 @@ export function createBuilder(options: BuildCommitOptions): BuildFn {
   const signalGroup = options.signalGroup ?? signalProcessGroup;
   const keptBundles = options.keptBundles ?? (() => new Set<string>());
   const log = options.log ?? logger;
+
+  // The build child that is running now, or undefined. Set once it is spawned, cleared once it has exited.
+  let running: BuildChild | undefined;
 
   // Kills the whole process tree of a build that ran over: `taskkill /T` on Windows, the process group elsewhere
   // (defaultSpawn starts each build as a group leader). On Windows the build is killed only after taskkill has
@@ -133,6 +139,11 @@ export function createBuilder(options: BuildCommitOptions): BuildFn {
         }).exited;
     }
     child.kill('SIGKILL');
+  }
+
+  // Kills the build in flight, if there is one, through killBuild, as a timeout does. Resolves once the kill is sent.
+  async function stop(): Promise<void> {
+    if (running !== undefined) await killBuild(running);
   }
 
   // Runs build.ts on the site folder of `worktree`, and reads its first error from the output.
@@ -152,6 +163,7 @@ export function createBuilder(options: BuildCommitOptions): BuildFn {
       cwd,
       env: childEnvironment(parentEnv, 'build'),
     });
+    running = child;
     let timer: NodeJS.Timeout | undefined;
     const expired = new Promise<'timeout'>((resolve) => {
       timer = setTimeout(resolve, timeoutMs, 'timeout');
@@ -160,6 +172,7 @@ export function createBuilder(options: BuildCommitOptions): BuildFn {
     clearTimeout(timer);
     if (first === 'timeout') await killBuild(child);
     const exit = await child.exited;
+    running = undefined;
     if (first === 'timeout') {
       return failure(exit.output, {
         file: null,
@@ -222,7 +235,7 @@ export function createBuilder(options: BuildCommitOptions): BuildFn {
       });
   }
 
-  return async function build(job: BuildJob): Promise<BuildResult> {
+  async function build(job: BuildJob): Promise<BuildResult> {
     const { commit, bundleId } = job;
     const dir = path.join(bundlesDir, bundleId);
     await mkdir(bundlesDir, { recursive: true });
@@ -251,7 +264,9 @@ export function createBuilder(options: BuildCommitOptions): BuildFn {
       ok: outcome.ok,
       firstError: outcome.firstError,
     };
-  };
+  }
+
+  return Object.assign(build, { stop });
 }
 
 /**
