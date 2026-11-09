@@ -112,6 +112,12 @@ export function createBundleLifecycle(
   const serving = new Map<string, Promise<TriggerOutcome>>();
   // The triggers still under way, so stop() can wait for them.
   const working = new Set<Promise<TriggerOutcome>>();
+  // The swaps and the restarts, one after another: each starts only after the one before it has settled.
+  let swapChain: Promise<unknown> = Promise.resolve();
+  // The number of the latest swap asked for. A failed swap recovers the last good bundle only while it is still the latest.
+  let latestSwap = 0;
+  // The triggers under way (build, serve and swap). The build state is building while any runs, and idle or failed once the last one ends.
+  let inFlight = 0;
   // One build at a time, and the triggers that wait merge into one queued build. After stop, a queued build is refused.
   const runner = createBuildRunner({
     build: (job) => {
@@ -166,14 +172,27 @@ export function createBundleLifecycle(
    * Builds `cms/work` HEAD and serves the result. `inherited` is the protocol count the new bundle takes: set by a
    * protocol rebuild, so the rebuilt bundle's own mismatch is only reported. Every failure is an outcome, not a rejection.
    */
-  function runBuild(
+  async function runBuild(
     reason: TriggerReason,
     inherited: number | undefined,
   ): Promise<TriggerOutcome> {
+    inFlight += 1;
+    status.setBuildState('building');
     const work = buildAndServe(reason, inherited);
     working.add(work);
-    void work.then(() => working.delete(work));
-    return work;
+    try {
+      const outcome = await work;
+      // The state is idle, or failed, only when this is the last trigger under way. While another one runs it stays building.
+      if (inFlight === 1) {
+        status.setBuildState(
+          outcome.kind === 'build-failed' ? 'failed' : 'idle',
+        );
+      }
+      return outcome;
+    } finally {
+      inFlight -= 1;
+      working.delete(work);
+    }
   }
 
   /**
@@ -186,7 +205,6 @@ export function createBundleLifecycle(
   ): Promise<TriggerOutcome> {
     if (stopped) return { kind: 'stopped' };
     log.info('A build was asked for', { reason });
-    status.setBuildState('building');
     try {
       const pair = await repo.locked('build head', async (tx) => ({
         head: await tx.revParse(WORK_REF),
@@ -202,9 +220,8 @@ export function createBundleLifecycle(
     }
   }
 
-  /** Records a failed build in the status, and returns its outcome. The node keeps serving what it served. */
+  /** Records a failed build's error in the status, and returns its outcome. The node keeps serving what it served. */
   function buildFailed(error: string): TriggerOutcome {
-    status.setBuildState('failed');
     status.setBuildError(error);
     return { kind: 'build-failed', error };
   }
@@ -235,14 +252,23 @@ export function createBundleLifecycle(
     if (base === undefined) {
       throw new Error(`No base was read for bundle ${bundleId}`);
     }
-    // stop() may have come while the build ran. Nothing awaits between this check and the swap, so none can come after it.
+    // stop() may have come while the build ran. The check is repeated where the swap starts, after any earlier swap has settled.
     if (stopped) return { kind: 'stopped' };
     const entry: BundleEntry = { bundleId, baseCommit: base };
-    const swap = await supervisor.swap({ bundleId, dir });
-    status.setBuildState('idle');
+    latestSwap += 1;
+    const seq = latestSwap;
+    const swap = await inOrder(async () =>
+      stopped ? undefined : await supervisor.swap({ bundleId, dir }),
+    );
+    if (swap === undefined) return { kind: 'stopped' };
     if (!swap.ok) {
       status.setSwapError(swap.error);
-      if (!swap.rolledBack) await restartLastGood();
+      // Recover only if no newer swap was asked for meanwhile: that swap is the one the node should serve.
+      if (!swap.rolledBack) {
+        await inOrder(async () => {
+          if (seq === latestSwap) await restartLastGood();
+        });
+      }
       return {
         kind: 'swap-failed',
         error: swap.error,
@@ -259,6 +285,16 @@ export function createBundleLifecycle(
     });
     await checkProtocol(entry);
     return { kind: 'served', bundleId };
+  }
+
+  /**
+   * Runs `work` after every swap and restart asked for before it has settled, so they never overlap. A failure of an
+   * earlier one does not stop the chain.
+   */
+  function inOrder<T>(work: () => Promise<T>): Promise<T> {
+    const run = swapChain.then(work);
+    swapChain = run.catch(() => undefined);
+    return run;
   }
 
   /** Starts the last good bundle again, after a swap that failed without a rollback. Nothing is started when there is none. */

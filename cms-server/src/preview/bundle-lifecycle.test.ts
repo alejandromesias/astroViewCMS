@@ -681,6 +681,74 @@ describe('review fixes: one swap per build, no swap after stop, the base read wi
   });
 });
 
+describe('review fixes 2: swaps in order, and the build state while another trigger runs', () => {
+  it('a swap for a newer bundle waits for the swap before it, and the older swap does not restart last-good over it', async () => {
+    let releaseFirst: (answer: SwapAnswer) => void = () => undefined;
+    let swaps = 0;
+    const rig = await rigOf({
+      state: oldState(),
+      swap: () => {
+        swaps += 1;
+        if (swaps === 1) {
+          return new Promise<SwapAnswer>((resolve) => {
+            releaseFirst = resolve;
+          });
+        }
+        return Promise.resolve({ ok: true });
+      },
+    });
+    const first = rig.lifecycle.trigger('publish');
+    const second = rig.lifecycle.trigger('save-rebuild');
+    await settle();
+    // The second bundle is built while the first swap waits for readiness, but its swap does not start until that one settles.
+    expect(rig.supervisor.swap.mock.calls).toStrictEqual([
+      [{ bundleId: 'b-1', dir: path.join(BUNDLES, 'b-1') }],
+    ]);
+    releaseFirst({ ok: false, error: 'not ready', rolledBack: false });
+    expect(await first).toStrictEqual({
+      kind: 'swap-failed',
+      error: 'not ready',
+      rolledBack: false,
+    });
+    expect(await second).toStrictEqual({ kind: 'served', bundleId: 'b-2' });
+    // The older swap failed, but a newer one was asked for: last-good is not started over the newer bundle.
+    expect(rig.supervisor.start).not.toHaveBeenCalled();
+    expect(rig.supervisor.swap.mock.calls).toStrictEqual([
+      [{ bundleId: 'b-1', dir: path.join(BUNDLES, 'b-1') }],
+      [{ bundleId: 'b-2', dir: path.join(BUNDLES, 'b-2') }],
+    ]);
+    expect(rig.store.get().current).toStrictEqual(entry('b-2'));
+  });
+
+  it('the build state stays building while a queued build runs behind a finished swap, and is idle only once both are settled', async () => {
+    let release: (result: BuildResult) => void = () => undefined;
+    let builds = 0;
+    const rig = await rigOf({
+      build: (job) => {
+        builds += 1;
+        if (builds === 2) {
+          return new Promise<BuildResult>((resolve) => {
+            release = resolve;
+          });
+        }
+        return okBuild(job);
+      },
+    });
+    const first = rig.lifecycle.trigger('publish');
+    const second = rig.lifecycle.trigger('save-rebuild');
+    expect(await first).toStrictEqual({ kind: 'served', bundleId: 'b-1' });
+    expect((await rig.status.snapshot()).build.state).toBe('building');
+    release({
+      bundleId: 'b-2',
+      dir: path.join(BUNDLES, 'b-2'),
+      ok: true,
+      firstError: null,
+    });
+    expect(await second).toStrictEqual({ kind: 'served', bundleId: 'b-2' });
+    expect((await rig.status.snapshot()).build.state).toBe('idle');
+  });
+});
+
 describe('stop', () => {
   it('kills the build in flight, and a build queued behind it is refused and never starts', async () => {
     let release: (result: BuildResult) => void = () => undefined;
