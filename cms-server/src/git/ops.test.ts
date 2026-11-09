@@ -31,6 +31,8 @@ import {
   openRepo,
   parseNameStatus,
   parseOverwrote,
+  parseRenames,
+  type ReapplyResult,
   type Repo,
 } from './ops.ts';
 import { ensureRepo, type RepoState, WORK } from './repo.ts';
@@ -553,6 +555,48 @@ describe('parseNameStatus', () => {
     expect(() => parseNameStatus('U\0site/a.md\0', 'site')).toThrow(
       new Error('git diff gave an unexpected status "U"'),
     );
+  });
+});
+
+describe('parseRenames (2.10j)', () => {
+  it('pairs a rename source with its destination, strips the site folder, and skips the other statuses', () => {
+    expect(
+      parseRenames(
+        'A\0site/x.md\0R086\0site/b.md\0site/c.md\0D\0site/y.md\0',
+        'site',
+      ),
+    ).toEqual(new Map([['b.md', 'c.md']]));
+  });
+
+  it('with the scope ".", strips nothing', () => {
+    expect(parseRenames('R100\0x/y.md\0z.md\0', '.')).toEqual(
+      new Map([['x/y.md', 'z.md']]),
+    );
+  });
+
+  it('leaves out a rename whose source is outside the site folder, or only named like the folder', () => {
+    expect(parseRenames('R100\0other/a.md\0site/b.md\0', 'site')).toEqual(
+      new Map(),
+    );
+    expect(parseRenames('R100\0sitefoo/a.md\0site/b.md\0', 'site')).toEqual(
+      new Map(),
+    );
+  });
+
+  it('gives a destination outside the site folder as a path up from it', () => {
+    expect(parseRenames('R100\0site/a.md\0other/b.md\0', 'site')).toEqual(
+      new Map([['a.md', '../other/b.md']]),
+    );
+  });
+
+  it('goes up one folder for each folder of a nested site', () => {
+    expect(parseRenames('R100\0apps/web/a.md\0lib/b.md\0', 'apps/web')).toEqual(
+      new Map([['a.md', '../../lib/b.md']]),
+    );
+  });
+
+  it('an empty diff gives no renames', () => {
+    expect(parseRenames('', 'site')).toEqual(new Map());
   });
 });
 
@@ -1289,12 +1333,16 @@ async function pushAsDeveloper(
 }
 
 // A sync as its callers run it: fetch under the lock, then re-apply on the upstream it found. `reapplyExec` replaces
-// git for the re-apply only. Resolves with the upstream and the new tip of cms/work.
+// git for the re-apply only. Resolves with the upstream, the new tip of cms/work and the renamed documents (2.10j).
 async function syncAndReapply(
   fixture: Fixture,
   bundles: BundleStore,
   reapplyExec?: ExecFn,
-): Promise<{ upstream: string; tip: string }> {
+): Promise<{
+  upstream: string;
+  tip: string;
+  renamed: ReapplyResult['renamed'];
+}> {
   const sync = await openRepo(fixture).locked('sync', (tx) =>
     tx.fetch(bundles),
   );
@@ -1302,10 +1350,14 @@ async function syncAndReapply(
   const reapplier = openRepo(
     reapplyExec === undefined ? fixture : { ...fixture, exec: reapplyExec },
   );
-  const tip = await reapplier.locked('reapply', (tx) =>
+  const result = await reapplier.locked('reapply', (tx) =>
     tx.reapply(sync.upstream, bundles),
   );
-  return { upstream: sync.upstream, tip };
+  return {
+    upstream: sync.upstream,
+    tip: result.tip,
+    renamed: result.renamed,
+  };
 }
 
 // The text of a site file at cms/work.
@@ -1705,6 +1757,93 @@ describe('openRepo: reapply (WORKPLAN 2.10b)', () => {
     expect(await workText(fixture, 'src/content/pages/home-2.json')).toBe(
       '{"title":"Home"}\n',
     );
+  });
+
+  it('reports a document the developer renamed, from its old file to the new one, and still writes the save at the old path (2.10j)', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    // With the config off, only the explicit `-M` of the re-apply can find the rename.
+    await git(fixture.state.repoDir, ['config', 'diff.renames', 'false']);
+    await cmsWrite(fixture, repo, HOME, '{"title":"Home CMS"}\n', 'save home');
+    await pushAsDeveloper(
+      root,
+      {
+        'site/src/content/pages/home.json': null,
+        'site/src/content/pages/home-2.json': '{\n  "title": "Home"\n}\n',
+      },
+      'dev: rename home',
+    );
+    const { renamed } = await syncAndReapply(fixture, bundles);
+    expect(renamed).toEqual([
+      { key: 'pages/home', from: HOME, to: 'src/content/pages/home-2.json' },
+    ]);
+    expect(JSON.parse(await workText(fixture, HOME))).toEqual({
+      title: 'Home CMS',
+    });
+  });
+
+  it('does not report a rename that comes with a heavy edit, past the 50% similarity of git (2.10j)', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    await cmsWrite(fixture, repo, HOME, '{"title":"Home CMS"}\n', 'save home');
+    await pushAsDeveloper(
+      root,
+      {
+        'site/src/content/pages/home.json': null,
+        'site/src/content/pages/home-2.json': `${JSON.stringify(
+          {
+            title: 'Welcome',
+            intro: 'A new front page for the spring launch',
+            sections: ['hero', 'news', 'events', 'contact'],
+            footer: 'All rights reserved',
+          },
+          null,
+          2,
+        )}\n`,
+      },
+      'dev: rewrite home',
+    );
+    const { renamed } = await syncAndReapply(fixture, bundles);
+    expect(renamed).toEqual([]);
+  });
+
+  it('reports nothing when the developer edited a saved document without renaming it (2.10j)', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    await cmsWrite(fixture, repo, HOME, '{"title":"Home CMS"}\n', 'save home');
+    await pushAsDeveloper(
+      root,
+      { 'site/src/content/pages/home.json': '{"title":"Hello"}\n' },
+      'dev: home',
+    );
+    const { renamed } = await syncAndReapply(fixture, bundles);
+    expect(renamed).toEqual([]);
+  });
+
+  it('reports nothing for a document upstream renamed that the CMS did not save (2.10j)', async () => {
+    const root = await newRoot();
+    const { fixture, bundles } = await reapplySite(root);
+    const repo = repoOf(fixture);
+    await cmsWrite(
+      fixture,
+      repo,
+      ANA,
+      '{"name":"Ana M.","city":"Lisbon"}\n',
+      'save ana',
+    );
+    await pushAsDeveloper(
+      root,
+      {
+        'site/src/content/pages/home.json': null,
+        'site/src/content/pages/home-2.json': '{\n  "title": "Home"\n}\n',
+      },
+      'dev: rename home',
+    );
+    const { renamed } = await syncAndReapply(fixture, bundles);
+    expect(renamed).toEqual([]);
   });
 
   it('restores a saved image from the old tip, and removes an image the save deleted', async () => {

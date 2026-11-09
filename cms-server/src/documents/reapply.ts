@@ -196,6 +196,34 @@ function isKeyed(value: unknown): boolean {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** A saved document whose file the upstream commit renamed (2.10j). `from` is the file it was at, `to` the file upstream gave it. */
+export interface RenamedDocument {
+  readonly key: string;
+  readonly from: string;
+  readonly to: string;
+}
+
+/**
+ * The saved documents whose file upstream renamed (2.10j). `renames` maps each rename source to its destination, both
+ * site-relative (`git/ops.ts` reads them). A document is listed when its file, from `records`, is a source; a document
+ * with no record is left out. Deleted documents count too: the delete does not reach the renamed file. The save still
+ * writes the old path, so this is a warning only (the accepted limit of 2.10b). Keys come in changeset order.
+ */
+export function renamedDocuments(
+  documents: readonly ChangedDocument[],
+  records: ReadonlyMap<string, DocumentEntry>,
+  renames: ReadonlyMap<string, string>,
+): RenamedDocument[] {
+  const found: RenamedDocument[] = [];
+  for (const document of documents) {
+    const from = records.get(document.key)?.file;
+    const to = from === undefined ? undefined : renames.get(from);
+    if (from !== undefined && to !== undefined)
+      found.push({ key: document.key, from, to });
+  }
+  return found;
+}
+
 /**
  * The `CMS-Overwrote` values of the re-applied commit (WORKPLAN 2.10b): `upstream` for each document this save
  * overwrote, and for each document still in the changeset, the sha of its older trailer (`older`, read from the commits
