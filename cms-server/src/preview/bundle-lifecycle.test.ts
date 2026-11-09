@@ -749,6 +749,70 @@ describe('review fixes 2: swaps in order, and the build state while another trig
   });
 });
 
+describe('review fix 3: the protocol count of a serve shared by two triggers', () => {
+  // A normal trigger and a protocol rebuild (count 1) share one queued build. Whichever registers first, the bundle is
+  // stored with count 1, so its own mismatch is only reported: two builds in all, not a third one.
+  it.each(['normal-first', 'protocol-first'] as const)(
+    'the shared bundle keeps the count 1 when the %s',
+    async (order) => {
+      let releaseHeld: (result: BuildResult) => void = () => undefined;
+      let builds = 0;
+      const rig = await rigOf({
+        state: oldState(),
+        // The old bundle mismatches, so start() rebuilds it (count 1), and the rebuilt bundle mismatches too.
+        versions: new Map([
+          [OLD, 1],
+          ['b-2', 1],
+        ]),
+        build: (job) => {
+          builds += 1;
+          if (builds === 1) {
+            return new Promise<BuildResult>((resolve) => {
+              releaseHeld = resolve;
+            });
+          }
+          return okBuild(job);
+        },
+      });
+      // The first build is held, so the next two requests queue behind it and share one queued build.
+      const held = rig.lifecycle.trigger('save-rebuild');
+      await settle();
+      let normal: ReturnType<BundleLifecycle['trigger']>;
+      let protocol: Promise<void>;
+      if (order === 'normal-first') {
+        normal = rig.lifecycle.trigger('publish');
+        await settle();
+        protocol = rig.lifecycle.start();
+      } else {
+        protocol = rig.lifecycle.start();
+        await settle();
+        normal = rig.lifecycle.trigger('publish');
+      }
+      await settle();
+      releaseHeld({
+        bundleId: 'b-1',
+        dir: path.join(BUNDLES, 'b-1'),
+        ok: true,
+        firstError: null,
+      });
+      await held;
+      expect(await normal).toStrictEqual({ kind: 'served', bundleId: 'b-2' });
+      await protocol;
+      expect(rig.build.mock.calls).toHaveLength(2);
+      expect(rig.store.get().current).toStrictEqual(entry('b-2'));
+      expect(rig.store.get().protocolAttempts).toStrictEqual(
+        new Map([
+          [OLD, 1],
+          ['b-2', 1],
+        ]),
+      );
+      expect((await rig.status.snapshot()).errors.protocolMismatch).toBe(
+        mismatchOf('b-2', 1),
+      );
+    },
+  );
+});
+
 describe('stop', () => {
   it('kills the build in flight, and a build queued behind it is refused and never starts', async () => {
     let release: (result: BuildResult) => void = () => undefined;

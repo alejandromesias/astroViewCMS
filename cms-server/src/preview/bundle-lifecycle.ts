@@ -110,6 +110,9 @@ export function createBundleLifecycle(
   const baseOfBundle = new Map<string, string>();
   // The serve of each bundle, by bundleId. Triggers that share one build result share its serve, so a bundle is swapped in once.
   const serving = new Map<string, Promise<TriggerOutcome>>();
+  // The protocol count each caller sharing a bundle's serve asked for, by bundleId: the largest one is kept, so a caller
+  // that registers later cannot lower it, and a caller without a count changes nothing. The serve reads it when it runs.
+  const inheritedOf = new Map<string, number>();
   // The triggers still under way, so stop() can wait for them.
   const working = new Set<Promise<TriggerOutcome>>();
   // The swaps and the restarts, one after another: each starts only after the one before it has settled.
@@ -234,18 +237,22 @@ export function createBundleLifecycle(
     built: BuildResult,
     inherited: number | undefined,
   ): Promise<TriggerOutcome> {
+    // Every caller registers its count before the shared serve can write the state, whichever one created that serve.
+    if (inherited !== undefined) {
+      inheritedOf.set(
+        built.bundleId,
+        Math.max(inheritedOf.get(built.bundleId) ?? 0, inherited),
+      );
+    }
     const shared = serving.get(built.bundleId);
     if (shared !== undefined) return shared;
-    const served = serveBundle(built, inherited);
+    const served = serveBundle(built);
     serving.set(built.bundleId, served);
     return served;
   }
 
   /** Swaps the node onto a built bundle. On success the state names it; on failure it is rolled back as the supervisor did. */
-  async function serveBundle(
-    built: BuildResult,
-    inherited: number | undefined,
-  ): Promise<TriggerOutcome> {
+  async function serveBundle(built: BuildResult): Promise<TriggerOutcome> {
     const { bundleId, dir } = built;
     const base = baseOfBundle.get(bundleId);
     // Cannot happen: the runner builds a bundle only after its base was recorded, in the build wrapper.
@@ -276,8 +283,10 @@ export function createBundleLifecycle(
       };
     }
     status.setSwapError(null);
+    // The largest count any caller sharing this serve asked for, read when the state is written (after the swap).
     const attempts = new Map(state.get().protocolAttempts);
-    if (inherited !== undefined) attempts.set(bundleId, inherited);
+    const merged = inheritedOf.get(bundleId);
+    if (merged !== undefined) attempts.set(bundleId, merged);
     await state.set({
       current: entry,
       lastGood: entry,
@@ -320,6 +329,8 @@ export function createBundleLifecycle(
    */
   async function checkProtocol(entry: BundleEntry): Promise<void> {
     const problem = await protocolProblem(entry.bundleId);
+    // A bundle that was served before a newer one is no longer the one to show or to rebuild: the newer one decides.
+    if (state.get().current?.bundleId !== entry.bundleId) return;
     status.setProtocolMismatch(problem);
     if (problem === null) return;
     const count = state.get().protocolAttempts.get(entry.bundleId) ?? 0;
