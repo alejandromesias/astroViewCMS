@@ -5,13 +5,13 @@
 import type { Supervisor } from './supervisor.ts';
 
 /** Where the builder stands: `off` with --bundle, otherwise idle, building, or failed (the last build failed). */
-export type BuildState = 'off' | 'idle' | 'building' | 'failed';
+type BuildState = 'off' | 'idle' | 'building' | 'failed';
 
 /** The publish state (2.10d): idle, publishing, or failed (the last publish failed). */
-export type PublishState = 'idle' | 'publishing' | 'failed';
+type PublishState = 'idle' | 'publishing' | 'failed';
 
 /** What GET /api/status adds to its `bundle` key. */
-export interface StatusBody {
+interface StatusBody {
   readonly builder: 'on' | 'off';
   readonly build: { readonly state: BuildState; readonly error: string | null };
   readonly node: {

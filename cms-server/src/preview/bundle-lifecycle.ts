@@ -33,7 +33,7 @@ export type TriggerReason =
   | 'publish';
 
 /** How a trigger ended. `swap-failed` says whether the supervisor rolled back to the bundle it served before. */
-export type TriggerOutcome =
+type TriggerOutcome =
   | { readonly kind: 'served'; readonly bundleId: string }
   | { readonly kind: 'build-failed'; readonly error: string }
   | {
