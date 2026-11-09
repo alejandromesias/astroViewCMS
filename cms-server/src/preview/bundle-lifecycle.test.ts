@@ -1,4 +1,12 @@
-import { copyFile, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  utimes,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { type BundleJson, bundleJsonSchema } from 'preview-contract';
@@ -16,6 +24,7 @@ import {
   type LifecycleRepo,
   type TriggerReason,
 } from './bundle-lifecycle.ts';
+import { collectBundles } from './bundles.ts';
 import { emptyState, type PreviewState, type StateStore } from './state.ts';
 import { createStatus, type Status } from './status.ts';
 import type { Supervisor } from './supervisor.ts';
@@ -811,6 +820,120 @@ describe('review fix 3: the protocol count of a serve shared by two triggers', (
       );
     },
   );
+});
+
+describe('the bundles a pending swap keeps from collection (2.9c review)', () => {
+  /** A bundles folder with one complete bundle per id: its bundle.json is dated `seconds`, so the collection ranks it. */
+  async function bundlesAt(
+    root: string,
+    written: Readonly<Record<string, number>>,
+  ): Promise<void> {
+    for (const [bundleId, seconds] of Object.entries(written)) {
+      const manifest = path.join(root, bundleId, 'manifest');
+      await mkdir(manifest, { recursive: true });
+      const file = path.join(manifest, 'bundle.json');
+      await copyFile(path.join(FIXTURE_BUNDLE, 'bundle.json'), file);
+      await utimes(file, seconds, seconds);
+    }
+  }
+
+  /**
+   * A lifecycle whose first swap waits until `release` is called (the node is not ready yet); later swaps are ok. The
+   * bundles folder is `root`, and `b-1` is the bundle of the first swap.
+   */
+  async function heldSwapRig(root: string) {
+    let releaseFirst: (answer: SwapAnswer) => void = () => undefined;
+    let swaps = 0;
+    const rig = await rigOf({
+      bundlesDir: root,
+      swap: () => {
+        swaps += 1;
+        if (swaps === 1) {
+          return new Promise<SwapAnswer>((resolve) => {
+            releaseFirst = resolve;
+          });
+        }
+        return Promise.resolve({ ok: true });
+      },
+    });
+    return {
+      rig,
+      release: (answer: SwapAnswer) => releaseFirst(answer),
+    };
+  }
+
+  it('a bundle whose swap is waiting for readiness survives a later collection, though two newer bundles exist', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'lifecycle-keep-'));
+    try {
+      // b-1 is the oldest; b-2, b-3 and b-4 are newer, so the collection keeps only b-3 and b-4 by age.
+      await bundlesAt(root, {
+        'b-1': 1000,
+        'b-2': 2000,
+        'b-3': 3000,
+        'b-4': 4000,
+      });
+      const { rig, release } = await heldSwapRig(root);
+      const first = rig.lifecycle.trigger('publish');
+      await settle();
+      expect([...rig.lifecycle.pendingSwaps()]).toStrictEqual(['b-1']);
+      await collectBundles(root, rig.lifecycle.pendingSwaps());
+      expect((await readdir(root)).sort()).toStrictEqual(['b-1', 'b-3', 'b-4']);
+      release({ ok: false, error: 'not ready', rolledBack: true });
+      await first;
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('once the swap has settled, the bundle is no longer kept, and a later collection removes it', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'lifecycle-keep-'));
+    try {
+      await bundlesAt(root, {
+        'b-1': 1000,
+        'b-2': 2000,
+        'b-3': 3000,
+        'b-4': 4000,
+      });
+      const { rig, release } = await heldSwapRig(root);
+      const first = rig.lifecycle.trigger('publish');
+      await settle();
+      release({ ok: false, error: 'not ready', rolledBack: true });
+      expect(await first).toStrictEqual({
+        kind: 'swap-failed',
+        error: 'not ready',
+        rolledBack: true,
+      });
+      expect([...rig.lifecycle.pendingSwaps()]).toStrictEqual([]);
+      await collectBundles(root, rig.lifecycle.pendingSwaps());
+      expect((await readdir(root)).sort()).toStrictEqual(['b-3', 'b-4']);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('the keep set is read when a collection runs: a set taken at the start of the build does not show the pending swap', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'lifecycle-keep-'));
+    try {
+      await bundlesAt(root, {
+        'b-1': 1000,
+        'b-2': 2000,
+        'b-3': 3000,
+        'b-4': 4000,
+      });
+      const { rig, release } = await heldSwapRig(root);
+      // Taken before the build starts: nothing is pending yet, and a copy does not change afterwards.
+      const atStart = rig.lifecycle.pendingSwaps();
+      const first = rig.lifecycle.trigger('publish');
+      await settle();
+      expect([...atStart]).toStrictEqual([]);
+      await collectBundles(root, rig.lifecycle.pendingSwaps());
+      expect((await readdir(root)).sort()).toStrictEqual(['b-1', 'b-3', 'b-4']);
+      release({ ok: false, error: 'not ready', rolledBack: true });
+      await first;
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('stop', () => {

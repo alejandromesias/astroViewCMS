@@ -210,7 +210,9 @@ export async function run(
       site: config.site,
       siteDir: config.siteDir,
       siteConfig: resolve(configDir, config.previewSiteConfig),
-      keptBundles: () => store.keptBundles(),
+      // Read when a build's collection runs: the served and last-good bundles, and those whose swap is still pending.
+      keptBundles: () =>
+        new Set([...store.keptBundles(), ...(lifecycle?.pendingSwaps() ?? [])]),
       log: deps.logger,
     });
     lifecycle = createBundleLifecycle({

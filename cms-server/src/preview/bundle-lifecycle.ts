@@ -82,6 +82,8 @@ export interface BundleLifecycle {
   trigger(reason: TriggerReason): Promise<TriggerOutcome>;
   /** Stops the lifecycle: no new build starts, and the build in flight is killed. */
   stop(): Promise<void>;
+  /** The bundles whose swap is queued or running: the builder keeps them when it collects old bundles (2.9c review). */
+  pendingSwaps(): ReadonlySet<string>;
 }
 
 // The error a build gets when it is asked for after stop.
@@ -113,6 +115,8 @@ export function createBundleLifecycle(
   // The protocol count each caller sharing a bundle's serve asked for, by bundleId: the largest one is kept, so a caller
   // that registers later cannot lower it, and a caller without a count changes nothing. The serve reads it when it runs.
   const inheritedOf = new Map<string, number>();
+  // The bundles whose swap is queued or waiting for the node. A build's collection keeps their folders until the swap settles.
+  const swapsPending = new Set<string>();
   // The triggers still under way, so stop() can wait for them.
   const working = new Set<Promise<TriggerOutcome>>();
   // The swaps and the restarts, one after another: each starts only after the one before it has settled.
@@ -264,8 +268,10 @@ export function createBundleLifecycle(
     const entry: BundleEntry = { bundleId, baseCommit: base };
     latestSwap += 1;
     const seq = latestSwap;
-    const swap = await inOrder(async () =>
-      stopped ? undefined : await supervisor.swap({ bundleId, dir }),
+    const swap = await keepWhileSwapping(bundleId, () =>
+      inOrder(async () =>
+        stopped ? undefined : await supervisor.swap({ bundleId, dir }),
+      ),
     );
     if (swap === undefined) return { kind: 'stopped' };
     if (!swap.ok) {
@@ -368,7 +374,25 @@ export function createBundleLifecycle(
       : `Bundle ${bundleId} speaks protocol ${built}, and the server speaks protocol ${PROTOCOL_VERSION}`;
   }
 
-  return { start, trigger, stop };
+  /** The bundles whose swap is queued or running now, as a copy taken at the call. A collection reads it when it runs. */
+  function pendingSwaps(): ReadonlySet<string> {
+    return new Set(swapsPending);
+  }
+
+  /** Runs one bundle's swap while the bundle is kept: it is removed again when the swap settles, however it ends. */
+  async function keepWhileSwapping<T>(
+    bundleId: string,
+    swap: () => Promise<T>,
+  ): Promise<T> {
+    swapsPending.add(bundleId);
+    try {
+      return await swap();
+    } finally {
+      swapsPending.delete(bundleId);
+    }
+  }
+
+  return { start, trigger, stop, pendingSwaps };
 }
 
 /** The text of a failed build's first error: its message, with the file it names when there is one. */
