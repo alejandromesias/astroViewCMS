@@ -13,7 +13,8 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     status=1
     continue
   fi
-  if ! files=$(git diff --name-only "$remote_sha" "$local_sha" 2>/dev/null); then
+  # --no-renames: a moved file lists both its old and new path, so a move out of the DOCS folder is caught.
+  if ! files=$(git diff --name-only --no-renames "$remote_sha" "$local_sha" 2>/dev/null); then
     echo "pre-push: refused, cannot compare with the remote main (run git fetch)" >&2
     status=1
     continue
