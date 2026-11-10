@@ -15,6 +15,7 @@ in section 8.
 | | | `mutation-diff` (needs `fast`) | Stryker on the source files the branch changed, then the judgement (section 3) | 240 min |
 | `mutation-full.yml` | nightly 03:17 UTC, by hand | `shard` x6 | Stryker on every file of one group each | 330 min each |
 | | | `merge` | judges the whole run, keeps the per-file baseline | 15 min |
+| `mutation-branch.yml` | by hand only (`workflow_dispatch`, inputs `ref` and `base`) | `mutation` | Stryker on the files one pushed branch changed against `base` (default `main`), then the judgement of `mutation-diff`. No pull request needed | 240 min |
 | `windows.yml` | weekly, Monday 05:23 UTC, by hand | `unit` | `npm run coverage` on `windows-latest` (not a gate) | 40 min |
 | `nightly.yml` | nightly 02:37 UTC, by hand | `measure` | memory of one preview process and the listing-route tripwire, printed to artifacts (not a gate, `continue-on-error`) | 45 min |
 | `security.yml` | push to `main`, weekly, by hand | `codeql`, `osv-sarif` | CodeQL for JavaScript and TypeScript; osv-scanner results as SARIF in the Security tab (reports, not gates) | 30 min, 10 min |
@@ -36,6 +37,7 @@ in section 8.
 | `mutation-diff` | yes (section 3) |
 | `e2e` | yes (since 2026-11-07; the job no longer has `continue-on-error`) |
 | `mutation-full` | no. It runs after the merge, and a wave is closed only when it is green (section 4) |
+| `mutation-branch` | no. It runs by hand on a pushed branch, for a check before its pull request exists |
 
 The repository ruleset "main protection" (set 2026-11-07) requires a pull request
 for `main`, merge commits only, no force push and no deletion, and the three
@@ -52,6 +54,11 @@ clone with `git config core.hooksPath .githooks`, and keep that setting: the
 Stryker tripwire (`.githooks/reference-transaction`) needs it too.
 
 ## 3. Mutation testing on a branch
+
+By hand, for a pushed branch with no pull request yet: run the `mutation-branch`
+workflow (section 1) with `ref` (the branch) and `base` (a branch name on origin,
+default `main`). It runs the steps below, with the changed set taken from
+`origin/<base>`.
 
 `node scripts/stryker-changed.ts --run` (the `mutation-diff` job, and
 `npm run check -- --mutation` locally):
@@ -98,7 +105,7 @@ Add an entry only when a real run needs one, and review it like code.
 
 1. **Every change, locally:** write the tests the way TESTING-RECOMMENDATIONS.md
    says. No Stryker run is needed to finish a task.
-2. **Every pushed branch, in CI:** `mutation-diff`. The task is done when the
+2. **Every pushed branch, in CI:** `mutation-diff`, or by hand for a branch with no pull request yet: `mutation-branch`. The task is done when the
    survivors of its changed files are killed or classified, and the job is green.
 3. **Every wave, in CI:** `mutation-full` is green (overall 75 or more), the
    files under 80 are listed in its summary, and the wave is tagged
@@ -119,6 +126,7 @@ on a clean tree.
 - **Artifacts:** `coverage` (from `fast`, 14 days); `mutation-diff` (14 days):
   `plan.json`, `summary.json` and, per group, the JSON report and `run.json`;
   `mutation-<group>` and `mutation-baseline` (90 days) from `mutation-full`.
+  `mutation-branch` (14 days): the same files as `mutation-diff`, from a run by hand.
   `mutation-baseline` holds the per-file scores of the last full run.
 - **Survivors** are in the job log, in the Stryker clear-text output of the
   group: the original and changed code and the tests that ran.
@@ -153,6 +161,8 @@ in the `matrix` of `mutation-full.yml`.
 - **"skipped" turned into a failure:** a tool is missing on the runner. Install
   it in the workflow (osv-scanner is installed at a pinned version, checksum
   checked).
+- **`mutation-branch` says `origin/<base>` not found:** `base` must be a branch
+  name on origin (default `main`). Check the spelling, and that the branch is pushed.
 - **`mutation-diff` says "no report for group" or "mutated nothing":** the
   Stryker run broke. Read the group's log lines before the table.
 - **A group's score looks too low after a dry run failure:** the Stryker sandbox

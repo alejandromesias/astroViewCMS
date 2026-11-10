@@ -50,7 +50,7 @@ tests for it; the full unit suite is for a person running the checks.
 | Budget tests | bridge size, render latency, memory growth | tests | gate | local `--e2e`, CI `e2e` |
 | Browser tests | the preview in a real Chromium: hydration, morphing, styles, editor origins | `preview-render-server/vitest.browser.config.ts` | gate | local `--e2e`, CI `e2e` |
 | Memory metric | rss and private memory of one preview process, idle, after warm-up, after renders | `scripts/measure-memory.mjs` | neither (a number to record) | local |
-| Stryker | whether the tests catch changes to the code | `stryker.config.json`, `stryker.<group>.config.mjs`, `.mutation-waivers.json` | gate (75 changed set, 80 per changed file) | CI `mutation-diff`, CI `mutation-full`; local only as an exception |
+| Stryker | whether the tests catch changes to the code | `stryker.config.json`, `stryker.<group>.config.mjs`, `.mutation-waivers.json` | gate (75 changed set, 80 per changed file) | CI `mutation-diff`, CI `mutation-full`, CI `mutation-branch` (by hand); local only as an exception |
 
 "Gate" means a failure should stop a change from landing (and fails the
 build in CI; see [CI-PIPELINE.md](CI-PIPELINE.md)). "Report" means the output needs a human reading it.

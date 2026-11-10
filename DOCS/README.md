@@ -71,7 +71,9 @@ only.
 - **One branch per task, one worktree per branch.** A task lives on
   `task/<id>-<slug>`, cut from `main`, in its own worktree (section 6). Push the
   branch and open a pull request: CI runs `fast`, `e2e` and `mutation-diff`
-  (see [CI-PIPELINE.md](Guidelines/CI-PIPELINE.md)). Merge into `main` with a
+  (see [CI-PIPELINE.md](Guidelines/CI-PIPELINE.md)). To check a pushed branch that
+  has no pull request yet, run the `mutation-branch` workflow by hand (CI-PIPELINE.md,
+  section 1). Merge into `main` with a
   merge commit once all three are green. For now the user merges the pull
   request; agents report when it is green and leave it open. (Revisit this rule
   to let agents merge.) A wave is a milestone, not a branch: it
