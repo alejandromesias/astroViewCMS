@@ -13,7 +13,7 @@ describe('loadEditorPage', () => {
     expect(page.css).toBe(await readFile(new URL('editor.css', dir), 'utf8'));
     expect(page.script).not.toMatch(/^import /m);
     expect(page.script).not.toContain('preview-protocol');
-    expect(page.script).toContain('/__dev/documents?key=');
+    expect(page.script).toContain('/api/documents?key=');
   });
 
   it('rejects with ENOENT when a file is missing from the folder', async () => {
