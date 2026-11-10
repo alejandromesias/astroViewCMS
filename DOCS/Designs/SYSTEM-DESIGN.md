@@ -1537,6 +1537,12 @@ plan, and a one-line pointer stays here.
   site's existing images, if real use asks for them (PHASE-2-DESIGN.md 5.5).
 - **Delete dialog** that offers to replace or clear references (the phase 2
   API already supports it, PHASE-2-DESIGN.md 4.3).
+- **Re-read after a save (WORKPLAN 2.7b, 2.11c).** A save rewrites an image
+  field's staging URL to a relative path. The editor re-reads the saved
+  document and replaces the draft's staging URLs with the saved paths.
+- **Readable image file names.** Saved images are named by the first 16 hex
+  of their hash (WORKPLAN 2.7b). Keeping the original name means 2.7a storing
+  it with the upload.
 
 ### Phase 4: hosting and auth
 

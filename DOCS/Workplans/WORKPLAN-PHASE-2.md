@@ -100,7 +100,7 @@ Rules for running tasks in parallel:
 | 5 | 2.1g (codecs only, 2026-11-03), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a (after 2.1g) |
 | 6 | 2.0j (alone, `[build]`), 2.1h (now also `repo.ts`, before 2.5b), 2.5b, 2.6a, 2.9a, 2.10a, 2.5c (moved here 2026-11-04; starts after 2.10a merges) |
 | 7 | 2.6b, 2.9c, 2.10b, 2.1j (last, alone: it edits `repo.ts` and `ops.ts`) |
-| 8 | 2.7b, 2.7c, 2.9d |
+| 8 | 2.7d (seam PR, first), then 2.7b, 2.7c, 2.9d; merge order 2.9d, 2.7c, 2.7b |
 | 9 | 2.9e, 2.10c |
 | 10 | 2.10d, 2.10g, 2.11b |
 | 11 | 2.10e, 2.11c, 2.12a |
@@ -2124,7 +2124,15 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
     (6) The bomb test uses a header-only PNG, so it proves the pixel limit and not a real
     decode. (7) 2.7b recognises staging URLs by the prefix `${origins.cms}/media/staging/`.
 
-#### 2.7b Images at save time — after 2.5c, 2.7a, 2.4c
+#### 2.7d Save seam for warnings and image copies — after 2.5c · a small PR, before 2.7b and 2.7c (added 2026-11-09)
+
+- Edits only the shared files, so 2.7b and 2.7c do not collide on them. Behaviour does not change.
+- `save/context.ts`: `SaveWarning = { key, path, code }`; `SaveBody.warnings` becomes `readonly SaveWarning[]` (nothing reads it today: checked in `cms-server/src` and the test editor); `SaveContext` gets `warnings: SaveWarning[]` (starts empty) and `copies: readonly ImageCopy[]` (`{ from, to }`, absolute staging path to site-relative target; starts empty); `changes` stays the client's list, but the context type allows a stage to reassign it (drop `readonly` on the field, keep the array readonly).
+- `save/pipeline.ts`: `runStages` answers `warnings: ctx.warnings`. Two named, empty slots in `SAVE_STAGES`: one between `checkDeleteGuard` and `planChanges` (2.7b rewrite), one after `validateChanges` (2.7c warnings).
+- `save/write.ts`: the paths for `commitSave` and `restore` include `ctx.copies` targets, and the copies are made before the text files. No copy happens while `copies` is empty. Only the loop and the path list are added; 2.7b fills in the copy.
+- **Done when:** the existing save tests pass unchanged; one test that a copy in `ctx.copies` is written, committed and restored on a failed commit (a fake copy function).
+
+#### 2.7b Images at save time — after 2.7d, 2.7a, 2.4c · gaps settled 2026-11-09 (lead review with the user)
 
 - A stage in the save pipeline. For every `image` marker whose value is a
   staging URL: copy the file into `media.folder` (named by hash, reusing an
@@ -2137,8 +2145,34 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   a `testimonials` entry (shared file, relative to `src/content/`) writes
   the right relative paths, and validation sees the real metadata.
 - **From the wave 7 review (2026-11-10):** 2.10b tested the restore of saved images only with hand-made commits. Add one test with an image saved through this stage: a sync (`tx.reapply`) after a new upstream commit keeps the image file and the document's relative path.
+- **Gaps settled (calls, 2026-11-09; the user agreed each).** The slot wording above ("after `validateChanges`") is replaced: the work is two steps, because `planChanges` has already turned `change.data` into file text, and design 5.3 puts the move of images after validation.
+  1. **Rewrite step**, between `checkDeleteGuard` and `planChanges` (slot from 2.7d). It only reads: `media.json`, the staging folder, and the target file. For each created or updated document it walks the collection schema with `walkMarkers`, and for each `image` hit whose value starts with `${origins.cms}/media/staging/` it:
+     - finds the id and the format in the name; an id not in `media.json`, or a staging file that is missing, answers `422` with `{ error: 'invalid', errors: [{ key, path, message, code: 'staged-image-missing' }] }`;
+     - names the target `<media.folder>/<id.slice(0, 16)>.<ext>`. The 16 characters are `revisionOf` (the first 16 hex of the sha256), so the name matches the bundle's `images.json` hash and the revision convention. The staging id stays the full 64;
+     - writes the value as a posix path relative to the folder of **the file that holds the document** (D5): `../../assets/x.png`, or `./x.png` for the same folder. For an update the file is `ctx.documents.get(key).file`; for a create it is the path `planWrite` would pick, so export a small helper from `documents/plan-write.ts` (no second copy of the rule);
+     - if a file already exists at the target, compares its bytes with the staging file. Equal: reuse it (no copy). Different: `422` with `code: 'media-collision'` and the field path, so the editor can point at the field and the user can pick another image. It is not a `409` (that means a revision conflict, with its own body);
+     - adds `{ from, to }` to `ctx.copies`, once per target within one save.
+     Only `image` markers are rewritten. A staging URL in a plain string field is left alone (D22). A value that is already a relative path passes through untouched. Sending the same staging URL again (the editor's draft still holds it after a save) gives the same path.
+  2. **`ctx.changes` is reassigned to a new array** with the rewritten values, never changed in place, so the delete guard's earlier view stays what the client sent. `planChanges`, `validateChanges` and `writeChanges` (`needsRebuild`, commit message, revisions) read the new list.
+  3. **The copy** is made inside `writeChanges`, before the text files, with `writeFileAtomic` from the staged bytes (2.7d added the loop and the path list: the targets go to `commitSave` and `restore`). Because the repo lock holds, nothing else writes the media folder between the two checks, so a same-name file with other bytes at copy time is a bug, not a user error: answer `500 save-failed` (restored). An existing target with equal bytes is skipped.
+  4. **`mediaMapOf`** (`save/validate.ts`) is wrong today: it keys by the sha id, while the renderer looks up the exact ref (the staging URL), then the project path (`overlay/content-api.ts`, `resolveImage`). Key each entry by the staging URL (for drafts) and by `<media.folder>/<id.slice(0, 16)>.<format>` (what validation of a rewritten value looks up). `mediaMapOf` therefore needs `media.folder`. If two ids share the 16-character prefix, keep the first, log the clash, and do not throw (a throw would break every save on the site, with or without images; the rewrite step's byte-compare refuses the one save that would use the name).
+  5. **`media.json` gets no new write.** The upload already stored `{ width, height, format }` under the full id. Design 5.5 describes the cache as "image path and content hash to metadata"; deriving the path from the id and `media.folder` instead of storing it is a **deliberate departure**, so `GET /api/overlay` (2.9e) can match `images.json` hashes against `id.slice(0, 16)` and build the project-path key.
+  6. **Wiring.** `MediaFiles` gains `stagingDir`; `SaveContext.config` is widened to include `media.folder`. `run.ts` already holds both (`appDeps.media`, the config). The body gets **no** `media` field: the CMS's own map is the authority (D12).
+  7. **Out of scope:** removing an image when its document is deleted; cleaning the staging folder; readable file names (staging and `media.json` do not keep the original name, a phase 3 change to 2.7a).
+- **Done when (added):**
+  - a created and an updated document with an upload;
+  - one image used by two documents in one save (one copy);
+  - an upload in Markdown frontmatter;
+  - the same staging URL sent again: same path; a value already relative: untouched;
+  - an existing same-name file with equal bytes is reused; with other bytes: `422 media-collision` and nothing written;
+  - a missing staging file: `422 staged-image-missing`;
+  - the copied image is in the commit, and a failed write removes it;
+  - a later stage (`plan`, `validate`, `write`) never sees a staging URL for an image field, while the delete guard's view is the client's list;
+  - a rewritten relative ref, through the renderer's rule (`posix.join(dirname(parsingFile), ref)`), finds its `mediaMapOf` entry (one test: `media.folder` and the holding file must share the site folder as base);
+  - the duplicate-prefix case: first entry kept, clash logged, no throw;
+  - `images.json`'s `hash` equals `revisionOf` of the bytes (confirmed 2026-11-09 in `integration.ts` `imageManifest` and `preview-contract/src/revision.ts`), so a saved image and a built one agree.
 
-#### 2.7c Warning for missing `public/` images — after 2.5c
+#### 2.7c Warning for missing `public/` images — after 2.7d, 2.5c
 
 - A stage that scans the changed documents' string values. A string that
   starts with `/`, ends in an image extension, and is not an `image()`
@@ -2147,6 +2181,13 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   5.5).
 - **Done when:** tests for a present file, a missing one, a value that only
   looks like a path, and an `image()` field (no warning).
+- **Gaps settled (calls, 2026-11-09; the user agreed each).**
+  1. **Slot and type.** The stage sits in the slot 2.7d adds after `validateChanges` and appends to `ctx.warnings` (`SaveWarning[]`); the 200 body carries them.
+  2. **Only new and changed strings.** Scan the created and updated documents, and within an updated one only the strings that differ from `ctx.stored` (a repeated legacy warning on every save teaches people to ignore warnings). A created document is all new. An array item that moved counts as new and can warn once; accepted.
+  3. **What looks like an image path.** Starts with a single `/` (not `//`), has no `\`, and ends in `png`, `jpg`, `jpeg`, `gif`, `webp`, `avif`, `svg` or `ico`, case-insensitive, after stripping `?query` and `#hash`. Percent-decode, then `posix.normalize`; a path that leaves `public/` (`/../x.png`) is not checked on disk and gets the warning, never a read outside the folder.
+  4. **Which fields.** Skip the `image()` fields (collect their paths with `walkMarkers` on the collection schema). For Markdown and MDX scan `data`, never the body. A `data:` document has no schema, so all its strings are scanned. Keys and values may be hostile (`__proto__`): use `Map` and `Object.hasOwn`.
+  5. **Where.** `<ctx.siteFolder>/public/` (it already contains `siteDir`). The working copy is read, so a file a developer pushed and that is not synced yet still warns.
+  6. **Limit:** the existence check is case-insensitive on Windows and case-sensitive on the Linux host that deploys. Record it in the Result.
 
 ### 2.8 Preview node front server (renderer side) — after 2.0d, 2.0e · ∥ 2.1 to 2.7
 
@@ -2680,6 +2721,14 @@ Design 4.4, 5.6.
 - **Done when:** the save pipeline runs against a real node: a save with a
   valid change, a `422` from the real validate. [build]
 - **From 2.9c-B (decided 2026-11-09):** when no node runs because the last build failed, the `503 preview-unavailable` message names the build error from the status ("The preview build failed: …"), not a generic "unavailable". Test: a failed build in the status gives a `503` whose message carries its error.
+- **Gaps settled (calls, 2026-11-09; the user agreed each).** Runs next to 2.7b and 2.7c; it edits `save/validate.ts` (with 2.7b's `mediaMapOf` change) and `run.ts`, so merge 2.9d first. The only `[build]` task of wave 8.
+  1. **Where.** A new `preview/client.ts` (`createPreviewClient`), with the base URL `http://127.0.0.1:<previewPort>` (never `localhost`, design 5.6), the `Authorization: Bearer <previewInternalSecret>` header, an injected `fetch`, and the node state and the status snapshot as injected readers.
+  2. **Response mapping for `validate`.** `200 { valid: true }` gives no errors. `422 { errors }` is parsed with a local Zod schema in the client (the contract package has only an interface), with `kind` defaulting to `invalid`. Everything else (400, 401, 413, 500, a timeout, a refused connection) rejects with a `PreviewUnavailableError`; the status code goes to the log, not the message. The contract package and the renderer are not touched.
+  3. **Not ready.** Check the node state first and reject at once when it is not ready. A refused connection still maps to the same error, because the node can stop between the check and the call. Timeout: 10 s for `validate` (2.5c item 3, below the 30 s lock timeout), `AbortSignal.timeout`.
+  4. **The 503 message.** `PreviewUnavailableError` carries the text, and `validateChanges` answers with it instead of its fixed sentence (the fixed text stays for any other rejection). Order: the build error (`build.error`) first, then the node error (`node.error`), then the generic text.
+  5. **`warm()`** is on the client (same bearer, same mapping, 204 expected, its own timeout). 2.9e calls it; 2.9d only provides and tests it.
+  6. **Housekeeping.** `run.ts` registers the real client and `previewNotReady` is deleted; its tests are rewritten against the new client (knip fails on an unused export).
+  7. **Done when (added):** unit tests for each status in item 2, the not-ready check, the timeout, the three messages of item 4; the `[build]` case runs against a real node with the existing e2e harness, one targeted file only.
 
 #### 2.9e Overlay, preview URL, warm-up — after 2.9c, 2.9d, 2.7a, 2.5b
 
@@ -2963,6 +3012,7 @@ Design 5.8. This is still a test tool, not the phase 3 editor.
   A response with `rebuild: true` shows "applies after rebuild" and waits for
   the bundle to change (poll `GET /api/status`), then reloads the iframe.
 - **From 2.5c (2026-11-05):** the body is `{ changes: [{ document, baseRevision, data?, deleted? }] }`. A create sends `baseRevision: null` and a key `collection/id`; a key with no collection answers `400 invalid-body`. An update or delete of a missing document answers `409 conflict` with `revision: null`. `409` bodies: `conflict` is `{ error, documents: [{ key, revision, value? }] }`; `exists` and `file-missing` are `{ error, key, message }`. `500 save-failed` means nothing was kept (restored from git); `503 preview-unavailable` means nothing was written.
+- **From the 2.7b review (2026-11-09):** after a save the saved value of an image field is a relative path, while the editor's draft may still hold the staging URL. Sending the staging URL again is safe (same path). After a save, re-read the saved documents (`GET /api/documents?key=`) and replace the draft's staging URLs with the saved paths. A `422` with `code: 'media-collision'` or `'staged-image-missing'` is shown next to the field, so the user can pick another image.
 - **Done when:** editor unit tests for each response; the form hides and
   restores its draft state as before.
 
