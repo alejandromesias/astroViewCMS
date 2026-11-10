@@ -217,6 +217,23 @@ describe('rewriteStagedImages', () => {
     });
   });
 
+  it('keeps a dot-named folder below the file as ./.name, not a bare .name', async () => {
+    const site = await siteWith({ a: 'bytes a' });
+    const ctx = ctxOf(site.folder, [
+      update('authors/ana', { avatar: site.url('a') }),
+    ]);
+    Object.assign(ctx, {
+      config: {
+        collections: {},
+        media: { folder: 'src/content/authors/.assets' },
+      },
+    });
+    expect(await rewriteStagedImages(ctx)).toBeUndefined();
+    expect(ctx.changes[0]?.data).toStrictEqual({
+      avatar: `./.assets/${site.id('a').slice(0, 16)}.png`,
+    });
+  });
+
   it('names a ref in the media folder of the file as ./name', async () => {
     const site = await siteWith({ a: 'bytes a' });
     const ctx = ctxOf(site.folder, [

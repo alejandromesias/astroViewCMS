@@ -5,8 +5,8 @@
 // Keys and values come from content, so the stage uses Maps, never a plain object lookup.
 import { readFile } from 'node:fs/promises';
 import { join, posix } from 'node:path';
-import { holdingFileOfCreate } from '../documents/plan-write.ts';
 import { collectionOf } from '../documents/paths.ts';
+import { holdingFileOfCreate } from '../documents/plan-write.ts';
 import { errorCode } from '../fs/atomic.ts';
 import type { Measures } from '../media/measure.ts';
 import { readMedia } from '../media/metadata.ts';
@@ -228,7 +228,7 @@ async function isUsable(
 /** The path from the folder of `holding` to `to`, both relative to the site: `../../assets/x.png` or `./x.png`. */
 function relativeRef(holding: string, to: string): string {
   const ref = posix.relative(posix.dirname(holding), to);
-  return ref.startsWith('.') ? ref : `./${ref}`;
+  return ref.startsWith('../') ? ref : `./${ref}`;
 }
 
 function entriesOf(state: State): Promise<Map<string, Measures>> {
