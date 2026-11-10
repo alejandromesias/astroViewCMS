@@ -115,7 +115,7 @@ parallel; 2.5a waits for 2.1g.
 
 Wave 6 order (2026-11-03, revised after review): 2.1h part 1 comes first in the wave, in this order: `repo.ts` (seed `repo.test.ts` from a small fixture), the `core.hooksPath` guard in `repo.ts`, then `codecs/by-format.ts`, `manifest/documents.ts` and `preview-contract/src/revision.ts`. `documents/` waits for 2.5b's revision split, and `plan-write.ts` waits for 2.5b to close (2.5b and 2.0j both change it). 2.1h must finish `repo.ts` before 2.5b. 2.5b may start in parallel with the tests, but is not closed before `repo.ts` has a score. 2.6a, 2.9a and 2.10a do not wait for 2.1h.
 
-Wave 6/7/8 reorder (2026-11-04): 2.5c moved from wave 7 to wave 6. Its gates are met: 2.0h, 2.0j, 2.5a and 2.5b are done, and `server.ts` was scored in 2.1h 2a (93.2%). Order inside wave 6: 2.10a first (it adds `tx.fetch` to `git/ops.ts`), then 2.5c alone in `http/`, `save/` and `ops.ts` (it adds `tx.restore`); 2.6a and 2.9a run in parallel with either, since 2.6a works in `references/`, `schema/walk.ts` and `documents/paths.ts`. Wave 7 is then 2.6b, 2.9c and 2.10b, and 2.1j last (added 2026-11-06, the standing-risk step 6: it changes the clone's git calls in `repo.ts` and `ops.ts`, so it runs after the wave's other tasks, not in parallel with them). Wave 8 is 2.7b, 2.7c and 2.9d. 2.6b, 2.7b and 2.7c each add a stage to the same pipeline array, so 2.6b runs apart from 2.7b and 2.7c.
+Wave 6/7/8 reorder (2026-11-04): 2.5c moved from wave 7 to wave 6. Its gates are met: 2.0h, 2.0j, 2.5a and 2.5b are done, and `server.ts` was scored in 2.1h 2a (93.2%). Order inside wave 6: 2.10a first (it adds `tx.fetch` to `git/ops.ts`), then 2.5c alone in `http/`, `save/` and `ops.ts` (it adds `tx.restore`); 2.6a and 2.9a run in parallel with either, since 2.6a works in `references/`, `schema/walk.ts` and `documents/paths.ts`. Wave 7 is then 2.6b, 2.9c and 2.10b, and 2.1j last (added 2026-11-06, the standing-risk step 6: it changes the clone's git calls in `repo.ts` and `ops.ts`, so it runs after the wave's other tasks, not in parallel with them). Wave 8 is 2.7d, 2.7b, 2.7c and 2.9d. 2.6b, 2.7b and 2.7c each add a stage to the same pipeline array, so 2.6b runs apart from 2.7b and 2.7c.
 
 Wave 7 order (review, 2026-11-08): 2.9c is split into 2.9c-A (the 2.9a carry-overs, no `run.ts` edit) and 2.9c-B (state, triggers, `BundleSource`, status, and the `run.ts` wiring). 2.6b, 2.9c-A and 2.10b run in parallel, each in its own `npm run worktree` branch. 2.9c-B starts after 2.6b merges, because both edit `run.ts`. 2.1j runs last, after all of them have merged, because 2.10b changes the `ops.ts` closures that 2.1j scopes. The decisions are in each task's "From the wave 7 review" block.
 
@@ -2743,7 +2743,12 @@ Design 4.4, 5.6.
 - `GET /api/overlay`: `{ documents, media }`. Documents whose working-copy
   revision differs from the bundle's `documents.json` (deleted ones as
   `null`, new ones included); media entries of `media.json` that the
-  bundle's `images.json` lacks.
+  bundle's `images.json` lacks. **From the wave 8 review (2026-11-10):** build the
+  media map with `mediaMapOf` (`save/validate.ts`), not a second copy. It keys each
+  entry by the staging URL and by `<media.folder>/<id16>.<format>`, where `id16` is
+  the first 16 hex of the id: the `images.json` hash (`revisionOf`). Keying by the
+  full id repeats the bug 2.7b fixed. Test: an entry is found by its staging URL and
+  by its saved path.
 - `GET /api/preview-url?path=`: the path must start with a single `/` (no
   scheme, no `//host`, no backslashes); the answer is the preview origin
   plus the path plus a fresh 60 s token. The first call of a session (none
@@ -2826,6 +2831,7 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
   over the whole changeset against the new upstream (a developer may have
   added a new referrer).
 - **From the 2.6b Result (2026-11-09):** the guard's index is cached per bundle, and a content-only sync keeps the same bundle, so the guard needs an "invalidate" call (it marks the index stale). 2.10c makes that call after every re-apply that changes the working copy.
+- **From the wave 8 review (2026-11-10):** `save/warnings.ts` and `save/delete-guard.ts` each have their own Markdown-format helpers (2.7c Result). Move them to one shared module and import it from both. This task reopens `delete-guard.ts`, so it is the place.
 - **Done when:** upstream adds a post that references an author the CMS
   user deleted: the next publish answers `409 referenced-by`.
 

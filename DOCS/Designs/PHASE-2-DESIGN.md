@@ -464,6 +464,7 @@ Round-trip tests run on copies of the sample's own files.
 - **Metadata cache:** `.cms/<site>/media.json`, image path and content hash
   to `{ width, height, format }`. `GET /api/overlay` returns entries for
   images saved since the bundle (by the bundle's image list, 5.1 item 3).
+  **As built (2.7b, WORKPLAN 2.7b item 5):** `media.json` is keyed by the full id and holds no path. The path is derived from the id and `media.folder` as `<folder>/<id16>.<format>`, where `id16` is the `images.json` hash. This is a deliberate departure from the wording above.
 - **Plain-string image fields (user, 2026-10-31).** Many sites, the sample
   included, store images as strings into `public/` (`"/images/cta.png"`):
   13 fields and 163 values in the sample, against 4 `image()` fields. Phase
