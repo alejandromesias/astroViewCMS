@@ -58,10 +58,12 @@ only.
   changes before they land in `main`'s history. The exception is a commit the user
   names in the same message. On a task branch an agent commits and pushes on its
   own (2026-11-07), so the pull request is where the user reviews.
-  **Docs exception (2026-11-08):** a change that touches only files under `DOCS/` may
-  be committed and pushed straight to `main`, but only when the user asks for it in
-  that message ("commit and push to main"). Never on the agent's own initiative.
-  A change with any file outside `DOCS/` goes through a pull request. The
+  **Docs policy (2026-11-09):** a change that touches only files under `DOCS/` is
+  committed and pushed straight to `main`, with no pull request and no ask per
+  commit, when it records work or decisions the user asked for. (Until 2026-11-09
+  the user had to name each such commit.) A change with any file outside `DOCS/`
+  goes through a pull request. The admin bypass of the ruleset makes the push land;
+  GitHub prints "Bypassed rule violations", which is expected. The
   `.githooks/pre-push` hook refuses a push to `main` that changes anything outside
   `DOCS/`. It works only with `core.hooksPath` set to `.githooks`, and `--no-verify`
   is not allowed. Changes to the exception itself (this rule, the hook) go through
@@ -78,7 +80,8 @@ only.
   with `gh pr checks` or `gh run list`, and fix failures on the branch. Kill or
   classify Stryker survivors. A task is not done while a check is red or
   pending. An agent commits to its task branch, pushes it and opens the pull
-  request on its own; it never pushes to `main` directly.
+  request on its own; it never pushes code to `main` directly (docs-only changes follow
+  the docs policy above).
 - **Stryker runs in CI.** A task does not wait on a local Stryker run. A local
   run is the exception (CI-PIPELINE.md section 4) and goes through
   `scripts/stryker-run.mjs`, never `npx stryker run`.

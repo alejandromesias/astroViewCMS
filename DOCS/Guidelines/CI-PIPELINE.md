@@ -40,7 +40,9 @@ in section 8.
 The repository ruleset "main protection" (set 2026-11-07) requires a pull request
 for `main`, merge commits only, no force push and no deletion, and the three
 checks above. Repository admins can bypass it ("always"), so direct pushes by
-the admin still land; other contributors need a green pull request. A red
+the admin still land; other contributors need a green pull request. Direct pushes
+are the policy for changes under `DOCS/` only (README section 2); the `pre-push` hook
+refuses any other file. A red
 guarded push by the admin is not stopped by the ruleset: CI shows it.
 
 The local pre-commit hook (`.githooks/pre-commit`, about 7 seconds) is the fast tier
