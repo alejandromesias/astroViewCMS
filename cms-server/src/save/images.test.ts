@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, posix } from 'node:path';
+import { revisionOf } from 'preview-contract';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   bundleOf,
@@ -475,5 +476,20 @@ describe('rewriteStagedImages', () => {
     const found = map[posix.join(posix.dirname(AUTHOR_FILE), ref)];
     expect(found?.width).toBe(2);
     expect(found?.url).toBe(site.url('a'));
+  });
+
+  it('names the copy by revisionOf of its bytes, the hash that images.json records', async () => {
+    const bytes = 'the bytes of an avatar';
+    const site = await siteWith({ avatar: bytes });
+    const ctx = ctxOf(site.folder, [
+      update('authors/ana', { avatar: site.url('avatar') }),
+    ]);
+
+    await rewriteStagedImages(ctx);
+
+    expect(revisionOf(bytes)).toBe(site.id('avatar').slice(0, 16));
+    expect(ctx.copies.map((copy) => copy.to)).toEqual([
+      `${FOLDER}/${revisionOf(bytes)}.png`,
+    ]);
   });
 });
