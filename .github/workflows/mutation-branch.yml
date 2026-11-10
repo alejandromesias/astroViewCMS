@@ -1,0 +1,55 @@
+# Mutation run of one pushed branch, on demand and without a PR (WORKPLAN 2.1l). It does what the mutation-diff job of
+# ci.yml does: Stryker on the source files the branch changed against the base, judged by the floors (75 overall, 80
+# per file, unless .mutation-waivers.json lowers one). Start it from the Actions tab or with
+#   gh workflow run mutation-branch.yml -f ref=<branch> [-f base=main]
+# The workflow file must be on main for the dispatch to find it. The branch to check is the `ref` input.
+name: mutation-branch
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: The pushed branch (or commit) to check
+        required: true
+        type: string
+      base:
+        description: The branch the changed files are taken against
+        required: false
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  mutation:
+    name: mutation on the files of ${{ inputs.ref }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: CI git identity (the git tests commit)
+        run: |
+          git config --global user.name "astroViewCMS CI"
+          git config --global user.email "ci@users.noreply.github.com"
+      - name: Install dependencies
+        run: npm ci
+      - name: Stryker on the changed files
+        env:
+          BASE: ${{ inputs.base }}
+        run: node scripts/stryker-changed.ts --run --base "origin/$BASE"
+      - name: Upload the Stryker reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutation-branch
+          path: reports/mutation-diff
+          retention-days: 14
+          if-no-files-found: ignore
