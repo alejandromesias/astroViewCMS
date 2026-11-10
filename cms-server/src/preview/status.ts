@@ -13,7 +13,12 @@ type PublishState = 'idle' | 'publishing' | 'failed';
 /** What GET /api/status adds to its `bundle` key. */
 interface StatusBody {
   readonly builder: 'on' | 'off';
-  readonly build: { readonly state: BuildState; readonly error: string | null };
+  /** `failedCommit` is the commit of the last failed build, which is not built again (2.9c-B recovery); null when none failed. */
+  readonly build: {
+    readonly state: BuildState;
+    readonly error: string | null;
+    readonly failedCommit: string | null;
+  };
   readonly node: {
     readonly state: ReturnType<Supervisor['status']>['state'];
     readonly bundleId: string | null;
@@ -43,6 +48,8 @@ export interface Status extends StatusSource {
   setBuildState(state: BuildState): void;
   /** Sets the error of the last failed build, or clears it with null. */
   setBuildError(error: string | null): void;
+  /** Sets the commit of the last failed build, or clears it with null. */
+  setFailedCommit(commit: string | null): void;
   /** Sets the error of the last failed swap, or clears it with null. */
   setSwapError(error: string | null): void;
   /** Sets the protocol mismatch text of the served bundle, or clears it with null. */
@@ -68,6 +75,7 @@ export interface StatusOptions {
 interface Values {
   buildState: BuildState;
   buildError: string | null;
+  buildFailedCommit: string | null;
   swapError: string | null;
   protocolMismatch: string | null;
   lastSync: string | null;
@@ -82,6 +90,7 @@ export function createStatus(options: StatusOptions): Status {
   const values: Values = {
     buildState: builder === 'off' ? 'off' : 'idle',
     buildError: null,
+    buildFailedCommit: null,
     swapError: null,
     protocolMismatch: null,
     lastSync: null,
@@ -101,6 +110,9 @@ export function createStatus(options: StatusOptions): Status {
     },
     setBuildError(error) {
       values.buildError = error;
+    },
+    setFailedCommit(commit) {
+      values.buildFailedCommit = commit;
     },
     setSwapError(error) {
       values.swapError = error;
@@ -124,7 +136,11 @@ export function createStatus(options: StatusOptions): Status {
       const current = node();
       return {
         builder,
-        build: { state: values.buildState, error: values.buildError },
+        build: {
+          state: values.buildState,
+          error: values.buildError,
+          failedCommit: values.buildFailedCommit,
+        },
         node: {
           state: current.state,
           bundleId: current.bundleId,

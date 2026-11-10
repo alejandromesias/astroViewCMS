@@ -107,7 +107,7 @@ describe('run() with the real parts', () => {
           siteCommit: identity.siteCommit,
         },
         builder: 'off',
-        build: { state: 'off', error: null },
+        build: { state: 'off', error: null, failedCommit: null },
         node: { state: 'ready', bundleId: identity.bundleId, error: null },
         lastSync: null,
         syncError: null,

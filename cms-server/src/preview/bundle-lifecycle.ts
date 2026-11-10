@@ -3,7 +3,8 @@
 // time), and swaps the node onto the new bundle. A failed swap keeps the failed bundle out of the state, and the last good
 // bundle is started again when the supervisor did not roll back itself. After each served bundle the protocol check
 // compares its bundle.json with PROTOCOL_VERSION: the first mismatch of a chain rebuilds once, and the new bundle carries
-// the count, so a mismatch on it is only reported.
+// the count, so a mismatch on it is only reported. A commit whose build failed is not built again by the same lifecycle:
+// a restart is the retry (2.9c-B recovery rule).
 import { join } from 'node:path';
 import { PROTOCOL_VERSION } from 'preview-protocol';
 import {
@@ -128,6 +129,9 @@ export function createBundleLifecycle(
   // Whether the most recent build that ended failed. A nested build (a protocol rebuild) can fail while its outer trigger is
   // still under way, so the state at the end is read from this, not from the outer trigger's own outcome.
   let lastBuildFailed = false;
+  // The commit of the last build that failed, and its error. A trigger for that commit is not built again (2.9c-B recovery).
+  let lastFailure: { readonly commit: string; readonly error: string } | null =
+    null;
   // One build at a time, and the triggers that wait merge into one queued build. After stop, a queued build is refused.
   const runner = createBuildRunner({
     build: (job) => {
@@ -219,20 +223,43 @@ export function createBundleLifecycle(
         base: await tx.revParse(upstreamRef),
       }));
       baseOfCommit.set(pair.head, pair.base);
+      // The same commit fails the same way, so a commit whose build failed is not built again. A restart is the retry.
+      const failure = lastFailure;
+      if (failure !== null && failure.commit === pair.head) {
+        log.info(
+          'The commit failed to build before, so it is not built again',
+          {
+            reason,
+            commit: pair.head,
+          },
+        );
+        return buildFailed(failure.error, pair.head);
+      }
       const result = await runner.request(pair.head);
-      if (!result.ok) return buildFailed(buildErrorText(result.firstError));
+      if (!result.ok) {
+        return buildFailed(buildErrorText(result.firstError), pair.head);
+      }
       lastBuildFailed = false;
+      lastFailure = null;
       status.setBuildError(null);
+      status.setFailedCommit(null);
       return await serveOnce(result, inherited);
     } catch (error: unknown) {
-      return buildFailed(messageOf(error));
+      return buildFailed(messageOf(error), null);
     }
   }
 
-  /** Records a failed build's error in the status, and returns its outcome. The node keeps serving what it served. */
-  function buildFailed(error: string): TriggerOutcome {
+  /**
+   * Records a failed build's error in the status, and returns its outcome. A build that ran (`commit` given) is kept as the
+   * last failure. The node keeps serving what it served.
+   */
+  function buildFailed(error: string, commit: string | null): TriggerOutcome {
     lastBuildFailed = true;
     status.setBuildError(error);
+    if (commit !== null) {
+      lastFailure = { commit, error };
+      status.setFailedCommit(commit);
+    }
     return { kind: 'build-failed', error };
   }
 
