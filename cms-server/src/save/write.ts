@@ -8,7 +8,7 @@ import { changesetOf } from '../documents/changeset.ts';
 import type { FileOp } from '../documents/plan-write.ts';
 import type { FileReads } from '../documents/read.ts';
 import { revisionOfDocument } from '../documents/revision.ts';
-import { writeFileAtomic } from '../fs/atomic.ts';
+import { errorCode, writeFileAtomic } from '../fs/atomic.ts';
 import type { SaveContext, SaveStop } from './context.ts';
 import type { SaveChange } from './body.ts';
 import { needsRebuild } from './rebuild.ts';
@@ -103,8 +103,24 @@ async function copyImages(ctx: SaveContext): Promise<void> {
     if (copied.has(copy.to)) continue;
     copied.add(copy.to);
     const target = join(ctx.siteFolder, copy.to);
+    // The repo lock holds since the rewrite stage looked, so a file here with other bytes is a bug, not a user error.
+    const existing = await readIfExists(target);
+    if (existing !== undefined) {
+      if (existing.equals(await readFile(copy.from))) continue;
+      throw new Error(`"${copy.to}" exists with other bytes than its image`);
+    }
     await mkdir(dirname(target), { recursive: true });
     await ctx.copyFile(copy.from, target);
+  }
+}
+
+// The bytes of a file, or undefined when it does not exist.
+async function readIfExists(file: string): Promise<Buffer | undefined> {
+  try {
+    return await readFile(file);
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return undefined;
+    throw error;
   }
 }
 

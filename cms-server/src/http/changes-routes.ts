@@ -27,7 +27,7 @@ const JSON_TYPE = /^application\/json\s*(;|$)/i;
 
 /** What PUT needs beyond the repo: the config's collections, the preview node, the log (the real logger by default), and the delete guard (2.6b; one is made per app by default). */
 export interface SaveRouteDeps {
-  readonly config: Pick<CmsConfig, 'collections'>;
+  readonly config: Pick<CmsConfig, 'collections' | 'media'>;
   readonly preview: PreviewClient;
   readonly log?: Logger;
   readonly guard?: DeleteGuard | undefined;

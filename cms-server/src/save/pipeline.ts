@@ -20,14 +20,11 @@ import type {
   SaveStage,
 } from './context.ts';
 import { checkDeleteGuard, updateIndexAfterCommit } from './delete-guard.ts';
+import { rewriteStagedImages } from './images.ts';
 import { planChanges } from './plan.ts';
 import { validateChanges } from './validate.ts';
 import { collectWarnings } from './warnings.ts';
 import { copyFileAtomic, writeChanges } from './write.ts';
-
-// The slot that 2.7b fills. It is empty until then: it passes, and changes nothing.
-// 2.7b: the rewrite of staged image values, which also lists the copies (WORKPLAN 2.7b step 1).
-const rewriteStagedImages: SaveStage = () => Promise.resolve(undefined);
 
 /** The stages of a save, in order. */
 export const SAVE_STAGES: readonly SaveStage[] = [
@@ -45,7 +42,7 @@ export interface SaveInput {
   readonly changes: readonly SaveChange[];
   readonly bundles: BundleStore;
   readonly siteFolder: string;
-  readonly config: Pick<CmsConfig, 'collections'>;
+  readonly config: Pick<CmsConfig, 'collections' | 'media'>;
   readonly preview: PreviewClient;
   readonly media: MediaFiles;
   readonly log: Logger;

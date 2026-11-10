@@ -24,6 +24,8 @@ export interface PreviewClient {
 
 /** Where the CMS's media files are: `media.json`, and the origin that the staged image URLs start with (D12). */
 export interface MediaFiles {
+  /** The folder of the staged uploads: `<sha256>.<ext>` files (media/staging.ts). */
+  readonly stagingDir: string;
   readonly mediaFile: string;
   readonly cmsOrigin: string;
 }
@@ -86,7 +88,7 @@ export interface SaveContext {
   /** The reads of the changeset (the created documents, and the commits they compare). The save takes the lock itself. */
   readonly repo: ChangesetRepo;
   readonly tx: RepoTx;
-  readonly config: Pick<CmsConfig, 'collections'>;
+  readonly config: Pick<CmsConfig, 'collections' | 'media'>;
   readonly preview: PreviewClient;
   readonly media: MediaFiles;
   readonly log: Logger;

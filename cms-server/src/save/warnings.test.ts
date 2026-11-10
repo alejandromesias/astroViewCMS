@@ -5,6 +5,7 @@ import { makeTestRoot, removeTestRoot } from '../../test/helpers/git.ts';
 import { silentLog } from '../../test/helpers/repo.ts';
 import {
   bundleOf,
+  MEDIA_CONFIG,
   documentOf,
   saveContext,
 } from '../../test/helpers/save-context.ts';
@@ -134,7 +135,7 @@ function ctxOf(
     stored: new Map(options.stored ?? []),
     log: options.log ?? silentLog(),
     warnings: options.warnings ?? [],
-    config: options.config ?? { collections: {} },
+    config: options.config ?? { collections: {}, media: MEDIA_CONFIG },
   });
 }
 
@@ -517,7 +518,12 @@ describe('collectWarnings', () => {
     const ctx = ctxOf(
       folder,
       [createOf('posts/new-post', { hero: '/images/gone.png' })],
-      { config: { collections: { posts: { newEntryFormat: 'json' } } } },
+      {
+        config: {
+          collections: { posts: { newEntryFormat: 'json' } },
+          media: MEDIA_CONFIG,
+        },
+      },
     );
 
     await collectWarnings(ctx);

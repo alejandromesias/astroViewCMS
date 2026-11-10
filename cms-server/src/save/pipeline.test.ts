@@ -1,4 +1,5 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { revisionOf } from 'preview-contract';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -24,6 +25,7 @@ import { checkRevisions } from './conflicts.ts';
 import type { DeleteGuard, SaveStage, SaveStop } from './context.ts';
 import { checkDeleteGuard, createDeleteGuard } from './delete-guard.ts';
 import { runStages, SAVE_STAGES, saveChanges } from './pipeline.ts';
+import { rewriteStagedImages } from './images.ts';
 import { planChanges } from './plan.ts';
 import { validateChanges } from './validate.ts';
 import { writeChanges } from './write.ts';
@@ -60,9 +62,10 @@ function inputOf(
     changes,
     bundles: { current },
     siteFolder: 'unused-site',
-    config: { collections: {} },
+    config: { collections: {}, media: { folder: 'src/assets/uploads' } },
     preview: previewSays(),
     media: {
+      stagingDir: 'unused-staging',
       mediaFile: 'unused-media.json',
       cmsOrigin: 'http://cms.localhost:4400',
     },
@@ -72,18 +75,18 @@ function inputOf(
 }
 
 describe('SAVE_STAGES', () => {
-  it('runs the revision check, the delete guard, the image slot, the planning, the validation, the warning slot and the write, in that order', () => {
+  it('runs the revision check, the delete guard, the image rewrite, the planning, the validation, the warning slot and the write, in that order', () => {
     expect(SAVE_STAGES).toHaveLength(7);
     expect(SAVE_STAGES[0]).toBe(checkRevisions);
     expect(SAVE_STAGES[1]).toBe(checkDeleteGuard);
-    expect(SAVE_STAGES[2]?.name).toBe('rewriteStagedImages');
+    expect(SAVE_STAGES[2]).toBe(rewriteStagedImages);
     expect(SAVE_STAGES[3]).toBe(planChanges);
     expect(SAVE_STAGES[4]).toBe(validateChanges);
     expect(SAVE_STAGES[5]?.name).toBe('collectWarnings');
     expect(SAVE_STAGES[6]).toBe(writeChanges);
   });
 
-  it('gives its two empty slots no effect: each passes on a context', async () => {
+  it('passes the image rewrite and the warning slot on a context with no changes, and changes nothing', async () => {
     const ctx = saveContext();
     const [, , rewrite, , , collect] = SAVE_STAGES;
     expect(await rewrite?.(ctx)).toBeUndefined();
@@ -204,6 +207,7 @@ describe('a document upstream added and the bundle lacks (2.10h)', () => {
           config,
           preview: previewSays(),
           media: {
+            stagingDir: join(root, 'staging'),
             mediaFile: join(root, 'media.json'),
             cmsOrigin: 'http://cms.localhost:4400',
           },
@@ -341,6 +345,7 @@ describe('saveChanges', () => {
         config,
         preview: previewSays(),
         media: {
+          stagingDir: join(root, 'staging'),
           mediaFile: join(root, 'media.json'),
           cmsOrigin: 'http://cms.localhost:4400',
         },
@@ -366,4 +371,128 @@ describe('saveChanges', () => {
     expect(await git(state.repoDir, ['status', '--porcelain'])).toBe('');
     // Real git and disk writes: under the full run's load on Windows this ran past the 5 s default (q8).
   }, 30_000);
+});
+
+// A save of a staged image through the real stages, on a real repo (WORKPLAN 2.7b).
+describe('a save with a staged image', () => {
+  const ORIGIN = 'http://cms.localhost:4400';
+  const ANA_FILE = 'src/content/authors/ana-torres.json';
+  const BYTES = 'staged image bytes';
+
+  async function savingSite() {
+    const root = await makeTestRoot();
+    folders.push(root);
+    const { repo, state, config } = await saveRepoIn(root);
+    const bundles = createBundleStore(
+      directoryBundleSource(await bundleFolder()),
+    );
+    const id = createHash('sha256').update(BYTES).digest('hex');
+    await mkdir(join(root, 'staging'), { recursive: true });
+    await writeFile(join(root, 'staging', `${id}.png`), BYTES);
+    await writeFile(
+      join(root, 'media.json'),
+      JSON.stringify({ [id]: { width: 2, height: 3, format: 'png' } }),
+    );
+    const anaPath = join(state.siteFolder, ANA_FILE);
+    const before = await readFile(anaPath, 'utf8');
+    const preview = previewSays();
+    const name = `${id.slice(0, 16)}.png`;
+    const change: SaveChange = {
+      document: 'authors/ana-torres',
+      baseRevision: revisionOf(before),
+      deleted: false,
+      data: {
+        ...(JSON.parse(before) as Record<string, unknown>),
+        avatar: `${ORIGIN}/media/staging/${id}.png`,
+      },
+    };
+    const save = (deps?: Parameters<typeof saveChanges>[2]) =>
+      saveChanges(
+        {
+          changes: [change],
+          bundles,
+          siteFolder: state.siteFolder,
+          config,
+          preview,
+          media: {
+            stagingDir: join(root, 'staging'),
+            mediaFile: join(root, 'media.json'),
+            cmsOrigin: ORIGIN,
+          },
+          log: silentLog(),
+          guard: createDeleteGuard(),
+        },
+        repo,
+        deps,
+      );
+    return { root, repo, state, bundles, preview, save, name, anaPath, before };
+  }
+
+  it('commits the copied image with the document, and validation sees the real metadata and no staging URL', async () => {
+    const site = await savingSite();
+    const answer = await site.save();
+    expect(answer.status).toBe(200);
+    const ref = `../../assets/uploads/${site.name}`;
+    expect(JSON.parse(await readFile(site.anaPath, 'utf8')).avatar).toBe(ref);
+    const image = join(site.state.siteFolder, 'src/assets/uploads', site.name);
+    expect(await readFile(image, 'utf8')).toBe(BYTES);
+    const committed = await git(site.state.repoDir, [
+      'show',
+      '--name-only',
+      '--format=',
+      'cms/work',
+    ]);
+    expect(committed.trim().split('\n').sort()).toStrictEqual([
+      `site/src/assets/uploads/${site.name}`,
+      `site/${ANA_FILE}`,
+    ]);
+    const [documents, media] = vi.mocked(site.preview.validate).mock
+      .calls[0] ?? [{}, {}];
+    expect(documents).toMatchObject({
+      'authors/ana-torres': { avatar: ref },
+    });
+    expect(media[`src/assets/uploads/${site.name}`]).toMatchObject({
+      width: 2,
+      height: 3,
+      format: 'png',
+    });
+    expect(await git(site.state.repoDir, ['status', '--porcelain'])).toBe('');
+  }, 30_000);
+
+  it('removes the copied image when the write fails', async () => {
+    const site = await savingSite();
+    const answer = await site.save({
+      writeFile: async () => {
+        throw new Error('disk full');
+      },
+    });
+    expect(answer.status).toBe(500);
+    await expect(
+      access(join(site.state.siteFolder, 'src/assets/uploads', site.name)),
+    ).rejects.toThrow();
+    expect(await readFile(site.anaPath, 'utf8')).toBe(site.before);
+    expect(await git(site.state.repoDir, ['status', '--porcelain'])).toBe('');
+  }, 30_000);
+
+  it('keeps the image and the relative path after a sync re-applies the save on a new upstream commit', async () => {
+    const site = await savingSite();
+    expect((await site.save()).status).toBe(200);
+    const seed = join(site.root, 'seed');
+    await writeFile(join(seed, 'site/upstream-note.txt'), 'upstream\n');
+    await git(seed, ['add', '--all']);
+    await git(seed, ['commit', '--message', 'upstream']);
+    await git(seed, ['push', 'origin', 'HEAD:main']);
+    const result = await site.repo.locked('sync', async (tx) => {
+      const sync = await tx.fetch(site.bundles);
+      if (!sync.ok) throw new Error(sync.syncError.message);
+      return tx.reapply(sync.upstream, site.bundles);
+    });
+    const shown = (path: string) =>
+      git(site.state.repoDir, ['show', `${result.tip}:site/${path}`]);
+    expect(await shown(`src/assets/uploads/${site.name}`)).toBe(BYTES);
+    expect(JSON.parse(await shown(ANA_FILE)).avatar).toBe(
+      `../../assets/uploads/${site.name}`,
+    );
+    expect(await shown('upstream-note.txt')).toBe('upstream\n');
+  }, 60_000);
 });

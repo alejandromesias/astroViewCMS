@@ -424,6 +424,57 @@ describe('writeChanges with staged image copies', () => {
     expect(tx.restore).toHaveBeenCalledWith([PHOTO, ANA]);
   });
 
+  it('skips a copy whose target already holds the same bytes', async () => {
+    const siteFolder = await tempWorkingCopy({
+      [ANA]: ANA_TEXT,
+      [PHOTO]: 'same bytes',
+      'staged.png': 'same bytes',
+    });
+    const copyFile = vi.fn(async () => {});
+    const ctx = saveContext({
+      siteFolder,
+      tx: fakeTx(),
+      copyFile,
+      writeFile: writeFileAtomic,
+      changes: [UPDATE],
+      documents: bundleOf([documentOf('authors/ana', { file: ANA })]).documents,
+      copies: [{ from: join(siteFolder, 'staged.png'), to: PHOTO }],
+      plan: [{ op: 'write', path: ANA, text: ANA_NEW }],
+    });
+    expect(await writeChanges(ctx)).toBeUndefined();
+    expect(copyFile).not.toHaveBeenCalled();
+  });
+
+  it('answers 500 save-failed, and restores, when the target holds other bytes', async () => {
+    const siteFolder = await tempWorkingCopy({
+      [ANA]: ANA_TEXT,
+      [PHOTO]: 'other bytes',
+      'staged.png': 'same bytes',
+    });
+    const copyFile = vi.fn(async () => {});
+    const tx = fakeTx();
+    const ctx = saveContext({
+      siteFolder,
+      tx,
+      copyFile,
+      writeFile: vi.fn(async () => {}),
+      changes: [UPDATE],
+      documents: bundleOf([documentOf('authors/ana', { file: ANA })]).documents,
+      copies: [{ from: join(siteFolder, 'staged.png'), to: PHOTO }],
+      plan: [{ op: 'write', path: ANA, text: ANA_NEW }],
+    });
+    expect(await writeChanges(ctx)).toStrictEqual({
+      status: 500,
+      body: {
+        error: 'save-failed',
+        message: `The save was not written: "${PHOTO}" exists with other bytes than its image`,
+      },
+    });
+    expect(copyFile).not.toHaveBeenCalled();
+    expect(tx.commitSave).not.toHaveBeenCalled();
+    expect(tx.restore).toHaveBeenCalledWith([PHOTO, ANA]);
+  });
+
   it('copies a target that two copies name once, and lists its path once', async () => {
     const siteFolder = await tempWorkingCopy({ [ANA]: ANA_TEXT });
     const copyFile = vi.fn(async () => {});
