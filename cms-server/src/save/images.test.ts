@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, posix } from 'node:path';
 import { revisionOf } from 'preview-contract';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -171,6 +171,24 @@ describe('rewriteStagedImages', () => {
     expect(ctx.changes[0]?.data).toStrictEqual({
       avatar: `../../assets/uploads/${site.id('a').slice(0, 16)}.png`,
     });
+  });
+
+  it('leaves the staged file in place once its copy is made, so its staging URL still loads in the preview', async () => {
+    const site = await siteWith({ a: 'bytes a' });
+    const ctx = ctxOf(site.folder, [
+      update('authors/ana', { name: 'Ana', avatar: site.url('a') }),
+    ]);
+    expect(await rewriteStagedImages(ctx)).toBeUndefined();
+    for (const copy of ctx.copies) {
+      await mkdir(dirname(join(site.folder, copy.to)), { recursive: true });
+      await copyFile(copy.from, join(site.folder, copy.to));
+    }
+    expect(
+      await readFile(
+        join(site.folder, 'staging', `${site.id('a')}.png`),
+        'utf8',
+      ),
+    ).toBe('bytes a');
   });
 
   it('rewrites an entry of a shared file relative to the shared file, and an image inside an array', async () => {

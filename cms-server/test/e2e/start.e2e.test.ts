@@ -274,4 +274,130 @@ describe('run() with the real parts', () => {
       await removeTestRoot(root);
     }
   }, 180_000);
+
+  it('shows two saved documents in the preview with no rebuild, from the overlay the CMS gives (design R1)', async () => {
+    const root = await makeTestRoot();
+    const configPath = path.join(root, 'cms.config.ts');
+    const identity = bundleJsonSchema.parse(
+      readJson(path.join(BUNDLE, 'manifest', 'bundle.json')),
+    );
+    const cmsPort = await freePort();
+    const previewPort = await freePort();
+    const cmsOrigin = `http://127.0.0.1:${cmsPort}`;
+    const previewOrigin = `http://127.0.0.1:${previewPort}`;
+    const config: CmsConfig = parseConfig({
+      site: 'sample-site',
+      remote: await seedRemote(root),
+      previewSiteConfig: 'preview-render-server/sites/sample-site.config.ts',
+      origins: { cms: cmsOrigin, preview: previewOrigin },
+    });
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    let running: Running | undefined;
+    try {
+      running = await run(
+        ['--bundle', BUNDLE, configPath],
+        {},
+        {
+          ...realDeps,
+          loadConfig: () =>
+            Promise.resolve({
+              ...config,
+              previewSiteConfig: path.join(
+                RENDERER_DIR,
+                'sites',
+                'sample-site.config.ts',
+              ),
+            }),
+          logger,
+        },
+      );
+
+      // Two authors are edited: each one's current value and revision are read, and only the name changes.
+      const edited = async (key: string, name: string) => {
+        const current = (await (
+          await fetch(
+            `${cmsOrigin}/api/documents?key=${encodeURIComponent(key)}`,
+          )
+        ).json()) as { value: Record<string, unknown>; revision: string };
+        return {
+          document: key,
+          baseRevision: current.revision,
+          deleted: false,
+          data: { ...current.value, name },
+        };
+      };
+      const changes = [
+        await edited('authors/ana-torres', 'Ana Overlay'),
+        await edited('authors/marco-rossi', 'Marco Overlay'),
+      ];
+      const saved = await fetch(`${cmsOrigin}/api/changes`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ changes }),
+      });
+      expect(saved.status).toBe(200);
+      expect(await saved.json()).toStrictEqual({
+        revisions: {
+          'authors/ana-torres': expect.any(String) as string,
+          'authors/marco-rossi': expect.any(String) as string,
+        },
+        warnings: [],
+        rebuild: false,
+      });
+      // The bundle is the one it was: a save that needs no rebuild starts none.
+      expect(running.supervisor.status().bundleId).toBe(identity.bundleId);
+
+      // The overlay holds the two saved values, in the render request's shape.
+      const overlay = await fetch(`${cmsOrigin}/api/overlay`);
+      expect(overlay.status).toBe(200);
+      const overlayBody = await overlay.json();
+      expect(overlayBody).toStrictEqual({
+        documents: Object.fromEntries(
+          changes.map((change) => [change.document, change.data]),
+        ),
+        media: {},
+      });
+
+      // The node renders the blog post with the overlay: its author card shows the saved name.
+      const secrets = readJson(
+        path.join(root, '.cms', 'sample-site', 'secrets.json'),
+      ) as { previewInternalSecret: string };
+      const render = (body: unknown) =>
+        fetch(
+          `${previewOrigin}/__preview/render?path=${encodeURIComponent('/blog/blog-1')}`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${secrets.previewInternalSecret}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+          },
+        );
+      const shown = await render(overlayBody);
+      expect(shown.status).toBe(200);
+      const html = await shown.text();
+      expect(html).toContain('Ana Overlay');
+      // Control: with an empty overlay the page keeps the bundle's name.
+      const plain = await (await render({ documents: {}, media: {} })).text();
+      expect(plain).toContain('Ana Torres');
+      expect(plain).not.toContain('Ana Overlay');
+
+      // The first preview URL of the session warms the real node, and its token is for the preview origin.
+      const url = await fetch(
+        `${cmsOrigin}/api/preview-url?path=${encodeURIComponent('/blog/blog-1')}`,
+      );
+      expect(url.status).toBe(200);
+      const answered = (await url.json()) as { url: string; origin: string };
+      expect(answered.origin).toBe(previewOrigin);
+      expect(answered.url).toMatch(
+        new RegExp(
+          `^${previewOrigin.replace(/\./g, '\\.')}/blog/blog-1\\?preview_token=[A-Za-z0-9_.-]+$`,
+        ),
+      );
+    } finally {
+      await running?.stop();
+      await removeTestRoot(root);
+    }
+  }, 180_000);
 });
