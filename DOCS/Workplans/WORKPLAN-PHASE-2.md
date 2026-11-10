@@ -25,7 +25,7 @@ before writing tests, [TESTING-RECOMMENDATIONS.md](../Guidelines/TESTING-RECOMME
 |---|---|
 | Phase 2 design | approved by the user, 2026-10-31 |
 | Decisions D17 to D22 | logged in SYSTEM-DESIGN section 11 |
-| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); 2.1g (codecs scope; the rest of its scope moved to 2.1h with deadlines), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a done 2026-11-03 (wave 5 complete, branch `phase-2-wave-5`); 2.0j, 2.1h, 2.5b, 2.5c, 2.6a, 2.9a, 2.10a done 2026-11-03 to 2026-11-06 (wave 6 complete, branch `phase-2-wave-6`); wave 7: 2.1k to 2.1p done 2026-11-07 (CI and quality pipeline; 2.1p verification pending); 2.1q done 2026-11-08 (#27); 2.6b (#22), 2.9c-A (#21), 2.10b (#23), 2.10h (#26) and 2.10i (#28) done 2026-11-08; 2.9c-B (#30) and 2.10j (#29) done 2026-11-09; 2.1r (#31, the pre-push rename fix) done 2026-11-09; 2.1j done 2026-11-09 (#32); 2.9c-B follow-up #33 (a failed build is not built again) merged 2026-11-09. **Wave 7 closed 2026-11-10:** manual `mutation-full` (run `42756802505`) green on `4eee00b`, overall 93.86%; tag `wave-7-closed` on that commit. Four files are under 80, unchanged since wave 6: `bundle.ts` 45, `schema.ts` 57, `overlay/errors.ts` 57, `page.ts` 76. The rest not started |
+| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); 2.1g (codecs scope; the rest of its scope moved to 2.1h with deadlines), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a done 2026-11-03 (wave 5 complete, branch `phase-2-wave-5`); 2.0j, 2.1h, 2.5b, 2.5c, 2.6a, 2.9a, 2.10a done 2026-11-03 to 2026-11-06 (wave 6 complete, branch `phase-2-wave-6`); wave 7: 2.1k to 2.1p done 2026-11-07 (CI and quality pipeline; 2.1p verification pending); 2.1q done 2026-11-08 (#27); 2.6b (#22), 2.9c-A (#21), 2.10b (#23), 2.10h (#26) and 2.10i (#28) done 2026-11-08; 2.9c-B (#30) and 2.10j (#29) done 2026-11-09; 2.1r (#31, the pre-push rename fix) done 2026-11-09; 2.1j done 2026-11-09 (#32); 2.9c-B follow-up #33 (a failed build is not built again) merged 2026-11-09. **Wave 7 closed 2026-11-10:** manual `mutation-full` (run `42756802505`) green on `4eee00b`, overall 93.86%; tag `wave-7-closed` on that commit. Four files are under 80, unchanged since wave 6: `bundle.ts` 45, `schema.ts` 57, `overlay/errors.ts` 57, `page.ts` 76. **Wave 8 (2026-11-10):** 2.7d (#34), 2.9d (#35) and 2.7c (#36) merged; 2.7b in progress on `task/2.7b-images-at-save`. The rest not started |
 
 **Done when:** every row of PHASE-2-DESIGN.md section 1 passes. Section 5
 below maps each row to the test that proves it.
@@ -100,7 +100,7 @@ Rules for running tasks in parallel:
 | 5 | 2.1g (codecs only, 2026-11-03), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a (after 2.1g) |
 | 6 | 2.0j (alone, `[build]`), 2.1h (now also `repo.ts`, before 2.5b), 2.5b, 2.6a, 2.9a, 2.10a, 2.5c (moved here 2026-11-04; starts after 2.10a merges) |
 | 7 | 2.6b, 2.9c, 2.10b, 2.1j (last, alone: it edits `repo.ts` and `ops.ts`) |
-| 8 | 2.7d (seam PR, first), then 2.7b, 2.7c, 2.9d; merge order 2.9d, 2.7c, 2.7b |
+| 8 | 2.7d (seam PR, first), then 2.7b, 2.7c, 2.9d; merge order 2.9d, 2.7c, 2.7b (2.7d, 2.9d and 2.7c merged 2026-11-10; 2.7b open) |
 | 9 | 2.9e, 2.10c |
 | 10 | 2.10d, 2.10g, 2.11b |
 | 11 | 2.10e, 2.11c, 2.12a |
@@ -2132,6 +2132,8 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
 - `save/write.ts`: the paths for `commitSave` and `restore` include `ctx.copies` targets, and the copies are made before the text files. No copy happens while `copies` is empty. Only the loop and the path list are added; 2.7b fills in the copy.
 - **Done when:** the existing save tests pass unchanged; one test that a copy in `ctx.copies` is written, committed and restored on a failed commit (a fake copy function).
 
+- **Result (2026-11-10, #34, `e19c92c`, merge `c22f361`):** the seam is in: `SaveWarning`, `ctx.warnings`, `ctx.copies`, `copyFile` on `SaveContext`, reassignable `ctx.changes`, and the two named empty slots (`rewriteStagedImages`, `collectWarnings`). Kept as built: `copyFileAtomic` is the default copier (2.7b may replace it), and `SaveWarning.path` is `(string | number)[]`, as `FieldError.path`.
+
 #### 2.7b Images at save time — after 2.7d, 2.7a, 2.4c · gaps settled 2026-11-09 (lead review with the user)
 
 - A stage in the save pipeline. For every `image` marker whose value is a
@@ -2188,6 +2190,8 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
   4. **Which fields.** Skip the `image()` fields (collect their paths with `walkMarkers` on the collection schema). For Markdown and MDX scan `data`, never the body. A `data:` document has no schema, so all its strings are scanned. Keys and values may be hostile (`__proto__`): use `Map` and `Object.hasOwn`.
   5. **Where.** `<ctx.siteFolder>/public/` (it already contains `siteDir`). The working copy is read, so a file a developer pushed and that is not synced yet still warns.
   6. **Limit:** the existence check is case-insensitive on Windows and case-sensitive on the Linux host that deploys. Record it in the Result.
+
+- **Result (2026-11-10, #36, head `f3b6669`, merge `e02798a`):** `save/warnings.ts` fills the `collectWarnings` slot. Matching is by path, not by value: an array item that moves, or shifts when an item is inserted before it, counts as new and can warn again, as rule 2 accepts. (The by-value matching in `8e42d82` was reverted in `f3b6669`.) `image()` marks are read from each side and matched by exact path, so a tuple's non-image item beside an image item is checked. **Limit (item 6), recorded:** the existence check is case-insensitive on Windows and case-sensitive on the Linux host that deploys. A path that differs only in case passes on Windows and warns on Linux. Follow-up: the Markdown-format helpers duplicate private ones in `delete-guard.ts`; consolidate in a separate change. Tests: `warnings.test.ts` (53 cases); changed-file mutation on `warnings.ts` 88.29%.
 
 ### 2.8 Preview node front server (renderer side) — after 2.0d, 2.0e · ∥ 2.1 to 2.7
 
@@ -2729,6 +2733,8 @@ Design 4.4, 5.6.
   5. **`warm()`** is on the client (same bearer, same mapping, 204 expected, its own timeout). 2.9e calls it; 2.9d only provides and tests it.
   6. **Housekeeping.** `run.ts` registers the real client and `previewNotReady` is deleted; its tests are rewritten against the new client (knip fails on an unused export).
   7. **Done when (added):** unit tests for each status in item 2, the not-ready check, the timeout, the three messages of item 4; the `[build]` case runs against a real node with the existing e2e harness, one targeted file only.
+
+- **Result (2026-11-10, #35, head `5cac165`, merge `bfe33e8`):** `preview/client.ts` holds `createPreviewClient` (`validate`, `warm`) and `PreviewUnavailableError`. The 503 text order is build error, then node error, then the generic text. The 422 list needs at least one error (review fix in `5cac165`: an empty list is no answer, so the save answers 503). Kept as built: the node-error text is "The preview node failed: <error>", and `warm()` also refuses while the node is not ready. The real-node e2e is a second case in `start.e2e.test.ts`: a valid save gets 200, an invalid one gets 422 with the node's errors. It passes 2 of 2.
 
 #### 2.9e Overlay, preview URL, warm-up — after 2.9c, 2.9d, 2.7a, 2.5b
 
