@@ -158,6 +158,13 @@ describe('validate: the answers of the node', () => {
     ).toStrictEqual(new PreviewUnavailableError(PREVIEW_UNAVAILABLE_TEXT, 422));
   });
 
+  it('rejects a 422 with an empty error list, so that a save cannot pass on it', async () => {
+    const fetch = vi.fn<Fetch>(async () => answer(422, { errors: [] }));
+    expect(
+      await errorOf(clientOf(fetch).validate(DOCUMENTS, {})),
+    ).toStrictEqual(new PreviewUnavailableError(PREVIEW_UNAVAILABLE_TEXT, 422));
+  });
+
   it('rejects a 200 whose body is not { valid: true }, with status 200', async () => {
     const fetch = vi.fn<Fetch>(async () => answer(200, { valid: false }));
     expect(

@@ -60,8 +60,10 @@ const fieldErrorSchema = z.object({
 /** The 200 answer of POST /__preview/validate: the values are valid. */
 const validBodySchema = z.object({ valid: z.literal(true) });
 
-/** The 422 answer of POST /__preview/validate: the errors of the values. */
-const invalidBodySchema = z.object({ errors: z.array(fieldErrorSchema) });
+/** The 422 answer of POST /__preview/validate: the errors of the values. An empty list is no answer, so a save cannot pass on it. */
+const invalidBodySchema = z.object({
+  errors: z.array(fieldErrorSchema).min(1),
+});
 
 /**
  * Creates the client of the preview node. `validate` resolves with the node's errors (empty when the values are valid),
