@@ -207,7 +207,8 @@ async function refOf(
 
 /**
  * Whether the name `to` can take the staged bytes. A name already planned in this save must come from the same staged
- * file. A file on disk must hold the same bytes, and is then reused with no copy. Otherwise the copy is planned.
+ * file. A file on disk must hold the same bytes, and is then listed for the commit with no copy. Otherwise the copy is
+ * planned.
  */
 async function isUsable(
   state: State,
@@ -218,11 +219,11 @@ async function isUsable(
   const planned = state.copies.get(to);
   if (planned !== undefined) return planned === from;
   const existing = await readIfExists(join(state.ctx.siteFolder, to));
-  if (existing === undefined) {
-    state.copies.set(to, from);
-    return true;
-  }
-  return existing.equals(bytes);
+  if (existing !== undefined && !existing.equals(bytes)) return false;
+  // A reused file is listed too, so the commit holds it even when it is untracked. The write stage copies nothing
+  // for it (the bytes are the same).
+  state.copies.set(to, from);
+  return true;
 }
 
 /** The path from the folder of `holding` to `to`, both relative to the site: `../../assets/x.png` or `./x.png`. */

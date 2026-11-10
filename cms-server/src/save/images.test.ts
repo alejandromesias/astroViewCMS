@@ -316,7 +316,7 @@ describe('rewriteStagedImages', () => {
     expect(ctx.copies).toStrictEqual([]);
   });
 
-  it('reuses an existing file with the same bytes and plans no copy', async () => {
+  it('reuses an existing file with the same bytes: it is listed for the commit, and no copy is made of other bytes', async () => {
     const site = await siteWith({ a: 'bytes a' });
     const target = nameOf(site.id('a'));
     await mkdir(join(site.folder, dirname(target)), { recursive: true });
@@ -325,7 +325,7 @@ describe('rewriteStagedImages', () => {
       update('authors/ana', { avatar: site.url('a') }),
     ]);
     expect(await rewriteStagedImages(ctx)).toBeUndefined();
-    expect(ctx.copies).toStrictEqual([]);
+    expect(ctx.copies.map((copy) => copy.to)).toStrictEqual([target]);
     expect(ctx.changes[0]?.data).toStrictEqual({
       avatar: `../../assets/uploads/${site.id('a').slice(0, 16)}.png`,
     });
