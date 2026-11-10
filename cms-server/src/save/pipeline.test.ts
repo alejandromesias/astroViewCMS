@@ -72,14 +72,24 @@ function inputOf(
 }
 
 describe('SAVE_STAGES', () => {
-  it('runs the revision check, the delete guard, the planning, the validation and the write, in that order', () => {
-    expect(SAVE_STAGES).toStrictEqual([
-      checkRevisions,
-      checkDeleteGuard,
-      planChanges,
-      validateChanges,
-      writeChanges,
-    ]);
+  it('runs the revision check, the delete guard, the image slot, the planning, the validation, the warning slot and the write, in that order', () => {
+    expect(SAVE_STAGES).toHaveLength(7);
+    expect(SAVE_STAGES[0]).toBe(checkRevisions);
+    expect(SAVE_STAGES[1]).toBe(checkDeleteGuard);
+    expect(SAVE_STAGES[2]?.name).toBe('rewriteStagedImages');
+    expect(SAVE_STAGES[3]).toBe(planChanges);
+    expect(SAVE_STAGES[4]).toBe(validateChanges);
+    expect(SAVE_STAGES[5]?.name).toBe('collectWarnings');
+    expect(SAVE_STAGES[6]).toBe(writeChanges);
+  });
+
+  it('gives its two empty slots no effect: each passes on a context', async () => {
+    const ctx = saveContext();
+    const [, , rewrite, , , collect] = SAVE_STAGES;
+    expect(await rewrite?.(ctx)).toBeUndefined();
+    expect(await collect?.(ctx)).toBeUndefined();
+    expect(ctx.warnings).toStrictEqual([]);
+    expect(ctx.copies).toStrictEqual([]);
   });
 });
 
@@ -149,6 +159,24 @@ describe('runStages', () => {
       },
     });
     expect(order).toStrictEqual(['first', 'second']);
+  });
+
+  it('answers the warnings that a stage adds to the context', async () => {
+    const warning = {
+      key: 'authors/ana',
+      path: ['avatar'],
+      code: 'public-image-missing',
+    };
+    const answer = await runStages(saveContext(), [
+      (ctx) => {
+        ctx.warnings.push(warning);
+        return Promise.resolve(undefined);
+      },
+    ]);
+    expect(answer).toStrictEqual({
+      status: 200,
+      body: { revisions: {}, warnings: [warning], rebuild: false },
+    });
   });
 });
 

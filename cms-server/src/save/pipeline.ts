@@ -22,15 +22,22 @@ import type {
 import { checkDeleteGuard, updateIndexAfterCommit } from './delete-guard.ts';
 import { planChanges } from './plan.ts';
 import { validateChanges } from './validate.ts';
-import { writeChanges } from './write.ts';
+import { copyFileAtomic, writeChanges } from './write.ts';
+
+// The two slots that 2.7b and 2.7c fill. They are empty until then: each passes, and changes nothing.
+// 2.7b: the rewrite of staged image values, which also lists the copies (WORKPLAN 2.7b step 1).
+const rewriteStagedImages: SaveStage = () => Promise.resolve(undefined);
+// 2.7c: the warnings of the changed documents, appended to ctx.warnings.
+const collectWarnings: SaveStage = () => Promise.resolve(undefined);
 
 /** The stages of a save, in order. */
 export const SAVE_STAGES: readonly SaveStage[] = [
   checkRevisions,
   checkDeleteGuard,
+  rewriteStagedImages,
   planChanges,
   validateChanges,
-  // 2.7b: staged images move into place here. 2.7c: warnings are collected here.
+  collectWarnings,
   writeChanges,
 ];
 
@@ -48,15 +55,16 @@ export interface SaveInput {
   readonly guard: DeleteGuard;
 }
 
-/** The parts of a save that a test replaces: the stages, and the file writer (the real one by default). */
+/** The parts of a save that a test replaces: the stages, the file writer and the file copier (the real ones by default). */
 export interface SaveDeps {
   readonly stages?: readonly SaveStage[];
   readonly writeFile?: (file: string, text: string) => Promise<void>;
+  readonly copyFile?: (from: string, to: string) => Promise<void>;
 }
 
 /**
  * Runs `stages` in order on `ctx`. Returns the first stop. When no stage stops, the answer is 200 with the revisions,
- * the (empty) warnings and the rebuild flag.
+ * the warnings and the rebuild flag.
  */
 export async function runStages(
   ctx: SaveContext,
@@ -70,7 +78,7 @@ export async function runStages(
     status: 200,
     body: {
       revisions: Object.fromEntries(ctx.revisions),
-      warnings: [],
+      warnings: ctx.warnings,
       rebuild: ctx.rebuild,
     },
   };
@@ -83,7 +91,11 @@ export async function runStages(
 export function saveChanges(
   input: SaveInput,
   repo: Repo,
-  { stages = SAVE_STAGES, writeFile = writeFileAtomic }: SaveDeps = {},
+  {
+    stages = SAVE_STAGES,
+    writeFile = writeFileAtomic,
+    copyFile = copyFileAtomic,
+  }: SaveDeps = {},
 ): Promise<SaveAnswer> {
   return repo.locked('save', async (tx): Promise<SaveAnswer> => {
     let bundle: Bundle | null;
@@ -109,6 +121,7 @@ export function saveChanges(
         media: input.media,
         log: input.log,
         writeFile,
+        copyFile,
         afterCommit: [updateIndexAfterCommit, ...(input.afterCommit ?? [])],
         guard: input.guard,
         reads: new Map(),
@@ -118,6 +131,8 @@ export function saveChanges(
         refinements: [],
         rebuild: false,
         revisions: new Map(),
+        warnings: [],
+        copies: [],
       },
       stages,
     );

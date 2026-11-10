@@ -16,7 +16,7 @@ import {
 } from '../../test/helpers/working-copy.ts';
 import { writeFileAtomic } from '../fs/atomic.ts';
 import type { SaveChange } from './body.ts';
-import { commitMessageOf, writeChanges } from './write.ts';
+import { commitMessageOf, copyFileAtomic, writeChanges } from './write.ts';
 
 const ANA = 'src/content/authors/ana.json';
 const ANA_TEXT = '{\n  "name": "Ana"\n}\n';
@@ -331,6 +331,171 @@ describe('writeChanges', () => {
     });
     expect(await writeChanges(ctx)).toBeUndefined();
     expect(ctx.rebuild).toBe(true);
+  });
+});
+
+// A staged image (2.7d seam): its absolute staging path, and the site-relative target it is copied to.
+const STAGED = '/staging/ana.png';
+const PHOTO = 'public/images/ana.png';
+
+describe('writeChanges with staged image copies', () => {
+  it('copies each image before the text files, and commits the copy with them', async () => {
+    const siteFolder = await tempWorkingCopy({ [ANA]: ANA_TEXT });
+    const order: string[] = [];
+    const copyFile = vi.fn(async (_from: string, to: string) => {
+      order.push(`copy ${to}`);
+    });
+    const tx = fakeTx();
+    const ctx = saveContext({
+      siteFolder,
+      tx,
+      copyFile,
+      writeFile: async (file, text) => {
+        order.push(`write ${file}`);
+        await writeFileAtomic(file, text);
+      },
+      changes: [UPDATE],
+      documents: bundleOf([documentOf('authors/ana', { file: ANA })]).documents,
+      copies: [{ from: STAGED, to: PHOTO }],
+      plan: [{ op: 'write', path: ANA, text: ANA_NEW }],
+    });
+    expect(await writeChanges(ctx)).toBeUndefined();
+    expect(order).toStrictEqual([
+      `copy ${join(siteFolder, PHOTO)}`,
+      `write ${join(siteFolder, ANA)}`,
+    ]);
+    expect(copyFile).toHaveBeenCalledWith(STAGED, join(siteFolder, PHOTO));
+    expect(tx.commitSave).toHaveBeenCalledWith(
+      [PHOTO, ANA],
+      'CMS save: 1 document(s)\n\nmodified authors/ana',
+    );
+  });
+
+  it('restores the copied image with the planned files when the commit fails', async () => {
+    const siteFolder = await tempWorkingCopy({ [ANA]: ANA_TEXT });
+    const copyFile = vi.fn(async () => {});
+    const tx = fakeTx({
+      commitSave: vi.fn(() => Promise.reject(new Error('commit refused'))),
+    });
+    const ctx = saveContext({
+      siteFolder,
+      tx,
+      copyFile,
+      writeFile: writeFileAtomic,
+      changes: [UPDATE],
+      copies: [{ from: STAGED, to: PHOTO }],
+      plan: [{ op: 'write', path: ANA, text: ANA_NEW }],
+    });
+    expect(await writeChanges(ctx)).toStrictEqual({
+      status: 500,
+      body: {
+        error: 'save-failed',
+        message: 'The save was not written: commit refused',
+      },
+    });
+    expect(copyFile).toHaveBeenCalledTimes(1);
+    expect(tx.restore).toHaveBeenCalledWith([PHOTO, ANA]);
+  });
+
+  it('restores the copied image when a copy fails, before any text file is written', async () => {
+    const siteFolder = await tempWorkingCopy({ [ANA]: ANA_TEXT });
+    const writeFile = vi.fn(async () => {});
+    const tx = fakeTx();
+    const ctx = saveContext({
+      siteFolder,
+      tx,
+      copyFile: vi.fn(async () => {
+        throw new Error('disk full');
+      }),
+      writeFile,
+      changes: [UPDATE],
+      copies: [{ from: STAGED, to: PHOTO }],
+      plan: [{ op: 'write', path: ANA, text: ANA_NEW }],
+    });
+    expect(await writeChanges(ctx)).toStrictEqual({
+      status: 500,
+      body: {
+        error: 'save-failed',
+        message: 'The save was not written: disk full',
+      },
+    });
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(tx.commitSave).not.toHaveBeenCalled();
+    expect(tx.restore).toHaveBeenCalledWith([PHOTO, ANA]);
+  });
+
+  it('copies a target that two copies name once, and lists its path once', async () => {
+    const siteFolder = await tempWorkingCopy({ [ANA]: ANA_TEXT });
+    const copyFile = vi.fn(async () => {});
+    const tx = fakeTx();
+    const ctx = saveContext({
+      siteFolder,
+      tx,
+      copyFile,
+      writeFile: writeFileAtomic,
+      changes: [UPDATE],
+      documents: bundleOf([documentOf('authors/ana', { file: ANA })]).documents,
+      copies: [
+        { from: STAGED, to: PHOTO },
+        { from: STAGED, to: PHOTO },
+      ],
+      plan: [{ op: 'write', path: ANA, text: ANA_NEW }],
+    });
+    expect(await writeChanges(ctx)).toBeUndefined();
+    expect(copyFile).toHaveBeenCalledTimes(1);
+    expect(tx.commitSave).toHaveBeenCalledWith(
+      [PHOTO, ANA],
+      'CMS save: 1 document(s)\n\nmodified authors/ana',
+    );
+  });
+
+  it('copies nothing and lists only the text files when no image is staged', async () => {
+    const siteFolder = await tempWorkingCopy({ [ANA]: ANA_TEXT });
+    const copyFile = vi.fn(async () => {});
+    const tx = fakeTx();
+    const ctx = saveContext({
+      siteFolder,
+      tx,
+      copyFile,
+      writeFile: writeFileAtomic,
+      changes: [UPDATE],
+      documents: bundleOf([documentOf('authors/ana', { file: ANA })]).documents,
+      plan: [{ op: 'write', path: ANA, text: ANA_NEW }],
+    });
+    expect(await writeChanges(ctx)).toBeUndefined();
+    expect(copyFile).not.toHaveBeenCalled();
+    expect(tx.commitSave).toHaveBeenCalledWith(
+      [ANA],
+      'CMS save: 1 document(s)\n\nmodified authors/ana',
+    );
+  });
+});
+
+describe('copyFileAtomic', () => {
+  it('copies the bytes of a file to a new path, and keeps the original', async () => {
+    const siteFolder = await tempWorkingCopy({
+      'staging/ana.png': 'PNG bytes',
+    });
+    await copyFileAtomic(
+      join(siteFolder, 'staging/ana.png'),
+      join(siteFolder, 'staging/copy.png'),
+    );
+    expect(await readFile(join(siteFolder, 'staging/copy.png'), 'utf8')).toBe(
+      'PNG bytes',
+    );
+    expect(await readFile(join(siteFolder, 'staging/ana.png'), 'utf8')).toBe(
+      'PNG bytes',
+    );
+  });
+
+  it('rejects with the system error when the source is missing', async () => {
+    const siteFolder = await tempWorkingCopy({ 'staging/keep.txt': 'x' });
+    await expect(
+      copyFileAtomic(
+        join(siteFolder, 'staging/missing.png'),
+        join(siteFolder, 'staging/copy.png'),
+      ),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });
 
