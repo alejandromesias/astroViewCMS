@@ -34,10 +34,23 @@ export interface SaveStop {
   readonly body: Record<string, unknown>;
 }
 
-/** The 200 answer of a save (WORKPLAN 2.5c item 10). `warnings` stays empty until 2.7c. */
+/** A warning of a save (WORKPLAN 2.7c). It never blocks the save; `path` is the field path, as in a FieldError. */
+interface SaveWarning {
+  readonly key: string;
+  readonly path: readonly (string | number)[];
+  readonly code: string;
+}
+
+/** A staged image to copy into the site (WORKPLAN 2.7b). `from` is the absolute staging path; `to` is site-relative. */
+interface ImageCopy {
+  readonly from: string;
+  readonly to: string;
+}
+
+/** The 200 answer of a save (WORKPLAN 2.5c item 10). `warnings` stays empty until 2.7c fills it. */
 interface SaveBody {
   readonly revisions: Record<string, string>;
-  readonly warnings: readonly string[];
+  readonly warnings: readonly SaveWarning[];
   readonly rebuild: boolean;
 }
 
@@ -65,7 +78,8 @@ export interface DeleteGuard {
 
 /** What the stages share. The inputs are set before the lock; the stages fill in the outputs, in order. */
 export interface SaveContext {
-  readonly changes: readonly SaveChange[];
+  /** The client's list. A stage may reassign the field to a new list (2.7b), but never changes this array in place. */
+  changes: readonly SaveChange[];
   readonly bundle: Bundle;
   /** The site folder of the working copy. The planned paths are relative to it. */
   readonly siteFolder: string;
@@ -78,6 +92,8 @@ export interface SaveContext {
   readonly log: Logger;
   /** Writes one file atomically (fs/atomic.ts). A test passes a fake that fails. */
   readonly writeFile: (file: string, text: string) => Promise<void>;
+  /** Copies one file's bytes to a new path, atomically. The copy loop of the write stage calls it. A test passes a fake. */
+  readonly copyFile: (from: string, to: string) => Promise<void>;
   readonly afterCommit: readonly AfterCommitHook[];
   /** The delete guard (2.6b): the stage reads the index from it, and the after-commit hook updates it. */
   readonly guard: DeleteGuard;
@@ -95,6 +111,10 @@ export interface SaveContext {
   rebuild: boolean;
   /** The revision of each created and updated document, after the commit. */
   revisions: Map<string, string>;
+  /** The warnings of the save, answered in the 200 body. Empty until a stage adds one (2.7c). */
+  warnings: SaveWarning[];
+  /** The staged images to copy in before the text files. Empty until a stage adds one (2.7b). */
+  copies: readonly ImageCopy[];
 }
 
 /** One stage of the pipeline: a stop to answer with, or undefined to go on. */

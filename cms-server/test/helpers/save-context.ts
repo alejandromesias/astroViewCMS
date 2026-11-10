@@ -102,6 +102,7 @@ export function saveContext(overrides: Partial<SaveContext> = {}): SaveContext {
     media: MEDIA,
     log: silentLog(),
     writeFile: vi.fn(async () => {}),
+    copyFile: vi.fn(async () => {}),
     afterCommit: [],
     guard: createDeleteGuard(),
     reads: new Map(),
@@ -111,6 +112,8 @@ export function saveContext(overrides: Partial<SaveContext> = {}): SaveContext {
     refinements: [],
     rebuild: false,
     revisions: new Map(),
+    warnings: [],
+    copies: [],
     ...overrides,
   };
 }

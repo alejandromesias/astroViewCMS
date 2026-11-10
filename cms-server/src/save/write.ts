@@ -1,13 +1,14 @@
 // The write stage of a save (WORKPLAN 2.5c items 6, 8, 9 and 10, PHASE-2-DESIGN 5.3): the planned files are written
 // atomically, committed on cms/work, and the after-commit hooks run. A failure restores the paths from HEAD, so the
 // working copy is as it was before the save. Runs inside the repo lock.
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, readFile, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { DocumentEntry } from '../bundle/read.ts';
 import { changesetOf } from '../documents/changeset.ts';
 import type { FileOp } from '../documents/plan-write.ts';
 import type { FileReads } from '../documents/read.ts';
 import { revisionOfDocument } from '../documents/revision.ts';
+import { writeFileAtomic } from '../fs/atomic.ts';
 import type { SaveContext, SaveStop } from './context.ts';
 import type { SaveChange } from './body.ts';
 import { needsRebuild } from './rebuild.ts';
@@ -17,8 +18,15 @@ export async function writeChanges(
   ctx: SaveContext,
 ): Promise<SaveStop | undefined> {
   ctx.rebuild = needsRebuild(ctx.changes, ctx.documents, ctx.stored);
-  const paths = ctx.plan.map((op) => op.path);
+  // The copied images and the text files, each path once. commitSave stages them and restore puts them back (2.7d).
+  const paths = [
+    ...new Set([
+      ...ctx.copies.map((copy) => copy.to),
+      ...ctx.plan.map((op) => op.path),
+    ]),
+  ];
   try {
+    await copyImages(ctx);
     for (const op of ctx.plan) await applyOp(ctx, op);
     await ctx.tx.commitSave(paths, commitMessageOf(ctx.changes));
   } catch (error) {
@@ -77,6 +85,27 @@ export function commitMessageOf(changes: readonly SaveChange[]): string {
 function statusOf(change: SaveChange): string {
   if (change.deleted) return 'deleted';
   return change.baseRevision === null ? 'created' : 'modified';
+}
+
+/**
+ * Copies the bytes of `from` to `to` atomically: the real copier of the save, which a test replaces (WORKPLAN 2.7d).
+ * The folder of `to` must exist.
+ */
+export async function copyFileAtomic(from: string, to: string): Promise<void> {
+  await writeFileAtomic(to, await readFile(from));
+}
+
+// Copies each staged image into the site once per target, before any text file is written. A target listed twice
+// is copied once. A new file's folder is made first, as for a text file.
+async function copyImages(ctx: SaveContext): Promise<void> {
+  const copied = new Set<string>();
+  for (const copy of ctx.copies) {
+    if (copied.has(copy.to)) continue;
+    copied.add(copy.to);
+    const target = join(ctx.siteFolder, copy.to);
+    await mkdir(dirname(target), { recursive: true });
+    await ctx.copyFile(copy.from, target);
+  }
 }
 
 // Writes one planned file, or removes it. A new file's folder is made first.
