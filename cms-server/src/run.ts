@@ -30,6 +30,7 @@ import {
   type BundleLifecycle,
   createBundleLifecycle,
 } from './preview/bundle-lifecycle.ts';
+import { createPreviewClient } from './preview/client.ts';
 import { checkAstroResolves } from './preview/dependencies.ts';
 import {
   createStateStore,
@@ -48,7 +49,6 @@ import {
   sweepLeftovers,
 } from './preview/sweep.ts';
 import { createDeleteGuard } from './save/delete-guard.ts';
-import { previewNotReady } from './save/validate.ts';
 import { startServer } from './server.ts';
 
 /** The arguments of the start. `bundleDir` is the renderer's build folder (its `manifest/` holds the five files). */
@@ -234,6 +234,13 @@ export async function run(
       void lifecycle.trigger('save-rebuild');
     }
   };
+  // The save's check and warm-up go to the node on the preview port, with the internal bearer (2.9d).
+  const preview = createPreviewClient({
+    port: previewPort,
+    secret: secrets.previewInternalSecret,
+    nodeState: () => supervisor.status().state,
+    status,
+  });
   const appDeps: AppDeps = {
     editor: { page: editorPage, previewOrigin: config.origins.preview },
     media: {
@@ -246,10 +253,9 @@ export async function run(
     workingCopy: repo.siteFolder,
     repo: openedRepo,
     status,
-    // The preview client is 2.9d's. Until it is in place every save answers 503 preview-unavailable.
     save: {
       config,
-      preview: previewNotReady,
+      preview,
       guard: createDeleteGuard(),
       onRebuild,
     },
