@@ -2136,6 +2136,7 @@ Design 4.2. Git is the command line, run with `execFile`, never a shell.
 - **Done when:** a save with an upload in an author avatar (own file) and in
   a `testimonials` entry (shared file, relative to `src/content/`) writes
   the right relative paths, and validation sees the real metadata.
+- **From the wave 7 review (2026-11-10):** 2.10b tested the restore of saved images only with hand-made commits. Add one test with an image saved through this stage: a sync (`tx.reapply`) after a new upstream commit keeps the image file and the document's relative path.
 
 #### 2.7c Warning for missing `public/` images — after 2.5c
 
@@ -2831,6 +2832,7 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
   the last 5 minutes **(call)**); stops when idle; the clock is injected;
   errors back off.
 - **From 2.9c-B (decided 2026-11-09): recovery from a failed first build.** While no node serves (no bundle, or a bundle whose node did not start), every upstream change that sync finds counts as `code`, content-only included, and the loop calls the trigger with `sync-code` when `cms/work` HEAD differs from the failed SHA. The failed SHA is never rebuilt automatically, and there is no timed retry.
+- **From 2.10b (departure (e), reviewed 2026-11-10):** a saved document or file that cannot be read makes `tx.reapply` throw, so the sync fails and nothing moves. The loop shows it as `syncError` in the status and backs off; it must not retry in a tight loop or crash. Test: a re-apply that throws sets `syncError`, delays the next poll, and clears the error on the next success.
 - **From 2.10j (2026-11-09):** the status needs a `renamed` field and a setter in `preview/status.ts`; neither exists. This task adds both and sets the list from each sync's re-apply result (`{ tip, renamed }`).
 - **Done when:** tests with a fake clock: it polls while active, stops when
   idle, resumes on activity, backs off on errors. With a failed first build: no node runs and the status says failed; a sync with a content-only change builds the new HEAD; a sync with no change builds nothing; the failed SHA is never rebuilt.
