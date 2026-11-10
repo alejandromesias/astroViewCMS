@@ -89,7 +89,7 @@ describe('GET /api/status with the preview status (2.9c)', () => {
   // The status a holder would give: a builder that is on, a ready node, a changeset of three files.
   const SNAPSHOT = {
     builder: 'on',
-    build: { state: 'idle', error: null },
+    build: { state: 'idle', error: null, failedCommit: null },
     node: { state: 'ready', bundleId: 'fixture-2026-11-03', error: null },
     lastSync: null,
     syncError: null,

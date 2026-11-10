@@ -119,6 +119,7 @@ function fakeRepo(gate: Promise<void> = Promise.resolve()) {
   const locks: string[] = [];
   const reads: string[] = [];
   let upstream = BASE;
+  let head = HEAD;
   const repo: LifecycleRepo = {
     locked: (holder, work) => {
       locks.push(holder);
@@ -126,7 +127,7 @@ function fakeRepo(gate: Promise<void> = Promise.resolve()) {
         revParse: async (ref) => {
           await gate;
           reads.push(ref);
-          return ref === 'origin/main' ? upstream : HEAD;
+          return ref === 'origin/main' ? upstream : head;
         },
       };
       return work(tx);
@@ -139,6 +140,10 @@ function fakeRepo(gate: Promise<void> = Promise.resolve()) {
     /** Moves origin's branch, as a sync that fetched a new commit would. */
     moveUpstream: (sha: string) => {
       upstream = sha;
+    },
+    /** Moves `cms/work`, as a sync that re-applied new saves would. */
+    moveHead: (sha: string) => {
+      head = sha;
     },
   };
 }
@@ -173,7 +178,7 @@ interface RigOptions {
 /** A lifecycle over fakes, with the parts a test checks. Bundle ids are `b-1`, `b-2`, ... in build order. */
 async function rigOf(options: RigOptions = {}) {
   const log = spyLog();
-  const { repo, locks, reads, moveUpstream } = fakeRepo(options.gate);
+  const { repo, locks, reads, moveUpstream, moveHead } = fakeRepo(options.gate);
   const build = fakeBuilder(options.build);
   const supervisor = fakeSupervisor({
     swap: options.swap,
@@ -227,6 +232,7 @@ async function rigOf(options: RigOptions = {}) {
     locks,
     reads,
     moveUpstream,
+    moveHead,
   };
 }
 
@@ -324,6 +330,7 @@ describe('a failed build', () => {
     expect((await rig.status.snapshot()).build).toStrictEqual({
       state: 'failed',
       error: 'src/pages/a.astro: unexpected token',
+      failedCommit: HEAD,
     });
   });
 
@@ -359,11 +366,78 @@ describe('a failed build', () => {
     await rig.lifecycle.trigger('publish');
     expect((await rig.status.snapshot()).build.error).toBe('bad');
     rig.build.mockImplementation(okBuild);
+    rig.moveHead('c'.repeat(40));
     await rig.lifecycle.trigger('publish');
     expect((await rig.status.snapshot()).build).toStrictEqual({
       state: 'idle',
       error: null,
+      failedCommit: null,
     });
+  });
+
+  it('a trigger for the commit that failed is not built again, and gets the same outcome', async () => {
+    const rig = await rigOf({ build: failedBuild('bad') });
+    await rig.lifecycle.trigger('save-rebuild');
+    expect(await rig.lifecycle.trigger('sync-code')).toStrictEqual({
+      kind: 'build-failed',
+      error: 'bad',
+    });
+    expect(rig.build).toHaveBeenCalledTimes(1);
+    expect((await rig.status.snapshot()).build).toStrictEqual({
+      state: 'failed',
+      error: 'bad',
+      failedCommit: HEAD,
+    });
+  });
+
+  it('a trigger for a new commit builds it, and clears the failed commit', async () => {
+    const rig = await rigOf({ build: failedBuild('bad') });
+    await rig.lifecycle.trigger('save-rebuild');
+    rig.build.mockImplementation(okBuild);
+    rig.moveHead('c'.repeat(40));
+    expect(await rig.lifecycle.trigger('sync-code')).toStrictEqual({
+      kind: 'served',
+      bundleId: 'b-2',
+    });
+    expect(rig.build).toHaveBeenLastCalledWith(
+      expect.objectContaining({ commit: 'c'.repeat(40) }),
+    );
+    expect((await rig.status.snapshot()).build).toStrictEqual({
+      state: 'idle',
+      error: null,
+      failedCommit: null,
+    });
+  });
+
+  it('a restart (a new lifecycle) builds the commit that failed before', async () => {
+    const before = await rigOf({ build: failedBuild('bad') });
+    await before.lifecycle.start();
+    expect((await before.status.snapshot()).build.failedCommit).toBe(HEAD);
+    const after = await rigOf({ build: okBuild });
+    await after.lifecycle.start();
+    expect(after.build).toHaveBeenCalledTimes(1);
+    expect(after.store.get().current?.bundleId).toBe('b-1');
+    expect((await after.status.snapshot()).build.failedCommit).toBeNull();
+  });
+
+  it('a trigger that resolves to the failed commit while its build runs is not built again', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const rig = await rigOf({
+      build: async (job) => {
+        await gate;
+        return failedBuild('bad')(job);
+      },
+    });
+    const first = rig.lifecycle.trigger('save-rebuild');
+    const second = rig.lifecycle.trigger('sync-code');
+    await settle();
+    release();
+    expect(await first).toStrictEqual({ kind: 'build-failed', error: 'bad' });
+    expect(await second).toStrictEqual({ kind: 'build-failed', error: 'bad' });
+    expect(rig.build).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -955,6 +1029,7 @@ describe('the build state after a protocol rebuild (2.9c review)', () => {
     expect((await rig.status.snapshot()).build).toStrictEqual({
       state: 'failed',
       error: 'boom',
+      failedCommit: HEAD,
     });
   });
 
@@ -968,6 +1043,7 @@ describe('the build state after a protocol rebuild (2.9c review)', () => {
     expect((await rig.status.snapshot()).build).toStrictEqual({
       state: 'idle',
       error: null,
+      failedCommit: null,
     });
   });
 });

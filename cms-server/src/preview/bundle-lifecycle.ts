@@ -3,7 +3,8 @@
 // time), and swaps the node onto the new bundle. A failed swap keeps the failed bundle out of the state, and the last good
 // bundle is started again when the supervisor did not roll back itself. After each served bundle the protocol check
 // compares its bundle.json with PROTOCOL_VERSION: the first mismatch of a chain rebuilds once, and the new bundle carries
-// the count, so a mismatch on it is only reported.
+// the count, so a mismatch on it is only reported. A commit whose build failed is not built again by the same lifecycle:
+// a restart is the retry (2.9c-B recovery rule).
 import { join } from 'node:path';
 import { PROTOCOL_VERSION } from 'preview-protocol';
 import {
@@ -128,17 +129,42 @@ export function createBundleLifecycle(
   // Whether the most recent build that ended failed. A nested build (a protocol rebuild) can fail while its outer trigger is
   // still under way, so the state at the end is read from this, not from the outer trigger's own outcome.
   let lastBuildFailed = false;
+  // The commit of the last build that failed, and its error, recorded by the build wrapper as each build ends. A commit
+  // with a failure is not built again by this lifecycle (2.9c-B recovery).
+  let lastFailure: { readonly commit: string; readonly error: string } | null =
+    null;
   // One build at a time, and the triggers that wait merge into one queued build. After stop, a queued build is refused.
   const runner = createBuildRunner({
-    build: (job) => {
-      if (stopped) return Promise.reject(new Error(STOPPING));
+    build: async (job) => {
+      if (stopped) throw new Error(STOPPING);
       const base = baseOfCommit.get(job.commit);
       // Cannot happen: a trigger reads the base with its commit before it asks the runner for that commit.
-      if (base === undefined) {
-        return Promise.reject(new Error(`No base was read for ${job.commit}`));
+      if (base === undefined)
+        throw new Error(`No base was read for ${job.commit}`);
+      // Checked when the build starts, not when the trigger asks: a queued build for a commit that failed meanwhile does not run.
+      const failure = lastFailure;
+      if (failure !== null && failure.commit === job.commit) {
+        log.info(
+          'The commit failed to build before, so it is not built again',
+          {
+            commit: job.commit,
+          },
+        );
+        return {
+          bundleId: job.bundleId,
+          dir: join(bundlesDir, job.bundleId),
+          ok: false,
+          firstError: { file: null, message: failure.error },
+        };
       }
       baseOfBundle.set(job.bundleId, base);
-      return build(job);
+      const result = await build(job);
+      // Recorded before the next queued build starts, so that build sees this failure.
+      lastFailure = result.ok
+        ? null
+        : { commit: job.commit, error: buildErrorText(result.firstError) };
+      status.setFailedCommit(lastFailure?.commit ?? null);
+      return result;
     },
     ...(newBundleId === undefined ? {} : { newBundleId }),
   });

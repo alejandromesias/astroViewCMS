@@ -26,7 +26,7 @@ describe('the status snapshot', () => {
     const status = createStatus(optionsOf());
     expect(await status.snapshot()).toStrictEqual({
       builder: 'on',
-      build: { state: 'idle', error: null },
+      build: { state: 'idle', error: null, failedCommit: null },
       node: { state: 'ready', bundleId: 'b-1', error: null },
       lastSync: null,
       syncError: null,
@@ -77,6 +77,7 @@ describe('the setters', () => {
     const status = createStatus(optionsOf());
     status.setBuildState('building');
     status.setBuildError('src/a.md: bad');
+    status.setFailedCommit('d'.repeat(40));
     status.setSwapError('node down');
     status.setProtocolMismatch('Bundle b-1 speaks protocol 1');
     status.setLastSync('2026-11-09T10:00:00.000Z');
@@ -85,7 +86,11 @@ describe('the setters', () => {
     status.setPublish('failed');
     expect(await status.snapshot()).toStrictEqual({
       builder: 'on',
-      build: { state: 'building', error: 'src/a.md: bad' },
+      build: {
+        state: 'building',
+        error: 'src/a.md: bad',
+        failedCommit: 'd'.repeat(40),
+      },
       node: { state: 'ready', bundleId: 'b-1', error: null },
       lastSync: '2026-11-09T10:00:00.000Z',
       syncError: 'fetch failed',
@@ -102,6 +107,7 @@ describe('the setters', () => {
   it('each setter clears its field with null, or with idle for the publish state', async () => {
     const status = createStatus(optionsOf());
     status.setBuildError('x');
+    status.setFailedCommit('x');
     status.setSwapError('x');
     status.setProtocolMismatch('x');
     status.setLastSync('x');
@@ -109,6 +115,7 @@ describe('the setters', () => {
     status.setUpstreamBuildFailed('x');
     status.setPublish('publishing');
     status.setBuildError(null);
+    status.setFailedCommit(null);
     status.setSwapError(null);
     status.setProtocolMismatch(null);
     status.setLastSync(null);
@@ -116,7 +123,7 @@ describe('the setters', () => {
     status.setUpstreamBuildFailed(null);
     status.setPublish('idle');
     expect(await status.snapshot()).toMatchObject({
-      build: { error: null },
+      build: { error: null, failedCommit: null },
       lastSync: null,
       syncError: null,
       publish: 'idle',
