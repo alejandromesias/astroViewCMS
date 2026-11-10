@@ -39,7 +39,7 @@ interface PreviewUrl {
 
 /** The value as a record of unknown fields, or `undefined` when it is not an object. */
 function recordOf(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
 }
@@ -195,6 +195,8 @@ export async function startEditor(
   let previewOrigin: string | undefined;
   /** The starting overlay from `GET /api/overlay`, which the drafts win over. */
   let overlay: RenderRequest = { documents: {}, media: {} };
+  /** Why the starting overlay is missing, or '' when it loaded. It stays in the status line when the page is ready. */
+  let overlayProblem = '';
 
   /** The text a form holds as the document's value. Throws on invalid JSON. */
   function formValue(view: DocumentView): unknown {
@@ -295,7 +297,7 @@ export async function startEditor(
             value: JSON.stringify(raw.data ?? {}, null, 2),
             body: raw.body ?? '',
           }
-        : { value: JSON.stringify(info.value, null, 2), body: '' };
+        : { value: JSON.stringify(info.value ?? {}, null, 2), body: '' };
 
       // biome-ignore lint/style/noNonNullAssertion: the template and the markup guarantee this element
       view.value = section.querySelector<HTMLTextAreaElement>(
@@ -383,18 +385,14 @@ export async function startEditor(
     try {
       const response = await fetchImpl('/api/overlay');
       if (!response.ok) {
-        setStatus(
-          `Could not load the overlay (${response.status}): ${await answerMessage(response)}`,
-          'error',
-        );
+        overlayProblem = `Could not load the overlay (${response.status}): ${await answerMessage(response)}`;
+        setStatus(overlayProblem, 'error');
         return;
       }
       overlay = await readAnswer(response, isOverlay);
     } catch (loadError) {
-      setStatus(
-        `Could not load the overlay: ${(loadError as Error).message}`,
-        'error',
-      );
+      overlayProblem = `Could not load the overlay: ${(loadError as Error).message}`;
+      setStatus(overlayProblem, 'error');
     }
   }
 
@@ -483,7 +481,9 @@ export async function startEditor(
       }
       // The page (re)loaded: prime it with the overlay, even an empty one. The
       // server warms the renderer when it hands out the preview URL (5.8).
-      setStatus(`Page ready: ${message.path}`);
+      if (overlayProblem)
+        setStatus(`${overlayProblem}. Page ready: ${message.path}`, 'error');
+      else setStatus(`Page ready: ${message.path}`);
       sendDraft();
     } else if (message.type === 'preview:rendered') {
       setStatus(
