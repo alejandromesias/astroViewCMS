@@ -390,11 +390,9 @@ describe('run() with the real parts', () => {
       expect(url.status).toBe(200);
       const answered = (await url.json()) as { url: string; origin: string };
       expect(answered.origin).toBe(previewOrigin);
-      expect(answered.url).toMatch(
-        new RegExp(
-          `^${previewOrigin.replace(/\./g, '\\.')}/blog/blog-1\\?preview_token=[A-Za-z0-9_.-]+$`,
-        ),
-      );
+      const prefix = `${previewOrigin}/blog/blog-1?preview_token=`;
+      expect(answered.url.startsWith(prefix)).toBe(true);
+      expect(answered.url.slice(prefix.length)).toMatch(/^[A-Za-z0-9_.-]+$/);
     } finally {
       await running?.stop();
       await removeTestRoot(root);
