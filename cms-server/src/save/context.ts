@@ -111,7 +111,7 @@ export interface SaveContext {
   rebuild: boolean;
   /** The revision of each created and updated document, after the commit. */
   revisions: Map<string, string>;
-  /** The warnings of the save, answered in the 200 body. Empty until a stage adds one (2.7c). */
+  /** The warnings of the save, answered in the 200 body. The collectWarnings stage (2.7c) adds the missing-image ones. */
   warnings: SaveWarning[];
   /** The staged images to copy in before the text files. Empty until a stage adds one (2.7b). */
   copies: readonly ImageCopy[];
