@@ -23,36 +23,47 @@ const BODY = fs
   // The editor only uses its src and contentWindow.
   .replace(/<iframe\b([^>]*)><\/iframe>/, '<div$1></div>');
 
-/** What GET /__dev/documents answers for each key (src/dev/documents.ts). */
+/** The preview origin that GET /api/preview-url names (PHASE-2-DESIGN 5.10). */
+const PREVIEW_ORIGIN = 'http://preview.localhost:4401';
+
+/** What GET /api/documents?key= answers for each key (PHASE-2-DESIGN 5.9). */
 const DOCUMENTS: Record<string, unknown> = {
   'authors/ana': {
     key: 'authors/ana',
     file: 'src/content/authors/ana.json',
     format: 'json',
+    editable: true,
     buildTime: false,
+    revision: 'r-ana',
     value: { name: 'Ana', links: [] },
   },
   'blog/blog-1': {
     key: 'blog/blog-1',
     file: 'src/content/blog/blog-1.md',
     format: 'md',
+    editable: true,
     buildTime: false,
+    revision: 'r-blog',
     value: { data: { title: 'One', draft: false }, body: 'Hello *world*' },
   },
   'data:src/config/config.json': {
     key: 'data:src/config/config.json',
     file: 'src/config/config.json',
     format: 'json',
+    editable: true,
     buildTime: true,
     buildTimeFields: ['site.base_url', 'site.title'],
+    revision: 'r-config',
     value: { site: {} },
   },
   'data:src/config/theme.json': {
     key: 'data:src/config/theme.json',
     file: 'src/config/theme.json',
     format: 'json',
+    editable: true,
     buildTime: true,
     buildTimeFields: ['*'],
+    revision: 'r-theme',
     value: {},
   },
   'rules/one': {
@@ -61,11 +72,21 @@ const DOCUMENTS: Record<string, unknown> = {
     format: 'toml',
     editable: false,
     buildTime: false,
+    revision: 'r-rules',
   },
 };
 
-function setup(search = '') {
-  window.history.replaceState(null, '', `/__editor${search}`);
+interface SetupOptions {
+  search?: string;
+  /** The answer of `GET /api/preview-url`, in place of the working one. */
+  preview?: Response;
+  /** The answer of `GET /api/overlay`, in place of an empty overlay. */
+  overlay?: Response;
+}
+
+/** Starts the editor on a fake CMS API; resolves once its startup has run. */
+async function setup({ search = '', preview, overlay }: SetupOptions = {}) {
+  window.history.replaceState(null, '', `/${search}`);
   document.body.innerHTML = BODY;
   const iframe = document.getElementById(
     'preview',
@@ -77,18 +98,37 @@ function setup(search = '') {
   });
   const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
     const url = String(input);
-    if (url.startsWith('/__dev/documents?key=')) {
-      const key = decodeURIComponent(url.slice('/__dev/documents?key='.length));
+    if (url === '/api/overlay')
+      return overlay ?? Response.json({ documents: {}, media: {} });
+    if (url.startsWith('/api/preview-url?path=')) {
+      if (preview) return preview;
+      const path = decodeURIComponent(
+        url.slice('/api/preview-url?path='.length),
+      );
+      return Response.json({
+        url: `${PREVIEW_ORIGIN}${path}?token=t`,
+        origin: PREVIEW_ORIGIN,
+      });
+    }
+    if (url.startsWith('/api/documents?key=')) {
+      const key = decodeURIComponent(url.slice('/api/documents?key='.length));
       return key in DOCUMENTS
         ? Response.json(DOCUMENTS[key])
-        : new Response(`Unknown document "${key}"`, { status: 404 });
+        : Response.json(
+            { error: 'not-found', message: `Unknown document "${key}"` },
+            { status: 404 },
+          );
     }
-    return new Response(null, { status: 204 });
+    return new Response(null, { status: 404 });
   });
-  startEditor(window, fetch);
+  await startEditor(window, fetch);
 
-  const origin = window.location.origin;
-  const fromPage = (data: unknown, source: unknown = child) =>
+  // Messages come from the preview origin by default, as the bridge sends them.
+  const fromPage = (
+    data: unknown,
+    source: unknown = child,
+    origin = PREVIEW_ORIGIN,
+  ) =>
     window.dispatchEvent(
       Object.assign(new Event('message'), { data, source, origin }),
     );
@@ -132,7 +172,6 @@ function setup(search = '') {
     iframe,
     child,
     fetch,
-    origin,
     fromPage,
     ready,
     rendered,
@@ -164,19 +203,39 @@ const edit = (textarea: HTMLTextAreaElement, text: string) => {
   }
 };
 
-let editor: ReturnType<typeof setup>;
-beforeEach(() => {
-  editor = setup();
+let editor: Awaited<ReturnType<typeof setup>>;
+beforeEach(async () => {
+  editor = await setup();
 });
 
 describe('loading the page', () => {
-  it('loads "/" in the iframe by default', () => {
-    expect(editor.iframe.src).toBe('/');
+  it('opens the preview for "/" and loads the URL it answers', () => {
+    expect(editor.fetch).toHaveBeenCalledWith('/api/preview-url?path=%2F');
+    expect(editor.iframe.src).toBe(`${PREVIEW_ORIGIN}/?token=t`);
   });
 
-  it('loads ?page= when given', () => {
-    expect(setup('?page=/servicios').iframe.src).toBe('/servicios');
+  it('opens the preview for ?page= when given', async () => {
+    const other = await setup({ search: '?page=/servicios' });
+    expect(other.fetch).toHaveBeenCalledWith(
+      '/api/preview-url?path=%2Fservicios',
+    );
+    expect(other.iframe.src).toBe(`${PREVIEW_ORIGIN}/servicios?token=t`);
   });
+
+  it.each([
+    [400, 'invalid-path', 'path must start with /'],
+    [503, 'preview-unavailable', 'the renderer is not running'],
+  ])(
+    'shows a refused preview (%i) with its message, and does not load the iframe',
+    async (status, error, message) => {
+      const refused = await setup({
+        preview: Response.json({ error, message }, { status }),
+      });
+      expect(refused.status().textContent).toBe(message);
+      expect(refused.status().dataset.state).toBe('error');
+      expect(refused.iframe.src).toBeUndefined();
+    },
+  );
 });
 
 describe('protocol mismatch', () => {
@@ -186,13 +245,12 @@ describe('protocol mismatch', () => {
       { type: 'preview:ready', path: '/blog', protocol: 1 },
     ],
     ['no protocol', { type: 'preview:ready', path: '/blog' }],
-  ])('flags a ready with %s and sends no draft', (_, message) => {
-    const editor = setup();
+  ])('flags a ready with %s and sends no draft', async (_, message) => {
+    const editor = await setup();
     editor.fromPage(message);
     expect(editor.status().dataset.state).toBe('error');
     expect(editor.status().textContent).toContain('protocol mismatch');
     expect(editor.drafts()).toHaveLength(0);
-    expect(editor.fetch).not.toHaveBeenCalled();
   });
 
   it('keeps sending nothing when you type after a mismatch, until a matching ready', async () => {
@@ -208,7 +266,7 @@ describe('protocol mismatch', () => {
 });
 
 describe('on preview:ready', () => {
-  it('sends an empty overlay, which primes the page, and warms the renderer', () => {
+  it('sends an empty overlay, which primes the page, and makes no call of its own', () => {
     editor.ready();
     expect(editor.status().textContent).toBe('Page ready: /blog');
     expect(editor.drafts()).toEqual([
@@ -221,17 +279,51 @@ describe('on preview:ready', () => {
     ]);
     expect(editor.child.postMessage).toHaveBeenCalledWith(
       expect.anything(),
-      editor.origin,
+      PREVIEW_ORIGIN,
     );
-    expect(editor.fetch).toHaveBeenCalledWith('/__preview/warm', {
-      method: 'POST',
-    });
+    // The server warms the renderer when it answers the preview URL, so the
+    // browser calls nothing else.
+    expect(editor.fetch.mock.calls.map(([url]) => String(url))).toEqual([
+      '/api/overlay',
+      '/api/preview-url?path=%2F',
+    ]);
   });
 
-  it('survives a failing warm-up call', () => {
-    editor.fetch.mockRejectedValueOnce(new Error('offline'));
-    expect(() => editor.ready()).not.toThrow();
+  it('ignores a ready from an origin other than the preview', () => {
+    editor.fromPage(
+      { type: 'preview:ready', path: '/blog', protocol: PROTOCOL_VERSION },
+      editor.child,
+      window.location.origin,
+    );
+    expect(editor.status().textContent).toBe('Waiting for the page…');
+    expect(editor.drafts()).toHaveLength(0);
   });
+
+  it.each([
+    [
+      'a refusal',
+      () =>
+        Response.json(
+          { error: 'store-locked', message: 'the store is locked' },
+          { status: 503 },
+        ),
+      'Could not load the overlay (503): the store is locked',
+    ],
+    [
+      'a wrong shape',
+      () => Response.json({ documents: 'none' }),
+      'Could not load the overlay: the answer has the wrong shape',
+    ],
+  ])(
+    'shows %s of the overlay, and starts without it',
+    async (_, answer, message) => {
+      const without = await setup({ overlay: answer() });
+      expect(without.status().textContent).toBe(message);
+      expect(without.status().dataset.state).toBe('error');
+      without.ready();
+      expect(without.lastDraft().documents).toEqual({});
+    },
+  );
 
   it('after a navigation, re-primes with the same overlay', async () => {
     await editor.open('authors/ana');
@@ -243,16 +335,41 @@ describe('on preview:ready', () => {
   });
 });
 
+describe('the starting overlay', () => {
+  it('sends the overlay with the drafts on top of it: an edit wins, the rest stays', async () => {
+    const withOverlay = await setup({
+      overlay: Response.json({
+        documents: {
+          'authors/ana': { name: 'From the CMS' },
+          'blog/blog-1': null,
+        },
+        media: {},
+      }),
+    });
+    withOverlay.ready();
+    expect(withOverlay.lastDraft().documents).toEqual({
+      'authors/ana': { name: 'From the CMS' },
+      'blog/blog-1': null,
+    });
+    await withOverlay.open('authors/ana');
+    edit(withOverlay.value('authors/ana'), '{"name":"Ana (draft)"}');
+    expect(withOverlay.lastDraft().documents).toEqual({
+      'authors/ana': { name: 'Ana (draft)' },
+      'blog/blog-1': null,
+    });
+  });
+});
+
 describe('loading documents', () => {
   it('fetches each document the page read, once', async () => {
     await editor.open('authors/ana', 'blog/blog-1');
     editor.rendered(['authors/ana', 'blog/blog-1']);
     const fetched = editor.fetch.mock.calls
       .map(([url]) => String(url))
-      .filter((url) => url.startsWith('/__dev'));
+      .filter((url) => url.startsWith('/api/documents'));
     expect(fetched).toEqual([
-      '/__dev/documents?key=authors%2Fana',
-      '/__dev/documents?key=blog%2Fblog-1',
+      '/api/documents?key=authors%2Fana',
+      '/api/documents?key=blog%2Fblog-1',
     ]);
   });
 
@@ -294,9 +411,10 @@ describe('loading documents', () => {
 
   it('says why a document could not be loaded, and does not retry it', async () => {
     await editor.open('missing/one');
-    expect(editor.section('missing/one').textContent).toContain(
-      'Could not load (404)',
-    );
+    expect(
+      editor.section('missing/one').querySelector('[data-slot="note"]')!
+        .textContent,
+    ).toBe('Could not load (404): Unknown document "missing/one"');
     expect(
       editor
         .section('missing/one')
@@ -314,9 +432,10 @@ describe('loading documents', () => {
   it('says so when the request itself fails', async () => {
     editor.fetch.mockRejectedValueOnce(new Error('offline'));
     await editor.open('authors/ana');
-    expect(editor.section('authors/ana').textContent).toContain(
-      'Could not load: offline',
-    );
+    expect(
+      editor.section('authors/ana').querySelector('[data-slot="note"]')!
+        .textContent,
+    ).toBe('Could not load: offline');
   });
 
   it('shows the forms of the latest render only, and keeps edits of the others', async () => {
@@ -594,12 +713,16 @@ describe('status messages from the page', () => {
 });
 
 describe('draft image upload', () => {
+  /** What POST /api/media answers (PHASE-2-DESIGN 5.9). */
   const entry = {
+    id: '0123456789abcdef',
     url: '/__preview-media/0123456789abcdef.png',
     width: 10,
     height: 20,
     format: 'png',
   };
+  /** The media entry the editor keeps: the answer without its id. */
+  const stored = { url: entry.url, width: 10, height: 20, format: 'png' };
   const choose = (file: File) => {
     const input = document.getElementById('upload') as HTMLInputElement;
     Object.defineProperty(input, 'files', {
@@ -623,7 +746,7 @@ describe('draft image upload', () => {
   it('uploads the file and shows the URL to put in the document', async () => {
     const file = await upload();
     expect(document.getElementById('upload-url')!.textContent).toBe(entry.url);
-    expect(editor.fetch).toHaveBeenCalledWith('/__preview-media/new', {
+    expect(editor.fetch).toHaveBeenCalledWith('/api/media', {
       method: 'POST',
       headers: { 'Content-Type': 'image/png' },
       body: file,
@@ -634,15 +757,63 @@ describe('draft image upload', () => {
   it('adds the entry to the media map under its url and sends it with every draft', async () => {
     await editor.open('authors/ana');
     await upload();
-    expect(editor.lastDraft().media).toEqual({ [entry.url]: entry });
+    expect(editor.lastDraft().media).toEqual({ [entry.url]: stored });
     edit(editor.value('authors/ana'), '{"name":"A"}');
-    expect(editor.lastDraft()).toMatchObject({
+    expect(editor.lastDraft()).toEqual({
+      type: 'preview:draft',
+      protocol: PROTOCOL_VERSION,
       documents: { 'authors/ana': { name: 'A' } },
-      media: { [entry.url]: entry },
+      media: { [entry.url]: stored },
     });
     editor.ready();
-    expect(editor.lastDraft().media).toEqual({ [entry.url]: entry });
+    expect(editor.lastDraft().media).toEqual({ [entry.url]: stored });
   });
+
+  it("merges the media maps, the draft's entry winning", async () => {
+    const kept = {
+      url: 'src/assets/uploads/kept.png',
+      width: 3,
+      height: 4,
+      format: 'png',
+    };
+    editor = await setup({
+      overlay: Response.json({
+        documents: {},
+        media: {
+          [kept.url]: kept,
+          [entry.url]: { ...stored, width: 1 },
+        },
+      }),
+    });
+    await upload();
+    expect(editor.lastDraft().media).toEqual({
+      [kept.url]: kept,
+      [entry.url]: stored,
+    });
+  });
+
+  it.each([
+    ['the request fails', () => new Error('offline'), 'Upload failed: offline'],
+    [
+      'the answer has the wrong shape',
+      () => Response.json({ url: 5 }, { status: 201 }),
+      'Upload failed: the answer has the wrong shape',
+    ],
+  ])(
+    'shows an upload where %s, and sends nothing',
+    async (_, answer, message) => {
+      const failure = answer();
+      if (failure instanceof Error) editor.fetch.mockRejectedValueOnce(failure);
+      else editor.fetch.mockResolvedValueOnce(failure);
+      choose(
+        new File([new Uint8Array([1])], 'retrato.png', { type: 'image/png' }),
+      );
+      await vi.waitFor(() => expect(editor.status().textContent).toBe(message));
+      expect(editor.status().dataset.state).toBe('error');
+      expect(document.getElementById('upload-result')!.hidden).toBe(true);
+      expect(editor.drafts()).toHaveLength(0);
+    },
+  );
 
   it('shows a failed upload and sends nothing', async () => {
     editor.fetch.mockResolvedValueOnce(
