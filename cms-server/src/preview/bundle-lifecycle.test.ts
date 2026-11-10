@@ -419,6 +419,26 @@ describe('a failed build', () => {
     expect(after.store.get().current?.bundleId).toBe('b-1');
     expect((await after.status.snapshot()).build.failedCommit).toBeNull();
   });
+
+  it('a trigger that resolves to the failed commit while its build runs is not built again', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const rig = await rigOf({
+      build: async (job) => {
+        await gate;
+        return failedBuild('bad')(job);
+      },
+    });
+    const first = rig.lifecycle.trigger('save-rebuild');
+    const second = rig.lifecycle.trigger('sync-code');
+    await settle();
+    release();
+    expect(await first).toStrictEqual({ kind: 'build-failed', error: 'bad' });
+    expect(await second).toStrictEqual({ kind: 'build-failed', error: 'bad' });
+    expect(rig.build).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('a swap that fails', () => {
