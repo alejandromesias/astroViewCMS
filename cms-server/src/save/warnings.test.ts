@@ -656,4 +656,80 @@ describe('collectWarnings', () => {
 
     expect(ctx.warnings).toEqual([]);
   });
+
+  it('warns once for a new missing image inserted in front of stored ones', async () => {
+    const folder = await siteWith({});
+    const ctx = ctxOf(
+      folder,
+      [
+        updateOf(
+          'posts/first',
+          markdown({
+            gallery: ['/images/new.png', '/images/one.png', '/images/two.png'],
+          }),
+        ),
+      ],
+      {
+        stored: [
+          [
+            'posts/first',
+            markdown({ gallery: ['/images/one.png', '/images/two.png'] }),
+          ],
+        ],
+      },
+    );
+
+    await collectWarnings(ctx);
+
+    expect(ctx.warnings).toEqual([
+      { key: 'posts/first', path: ['gallery', 0], code: WARNING },
+    ]);
+  });
+
+  it('does not warn for stored images that only moved within their array', async () => {
+    const folder = await siteWith({});
+    const ctx = ctxOf(
+      folder,
+      [
+        updateOf(
+          'posts/first',
+          markdown({ gallery: ['/images/two.png', '/images/one.png'] }),
+        ),
+      ],
+      {
+        stored: [
+          [
+            'posts/first',
+            markdown({ gallery: ['/images/one.png', '/images/two.png'] }),
+          ],
+        ],
+      },
+    );
+
+    await collectWarnings(ctx);
+
+    expect(ctx.warnings).toEqual([]);
+  });
+
+  it('checks a non-image field that holds a value an image() field held before', async () => {
+    const folder = await siteWith({});
+    const ctx = ctxOf(
+      folder,
+      [
+        updateOf(
+          'posts/first',
+          markdown({ hero: '/images/gone.png', cover: '/images/gone.png' }),
+        ),
+      ],
+      {
+        stored: [['posts/first', markdown({ cover: '/images/gone.png' })]],
+      },
+    );
+
+    await collectWarnings(ctx);
+
+    expect(ctx.warnings).toEqual([
+      { key: 'posts/first', path: ['hero'], code: WARNING },
+    ]);
+  });
 });

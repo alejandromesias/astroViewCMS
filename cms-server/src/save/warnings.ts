@@ -56,9 +56,15 @@ async function missingImagesOf(
   if (!isData && schema === undefined) return [];
   const markdown = isMarkdownDocument(document, ctx);
   const fields = markdown ? dataOf(change.data) : change.data;
+  const stored = ctx.stored.get(document);
+  const storedFields =
+    stored === undefined ? undefined : markdown ? dataOf(stored) : stored;
   let images: ReadonlySet<string>;
   try {
-    images = imagePathKeysOf(schema, fields);
+    images = new Set([
+      ...imageShapesOf(schema, fields),
+      ...imageShapesOf(schema, storedFields),
+    ]);
   } catch (error) {
     ctx.log.warn(
       'the image check of a document is skipped: its schema cannot be walked',
@@ -69,16 +75,12 @@ async function missingImagesOf(
     );
     return [];
   }
-  const stored = ctx.stored.get(document);
-  const before =
-    stored === undefined
-      ? new Map<string, string>()
-      : stringsByPath(markdown ? dataOf(stored) : stored);
+  const before = countsByShape(storedFields, images);
   const candidates: { readonly path: PathSegment[]; readonly text: string }[] =
     [];
   forEachString(fields, (path, text) => {
-    const key = pathKeyOf(path);
-    if (images.has(key) || before.get(key) === text) return;
+    if (images.has(shapeKeyOf(path)) || takeUnchanged(before, path, text))
+      return;
     if (looksLikeImagePath(text)) candidates.push({ path, text });
   });
   const missing: PathSegment[][] = [];
@@ -96,19 +98,19 @@ function schemaOf(document: string, ctx: SaveContext): SchemaNode | undefined {
 }
 
 /**
- * The keys of the paths that the schema marks `image()`. walkMarkers throws when a `$ref` names no `$defs` entry, so
- * the caller catches it. Without a schema there are no image fields.
+ * The shapes of the paths that the schema marks `image()`. walkMarkers throws when a `$ref` names no `$defs` entry, so
+ * the caller catches it. Without a schema or a value there are no image fields.
  */
-function imagePathKeysOf(
+function imageShapesOf(
   schema: SchemaNode | undefined,
   value: unknown,
 ): ReadonlySet<string> {
-  const keys = new Set<string>();
-  if (schema === undefined) return keys;
+  const shapes = new Set<string>();
+  if (schema === undefined || value === undefined) return shapes;
   walkMarkers(schema, value, (hit) => {
-    if (hit.marker === 'image') keys.add(pathKeyOf(hit.path));
+    if (hit.marker === 'image') shapes.add(shapeKeyOf(hit.path));
   });
-  return keys;
+  return shapes;
 }
 
 /**
@@ -175,18 +177,49 @@ function forEachString(
   }
 }
 
-/** The strings of `value` by path key, so that a changed string can be told from an unchanged one. */
-function stringsByPath(value: unknown): Map<string, string> {
-  const strings = new Map<string, string>();
-  forEachString(value, (path, text) => {
-    strings.set(pathKeyOf(path), text);
-  });
-  return strings;
+/**
+ * The shape of a path as a Map key: its object keys, with each array index as `null`, so an item keeps its shape when
+ * it moves. JSON keeps `null` (an index) and a key of the text `"null"` apart.
+ */
+function shapeKeyOf(path: readonly PathSegment[]): string {
+  return JSON.stringify(
+    path.map((segment) => (typeof segment === 'number' ? null : segment)),
+  );
 }
 
-/** A path as a Map key. JSON keeps an index (a number) and a key of the same text (a string) apart. */
-function pathKeyOf(path: readonly PathSegment[]): string {
-  return JSON.stringify(path);
+/**
+ * The stored strings of `value` as counts by shape and then text, left out of the image shapes. Counting, not
+ * matching by index, is what lets a stored string match a new one wherever it sits in its array: an item that moves,
+ * or one inserted in front of it, is not checked again. Duplicates count too, so a new copy of a value is checked.
+ */
+function countsByShape(
+  value: unknown,
+  images: ReadonlySet<string>,
+): Map<string, Map<string, number>> {
+  const counts = new Map<string, Map<string, number>>();
+  forEachString(value, (path, text) => {
+    const shape = shapeKeyOf(path);
+    if (images.has(shape)) return;
+    const byText = counts.get(shape) ?? new Map<string, number>();
+    byText.set(text, (byText.get(text) ?? 0) + 1);
+    counts.set(shape, byText);
+  });
+  return counts;
+}
+
+/**
+ * Whether a stored string has this text at this shape, and uses that stored string up: each stored string matches once.
+ */
+function takeUnchanged(
+  before: Map<string, Map<string, number>>,
+  path: readonly PathSegment[],
+  text: string,
+): boolean {
+  const byText = before.get(shapeKeyOf(path));
+  const count = byText?.get(text) ?? 0;
+  if (byText === undefined || count === 0) return false;
+  byText.set(text, count - 1);
+  return true;
 }
 
 /**
