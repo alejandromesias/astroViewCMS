@@ -1928,6 +1928,15 @@ describe('openRepo: reapply (WORKPLAN 2.10b)', () => {
       calls.find((call) => call.args.includes('write-tree'))?.env
         .GIT_INDEX_FILE,
     ).toBe(index);
+    // 2.1j: every call carries the clone's variables, and the call with GIT_INDEX_FILE keeps them beside its own.
+    const cloneVars = {
+      GIT_DIR: join(fixture.state.repoDir, '.git'),
+      GIT_WORK_TREE: fixture.state.repoDir,
+    };
+    for (const call of calls) expect(call.env).toMatchObject(cloneVars);
+    expect(
+      calls.find((call) => call.args.includes('read-tree'))?.env,
+    ).toMatchObject({ ...cloneVars, GIT_INDEX_FILE: index });
     expect(await readdir(tmp)).toEqual([]);
     // Nothing was deleted, so no removal runs; the saved document is added by the index.
     expect(calls.some((call) => call.args.includes('--force-remove'))).toBe(
@@ -2112,6 +2121,36 @@ describe('openRepo: reapply (WORKPLAN 2.10b)', () => {
       'There is no bundle to re-apply the saves on. The saves stay on cms/work.',
     );
     expect(await headOf(fixture)).toBe(before);
+  });
+});
+
+describe('openRepo: every git call runs in the clone (WORKPLAN 2.1j)', () => {
+  it('gives every call the clone variables, the worktree and blob calls included', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site');
+    await edit(fixture, 'notes/a.md', 'alpha 2\n');
+    const calls: Array<{ args: readonly string[]; env: NodeJS.ProcessEnv }> =
+      [];
+    const recording: ExecFn = (file, args, options) => {
+      calls.push({ args, env: options.env });
+      return realExec(file, args, options);
+    };
+    const repo = openRepo({ ...fixture, exec: recording });
+    await save(repo, ['notes/a.md'], 'save a');
+    await repo.locked('worktree', async (tx) => {
+      await tx.worktreeAdd(WORK, 'wt');
+      await tx.worktreeRemove('wt');
+    });
+    await repo.changedPaths();
+    await repo.showAt(WORK, 'notes/a.md');
+    await repo.mergeBase();
+    await repo.overwrittenSince();
+    expect(calls.some((call) => call.args.includes('worktree'))).toBe(true);
+    expect(calls.some((call) => call.args.includes('cat-file'))).toBe(true);
+    const cloneVars = {
+      GIT_DIR: join(fixture.state.repoDir, '.git'),
+      GIT_WORK_TREE: fixture.state.repoDir,
+    };
+    for (const call of calls) expect(call.env).toMatchObject(cloneVars);
   });
 });
 
