@@ -6,16 +6,14 @@
 // checked. Keys and values come from content, so the stage uses Maps and Sets for them, never a plain object lookup.
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { collectionOf, formatOfExtension } from '../documents/paths.ts';
+import { collectionOf } from '../documents/paths.ts';
 import { type SchemaNode, walkMarkers } from '../schema/walk.ts';
 import type { SaveChange } from './body.ts';
 import type { SaveContext, SaveStage } from './context.ts';
+import { dataOf, isMarkdownDocument } from './markdown.ts';
 
 /** The code of the warning of a missing image (WORKPLAN 2.7c). */
 const PUBLIC_IMAGE_MISSING = 'public-image-missing';
-
-/** The formats whose value is `{ data, body }`: only `data` is checked (as delete-guard.ts reads them). */
-const MARKDOWN: ReadonlySet<string> = new Set(['md', 'mdx']);
 
 /** An image extension at the end of a path, in any case. The dot is required (WORKPLAN 2.7c, rule 3). */
 const IMAGE_EXTENSION = /\.(?:png|jpe?g|gif|webp|avif|svg|ico)$/i;
@@ -118,54 +116,6 @@ function imagePathKeysOf(
     if (hit.marker === 'image') keys.add(pathKeyOf(hit.path));
   });
   return keys;
-}
-
-/**
- * Whether a document holds Markdown values (`{ data, body }`). A document the bundle holds has its format, unless it is
- * one entry of a shared file (a raw value). A create has the format its new file gets (see `createdFormatOf`).
- */
-export function isMarkdownDocument(
-  document: string,
-  ctx: SaveContext,
-): boolean {
-  const known = ctx.documents.get(document);
-  if (known !== undefined)
-    return MARKDOWN.has(known.format) && known.entryKey === undefined;
-  const format = createdFormatOf(document, ctx);
-  return format !== undefined && MARKDOWN.has(format);
-}
-
-/**
- * The format a create of `document` gets from the planner: the collection's `newEntryFormat`, or else the first
- * extension of its glob pattern (plan-write's rule, as in delete-guard.ts). Undefined when the planner refuses it.
- */
-function createdFormatOf(
-  document: string,
-  ctx: SaveContext,
-): string | undefined {
-  const collection = collectionOf(document);
-  if (collection === undefined) return undefined;
-  const loader = ctx.bundle.collections.get(collection)?.loader;
-  if (loader?.kind !== 'glob') return undefined;
-  const configured = Object.hasOwn(ctx.config.collections, collection)
-    ? ctx.config.collections[collection]?.newEntryFormat
-    : undefined;
-  const extension = configured ?? extensionOfPattern(loader.pattern);
-  return extension === undefined ? undefined : formatOfExtension(extension);
-}
-
-/** The extension a glob names first: `md` for `*.{md,mdx}`, `json` for `*.json`. Undefined when the pattern names none. */
-function extensionOfPattern(pattern: string): string | undefined {
-  const brace = /\.\{([^}]*)\}$/.exec(pattern);
-  if (brace !== null) return brace[1]?.split(',')[0];
-  return /\.([A-Za-z0-9]+)$/.exec(pattern)?.[1];
-}
-
-/** The `data` of a Markdown value. A value with no `data` has no fields to check. */
-export function dataOf(value: unknown): unknown {
-  return typeof value === 'object' && value !== null && 'data' in value
-    ? value.data
-    : undefined;
 }
 
 /** Calls `visit` with the path and the text of each string in `value`, in document order. */

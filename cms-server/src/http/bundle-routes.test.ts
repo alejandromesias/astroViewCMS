@@ -93,6 +93,7 @@ describe('GET /api/status with the preview status (2.9c)', () => {
     node: { state: 'ready', bundleId: 'fixture-2026-11-03', error: null },
     lastSync: null,
     syncError: null,
+    renamed: [],
     changesetSize: 3,
     publish: 'idle',
     errors: { protocolMismatch: null, upstreamBuildFailed: null, swap: null },

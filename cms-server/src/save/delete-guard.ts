@@ -5,7 +5,7 @@
 // from content, so the guard uses only Maps and Sets for them.
 import type { Bundle, DocumentEntry } from '../bundle/read.ts';
 import { codecFor } from '../codecs/by-format.ts';
-import { collectionOf, formatOfExtension } from '../documents/paths.ts';
+import { changesetOf } from '../documents/changeset.ts';
 import { revisionOfDocument } from '../documents/revision.ts';
 import {
   type CollectionSchemaOf,
@@ -16,10 +16,12 @@ import {
 import type {
   AfterCommitHook,
   DeleteGuard,
-  SaveContext,
+  GuardInput,
+  RecheckInput,
   SaveStage,
   SaveStop,
 } from './context.ts';
+import { dataOf, isMarkdownDocument } from './markdown.ts';
 
 /** The parts of the guard that a test replaces: the index factory (the reference index by default). */
 export interface DeleteGuardDeps {
@@ -33,27 +35,70 @@ interface GuardState {
   stale: boolean;
 }
 
-/** The formats whose value is `{ data, body }`: the index reads their `data` (PHASE-2-DESIGN 5.4). */
-const MARKDOWN: ReadonlySet<string> = new Set(['md', 'mdx']);
-
 /** A new guard, with no index yet. `makeIndex` builds the index from a schema lookup (the reference index by default). */
 export function createDeleteGuard({
   makeIndex = createReferenceIndex,
 }: DeleteGuardDeps = {}): DeleteGuard {
-  // The state of the bundle last seen. Saves run under the repo lock, so there is one state at a time.
+  // The state of the bundle last seen. Saves and syncs run under the repo lock, so there is one state at a time.
   let state: GuardState | undefined;
 
+  // The index of the bundle: built on the first call, and again when it is stale or the bundle is another one.
+  async function indexOf(ctx: GuardInput): Promise<ReferenceIndex> {
+    if (state === undefined || state.bundle !== ctx.bundle)
+      state = { bundle: ctx.bundle, index: undefined, stale: false };
+    const current = state;
+    if (current.index !== undefined && !current.stale) return current.index;
+    const index = makeIndex(schemaOfBundle(ctx.bundle));
+    index.rebuild(await valuesOf(ctx));
+    current.index = index;
+    current.stale = false;
+    return index;
+  }
+
+  // The recheck after a sync (2.10c). The deleted documents of the changeset are looked up in the index of the working copy
+  // as it is now (after the re-apply). The documents it holds are the bundle's and the ones the changeset added, less the
+  // deleted ones, whose files are gone. The first deleted key in sort order that a document still points at answers 409.
+  async function recheck({
+    bundle,
+    repo,
+    siteFolder,
+    config,
+    log,
+  }: RecheckInput): Promise<SaveStop | undefined> {
+    const changeset = await changesetOf({ bundle, repo, siteFolder });
+    const deleted = changeset.documents
+      .filter((document) => document.status === 'deleted')
+      .map((document) => document.key)
+      .sort();
+    if (deleted.length === 0) return undefined;
+    const documents = new Map<string, DocumentEntry>([
+      ...bundle.documents,
+      ...changeset.createdRecords.map(
+        (record) => [record.key, record] as const,
+      ),
+    ]);
+    for (const key of deleted) documents.delete(key);
+    const index = await indexOf({
+      bundle,
+      siteFolder,
+      reads: new Map(),
+      documents,
+      config,
+      log,
+    });
+    for (const key of deleted) {
+      const referrers = index.referrersOf(key);
+      if (referrers.length > 0) return referencedBy(key, referrers, documents);
+    }
+    return undefined;
+  }
+
   return {
-    async indexOf(ctx) {
-      if (state === undefined || state.bundle !== ctx.bundle)
-        state = { bundle: ctx.bundle, index: undefined, stale: false };
-      const current = state;
-      if (current.index !== undefined && !current.stale) return current.index;
-      const index = makeIndex(schemaOfBundle(ctx.bundle));
-      index.rebuild(await valuesOf(ctx));
-      current.index = index;
-      current.stale = false;
-      return index;
+    indexOf,
+    recheck,
+    invalidate() {
+      // Nothing to mark before the first index: the first call builds it from the working copy anyway.
+      if (state !== undefined) state.stale = true;
     },
     applySave(ctx) {
       // Nothing to update: no index yet (the next build reads the working copy), an index of another bundle, or a
@@ -68,7 +113,10 @@ export function createDeleteGuard({
           else
             index.update(
               change.document,
-              indexedValueOf(change.data, markdownOf(change.document, ctx)),
+              indexedValueOf(
+                change.data,
+                isMarkdownDocument(change.document, ctx),
+              ),
             );
         }
       } catch (error) {
@@ -110,7 +158,10 @@ export const checkDeleteGuard: SaveStage = async (ctx) => {
   const schemaOf = schemaOfBundle(ctx.bundle);
   for (const change of ctx.changes) {
     if (change.deleted) continue;
-    const value = indexedValueOf(change.data, markdownOf(change.document, ctx));
+    const value = indexedValueOf(
+      change.data,
+      isMarkdownDocument(change.document, ctx),
+    );
     for (const target of targetsOf(change.document, value, schemaOf)) {
       if (deleted.has(target)) addTo(blockers, target, change.document);
     }
@@ -118,22 +169,33 @@ export const checkDeleteGuard: SaveStage = async (ctx) => {
   for (const document of [...deleted].sort()) {
     const found = blockers.get(document);
     if (found === undefined) continue;
-    const referrers = [...found].sort();
-    const needsDeveloper = referrers.some(
-      (referrer) => ctx.documents.get(referrer)?.editable === false,
-    );
-    return {
-      status: 409,
-      body: {
-        error: 'referenced-by',
-        document,
-        referrers,
-        ...(needsDeveloper ? { needsDeveloper: true } : {}),
-      },
-    };
+    return referencedBy(document, [...found].sort(), ctx.documents);
   }
   return undefined;
 };
+
+/**
+ * The 409 answer for a deleted document that still has referrers (sorted). `needsDeveloper` is set when one referrer is
+ * read-only. The save stage and the recheck after a sync (2.10c) both answer with it.
+ */
+function referencedBy(
+  document: string,
+  referrers: readonly string[],
+  documents: ReadonlyMap<string, DocumentEntry>,
+): SaveStop {
+  const needsDeveloper = referrers.some(
+    (referrer) => documents.get(referrer)?.editable === false,
+  );
+  return {
+    status: 409,
+    body: {
+      error: 'referenced-by',
+      document,
+      referrers,
+      ...(needsDeveloper ? { needsDeveloper: true } : {}),
+    },
+  };
+}
 
 /**
  * The after-commit hook of the guard: the save's written values go into the index. A throw is logged by the write
@@ -149,7 +211,7 @@ export const updateIndexAfterCommit: AfterCommitHook = async (ctx) => {
  * is left out and logged. A read-only document is read too: it can point at a deleted one.
  */
 async function valuesOf(
-  ctx: SaveContext,
+  ctx: GuardInput,
 ): Promise<{ readonly key: string; readonly value: unknown }[]> {
   const values: { readonly key: string; readonly value: unknown }[] = [];
   for (const document of ctx.documents.values()) {
@@ -169,62 +231,18 @@ async function valuesOf(
     }
     values.push({
       key: document.key,
-      value: indexedValueOf(facts.value, markdownOf(document.key, ctx)),
+      value: indexedValueOf(facts.value, isMarkdownDocument(document.key, ctx)),
     });
   }
   return values;
 }
 
 /**
- * Whether the document `key` of the save holds Markdown values (`{ data, body }`). A document the bundle or an earlier
- * save holds has its format; a create has the format the planner gives its new file (see `createdFormatOf`). A file()
- * entry is a raw value, whatever its file's format.
- */
-function markdownOf(key: string, ctx: SaveContext): boolean {
-  const known = ctx.documents.get(key);
-  if (known !== undefined)
-    return MARKDOWN.has(known.format) && isOwnFile(known);
-  const format = createdFormatOf(key, ctx);
-  return format !== undefined && MARKDOWN.has(format);
-}
-
-/** Whether a document is a file of its own (not one entry of a shared file). */
-function isOwnFile(document: DocumentEntry): boolean {
-  return document.entryKey === undefined;
-}
-
-/**
- * The format a create of `key` gets from the planner: the collection's `newEntryFormat`, or else the first extension of
- * its glob pattern (plan-write's rule). Undefined for a collection without a glob loader, which the planner refuses.
- */
-function createdFormatOf(key: string, ctx: SaveContext): string | undefined {
-  const collection = collectionOf(key);
-  if (collection === undefined) return undefined;
-  const loader = ctx.bundle.collections.get(collection)?.loader;
-  if (loader?.kind !== 'glob') return undefined;
-  const configured = Object.hasOwn(ctx.config.collections, collection)
-    ? ctx.config.collections[collection]?.newEntryFormat
-    : undefined;
-  const extension = configured ?? extensionOfPattern(loader.pattern);
-  return extension === undefined ? undefined : formatOfExtension(extension);
-}
-
-/** The extension a glob names first: `md` for `*.{md,mdx}`, `json` for `*.json`. Undefined when the pattern names none. */
-function extensionOfPattern(pattern: string): string | undefined {
-  const brace = /\.\{([^}]*)\}$/.exec(pattern);
-  if (brace !== null) return brace[1]?.split(',')[0];
-  return /\.([A-Za-z0-9]+)$/.exec(pattern)?.[1];
-}
-
-/**
  * The value the index reads: the `data` of a Markdown value, or the value itself. A Markdown value with no `data` reads
- * as undefined, which names no reference.
+ * as undefined, which names no reference. A file() entry is a raw value, whatever its file's format (see `isMarkdownDocument`).
  */
 function indexedValueOf(value: unknown, markdown: boolean): unknown {
-  if (!markdown) return value;
-  return typeof value === 'object' && value !== null && 'data' in value
-    ? value.data
-    : undefined;
+  return markdown ? dataOf(value) : value;
 }
 
 /** The schema lookup of a bundle's collections, as the reference index takes it. */

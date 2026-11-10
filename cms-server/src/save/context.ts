@@ -67,15 +67,37 @@ export type SaveAnswer =
  */
 export type AfterCommitHook = (ctx: SaveContext) => Promise<void>;
 
+/** What the guard reads to build its index (2.10c): the documents it sees, their files, and the collections' config. */
+export type GuardInput = Pick<
+  SaveContext,
+  'bundle' | 'siteFolder' | 'reads' | 'documents' | 'config' | 'log'
+>;
+
+/** What a recheck after a sync reads (2.10c): the bundle the working copy is built on, and the repo to read its changeset. */
+export interface RecheckInput {
+  readonly bundle: Bundle;
+  readonly repo: ChangesetRepo;
+  readonly siteFolder: string;
+  readonly config: GuardInput['config'];
+  readonly log: Logger;
+}
+
 /**
  * The delete guard of the app (PHASE-2-DESIGN 4.3): the reference index of the bundle, built lazily from the working
  * copy and kept in step with each save. Its methods are implemented in delete-guard.ts.
  */
 export interface DeleteGuard {
-  /** The index of the save's bundle. Built on the first call, and again when a failed update left it stale. May reject. */
-  indexOf(ctx: SaveContext): Promise<ReferenceIndex>;
+  /** The index of the bundle. Built on the first call, and again when a failed update or `invalidate` left it stale. May reject. */
+  indexOf(ctx: GuardInput): Promise<ReferenceIndex>;
   /** Puts the save's written values into the index, after the commit. A throw marks the index stale and is rethrown. */
   applySave(ctx: SaveContext): void;
+  /** Marks the index stale, so the next `indexOf` rebuilds it from the working copy. The sync calls it after a re-apply (2.10c). */
+  invalidate(): void;
+  /**
+   * The 409 `referenced-by` of a deleted document that the working copy still points at, after a sync (2.10c): the
+   * changeset's deleted documents are checked against the index. Resolves with undefined when none is referenced.
+   */
+  recheck(input: RecheckInput): Promise<SaveStop | undefined>;
 }
 
 /** What the stages share. The inputs are set before the lock; the stages fill in the outputs, in order. */

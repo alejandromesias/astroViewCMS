@@ -2,9 +2,12 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeTestRoot, removeTestRoot } from '../../test/helpers/git.ts';
+import { silentLog } from '../../test/helpers/repo.ts';
 import {
   bundleOf,
   documentOf,
+  emptyChangeset,
+  MEDIA_CONFIG,
   saveContext,
 } from '../../test/helpers/save-context.ts';
 import type { Bundle, DocumentEntry } from '../bundle/read.ts';
@@ -697,5 +700,61 @@ describe('updateIndexAfterCommit', () => {
     // The rebuilt index is kept: a later guarded delete does not build another.
     await checkDeleteGuard(ctxOf(folder, bundle, [deleteOf(ANA)], { guard }));
     expect(built).toBe(2);
+  });
+});
+
+describe('invalidate and recheck (2.10c)', () => {
+  it('rebuilds the index of the same bundle after invalidate, from the working copy again', async () => {
+    const folder = await workingCopy({
+      [ANA_FILE]: '{"name":"Ana"}\n',
+      [BLOG_1]: POST,
+    });
+    const makeIndex = vi.fn(createReferenceIndex);
+    const guard = createDeleteGuard({ makeIndex });
+    const ctx = ctxOf(
+      folder,
+      bundleOf(authorAndPost(), collections()),
+      [deleteOf(ANA)],
+      { guard },
+    );
+    await checkDeleteGuard(ctx);
+    expect(makeIndex).toHaveBeenCalledTimes(1);
+    guard.invalidate();
+    await checkDeleteGuard(ctx);
+    expect(makeIndex).toHaveBeenCalledTimes(2);
+  });
+
+  it('builds the index once when invalidate came before any index', async () => {
+    const folder = await workingCopy({
+      [ANA_FILE]: '{"name":"Ana"}\n',
+      [BLOG_1]: POST,
+    });
+    const makeIndex = vi.fn(createReferenceIndex);
+    const guard = createDeleteGuard({ makeIndex });
+    guard.invalidate();
+    await checkDeleteGuard(
+      ctxOf(folder, bundleOf(authorAndPost(), collections()), [deleteOf(ANA)], {
+        guard,
+      }),
+    );
+    expect(makeIndex).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers nothing, and builds no index, when the changeset deletes nothing', async () => {
+    const folder = await workingCopy({
+      [ANA_FILE]: '{"name":"Ana"}\n',
+      [BLOG_1]: POST,
+    });
+    const makeIndex = vi.fn(createReferenceIndex);
+    const guard = createDeleteGuard({ makeIndex });
+    const answer = await guard.recheck({
+      bundle: bundleOf(authorAndPost(), collections()),
+      repo: emptyChangeset(),
+      siteFolder: folder,
+      config: { collections: {}, media: MEDIA_CONFIG },
+      log: silentLog(),
+    });
+    expect(answer).toBeUndefined();
+    expect(makeIndex).not.toHaveBeenCalled();
   });
 });

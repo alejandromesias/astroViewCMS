@@ -24,8 +24,8 @@ import type { SaveChange } from './body.ts';
 import { checkRevisions } from './conflicts.ts';
 import type { DeleteGuard, SaveStage, SaveStop } from './context.ts';
 import { checkDeleteGuard, createDeleteGuard } from './delete-guard.ts';
-import { runStages, SAVE_STAGES, saveChanges } from './pipeline.ts';
 import { rewriteStagedImages } from './images.ts';
+import { runStages, SAVE_STAGES, saveChanges } from './pipeline.ts';
 import { planChanges } from './plan.ts';
 import { validateChanges } from './validate.ts';
 import { writeChanges } from './write.ts';
@@ -104,6 +104,8 @@ describe('the delete guard in a save', () => {
       applySave: vi.fn(() => {
         order.push('guard');
       }),
+      invalidate: vi.fn(),
+      recheck: vi.fn(async () => undefined),
     };
     let seen: DeleteGuard | undefined;
     const own = vi.fn(async () => {
