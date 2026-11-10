@@ -38,7 +38,7 @@ and pull requests (the user merges). Items run before 2.9c unless noted.
 | q5 | Tag `wave-6-closed` | done 2026-11-08 on `34d33bd` |
 | q6 | Cleanup of branches, worktrees, temp folder | done 2026-11-07 |
 | q7 | TypeScript back to 6.0.3 | done, #14 merged 2026-11-08 |
-| q8 | Windows flake in `pipeline.test.ts` | open; CI decides |
+| q8 | Windows flake in `pipeline.test.ts` | done, fix #18 merged; the Windows runs since then passed |
 
 ### q1. Docs (one PR): done, #10 merged
 
@@ -112,7 +112,7 @@ Local full coverage run on Windows (2026-11-07): the test timed out at 5000 ms, 
 
 ## Still open
 
-- **q8:** the Windows flake. Only if CI shows it again.
+Nothing. q8 was fixed in #18 (merged); the Windows runs of 2026-11-07 and 2026-11-09 passed.
 
 ## Order
 
