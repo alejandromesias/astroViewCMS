@@ -7,7 +7,11 @@ import { vi } from 'vitest';
 import type { Bundle, DocumentEntry } from '../../src/bundle/read.ts';
 import type { ChangesetRepo } from '../../src/documents/changeset.ts';
 import type { RepoTx } from '../../src/git/ops.ts';
-import type { PreviewClient, SaveContext } from '../../src/save/context.ts';
+import type {
+  MediaFiles,
+  PreviewClient,
+  SaveContext,
+} from '../../src/save/context.ts';
 import { createDeleteGuard } from '../../src/save/delete-guard.ts';
 import { silentLog } from './repo.ts';
 
@@ -83,11 +87,14 @@ export function previewSays(errors: readonly FieldError[] = []): PreviewClient {
 }
 
 /** The media of `media.json`, as the stage reads it: the file name and the origin. */
-export const MEDIA: { readonly mediaFile: string; readonly cmsOrigin: string } =
-  {
-    mediaFile: 'unused-media.json',
-    cmsOrigin: 'http://cms.localhost:4400',
-  };
+export const MEDIA: MediaFiles = {
+  stagingDir: 'unused-staging',
+  mediaFile: 'unused-media.json',
+  cmsOrigin: 'http://cms.localhost:4400',
+};
+
+/** The `media` part of the config that a save reads: the default upload folder. */
+export const MEDIA_CONFIG = { folder: 'src/assets/uploads' } as const;
 
 /** A SaveContext with spies and no changes. The overrides replace any field. */
 export function saveContext(overrides: Partial<SaveContext> = {}): SaveContext {
@@ -97,7 +104,7 @@ export function saveContext(overrides: Partial<SaveContext> = {}): SaveContext {
     siteFolder: 'unused-site',
     repo: emptyChangeset(),
     tx: fakeTx(),
-    config: { collections: {} },
+    config: { collections: {}, media: MEDIA_CONFIG },
     preview: previewSays(),
     media: MEDIA,
     log: silentLog(),

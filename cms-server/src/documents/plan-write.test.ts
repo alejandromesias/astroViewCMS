@@ -2,7 +2,12 @@ import type { CollectionSchemaJson } from 'preview-contract';
 import { describe, expect, it, vi } from 'vitest';
 import type { DocumentEntry } from '../bundle/read.ts';
 import { codecFor } from '../codecs/by-format.ts';
-import { type PlanContext, planWrite, type WriteChange } from './plan-write.ts';
+import {
+  holdingFileOfCreate,
+  type PlanContext,
+  planWrite,
+  type WriteChange,
+} from './plan-write.ts';
 
 const TESTIMONIALS = 'src/content/testimonials.json';
 const STATS = 'src/content/stats.yaml';
@@ -801,7 +806,7 @@ describe('planWrite: refusals', () => {
           kind: 'glob',
           pattern: '**/*.json',
           base: 'src/content/people',
-          customId: true,
+          customId: true as const,
         },
       },
     });
@@ -870,5 +875,67 @@ describe('planWrite: refusals', () => {
       key: 'blog/a',
       file: 'src/content/a.json',
     });
+  });
+});
+
+describe('holdingFileOfCreate', () => {
+  const collections = new Map<string, CollectionSchemaJson>(
+    Object.entries({
+      testimonials: fileLoader(TESTIMONIALS),
+      authors: globLoader('**/*.{json,yaml}', 'src/content/authors'),
+      posts: globLoader('**/*.{md,mdx}', 'src/content/posts'),
+      rootless: { loader: { kind: 'glob' as const, pattern: '*.json' } },
+      custom: {
+        loader: {
+          kind: 'glob' as const,
+          pattern: '**/*.json',
+          base: 'src/content/custom',
+          customId: true as const,
+        },
+      },
+      bare: {},
+      noext: globLoader('**/*', 'src/content/noext'),
+    }),
+  );
+  const config: PlanContext['config'] = {
+    collections: { posts: { newEntryFormat: 'mdx' } },
+  };
+  const holding = (collection: string, id: string): string | undefined =>
+    holdingFileOfCreate(collection, id, { collections, config });
+
+  it('is the shared file of a file() collection', () => {
+    expect(holding('testimonials', 'ben')).toBe(TESTIMONIALS);
+  });
+
+  it('is the new file below the base, with the first extension of the pattern', () => {
+    expect(holding('authors', 'lee')).toBe('src/content/authors/lee.json');
+    expect(holding('authors', 'team/lee')).toBe(
+      'src/content/authors/team/lee.json',
+    );
+  });
+
+  it('uses the configured newEntryFormat before the pattern', () => {
+    expect(holding('posts', 'first')).toBe('src/content/posts/first.mdx');
+  });
+
+  it('uses the site folder when the loader has no base', () => {
+    expect(holding('rootless', 'x')).toBe('x.json');
+  });
+
+  it('is undefined when the planner would refuse: no collection, no loader, a custom id, no extension', () => {
+    expect(holding('missing', 'x')).toBeUndefined();
+    expect(holding('bare', 'x')).toBeUndefined();
+    expect(holding('custom', 'x')).toBeUndefined();
+    expect(holding('noext', 'x')).toBeUndefined();
+  });
+
+  it('does not read an Object.prototype member as a configured format', () => {
+    expect(
+      holdingFileOfCreate('authors', 'lee', {
+        collections,
+        config: { collections: {} },
+      }),
+    ).toBe('src/content/authors/lee.json');
+    expect(holding('constructor', 'x')).toBeUndefined();
   });
 });

@@ -245,6 +245,7 @@ describe('checkDeleteGuard', () => {
               configured === undefined
                 ? {}
                 : { blog: { newEntryFormat: configured } },
+            media: { folder: 'src/assets/uploads' },
           },
         },
       );

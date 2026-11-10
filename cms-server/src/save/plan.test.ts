@@ -205,6 +205,7 @@ describe('planChanges', () => {
         get collections(): never {
           throw failure;
         },
+        media: { folder: 'src/assets/uploads' },
       },
       changes: [
         {

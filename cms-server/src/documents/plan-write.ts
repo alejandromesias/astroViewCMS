@@ -257,10 +257,7 @@ async function planCreate(
       `The id "${id}" of "${collection}" cannot be turned into a path: its ids come from generateId`,
     );
   // A glob collection: each entry is a file of its own, `base/id.ext`, and the id must match the pattern.
-  const configured = Object.hasOwn(ctx.config.collections, collection)
-    ? ctx.config.collections[collection]?.newEntryFormat
-    : undefined;
-  const ext = configured ?? firstExtension(loader.pattern);
+  const ext = newFileExtension(collection, loader.pattern, ctx.config);
   const format = ext === undefined ? undefined : formatOfExtension(ext);
   const codec = format === undefined ? null : codecFor(format);
   if (ext === undefined || format === undefined || codec === null)
@@ -285,7 +282,7 @@ async function planCreate(
       key,
       `The id "${id}" would be saved as "${built}": the build gives a file its id from its frontmatter slug or its path`,
     );
-  const path = posix.join(loader.base ?? '.', rel);
+  const path = globFilePath(loader.base, rel);
   if (!isSafePath(path))
     throw new WritePlanError(
       'outside-site',
@@ -303,6 +300,44 @@ async function planCreate(
     path,
     codecStep(key, path, () => codec.write('', value)),
   );
+}
+
+/** The extension a new file of a glob collection gets: the configured `newEntryFormat`, else the pattern's first. */
+function newFileExtension(
+  collection: string,
+  pattern: string,
+  config: Pick<CmsConfig, 'collections'>,
+): string | undefined {
+  const configured = Object.hasOwn(config.collections, collection)
+    ? config.collections[collection]?.newEntryFormat
+    : undefined;
+  return configured ?? firstExtension(pattern);
+}
+
+/** The path (relative to siteDir) of a glob collection's file `rel`, below the loader's base. */
+function globFilePath(base: string | undefined, rel: string): string {
+  return posix.join(base ?? '.', rel);
+}
+
+/**
+ * The file that holds a document that a save creates: the shared file of a `file()` collection, or the new file of a
+ * glob one (WORKPLAN 2.7b). Undefined when the planner would refuse the create for lack of a loader, a custom id or a
+ * format. It checks no more than that; planWrite still refuses the rest (a path outside the site, an id that does not
+ * match).
+ */
+export function holdingFileOfCreate(
+  collection: string,
+  id: string,
+  ctx: Pick<PlanContext, 'collections' | 'config'>,
+): string | undefined {
+  const loader = ctx.collections.get(collection)?.loader;
+  if (loader === undefined) return undefined;
+  if (loader.kind === 'file') return loader.pattern;
+  if (loader.customId === true) return undefined;
+  const ext = newFileExtension(collection, loader.pattern, ctx.config);
+  return ext === undefined
+    ? undefined
+    : globFilePath(loader.base, `${id}.${ext}`);
 }
 
 /** The running text of `path`, or the working copy's text when no change has touched it yet. Null when the file is missing or deleted. */

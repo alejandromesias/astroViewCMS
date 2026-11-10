@@ -1,7 +1,9 @@
 // The validation stage of a save (WORKPLAN 2.5c items 3 and 4, PHASE-2-DESIGN 5.3): the new values go to the preview
 // node, with cms-server's own media map (D12), before anything is written. A refinement that threw does not block
 // the save (5.1 item 9); its key is kept for the build check.
+import { posix } from 'node:path';
 import type { FieldError, MediaInfo } from 'preview-protocol';
+import type { Logger } from '../log.ts';
 import { readMedia } from '../media/metadata.ts';
 import {
   PREVIEW_UNAVAILABLE_TEXT,
@@ -18,7 +20,7 @@ export async function validateChanges(
       .filter((change) => !change.deleted)
       .map((change) => [change.document, change.data]),
   );
-  const media = await mediaMapOf(ctx.media);
+  const media = await mediaMapOf(ctx.media, ctx.config.media.folder, ctx.log);
   let errors: readonly FieldError[];
   try {
     errors = await ctx.preview.validate(documents, media);
@@ -64,20 +66,40 @@ export async function validateChanges(
   };
 }
 
-/** The media of `media.json` in the shape of the render request (D12): each staged image's URL on the CMS origin. */
+/**
+ * The media of `media.json` in the shape of the render request (D12). Each entry is keyed by its staging URL on the CMS
+ * origin (a draft's ref) and by `<folder>/<id16>.<format>` (a saved image's project path), the two refs that the
+ * renderer looks up (WORKPLAN 2.7b). Two ids with the same 16-character prefix share one path: the first keeps it, the
+ * clash is logged, and nothing throws, so that one clash never fails every save of the site.
+ */
 export async function mediaMapOf(
   media: MediaFiles,
+  folder: string,
+  log: Logger,
 ): Promise<Record<string, MediaInfo>> {
   const entries = await readMedia(media.mediaFile);
-  return Object.fromEntries(
-    [...entries].map(([id, measures]) => [
-      id,
-      {
-        url: `${media.cmsOrigin}/media/staging/${id}.${measures.format}`,
-        width: measures.width,
-        height: measures.height,
-        format: measures.format,
-      },
-    ]),
-  );
+  const map = new Map<string, MediaInfo>();
+  const pathOwners = new Map<string, string>();
+  for (const [id, measures] of entries) {
+    const info: MediaInfo = {
+      url: `${media.cmsOrigin}/media/staging/${id}.${measures.format}`,
+      width: measures.width,
+      height: measures.height,
+      format: measures.format,
+    };
+    map.set(info.url, info);
+    const path = posix.join(folder, `${id.slice(0, 16)}.${measures.format}`);
+    const owner = pathOwners.get(path);
+    if (owner === undefined) {
+      pathOwners.set(path, id);
+      map.set(path, info);
+    } else {
+      log.warn('two staged images share one file name; the first keeps it', {
+        path,
+        kept: owner,
+        skipped: id,
+      });
+    }
+  }
+  return Object.fromEntries(map);
 }

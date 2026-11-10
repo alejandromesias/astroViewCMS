@@ -630,7 +630,10 @@ describe('PUT /api/changes', () => {
       repo: failing,
       siteFolder,
       media: fakeAppDeps().media,
-      save: { config: { collections: {} }, preview: previewSays() },
+      save: {
+        config: { collections: {}, media: { folder: 'src/assets/uploads' } },
+        preview: previewSays(),
+      },
     });
     const res = await put(
       app,

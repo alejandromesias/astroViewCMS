@@ -95,7 +95,10 @@ async function missingImagesOf(
 }
 
 /** The schema of a document's collection, or undefined when the collection has none. */
-function schemaOf(document: string, ctx: SaveContext): SchemaNode | undefined {
+export function schemaOf(
+  document: string,
+  ctx: SaveContext,
+): SchemaNode | undefined {
   const collection = collectionOf(document);
   if (collection === undefined) return undefined;
   return ctx.bundle.collections.get(collection)?.schema;
@@ -121,7 +124,10 @@ function imagePathKeysOf(
  * Whether a document holds Markdown values (`{ data, body }`). A document the bundle holds has its format, unless it is
  * one entry of a shared file (a raw value). A create has the format its new file gets (see `createdFormatOf`).
  */
-function isMarkdownDocument(document: string, ctx: SaveContext): boolean {
+export function isMarkdownDocument(
+  document: string,
+  ctx: SaveContext,
+): boolean {
   const known = ctx.documents.get(document);
   if (known !== undefined)
     return MARKDOWN.has(known.format) && known.entryKey === undefined;
@@ -156,7 +162,7 @@ function extensionOfPattern(pattern: string): string | undefined {
 }
 
 /** The `data` of a Markdown value. A value with no `data` has no fields to check. */
-function dataOf(value: unknown): unknown {
+export function dataOf(value: unknown): unknown {
   return typeof value === 'object' && value !== null && 'data' in value
     ? value.data
     : undefined;
