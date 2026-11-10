@@ -543,4 +543,117 @@ describe('collectWarnings', () => {
       { key: 'posts/first', path: ['hero'], code: WARNING },
     ]);
   });
+
+  it('warns for a missing image in an array, at its index', async () => {
+    const folder = await siteWith({});
+    const ctx = ctxOf(folder, [
+      updateOf('posts/first', markdown({ gallery: ['/images/gone.png'] })),
+    ]);
+
+    await collectWarnings(ctx);
+
+    expect(ctx.warnings).toEqual([
+      { key: 'posts/first', path: ['gallery', 0], code: WARNING },
+    ]);
+  });
+
+  it('skips a null field without failing, and still checks the other strings', async () => {
+    const folder = await siteWith({});
+    const ctx = ctxOf(folder, [
+      updateOf(
+        'posts/first',
+        markdown({ hero: null, title: '/images/gone.png' }),
+      ),
+    ]);
+
+    await expect(collectWarnings(ctx)).resolves.toBeUndefined();
+
+    expect(ctx.warnings).toEqual([
+      { key: 'posts/first', path: ['title'], code: WARNING },
+    ]);
+  });
+
+  it('warns for a climb out of public/ even when the file it climbs to exists', async () => {
+    const folder = await siteWith({ 'public/images/hero.png': 'png' });
+    const ctx = ctxOf(folder, [
+      updateOf('posts/first', markdown({ hero: '/../images/hero.png' })),
+    ]);
+
+    await collectWarnings(ctx);
+
+    expect(ctx.warnings).toEqual([
+      { key: 'posts/first', path: ['hero'], code: WARNING },
+    ]);
+  });
+
+  it('checks a field with a marker other than image()', async () => {
+    const folder = await siteWith({});
+    const collectionsWithReference: Bundle['collections'] = new Map([
+      [
+        'posts',
+        {
+          loader: {
+            kind: 'glob',
+            pattern: '**/*.{md,mdx}',
+            base: 'src/content/posts',
+          },
+          schema: {
+            type: 'object',
+            properties: {
+              ref: { type: 'string', cms: 'reference' },
+            },
+          },
+        },
+      ],
+    ]);
+    const ctx = ctxOf(
+      folder,
+      [updateOf('posts/first', markdown({ ref: '/images/gone.png' }))],
+      { collections: collectionsWithReference },
+    );
+
+    await collectWarnings(ctx);
+
+    expect(ctx.warnings).toEqual([
+      { key: 'posts/first', path: ['ref'], code: WARNING },
+    ]);
+  });
+
+  it('does not fail for a glob with no extension, and checks the document as non-Markdown', async () => {
+    const folder = await siteWith({});
+    const collectionsWithNotes: Bundle['collections'] = new Map([
+      [
+        'notes',
+        {
+          loader: { kind: 'glob', pattern: '**/*', base: 'src/content/notes' },
+          schema: {
+            type: 'object',
+            properties: { hero: { type: 'string' } },
+          },
+        },
+      ],
+    ]);
+    const ctx = ctxOf(
+      folder,
+      [createOf('notes/a', { hero: '/images/gone.png' })],
+      { collections: collectionsWithNotes },
+    );
+
+    await expect(collectWarnings(ctx)).resolves.toBeUndefined();
+
+    expect(ctx.warnings).toEqual([
+      { key: 'notes/a', path: ['hero'], code: WARNING },
+    ]);
+  });
+
+  it('does not fail for a document whose collection the bundle does not hold', async () => {
+    const folder = await siteWith({});
+    const ctx = ctxOf(folder, [
+      updateOf('ghosts/x', { hero: '/images/gone.png' }),
+    ]);
+
+    await expect(collectWarnings(ctx)).resolves.toBeUndefined();
+
+    expect(ctx.warnings).toEqual([]);
+  });
 });
