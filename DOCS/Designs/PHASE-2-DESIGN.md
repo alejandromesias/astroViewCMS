@@ -626,9 +626,9 @@ end of phase 2, with their tests moved or rewritten against the new routes.
 | `POST /api/media` | 5.5 |
 | `PUT /api/changes` | 5.3: `200` (with `warnings`, e.g. a missing `public/` image, 5.5), `400`, `409 conflict`, `409 referenced-by`, `409 exists`, `409 file-missing`, `422`, `503 preview-unavailable` |
 | `GET /api/changes` | 5.3 |
-| `POST /api/publish` | 4.2: `200 { commit, overwritten: [...] }`, `422` validation, `424 build-failed`, `502` push failed after retries |
-| `GET /api/overlay` | `{ documents, media }`: working copy against the current bundle (by revision), plus images the bundle lacks |
-| `GET /api/preview-url?path=` | iframe URL with a fresh token; opens a session (warm-up) |
+| `POST /api/publish` | 4.2: `200 { commit, overwritten: [...], renamed: [...] }` (`commit: null` and empty lists when nothing differs from upstream), `409 referenced-by`, `422` validation, `424 build-failed`, `502` push failed after retries, `503 build-in-progress` (a rebuild past 120 s), `503 busy` (the repo lock timed out; any write route can answer it) |
+| `GET /api/overlay` | `{ documents, media }`, the `RenderRequest` type of `preview-contract`: working copy against the current bundle (by revision), plus images the bundle lacks. Media keys: the staging URL and `<media.folder>/<id16>.<format>` |
+| `GET /api/preview-url?path=` | `{ url, origin }`: the iframe URL with a fresh token, and the preview origin; `400 invalid-path` for a path that is not a single-slash site path. Opens a session (warm-up) |
 | `GET /api/status` | 5.6 |
 
 - Every request is parsed with Zod; nothing is cast. Errors are

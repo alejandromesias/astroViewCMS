@@ -101,8 +101,8 @@ Rules for running tasks in parallel:
 | 6 | 2.0j (alone, `[build]`), 2.1h (now also `repo.ts`, before 2.5b), 2.5b, 2.6a, 2.9a, 2.10a, 2.5c (moved here 2026-11-04; starts after 2.10a merges) |
 | 7 | 2.6b, 2.9c, 2.10b, 2.1j (last, alone: it edits `repo.ts` and `ops.ts`) |
 | 8 | 2.7d (seam PR, first), then 2.7b, 2.7c, 2.9d; merge order 2.9d, 2.7c, 2.7b (2.7d, 2.9d, 2.7c and 2.7b merged 2026-11-10; wave closed 2026-11-10, `mutation-full` green at 93.58%, tag `wave-8-closed`) |
-| 9 | 2.9e, 2.10c |
-| 10 | 2.10d, 2.10g, 2.11b |
+| 9 | 2.9e, 2.10c, 2.11b (2.11b starts at once, since the shapes of 2.9e are fixed; it merges after 2.9e) |
+| 10 | 2.10d, 2.10g (one merged after the other: both edit `app.ts` and `run.ts`) |
 | 11 | 2.10e, 2.11c, 2.12a |
 | 12 | 2.10f, 2.11d |
 | 13 | 2.12b |
@@ -2756,6 +2756,14 @@ Design 4.4, 5.6.
 - **Done when (design R1, at HTTP level):** save two documents, read the
   overlay, post it to the preview's render route, and the HTML shows the
   saved content with no rebuild; a hostile `path` is refused. [build]
+- **Gaps settled (calls, 2026-11-10; the user agreed each).** Wave 9, with 2.10c and 2.11b.
+  1. **Shapes.** `GET /api/preview-url` answers `{ url, origin }`, where `origin` is `config.origins.preview`. A bad path answers `400 { error: 'invalid-path', message }`. `GET /api/overlay` answers the `RenderRequest` type of `preview-contract/src/envelope.ts` (`documents`: key to value or `null`; `media`: ref to `MediaInfo`), not a new shape, so the editor sends it to the render route unconverted and the two cannot drift. Media keys come from `mediaMapOf` (see above).
+  2. **Overlay method.** Read the documents the way `GET /api/documents` does and compare each revision with the bundle's `documents.json`. Documents the CMS created that the bundle lacks are included (`createdRecords`); deleted ones are `null`.
+  3. **Token.** `mintPreviewToken` (`preview-contract/src/token.ts`) with `secrets.previewTokenSecret`, the site name and a 60 s lifetime. If the path already has a query, the token joins with `&`, else `?`; a `#fragment` stays last.
+  4. **Hostile paths, one test each:** `//host`, `/\host`, `\host`, `http://host`, `javascript:`, a path without a leading `/`, an empty path, control characters (`\n`, `\t`, `\0`), and a percent-encoded backslash. A plain `/`, `/a/b?x=1#y` pass.
+  5. **Warm-up.** The first `preview-url` of a session (no call in the last 30 minutes; one stamp for the server, clock injected) awaits `warm()`, about 1 s. A failed warm-up is logged and does not fail the route; the stamp is set only after a success.
+  6. **Staging files stay after a save** (`save/images.ts` never deletes them), so the `url` of a media entry stays loadable from the preview iframe. Pin it in a test.
+  7. **Files.** New route module(s) in `http/`, registered in `app.ts`; `run.ts` passes the token secret, the preview origin and the preview client's `warm`. Mutation floors apply to each changed file.
 
 ### 2.10 Sync and publish — after 2.3c, 2.4a, 2.5 · ∥ 2.6, 2.7, 2.8, 2.9
 
@@ -2825,15 +2833,22 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
   - **Departures.** (a) `reapply` takes the `BundleStore` as well as the upstream sha, as `fetch` does: the documents of the save come from the bundle. (b) The start-up move updates refs only; the checkout that follows in `ensureRepo` brings the working copy up to `cms/work`. The in-process move uses `reset --hard`, as specified. (c) `openRepo`'s config takes `collections` and `media` as optional; a re-apply without them throws, so the `preview/` build-commit test (not touched) still type-checks. (d) A `cms/work` that is missing at start-up is set to `cms/work-next`, not kept as "neither", so no re-applied save is dropped. (e) A saved document or file that cannot be read makes the re-apply throw, so the sync fails and nothing moves. (f) Written documents are mode 100644.
   - **Calls where the plan was open.** (1) A document the upstream commit lacks is written into an empty text by `planWrite`; a shared file it lacks starts from `[]`, or from `{}` when its base file is keyed. (2) Trailers compare the upstream revision with the base revision: a save that recreates a document upstream deleted, or reformats its file, records an overwrite; a delete of a document upstream already deleted records none. (3) Older trailers are carried over only for documents still in the changeset. (4) A re-apply whose tree equals upstream makes no commit, so its trailers go with it. (5) A crash between `update-ref cms/work-next` and `update-ref cms/work-prev` keeps `cms/work` (the saves are safe) and logs both shas; the next sync re-applies.
 
-#### 2.10c Guard recheck after a sync — after 2.6b, 2.10b
+#### 2.10c Sync routine and guard recheck — after 2.6b, 2.10b (renamed 2026-11-10)
 
 - After a re-apply, rebuild the reference index and run the delete guard
   over the whole changeset against the new upstream (a developer may have
   added a new referrer).
 - **From the 2.6b Result (2026-11-09):** the guard's index is cached per bundle, and a content-only sync keeps the same bundle, so the guard needs an "invalidate" call (it marks the index stale). 2.10c makes that call after every re-apply that changes the working copy.
 - **From the wave 8 review (2026-11-10):** `save/warnings.ts` and `save/delete-guard.ts` each have their own Markdown-format helpers (2.7c Result). Move them to one shared module and import it from both. This task reopens `delete-guard.ts`, so it is the place.
-- **Done when:** upstream adds a post that references an author the CMS
-  user deleted: the next publish answers `409 referenced-by`.
+- **Done when (revised 2026-11-10; publish is 2.10d, so the HTTP-level 409 moves there):** at function level with the git harness, (a) a content-only upstream change adds a reference to an author the CMS user deleted: the guard is invalidated and the recheck answers `referenced-by`; (b) an upstream push adds a post that references that author: a new bundle is swapped in and the recheck answers `referenced-by`. The 409 through `POST /api/publish` is a test of 2.10d.
+- **Gaps settled (calls, 2026-11-10; the user agreed each).** Wave 9. The task now owns the sync orchestration that 2.10g and 2.10d both need, so they do not write it twice and collide on `status.ts`, `run.ts` and `app.ts`.
+  1. **Two entry points, or publish deadlocks.** Publish holds the repo lock when it syncs, and the lock is not re-entrant. `syncLocked(tx)` does the work and expects the lock to be held; `syncNow()` takes the lock and calls `syncLocked`. The poll loop (2.10g) calls `syncNow`; publish (2.10d) calls `syncLocked`.
+  2. **What `syncLocked` does.** `tx.fetch`; when `reapply` is true, `tx.reapply`; then, when the working copy changed, the guard's `invalidate()` (new on `DeleteGuard`: marks the index stale); then, when the change is `code`, the `sync-code` trigger (2.9c). It sets `lastSync` and clears `syncError` on success. It returns `{ change, tip, renamed }`. `preview/status.ts` gets the `renamed` field and its setter (2.10j consumers), set from each re-apply result.
+  3. **Why both paths work.** Per 2.10a an added file counts as `code`, so a new upstream post triggers a rebuild, and the new bundle resets the guard by itself (`indexOf` starts a fresh state when `state.bundle !== ctx.bundle`). `invalidate` matters only for a content-only sync, such as an existing post edited upstream to add a reference: `valuesOf` reads the working copy, so marking the index stale is enough. A publish waits for the `sync-code` rebuild anyway (design 4.2 step 2), so the recheck runs against the new bundle. One wait, not two.
+  4. **The recheck.** After a re-apply the working copy is upstream plus the saved values, so for each deleted document of the changeset the check is `index.referrersOf(key)`, on an index rebuilt for the current bundle. A non-empty list answers `409 referenced-by` in the body of `checkDeleteGuard`. Reuse that body (and `needsDeveloper`); do not write a second one.
+  5. **A lock timeout inside `syncNow` skips the tick.** It is not a `syncError` and gets no back-off: a publish holding the lock is normal. Other failures are `syncError`, as in 2.10g.
+  6. **Tests, both paths at function level** (the two cases of "Done when"), plus: `syncNow` takes the lock and `syncLocked` does not (a fake `locked` that fails on a second take); the lock timeout skips the tick; `renamed` reaches the status.
+  7. **Files.** A new module (`sync/sync.ts` or `git/sync-routine.ts`; the builder picks), `save/context.ts` and `save/delete-guard.ts` (`invalidate`), `preview/status.ts`, and the shared Markdown-format helper from the wave 8 review. `run.ts` builds `syncNow` for 2.10g and 2.10d to use; nothing calls it in production until they do. Mutation floors apply to each changed file.
 
 #### 2.10d Publish — after 2.10a, 2.10c, 2.9c, 2.9d
 
@@ -2854,6 +2869,20 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
   document and commit; a push race ends in a retry that succeeds, and a
   permanent race in `502` with nothing lost. [build]
 - **From 2.10j (2026-11-09):** the publish answer carries the `renamed` list that `tx.reapply` returns (`[{ key, from, to }]`), so the CMS user is warned before a rename duplicate is pushed. Test: a publish after an upstream rename of a saved document answers with that entry.
+- **Gaps settled (calls, 2026-11-10; the user agreed each).** Wave 10, the strong model, merged before or after 2.10g (not in parallel).
+  1. **Git primitives (none exist in `ops.ts`).** The squash is built with plumbing, as in 2.10b: `commit-tree` of the `cms/work` tree with the `origin/<branch>` tip as its parent (that tree is upstream plus the saved values, so it is the tree to publish), the author from `config.publish.author`. No temporary branch is needed. Push with `git push <remote> <sha>:refs/heads/<branch>`, never forced. New `tx` methods; the clone's environment from 2.1j applies.
+  2. **Push classification.** Output with `[rejected]`, `non-fast-forward` or `fetch first` is a race: sync again and retry, at most 3 times, then `502`. Anything else (auth, network, hook) is an immediate `502` with a plain message; the saves stay saved.
+  3. **Empty changeset: `200 { commit: null, overwritten: [], renamed: [] }`.** The sync still runs first, so `renamed` and the status are current. "Empty" means the `cms/work` tree equals the `origin/<branch>` tree, so saves that were later reverted to the upstream values count as empty. Then reset `cms/work` to the origin tip and trigger no rebuild.
+  4. **Lock order (publish must not hold the lock during the rebuild wait).**
+     1. Take the lock and sync with `syncLocked(tx)` (2.10c).
+     2. Release the lock and wait for the lifecycle to go idle (new: a wait-for-idle with a timeout on the lifecycle; none exists). Past 120 s answer `503 build-in-progress`.
+     3. Take the lock again, then recheck the guard, validate, squash and push.
+     A save made between 1 and 3 joins the changeset being validated. If that save starts another rebuild, answer `503 build-in-progress` instead of waiting a second time. The 30 s limit a save faces then covers only fetch, re-apply and push (up to 3 times).
+  5. **`503 busy` for a lock timeout, mapped once.** Nothing maps `LockTimeoutError` today (it is not caught in `save/pipeline.ts` or `http/`), so a save that times out answers `500`. Map it in shared code used by the save, publish and sync paths, to `503 { error: 'busy', message }`. This task owns that, with a test for each path.
+  6. **Validate in batches.** A changeset built from many saves can pass the 4 MiB cap (`MAX_BODY_BYTES`, D16) of one validate call. Send the documents in batches, each under the cap, and merge the errors. Validation is per document and references are the guard's job, so splitting is safe. Test: a changeset over the cap is validated in more than one call and the errors of both come back.
+  7. **Answers.** `200 { commit, overwritten, renamed }`; `422` with the validate error shape; `409 referenced-by` with the body of `checkDeleteGuard`; `502`; `503 busy`; `503 build-in-progress`. `424` stays for 2.10e. The route has the same guards as `PUT /api/changes` (JSON content type, no `Sec-Fetch-Site: cross-site`).
+  8. **After a successful push.** Reset `cms/work` to the pushed commit (the changeset is then empty), invalidate the guard, trigger `publish` (2.9c), set `status.publish` to `idle` (`publishing` during the run, `failed` on a `502`).
+  9. **[build].** R3 and R4 against a bare remote and a second clone (the harness exists), as in "Done when". Mutation floors apply to each changed file.
 
 #### 2.10e Build check — after 2.9a, 2.10d
 
@@ -2889,7 +2918,7 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
 - **Type change (from 2.9c-B, 2026-11-09):** the status keeps `upstreamBuildFailed` as plain text, but this task records `{ sha, firstError }`. It changes the field's type in `preview/status.ts`, the setter and the tests that read it.
 - **From the wave 7 review (2026-11-08):** "Sync builds the new upstream tip" now reads: sync builds `cms/work` HEAD after the re-apply (2.9c-B, every trigger builds `cms/work`). When that build fails, build the `origin/<branch>` tip once to tell whose failure it is. If the tip fails too, record `upstreamBuildFailed { sha: <origin SHA>, firstError }`. If the tip passes, the saved changeset breaks the build, and that is reported instead.
 
-#### 2.10g Poll loop — after 2.10a, 2.9e
+#### 2.10g Poll loop — after 2.10a, 2.10c, 2.9e
 
 - Sync every `syncIntervalSeconds` while a session is open (any API call in
   the last 5 minutes **(call)**); stops when idle; the clock is injected;
@@ -2899,6 +2928,11 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
 - **From 2.10j (2026-11-09):** the status needs a `renamed` field and a setter in `preview/status.ts`; neither exists. This task adds both and sets the list from each sync's re-apply result (`{ tip, renamed }`).
 - **Done when:** tests with a fake clock: it polls while active, stops when
   idle, resumes on activity, backs off on errors. With a failed first build: no node runs and the status says failed; a sync with a content-only change builds the new HEAD; a sync with no change builds nothing; the failed SHA is never rebuilt.
+- **Gaps settled (calls, 2026-11-10; the user agreed each).**
+  1. **The loop calls `syncNow()` of 2.10c**, which owns fetch, re-apply, the guard invalidate, the `sync-code` trigger and the `lastSync`, `syncError` and `renamed` status fields. This task adds no second copy of that. It owns the loop, the activity tracking, the back-off and the failed-first-build recovery.
+  2. **Activity.** Middleware in `app.ts` records the time of any `/api` call with an injected clock; a session is open when the last call is under 5 minutes old. The poll loop's own syncs are not API calls. 2.9e's warm-up stamp is separate.
+  3. **Back-off.** After a `syncError` the next delay doubles, from `syncIntervalSeconds` up to 10 minutes, and returns to the interval on the first success. A lock timeout (a publish is running) skips the tick with no back-off and no error (2.10c, item 5).
+  4. **Stop.** `stop()` in `run.ts` cancels the timer and waits for a sync under way. The clock and the timer are injected.
 
 #### 2.10h Re-apply records for CMS-created documents the bundle lacks — after 2.10b · [fix] · DONE 2026-11-08 (#26; see Result)
 
@@ -3016,6 +3050,13 @@ Design 5.8. This is still a test tool, not the phase 3 editor.
 - The protocol-mismatch check on `ready` stays.
 - **Done when:** the editor tests (moved from `test-editor/editor.test.ts`,
   happy-dom) pass against the new routes.
+- **Gaps settled (calls, 2026-11-10; the user agreed each).** Wave 9. It starts together with 2.9e, since the shapes are fixed here, and merges after 2.9e. It changes only `cms-server/editor/`.
+  1. **Shapes it relies on (2.9e).** `GET /api/preview-url?path=` answers `{ url, origin }`; `GET /api/overlay` answers the `RenderRequest` shape (`documents`, `media`), which the editor merges into its own state and sends to the render route unconverted. `GET /api/documents?key=` answers `{ key, value, revision, file, format, editable, buildTime, buildTimeFields }` (design 5.3). `POST /api/media` takes a raw `image/*` body and answers `{ id, url, width, height, format }`.
+  2. **Origins.** `editor.ts` takes the origin for `postMessage` and for the `event.origin` check from `win.location.origin` today. Both use the `origin` of the `preview-url` answer instead. The `?page=` parameter of the page becomes the `path` of that call.
+  3. **Overlay merge.** The editor's drafts win over the initial overlay; the media maps merge, the draft's entries winning.
+  4. **Document reshape.** `EditorDocument` is built from the new body, including `editable` and `buildTime`. A document with `editable: false` is shown read-only.
+  5. **Errors.** A `400` or `503` from `preview-url` is shown with its `message`, and the iframe is not loaded.
+  6. **Tests.** `cms-server/editor/editor.test.ts` (the 2.11a copy) is rewritten against these routes; the original in `preview-render-server/test-editor/` stays until 2.12a. The protocol-mismatch check on `ready` stays and keeps its test.
 
 #### 2.11c Save and the changeset list — after 2.11b, 2.5c
 
