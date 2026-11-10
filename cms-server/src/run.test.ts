@@ -22,7 +22,6 @@ import type { Supervisor, SupervisorOptions } from './preview/supervisor.ts';
 import type { SweepOptions } from './preview/sweep.ts';
 import { describeError, parseArgs, portOf, type RunDeps, run } from './run.ts';
 import type { DeleteGuard } from './save/context.ts';
-import { previewNotReady } from './save/validate.ts';
 import { startServer as listen } from './server.ts';
 
 const USAGE = 'Usage: node src/main.ts [config-file] [--bundle <folder>]';
@@ -259,7 +258,10 @@ describe('run', () => {
           status: expect.any(Object) as AppDeps['status'],
           save: {
             config: expect.any(Object),
-            preview: previewNotReady,
+            preview: expect.objectContaining({
+              validate: expect.any(Function),
+              warm: expect.any(Function),
+            }),
             guard: expect.any(Object) as DeleteGuard,
             onRebuild: expect.any(Function) as () => void,
           },

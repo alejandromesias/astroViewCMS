@@ -170,4 +170,108 @@ describe('run() with the real parts', () => {
       await removeTestRoot(root);
     }
   }, 180_000);
+
+  it('checks a save with the real node: a valid create is written, and an invalid one answers 422 with the node errors', async () => {
+    const root = await makeTestRoot();
+    const configPath = path.join(root, 'cms.config.ts');
+    const cmsPort = await freePort();
+    const previewPort = await freePort();
+    const cmsOrigin = `http://127.0.0.1:${cmsPort}`;
+    const config: CmsConfig = parseConfig({
+      site: 'sample-site',
+      remote: await seedRemote(root),
+      previewSiteConfig: 'preview-render-server/sites/sample-site.config.ts',
+      origins: { cms: cmsOrigin, preview: `http://127.0.0.1:${previewPort}` },
+    });
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    let running: Running | undefined;
+    try {
+      running = await run(
+        ['--bundle', BUNDLE, configPath],
+        {},
+        {
+          ...realDeps,
+          loadConfig: () =>
+            Promise.resolve({
+              ...config,
+              previewSiteConfig: path.join(
+                RENDERER_DIR,
+                'sites',
+                'sample-site.config.ts',
+              ),
+            }),
+          logger,
+        },
+      );
+      const save = (changes: unknown[]) =>
+        fetch(`${cmsOrigin}/api/changes`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ changes }),
+        });
+
+      // The real node checks the values with the sample site's schema, and the save answers 200.
+      const valid = await save([
+        {
+          document: 'authors/e2e-new',
+          baseRevision: null,
+          deleted: false,
+          data: {
+            name: 'E2E Author',
+            role: 'Tester',
+            bio: 'Written by the end-to-end test.',
+            avatar: '../../assets/authors/ana-torres.png',
+          },
+        },
+      ]);
+      expect(valid.status).toBe(200);
+      expect(await valid.json()).toStrictEqual({
+        revisions: { 'authors/e2e-new': expect.any(String) as string },
+        warnings: [],
+        rebuild: false,
+      });
+
+      // The node's 422 is the answer of the save, with the errors of the node.
+      const invalid = await save([
+        {
+          document: 'authors/e2e-bad',
+          baseRevision: null,
+          deleted: false,
+          data: { name: 'No role' },
+        },
+      ]);
+      expect(invalid.status).toBe(422);
+      expect(await invalid.json()).toStrictEqual({
+        error: 'invalid',
+        errors: [
+          {
+            key: 'authors/e2e-bad',
+            path: ['role'],
+            message: 'Invalid input: expected string, received undefined',
+          },
+          {
+            key: 'authors/e2e-bad',
+            path: ['bio'],
+            message: 'Invalid input: expected string, received undefined',
+          },
+          {
+            key: 'authors/e2e-bad',
+            path: ['avatar'],
+            message: 'Invalid input: expected string, received undefined',
+          },
+        ],
+      });
+
+      // The valid create is the one changed file of the working copy.
+      const status = (await (
+        await fetch(`${cmsOrigin}/api/status`)
+      ).json()) as {
+        changesetSize: number;
+      };
+      expect(status.changesetSize).toBe(1);
+    } finally {
+      await running?.stop();
+      await removeTestRoot(root);
+    }
+  }, 180_000);
 });

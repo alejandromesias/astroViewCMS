@@ -1,17 +1,18 @@
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  removeWorkingCopies,
-  tempWorkingCopy,
-} from '../../test/helpers/working-copy.ts';
-import {
   MEDIA,
   mediaEntry,
   previewSays,
   saveContext,
 } from '../../test/helpers/save-context.ts';
+import {
+  removeWorkingCopies,
+  tempWorkingCopy,
+} from '../../test/helpers/working-copy.ts';
+import { PreviewUnavailableError } from '../preview/client.ts';
 import type { SaveChange } from './body.ts';
-import { mediaMapOf, previewNotReady, validateChanges } from './validate.ts';
+import { mediaMapOf, validateChanges } from './validate.ts';
 
 const UPDATE: SaveChange = {
   document: 'authors/ana',
@@ -137,12 +138,30 @@ describe('validateChanges', () => {
       },
     );
   });
-});
 
-describe('previewNotReady', () => {
-  it('rejects every check, so a save answers 503', async () => {
-    await expect(previewNotReady.validate({}, {})).rejects.toThrow(
-      'The preview node is not connected yet',
+  it('answers 503 with the message of a PreviewUnavailableError, and logs its status', async () => {
+    const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const preview = {
+      validate: vi.fn(() =>
+        Promise.reject(
+          new PreviewUnavailableError('The preview build failed: boom', 500),
+        ),
+      ),
+    };
+    const ctx = saveContext({ changes: [UPDATE], preview, log });
+    expect(await validateChanges(ctx)).toStrictEqual({
+      status: 503,
+      body: {
+        error: 'preview-unavailable',
+        message: 'The preview build failed: boom',
+      },
+    });
+    expect(log.warn).toHaveBeenCalledWith(
+      'the preview node did not check the save',
+      {
+        reason: 'The preview build failed: boom',
+        status: 500,
+      },
     );
   });
 });
