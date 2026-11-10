@@ -657,7 +657,7 @@ describe('collectWarnings', () => {
     expect(ctx.warnings).toEqual([]);
   });
 
-  it('warns once for a new missing image inserted in front of stored ones', async () => {
+  it('warns for the new image and for each stored one that shifted, as 2.7c accepts', async () => {
     const folder = await siteWith({});
     const ctx = ctxOf(
       folder,
@@ -683,10 +683,12 @@ describe('collectWarnings', () => {
 
     expect(ctx.warnings).toEqual([
       { key: 'posts/first', path: ['gallery', 0], code: WARNING },
+      { key: 'posts/first', path: ['gallery', 1], code: WARNING },
+      { key: 'posts/first', path: ['gallery', 2], code: WARNING },
     ]);
   });
 
-  it('does not warn for stored images that only moved within their array', async () => {
+  it('warns for stored images that moved within their array, as 2.7c accepts', async () => {
     const folder = await siteWith({});
     const ctx = ctxOf(
       folder,
@@ -708,7 +710,10 @@ describe('collectWarnings', () => {
 
     await collectWarnings(ctx);
 
-    expect(ctx.warnings).toEqual([]);
+    expect(ctx.warnings).toEqual([
+      { key: 'posts/first', path: ['gallery', 0], code: WARNING },
+      { key: 'posts/first', path: ['gallery', 1], code: WARNING },
+    ]);
   });
 
   it('checks a non-image field that holds a value an image() field held before', async () => {
@@ -730,6 +735,50 @@ describe('collectWarnings', () => {
 
     expect(ctx.warnings).toEqual([
       { key: 'posts/first', path: ['hero'], code: WARNING },
+    ]);
+  });
+
+  it('checks a tuple item that is not an image(), beside one that is', async () => {
+    const folder = await siteWith({});
+    const collectionsWithTuple: Bundle['collections'] = new Map([
+      [
+        'posts',
+        {
+          loader: {
+            kind: 'glob',
+            pattern: '**/*.{md,mdx}',
+            base: 'src/content/posts',
+          },
+          schema: {
+            type: 'object',
+            properties: {
+              pair: {
+                type: 'array',
+                prefixItems: [
+                  { type: 'string', cms: 'image' },
+                  { type: 'string' },
+                ],
+              },
+            },
+          },
+        },
+      ],
+    ]);
+    const ctx = ctxOf(
+      folder,
+      [
+        updateOf(
+          'posts/first',
+          markdown({ pair: ['/images/a.png', '/images/gone.png'] }),
+        ),
+      ],
+      { collections: collectionsWithTuple },
+    );
+
+    await collectWarnings(ctx);
+
+    expect(ctx.warnings).toEqual([
+      { key: 'posts/first', path: ['pair', 1], code: WARNING },
     ]);
   });
 });
