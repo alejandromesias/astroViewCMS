@@ -323,7 +323,9 @@ describe('on preview:ready', () => {
       without.ready();
       expect(without.lastDraft().documents).toEqual({});
       // The refusal stays in the status line after the page's first ready.
-      expect(without.status().textContent).toBe(`${message}. Page ready: /`);
+      expect(without.status().textContent).toBe(
+        `${message}. Page ready: /blog`,
+      );
       expect(without.status().dataset.state).toBe('error');
     },
   );
