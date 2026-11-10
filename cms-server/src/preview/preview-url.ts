@@ -17,6 +17,8 @@ export const INVALID_PATH_MESSAGE =
 
 /** A path that starts with one slash: not `//` and not `/\`. */
 const SINGLE_SLASH = /^\/(?![\\/])/;
+/** A `preview_token` query parameter in the path's query (before any fragment). */
+const TOKEN_IN_QUERY = new RegExp(`[?&]${TOKEN_PARAM}=`);
 /** A percent-encoded backslash, in any case. A decoder turns it into a backslash, so it is refused here too. */
 const ENCODED_BACKSLASH = /%5c/i;
 
@@ -27,6 +29,8 @@ const ENCODED_BACKSLASH = /%5c/i;
 export function isSitePath(path: string): boolean {
   if (!SINGLE_SLASH.test(path)) return false;
   if (path.includes('\\') || ENCODED_BACKSLASH.test(path)) return false;
+  // A token the caller put in the path would sit beside ours, and the node's gate needs every token to verify.
+  if (TOKEN_IN_QUERY.test(path)) return false;
   return ![...path].some((char) => {
     const code = char.charCodeAt(0);
     return code < 0x20 || code === 0x7f;
@@ -56,7 +60,10 @@ export function previewUrlOf(input: PreviewUrlInput): string {
     now,
   });
   const hash = path.indexOf('#');
-  const base = hash === -1 ? path : path.slice(0, hash);
+  // A stray `%` (not followed by two hex digits) and a space are encoded, so the URL parses to the path that was asked for.
+  const base = (hash === -1 ? path : path.slice(0, hash))
+    .replace(/%(?![0-9A-Fa-f]{2})/g, '%25')
+    .replaceAll(' ', '%20');
   const fragment = hash === -1 ? '' : path.slice(hash);
   const separator = base.includes('?') ? '&' : '?';
   return `${origin}${base}${separator}${TOKEN_PARAM}=${token}${fragment}`;

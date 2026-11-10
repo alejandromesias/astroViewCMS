@@ -81,7 +81,9 @@ async function overlayEntry(
     reads,
     document.editable !== false,
   );
-  if (facts === null) return [document.key, null];
+  // A read-only document whose file is gone is left out too, like a changed one: the overlay has no value for it.
+  if (facts === null)
+    return document.editable === false ? undefined : [document.key, null];
   if (facts.revision === bundled || facts.value === undefined) return undefined;
   return [document.key, facts.value];
 }

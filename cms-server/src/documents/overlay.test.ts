@@ -166,6 +166,22 @@ describe('overlayOf', () => {
     ).toStrictEqual({ documents: {}, media: {} });
   });
 
+  it('leaves out a read-only document whose file is gone, instead of giving null', async () => {
+    const siteFolder = await sampleWorkingCopy({
+      'src/content/fixtures/define-vars.json': null,
+    });
+    expect(
+      await overlayOf({
+        bundle: await bundleIn(FIXTURE_BUNDLE),
+        repo: repoWith(),
+        siteFolder,
+        media: await mediaIn(null),
+        mediaFolder: MEDIA_FOLDER,
+        log: silentLog(),
+      }),
+    ).toStrictEqual({ documents: {}, media: {} });
+  });
+
   it('adds a document the CMS created, under the key its collection gives it', async () => {
     const siteFolder = await sampleWorkingCopy({
       'src/content/authors/new-author.json': '{"name":"New"}\n',
