@@ -33,6 +33,7 @@ describe('isSitePath', () => {
     ['a percent-encoded backslash in lower case', '/%5chost'],
     ['a path with a token already', '/a?preview_token=x'],
     ['a path with a token after another parameter', '/a?x=1&preview_token=x'],
+    ['a token inside a fragment', '/a#b?preview_token=x'],
   ])('refuses %s (%j)', (_name, path) => {
     expect(isSitePath(path)).toBe(false);
   });

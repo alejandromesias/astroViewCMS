@@ -17,7 +17,7 @@ export const INVALID_PATH_MESSAGE =
 
 /** A path that starts with one slash: not `//` and not `/\`. */
 const SINGLE_SLASH = /^\/(?![\\/])/;
-/** A `preview_token` query parameter in the path's query (before any fragment). */
+/** A `preview_token` query parameter anywhere in the path. The test does not stop at `#`, so one inside a fragment is refused too. */
 const TOKEN_IN_QUERY = new RegExp(`[?&]${TOKEN_PARAM}=`);
 /** A percent-encoded backslash, in any case. A decoder turns it into a backslash, so it is refused here too. */
 const ENCODED_BACKSLASH = /%5c/i;
