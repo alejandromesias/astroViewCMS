@@ -1,9 +1,11 @@
 // Test editor logic (markup in index.html). It speaks the bridge's
-// postMessage protocol (preview-protocol, v2) plus three plain requests: GET
-// /__dev/documents?key= for the raw value of each document the page reads (a
-// stopgap for the CMS app's GET /api/documents, WORKPLAN task 1.7), POST
-// /__preview/warm, and POST /__preview-media/new for uploads. A form per
-// document: a JSON textbox, plus a body textarea for Markdown and MDX.
+// postMessage protocol (preview-protocol, v2) and reads the CMS API
+// (PHASE-2-DESIGN 5.9): GET /api/preview-url for the iframe, GET /api/overlay
+// for the starting overlay, GET /api/documents?key= for each document the page
+// reads, and POST /api/media for uploads. A form per document: a JSON textbox,
+// plus a body textarea for Markdown and MDX.
+
+import type { RenderRequest } from 'preview-contract';
 import {
   type DraftMessage,
   type FieldError,
@@ -13,16 +15,110 @@ import {
   protocolMismatch,
 } from 'preview-protocol';
 
-// The document shape the editor reads. A local copy: cms-server never imports the
-// renderer (design 5.11). 2.11b reshapes it to the CMS API's answer.
+// The CMS API's answers as the editor reads them (PHASE-2-DESIGN 5.9). Each is
+// checked before use: a wrong shape is an error, not a cast (IMPLEMENTATION-
+// RECOMMENDATIONS 2). Local copies: cms-server never imports the renderer (5.11).
+
+/** The body of `GET /api/documents?key=` (5.3). */
 interface EditorDocument {
   key: string;
   file: string;
   format: string;
-  editable?: false;
+  editable: boolean;
   buildTime: boolean;
   buildTimeFields?: string[];
+  revision: string;
   value?: unknown;
+}
+
+/** The answer of `GET /api/preview-url?path=`. */
+interface PreviewUrl {
+  url: string;
+  origin: string;
+}
+
+/** The value as a record of unknown fields, or `undefined` when it is not an object. */
+function recordOf(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function isEditorDocument(value: unknown): value is EditorDocument {
+  const info = recordOf(value);
+  return (
+    info !== undefined &&
+    typeof info.key === 'string' &&
+    typeof info.file === 'string' &&
+    typeof info.format === 'string' &&
+    typeof info.editable === 'boolean' &&
+    typeof info.buildTime === 'boolean' &&
+    typeof info.revision === 'string' &&
+    (info.buildTimeFields === undefined ||
+      Array.isArray(info.buildTimeFields)) &&
+    hasEditableValue(info)
+  );
+}
+
+/** The server sends `value` for every editable document (bundle-routes.ts 195), and a Markdown value is an object (`{ data, body }`). */
+function hasEditableValue(info: Record<string, unknown>): boolean {
+  if (!info.editable) return true;
+  if (info.format === 'md' || info.format === 'mdx')
+    return recordOf(info.value) !== undefined;
+  return info.value !== undefined;
+}
+
+function isPreviewUrl(value: unknown): value is PreviewUrl {
+  const answer = recordOf(value);
+  return (
+    answer !== undefined &&
+    typeof answer.url === 'string' &&
+    typeof answer.origin === 'string'
+  );
+}
+
+/** The answer of `POST /api/media` (5.9), as the media map keeps it. The answer's id is not needed. */
+function isUploadAnswer(value: unknown): value is MediaInfo {
+  const answer = recordOf(value);
+  return (
+    answer !== undefined &&
+    typeof answer.url === 'string' &&
+    typeof answer.width === 'number' &&
+    typeof answer.height === 'number' &&
+    typeof answer.format === 'string'
+  );
+}
+
+/** The answer of `GET /api/overlay`: the `RenderRequest` the render route takes. */
+function isOverlay(value: unknown): value is RenderRequest {
+  const answer = recordOf(value);
+  return (
+    answer !== undefined &&
+    recordOf(answer.documents) !== undefined &&
+    recordOf(answer.media) !== undefined
+  );
+}
+
+/** Reads a JSON answer and checks its shape; throws when the shape is wrong. */
+async function readAnswer<T>(
+  response: Response,
+  isShape: (value: unknown) => value is T,
+): Promise<T> {
+  const body: unknown = await response.json();
+  if (!isShape(body)) throw new Error('the answer has the wrong shape');
+  return body;
+}
+
+/** The text of a failed answer: its `message` when it is a JSON `{ error, message }`, else the body. */
+async function answerMessage(response: Response): Promise<string> {
+  const text = (await response.text()).trim();
+  try {
+    const message = recordOf(JSON.parse(text))?.message;
+    if (typeof message === 'string') return message;
+  } catch {
+    // Not JSON: the text itself is the message.
+  }
+  return text;
 }
 
 export const RENDER_DELAY_MS = 120;
@@ -67,17 +163,17 @@ interface DocumentView {
 }
 
 /**
- * Wires up the test editor page (markup in editor.astro): loads the site in
+ * Wires up the test editor page (markup in index.html): loads the site in
  * the iframe, sends the overlay built from the forms to the bridge as you
  * type, shows render results, and handles draft image uploads. `win` and
- * `fetchImpl` are parameters so tests can pass fakes.
+ * `fetchImpl` are parameters so tests can pass fakes. Resolves once the
+ * starting overlay is in and the preview is open (or refused).
  */
-export function startEditor(
+export async function startEditor(
   win: Window = window,
   fetchImpl: typeof fetch = win.fetch.bind(win),
-): void {
+): Promise<void> {
   const doc = win.document;
-  const origin = win.location.origin;
   const byId = <T extends HTMLElement>(id: string) =>
     doc.getElementById(id) as T;
 
@@ -105,6 +201,12 @@ export function startEditor(
   let read = new Set<string>();
   /** True after a `ready` of another protocol version: nothing is sent then. */
   let mismatched = false;
+  /** The origin of the preview, from its answer; undefined until the preview is open. */
+  let previewOrigin: string | undefined;
+  /** The starting overlay from `GET /api/overlay`, which the drafts win over. */
+  let overlay: RenderRequest = { documents: {}, media: {} };
+  /** Why the starting overlay is missing, or '' when it loaded. It stays in the status line when the page is ready. */
+  let overlayProblem = '';
 
   /** The text a form holds as the document's value. Throws on invalid JSON. */
   function formValue(view: DocumentView): unknown {
@@ -113,13 +215,14 @@ export function startEditor(
     return view.body ? { data, body: view.body.value } : data;
   }
 
-  /** Sends the overlay to the page: every edited document, with the media map,
-   *  even when that is nothing (an empty overlay still makes the page render,
-   *  which primes it). A document whose JSON is invalid is flagged and left
-   *  out, not sent with its last valid value. */
+  /** Sends the overlay to the page: the starting overlay, with the edited
+   *  documents on top and the media maps merged, even when that is nothing (an
+   *  empty overlay still makes the page render, which primes it). A document
+   *  whose JSON is invalid is flagged and left out of the drafts, not sent with
+   *  its last valid value. Nothing is sent before the preview is open. */
   function sendDraft() {
-    if (mismatched) return;
-    const documents: DraftMessage['documents'] = {};
+    if (mismatched || previewOrigin === undefined) return;
+    const documents: DraftMessage['documents'] = { ...overlay.documents };
     for (const view of views.values()) {
       let problem = '';
       if (view.state === 'deleted') {
@@ -139,14 +242,14 @@ export function startEditor(
       type: 'preview:draft',
       protocol: PROTOCOL_VERSION,
       documents,
-      media: { ...media },
+      media: { ...overlay.media, ...media },
     };
     envelopeView.textContent = JSON.stringify(
       { documents: message.documents, media: message.media },
       null,
       2,
     );
-    iframe.contentWindow?.postMessage(message, origin);
+    iframe.contentWindow?.postMessage(message, previewOrigin);
   }
 
   // Typing sends a draft after RENDER_DELAY_MS of quiet.
@@ -184,7 +287,7 @@ export function startEditor(
     const note = slot('note');
     const notes = [
       info ? buildTimeNote(info) : '',
-      info?.editable === false
+      info && !info.editable
         ? 'Shown as built (this format is not edited here)'
         : '',
       failure,
@@ -193,12 +296,9 @@ export function startEditor(
     note.hidden = notes.length === 0;
     if (failure) note.dataset.state = 'error';
 
-    if (info && info.editable !== false) {
+    if (info?.editable) {
       const markdown = info.format === 'md' || info.format === 'mdx';
-      const raw = (info.value ?? (markdown ? { data: {}, body: '' } : {})) as {
-        data?: unknown;
-        body?: string;
-      };
+      const raw = info.value as { data?: unknown; body?: string };
       view.saved = markdown
         ? {
             value: JSON.stringify(raw.data ?? {}, null, 2),
@@ -267,22 +367,63 @@ export function startEditor(
     requested.add(key);
     try {
       const response = await fetchImpl(
-        `/__dev/documents?key=${encodeURIComponent(key)}`,
+        `/api/documents?key=${encodeURIComponent(key)}`,
       );
       if (!response.ok) {
         addView(
           key,
           undefined,
-          `Could not load (${response.status}): ${(await response.text()).trim()}`,
+          `Could not load (${response.status}): ${await answerMessage(response)}`,
         );
         return;
       }
-      addView(key, (await response.json()) as EditorDocument);
+      addView(key, await readAnswer(response, isEditorDocument));
     } catch (loadError) {
       addView(
         key,
         undefined,
         `Could not load: ${(loadError as Error).message}`,
+      );
+    }
+  }
+
+  /** Loads the starting overlay. A refusal is shown and the editor starts without it. */
+  async function loadOverlay() {
+    try {
+      const response = await fetchImpl('/api/overlay');
+      if (!response.ok) {
+        overlayProblem = `Could not load the overlay (${response.status}): ${await answerMessage(response)}`;
+        setStatus(overlayProblem, 'error');
+        return;
+      }
+      overlay = await readAnswer(response, isOverlay);
+    } catch (loadError) {
+      overlayProblem = `Could not load the overlay: ${(loadError as Error).message}`;
+      setStatus(overlayProblem, 'error');
+    }
+  }
+
+  /** Opens the preview at the page's path (the `page` parameter), via `GET /api/preview-url`.
+   *  The answer gives the iframe's URL and the origin its messages come from. A refusal
+   *  is shown with its message, and the iframe is not loaded. */
+  async function openPreview() {
+    const path = new URLSearchParams(win.location.search).get('page') ?? '/';
+    try {
+      const response = await fetchImpl(
+        `/api/preview-url?path=${encodeURIComponent(path)}`,
+      );
+      if (!response.ok) {
+        setStatus(await answerMessage(response), 'error');
+        return;
+      }
+      const preview = await readAnswer(response, isPreviewUrl);
+      previewOrigin = preview.origin;
+      // Load the page only now, so the listener above catches its first "ready".
+      iframe.src = preview.url;
+    } catch (loadError) {
+      setStatus(
+        `Could not open the preview: ${(loadError as Error).message}`,
+        'error',
       );
     }
   }
@@ -325,10 +466,14 @@ export function startEditor(
     return unmatched;
   }
 
-  // ---- messages from the bridge: only from the iframe, same origin, well-formed
+  // ---- messages from the bridge: only from the iframe, from the preview origin, well-formed
 
   win.addEventListener('message', (event) => {
-    if (event.source !== iframe.contentWindow || event.origin !== origin)
+    if (
+      previewOrigin === undefined ||
+      event.source !== iframe.contentWindow ||
+      event.origin !== previewOrigin
+    )
       return;
     const message = event.data;
     if (!isPageMessage(message)) return;
@@ -341,17 +486,17 @@ export function startEditor(
         setStatus(`${message.path}: ${mismatch}`, 'error');
         return;
       }
-      // The page (re)loaded: prime it with the overlay, even an empty one, and
-      // warm the Markdown renderer, in parallel.
-      setStatus(`Page ready: ${message.path}`);
+      // The page (re)loaded: prime it with the overlay, even an empty one. The
+      // server warms the renderer when it hands out the preview URL (5.8).
+      if (overlayProblem)
+        setStatus(`${overlayProblem}. Page ready: ${message.path}`, 'error');
+      else setStatus(`Page ready: ${message.path}`);
       sendDraft();
-      void fetchImpl('/__preview/warm', { method: 'POST' }).catch(
-        () => undefined,
-      );
     } else if (message.type === 'preview:rendered') {
-      setStatus(
-        `Rendered ${message.path} in ${message.renderMs} ms; documents: ${message.documents.join(', ') || 'none'}`,
-      );
+      // The priming draft renders right after ready, so the overlay refusal stays on this line too.
+      const rendered = `Rendered ${message.path} in ${message.renderMs} ms; documents: ${message.documents.join(', ') || 'none'}`;
+      if (overlayProblem) setStatus(`${overlayProblem}. ${rendered}`, 'error');
+      else setStatus(rendered);
       showLimits(message.limits);
       showDocuments(message.documents);
     } else {
@@ -368,8 +513,8 @@ export function startEditor(
 
   // ---- draft image upload ----------------------------------------------
 
-  // POST the file to /__preview-media/new. The answer goes into the media map
-  // under its `url`, which is what a document's image field holds (D12).
+  // POST the file to /api/media (5.9). The answer goes into the media map under
+  // its `url`, which is what a document's image field holds (D12).
   const upload = byId<HTMLInputElement>('upload');
   const uploadResult = byId<HTMLElement>('upload-result');
   const uploadUrl = byId<HTMLElement>('upload-url');
@@ -377,30 +522,46 @@ export function startEditor(
   upload.addEventListener('change', async () => {
     const file = upload.files?.[0];
     if (!file) return;
-    const response = await fetchImpl('/__preview-media/new', {
-      method: 'POST',
-      headers: { 'Content-Type': file.type },
-      body: file,
-    });
-    if (!response.ok) {
-      setStatus(
-        `Upload failed (${response.status}): ${await response.text()}`,
-        'error',
-      );
-      return;
+    try {
+      const response = await fetchImpl('/api/media', {
+        method: 'POST',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      });
+      if (!response.ok) {
+        setStatus(
+          `Upload failed (${response.status}): ${await answerMessage(response)}`,
+          'error',
+        );
+        return;
+      }
+      const entry = await readAnswer(response, isUploadAnswer);
+      // Only the MediaInfo fields: the answer's id is not part of the overlay.
+      media[entry.url] = {
+        url: entry.url,
+        width: entry.width,
+        height: entry.height,
+        format: entry.format,
+      };
+      uploadUrl.textContent = entry.url;
+      uploadResult.hidden = false;
+      setStatus(`Uploaded ${file.name}`);
+      sendDraft();
+    } catch (uploadError) {
+      setStatus(`Upload failed: ${(uploadError as Error).message}`, 'error');
     }
-    const entry = (await response.json()) as MediaInfo;
-    media[entry.url] = entry;
-    uploadUrl.textContent = entry.url;
-    uploadResult.hidden = false;
-    setStatus(`Uploaded ${file.name}`);
-    sendDraft();
   });
 
   byId<HTMLButtonElement>('upload-copy').addEventListener('click', () => {
     void win.navigator.clipboard?.writeText(uploadUrl.textContent ?? '');
   });
 
-  // Load the page only now, so the listener above catches its first "ready".
-  iframe.src = new URLSearchParams(win.location.search).get('page') ?? '/';
+  // The overlay first, so the page's first "ready" finds it in place. The
+  // listener above is registered before any load, so no message is missed.
+  await loadOverlay();
+  await openPreview();
 }
+
+// The page's script starts the editor once its markup is in place. Tests import
+// this module without that markup, so nothing starts then.
+if (document.getElementById('preview')) void startEditor();
