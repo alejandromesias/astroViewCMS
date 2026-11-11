@@ -93,6 +93,7 @@ describe('GET /api/status with the preview status (2.9c)', () => {
     node: { state: 'ready', bundleId: 'fixture-2026-11-03', error: null },
     lastSync: null,
     syncError: null,
+    renamed: [],
     changesetSize: 3,
     publish: 'idle',
     errors: { protocolMismatch: null, upstreamBuildFailed: null, swap: null },
@@ -514,6 +515,10 @@ describe('GET /api/documents?key=', () => {
       revParse: () => Promise.reject(new Error('revParse is not used here')),
       showAtBytes: async () => null,
       overwrittenSince: async () => new Map(),
+      fetchOrigin: () =>
+        Promise.reject(new Error('fetchOrigin is not used here')),
+      changesetReader: () =>
+        Promise.reject(new Error('changesetReader is not used here')),
       locked: () => Promise.reject(new Error('GET takes no lock')),
       showAt: () => Promise.reject(new Error('GET reads no text')),
     };
@@ -553,6 +558,10 @@ describe('GET /api/documents?key=', () => {
       revParse: () => Promise.reject(new Error('revParse is not used here')),
       showAtBytes: async () => null,
       overwrittenSince: async () => new Map(),
+      fetchOrigin: () =>
+        Promise.reject(new Error('fetchOrigin is not used here')),
+      changesetReader: () =>
+        Promise.reject(new Error('changesetReader is not used here')),
       locked: () => Promise.reject(new Error('GET takes no lock')),
       showAt: () => Promise.reject(new Error('GET reads no text')),
     };
@@ -582,6 +591,10 @@ describe('GET /api/documents?key=', () => {
         revParse: () => Promise.reject(new Error('revParse is not used here')),
         showAtBytes: async () => null,
         overwrittenSince: async () => new Map(),
+        fetchOrigin: () =>
+          Promise.reject(new Error('fetchOrigin is not used here')),
+        changesetReader: () =>
+          Promise.reject(new Error('changesetReader is not used here')),
         locked: () => Promise.reject(new Error('GET takes no lock')),
         showAt: () => Promise.reject(new Error('GET reads no text')),
       };

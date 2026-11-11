@@ -24,8 +24,8 @@ import type { SaveChange } from './body.ts';
 import { checkRevisions } from './conflicts.ts';
 import type { DeleteGuard, SaveStage, SaveStop } from './context.ts';
 import { checkDeleteGuard, createDeleteGuard } from './delete-guard.ts';
-import { runStages, SAVE_STAGES, saveChanges } from './pipeline.ts';
 import { rewriteStagedImages } from './images.ts';
+import { runStages, SAVE_STAGES, saveChanges } from './pipeline.ts';
 import { planChanges } from './plan.ts';
 import { validateChanges } from './validate.ts';
 import { writeChanges } from './write.ts';
@@ -37,12 +37,26 @@ afterEach(async () => {
   await Promise.all(folders.splice(0).map((folder) => removeTestRoot(folder)));
 });
 
-// A repo whose lock records the holder and runs the work with `tx`. The reads are not used by these tests.
-function lockedRepo(tx: RepoTx, holders: string[]): Repo {
+// A repo whose lock records the holder and runs the work with `tx`. `readers` records the holder that held the lock
+// when the changeset reader was taken ('no lock' when none). The other reads are not used by these tests.
+function lockedRepo(
+  tx: RepoTx,
+  holders: string[],
+  readers: string[] = [],
+): Repo {
+  let held: string | undefined;
   return {
-    locked<T>(holder: string, work: (tx: RepoTx) => Promise<T>): Promise<T> {
+    async locked<T>(
+      holder: string,
+      work: (tx: RepoTx) => Promise<T>,
+    ): Promise<T> {
       holders.push(holder);
-      return work(tx);
+      held = holder;
+      try {
+        return await work(tx);
+      } finally {
+        held = undefined;
+      }
     },
     changedPaths: async () => [],
     showAt: async () => null,
@@ -50,6 +64,17 @@ function lockedRepo(tx: RepoTx, holders: string[]): Repo {
     mergeBase: async () => 'base',
     revParse: () => Promise.reject(new Error('revParse is not used here')),
     overwrittenSince: async () => new Map(),
+    fetchOrigin: () =>
+      Promise.reject(new Error('fetchOrigin is not used here')),
+    changesetReader: async () => {
+      readers.push(held ?? 'no lock');
+      return {
+        changedPaths: async () => [],
+        mergeBase: async () => 'base',
+        showAtBytes: async () => null,
+        overwrittenSince: async () => new Map(),
+      };
+    },
   };
 }
 
@@ -104,6 +129,8 @@ describe('the delete guard in a save', () => {
       applySave: vi.fn(() => {
         order.push('guard');
       }),
+      invalidate: vi.fn(),
+      recheck: vi.fn(async () => undefined),
     };
     let seen: DeleteGuard | undefined;
     const own = vi.fn(async () => {
@@ -269,6 +296,16 @@ describe('saveChanges', () => {
       status: 200,
       body: { revisions: {}, warnings: [], rebuild: false },
     });
+  });
+
+  it('takes the changeset reader once, under the save lock, so the changeset reads one origin tip', async () => {
+    const readers: string[] = [];
+    await saveChanges(
+      inputOf([], async () => bundleOf([])),
+      lockedRepo(fakeTx(), [], readers),
+      { stages: [() => Promise.resolve(undefined)] },
+    );
+    expect(readers).toStrictEqual(['save']);
   });
 
   it('answers 503 no-bundle, without running a stage, when there is no bundle', async () => {

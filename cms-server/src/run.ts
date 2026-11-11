@@ -9,6 +9,7 @@ import {
   directoryBundleSource,
   stateBundleSource,
 } from './bundle/source.ts';
+import { createBundleStore } from './bundle/store.ts';
 import { loadConfig } from './config/load.ts';
 import type { CmsConfig } from './config/schema.ts';
 import { type Env, loadSecrets, type Secrets } from './config/secrets.ts';
@@ -50,6 +51,7 @@ import {
 } from './preview/sweep.ts';
 import { createDeleteGuard } from './save/delete-guard.ts';
 import { startServer } from './server.ts';
+import { createSync, type SyncNowOutcome } from './sync/sync.ts';
 
 /** The arguments of the start. `bundleDir` is the renderer's build folder (its `manifest/` holds the five files). */
 export interface StartArgs {
@@ -57,12 +59,14 @@ export interface StartArgs {
   readonly bundleDir: string | undefined;
 }
 
-/** What run() returned: the server, the preview supervisor and the stop that takes both down. */
+/** What run() returned: the server, the preview supervisor, the stop that takes both down, and the sync (2.10c). */
 export interface Running {
   readonly server: Server;
   readonly supervisor: Supervisor;
   /** Closes the server, then stops the preview node. Later calls wait for the first one's result. */
   stop(): Promise<void>;
+  /** One sync under the repo lock (2.10c). The poll loop (2.10g) calls it; nothing calls it in production until then. */
+  readonly syncNow: () => Promise<SyncNowOutcome>;
 }
 
 /** Every outside call of the start. `realDeps` holds the real ones. */
@@ -226,6 +230,8 @@ export async function run(
       log: deps.logger,
     });
   }
+  // One delete guard per app: the saves and the sync share its index, so a sync's invalidate reaches the next save (2.10c).
+  const guard = createDeleteGuard();
   // A save that asks for a rebuild starts a build. With --bundle there is no builder, so it is only logged.
   const onRebuild = (): void => {
     if (lifecycle === undefined) {
@@ -234,6 +240,19 @@ export async function run(
       void lifecycle.trigger('save-rebuild');
     }
   };
+  // The sync routine (2.10c). Its `sync-code` trigger is the lifecycle's, read when it fires; with --bundle there is no
+  // lifecycle, so the trigger is only logged.
+  const sync = createSync({
+    repo: openedRepo,
+    bundles: createBundleStore(source),
+    guard,
+    status,
+    trigger: (reason) => {
+      if (lifecycle === undefined)
+        deps.logger.info('A sync found a code change, but the builder is off');
+      else void lifecycle.trigger(reason);
+    },
+  });
   // The save's check and warm-up go to the node on the preview port, with the internal bearer (2.9d).
   const preview = createPreviewClient({
     port: previewPort,
@@ -256,7 +275,7 @@ export async function run(
     save: {
       config,
       preview,
-      guard: createDeleteGuard(),
+      guard,
       onRebuild,
     },
     // GET /api/overlay: the site's image folder, and the log of a clash (2.9e).
@@ -307,7 +326,7 @@ export async function run(
     previewState: supervisor.status().state,
     recovered: repo.recovered,
   });
-  return { server, supervisor, stop };
+  return { server, supervisor, stop, syncNow: sync.syncNow };
 }
 
 /**

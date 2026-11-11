@@ -111,6 +111,7 @@ describe('run() with the real parts', () => {
         node: { state: 'ready', bundleId: identity.bundleId, error: null },
         lastSync: null,
         syncError: null,
+        renamed: [],
         changesetSize: 0,
         publish: 'idle',
         errors: {

@@ -12,7 +12,10 @@ import {
 } from '../bundle/read.ts';
 import type { BundleStore } from '../bundle/store.ts';
 import type { CmsConfig } from '../config/schema.ts';
-import { changesetWithTombstones } from '../documents/changeset.ts';
+import {
+  type ChangesetRepo,
+  changesetWithTombstones,
+} from '../documents/changeset.ts';
 import { type FileOp, planWrite } from '../documents/plan-write.ts';
 import {
   commitParagraphs,
@@ -74,6 +77,11 @@ export type FetchResult =
     }
   | { ok: false; syncError: SyncError };
 
+/** What `Repo.fetchOrigin` found: the tip of `origin/<branch>` after the fetch, or the failure (2.10c). */
+export type FetchOriginResult =
+  | { ok: true; upstream: string }
+  | { ok: false; syncError: SyncError };
+
 /**
  * What `tx.reapply` returns (2.10b, 2.10j). `tip` is the new tip of `cms/work`, `upstream` itself when nothing is saved.
  * `renamed` lists the saved documents whose file upstream renamed. The save still writes the old path, so the list is
@@ -112,9 +120,13 @@ export interface RepoTx {
   /**
    * Fetches `origin`, then classifies the change from the current bundle's commit (`siteCommit`) to `origin/<branch>`
    * (2.10a). Never throws: a failed fetch comes back as `{ ok: false, syncError }`. With no bundle, or an unreadable
-   * one, the change is `code`.
+   * one, the change is `code`. `remote` (default true) runs the network fetch first, under the fetch line (2.10c). False
+   * uses the refs as they are: the sync already fetched them, outside the lock (`fetchOrigin`).
    */
-  fetch(bundles: BundleStore): Promise<FetchResult>;
+  fetch(
+    bundles: BundleStore,
+    options?: { readonly remote?: boolean },
+  ): Promise<FetchResult>;
   /**
    * Rebuilds `cms/work` as `upstream` plus the saved changeset (2.10b): one commit on `upstream`, with the saved
    * documents written into the upstream text. Returns the new tip of `cms/work` (`upstream` itself when nothing is
@@ -136,6 +148,11 @@ export interface RepoTx {
 export interface Repo {
   /** Runs `work` with the lock held. The lock is not re-entrant: do not call `locked` inside `work`. */
   locked<T>(holder: string, work: (tx: RepoTx) => Promise<T>): Promise<T>;
+  /**
+   * Fetches `origin` with no repo lock held, one fetch at a time (2.10c), and answers the tip of `origin/<branch>`. A
+   * failure comes back as `{ ok: false, syncError }`. Never throws.
+   */
+  fetchOrigin(): Promise<FetchOriginResult>;
   /** The paths that `cms/work` changes from `origin/<branch>`, site-relative, in path order. */
   changedPaths(): Promise<ChangedPath[]>;
   /** The text of `path` at `ref`, or `null` when it is missing there or is a folder. A missing `ref` throws. */
@@ -151,6 +168,11 @@ export interface Repo {
    * upstream sha. When a key repeats, the newest save (and the last line of it) wins. Read without the lock.
    */
   overwrittenSince(): Promise<ReadonlyMap<string, string>>;
+  /**
+   * A changeset reader whose reads all see the origin tip that is current when this is called (2.10c). A locked save
+   * takes it under the lock, so its changeset cannot mix two tips.
+   */
+  changesetReader(): Promise<ChangesetRepo>;
 }
 
 /** The trailer that a re-apply save writes for each document it overwrote (2.10b). */
@@ -197,8 +219,9 @@ export function openRepo({
     });
 
   // The commit `cms/work` and `origin/<branch>` share. `fetch` compares it with `origin/<branch>` for `reapply`.
-  async function mergeBase(): Promise<string> {
-    return (await git(['merge-base', `origin/${branch}`, WORK])).trim();
+  // A locked caller passes the upstream it pinned, so origin moving between reads cannot mix two tips (2.10c).
+  async function mergeBase(upstream = `origin/${branch}`): Promise<string> {
+    return (await git(['merge-base', upstream, WORK])).trim();
   }
 
   // The full sha that `ref` names. `--verify` makes a missing ref fail rather than print the name back.
@@ -212,6 +235,7 @@ export function openRepo({
   // read: no commit, a commit that git does not have, or a failed diff.
   async function upstreamChanges(
     siteCommit: string | null,
+    upstream: string,
   ): Promise<ChangedPath[] | null> {
     if (siteCommit === null) return null;
     try {
@@ -224,7 +248,7 @@ export function openRepo({
         '--name-status',
         '-z',
         '--no-renames',
-        `${siteCommit}...origin/${branch}`,
+        `${siteCommit}...${upstream}`,
         '--',
       ]);
       return parseNameStatus(output, '.');
@@ -234,13 +258,15 @@ export function openRepo({
   }
 
   // Compares the two commits with the merge base, so upstream's new commits do not show as reversed edits.
-  async function changedPaths(): Promise<ChangedPath[]> {
+  async function changedPaths(
+    upstream = `origin/${branch}`,
+  ): Promise<ChangedPath[]> {
     const output = await git([
       'diff',
       '--name-status',
       '-z',
       '--no-renames',
-      `origin/${branch}...${WORK}`,
+      `${upstream}...${WORK}`,
       '--',
       scope,
     ]);
@@ -248,14 +274,27 @@ export function openRepo({
   }
 
   // Oldest first, so a later line (a newer save) replaces an earlier one in `parseOverwrote`.
-  async function overwrittenSince(): Promise<Map<string, string>> {
+  async function overwrittenSince(
+    upstream = `origin/${branch}`,
+  ): Promise<Map<string, string>> {
     const output = await git([
       'log',
       '--reverse',
       `--format=%(trailers:key=${OVERWROTE_TRAILER},valueonly)`,
-      `origin/${branch}..${WORK}`,
+      `${upstream}..${WORK}`,
     ]);
     return parseOverwrote(output);
+  }
+
+  // A changeset reader that reads origin's tip once, now, so its reads cannot mix two tips (2.10c). A locked save calls it under the lock.
+  async function changesetReader(): Promise<ChangesetRepo> {
+    const upstream = (await git(['rev-parse', `origin/${branch}`])).trim();
+    return {
+      changedPaths: () => changedPaths(upstream),
+      mergeBase: () => mergeBase(upstream),
+      showAtBytes,
+      overwrittenSince: () => overwrittenSince(upstream),
+    };
   }
 
   // The file operations, trailers and renamed documents of the saved changeset, planned on `upstream` (2.10b, 2.10j).
@@ -273,13 +312,18 @@ export function openRepo({
       throw new Error(
         `There is no bundle to re-apply the saves on. The saves stay on ${WORK}.`,
       );
-    const older = await overwrittenSince();
+    const older = await overwrittenSince(upstream);
     const { changeset, tombstones } = await changesetWithTombstones({
       bundle,
-      repo: { changedPaths, mergeBase, showAtBytes, overwrittenSince },
+      repo: {
+        changedPaths: () => changedPaths(upstream),
+        mergeBase: () => mergeBase(upstream),
+        showAtBytes,
+        overwrittenSince: () => overwrittenSince(upstream),
+      },
       siteFolder: state.siteFolder,
     });
-    const base = await mergeBase();
+    const base = await mergeBase(upstream);
     // The renames upstream made since the merge base (2.10j). Git's rename detection is on by `-M`, not by config, so a
     // rename is found whatever `diff.renames` says. Repo-wide, so a rename into or out of the site folder shows too.
     const renames = parseRenames(
@@ -331,7 +375,7 @@ export function openRepo({
         `HEAD is on ${head}, not ${WORK}. A re-apply needs ${WORK} checked out.`,
       );
     const oldTip = (await git(['rev-parse', WORK_REF])).trim();
-    const changed = await changedPaths();
+    const changed = await changedPaths(upstream);
     const saves = await plannedSaves(changed, upstream, bundles, collections);
     const dir = join(cmsDir, site, 'tmp', `reapply-${randomUUID()}`);
     await mkdir(dir, { recursive: true });
@@ -408,20 +452,30 @@ export function openRepo({
     return { mode, sha };
   }
 
+  // The network fetch, one at a time (2.10c): the sync's probe runs with no repo lock, and publish fetches under it, so
+  // they share this line. No auto gc or maintenance: a repack must not start in the middle of a save. A waiter gives up
+  // after two minutes, twice the git timeout, so it is not a lock timeout.
+  const fetches = createMutex({ timeoutMs: 120_000 });
+  const fetchRemote = (): Promise<string> =>
+    fetches.run('fetch', () =>
+      git(['fetch', '--no-auto-gc', '--no-auto-maintenance', 'origin']),
+    );
+
   const tx: RepoTx = {
     reapply,
     revParse,
     // Fetches `origin`, then classifies the change. Every failure is returned as a sync error, never thrown.
-    async fetch(bundles) {
+    async fetch(bundles, { remote: fetchFirst = true } = {}) {
       try {
-        await git(['fetch', 'origin']);
+        if (fetchFirst) await fetchRemote();
         const upstream = (await git(['rev-parse', `origin/${branch}`])).trim();
-        const reapply = (await mergeBase()) !== upstream;
+        // Every read below uses the pinned `upstream`, so origin moving mid-call cannot mix two tips (2.10c).
+        const reapply = (await mergeBase(upstream)) !== upstream;
         const bundle = await currentBundle(bundles);
         const changes =
           bundle === null
             ? null
-            : await upstreamChanges(bundle.identity.siteCommit);
+            : await upstreamChanges(bundle.identity.siteCommit, upstream);
         const change = classifyChange({
           changes,
           documents: bundle === null ? null : [...bundle.documents.values()],
@@ -515,6 +569,15 @@ export function openRepo({
 
   return {
     locked: (holder, work) => mutex.run(holder, () => work(tx)),
+    async fetchOrigin() {
+      try {
+        await fetchRemote();
+        const upstream = (await git(['rev-parse', `origin/${branch}`])).trim();
+        return { ok: true, upstream };
+      } catch (error: unknown) {
+        return { ok: false, syncError: syncErrorOf(error, remote) };
+      }
+    },
     changedPaths,
     async showAt(ref, path) {
       const bytes = await showAtBytes(ref, path);
@@ -524,6 +587,7 @@ export function openRepo({
     mergeBase,
     revParse,
     overwrittenSince,
+    changesetReader,
   };
 }
 

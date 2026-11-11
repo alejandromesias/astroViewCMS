@@ -14,7 +14,8 @@ import { readStaged, stagedFormat } from '../media/staging.ts';
 import { walkMarkers } from '../schema/walk.ts';
 import type { SaveChange } from './body.ts';
 import type { SaveContext, SaveStage, SaveStop } from './context.ts';
-import { dataOf, isMarkdownDocument, schemaOf } from './warnings.ts';
+import { dataOf, isMarkdownDocument } from './markdown.ts';
+import { schemaOf } from './warnings.ts';
 
 /** The code of an image whose upload is not in `media.json`, or whose staged file is gone. */
 const STAGED_IMAGE_MISSING = 'staged-image-missing';

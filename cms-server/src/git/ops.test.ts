@@ -539,6 +539,21 @@ describe('openRepo: changedPaths', () => {
       { path: 'notes/a.md', status: 'modified' },
     ]);
   });
+
+  it('a changeset reader keeps the origin tip it was taken at, when origin moves on', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site');
+    const repo = repoOf(fixture);
+    await edit(fixture, 'notes/a.md', 'alpha 2\n');
+    await save(repo, ['notes/a.md'], 'save');
+    const reader = await repo.changesetReader();
+    // origin's main moves to cms/work's head: a live read would see no change, the reader still sees a.md.
+    await git(fixture.state.repoDir, ['push', 'origin', `${WORK}:main`]);
+    await git(fixture.state.repoDir, ['fetch', 'origin']);
+    await expect(repo.changedPaths()).resolves.toEqual([]);
+    await expect(reader.changedPaths()).resolves.toEqual([
+      { path: 'notes/a.md', status: 'modified' },
+    ]);
+  });
 });
 
 describe('parseNameStatus', () => {
@@ -1175,7 +1190,7 @@ describe('openRepo: fetch', () => {
       syncError: {
         kind: 'failed',
         message:
-          'git fetch origin failed (exit 128): fatal: unable to access: Could not resolve host: github.com',
+          'git fetch --no-auto-gc --no-auto-maintenance origin failed (exit 128): fatal: unable to access: Could not resolve host: github.com',
       },
     });
   });
@@ -1189,7 +1204,8 @@ describe('openRepo: fetch', () => {
       ok: false,
       syncError: {
         kind: 'failed',
-        message: 'git fetch origin timed out after 60000 ms',
+        message:
+          'git fetch --no-auto-gc --no-auto-maintenance origin timed out after 60000 ms',
       },
     });
   });

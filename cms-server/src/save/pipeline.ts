@@ -110,7 +110,8 @@ export function saveChanges(
         changes: input.changes,
         bundle,
         siteFolder: input.siteFolder,
-        repo,
+        // Taken under the lock, so every read of this save's changeset sees one origin tip (2.10c).
+        repo: await repo.changesetReader(),
         tx,
         config: input.config,
         preview: input.preview,

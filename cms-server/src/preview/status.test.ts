@@ -30,6 +30,7 @@ describe('the status snapshot', () => {
       node: { state: 'ready', bundleId: 'b-1', error: null },
       lastSync: null,
       syncError: null,
+      renamed: [],
       changesetSize: 2,
       publish: 'idle',
       errors: { protocolMismatch: null, upstreamBuildFailed: null, swap: null },
@@ -94,6 +95,7 @@ describe('the setters', () => {
       node: { state: 'ready', bundleId: 'b-1', error: null },
       lastSync: '2026-11-09T10:00:00.000Z',
       syncError: 'fetch failed',
+      renamed: [],
       changesetSize: 2,
       publish: 'failed',
       errors: {
@@ -102,6 +104,21 @@ describe('the setters', () => {
         swap: 'node down',
       },
     });
+  });
+
+  it('setRenamed shows the renamed documents in the next snapshot, and an empty list clears them', async () => {
+    const status = createStatus(optionsOf());
+    const renamed = [
+      {
+        key: 'blog/a',
+        from: 'src/content/blog/a.md',
+        to: 'src/content/blog/b.md',
+      },
+    ];
+    status.setRenamed(renamed);
+    expect((await status.snapshot()).renamed).toStrictEqual(renamed);
+    status.setRenamed([]);
+    expect((await status.snapshot()).renamed).toStrictEqual([]);
   });
 
   it('each setter clears its field with null, or with idle for the publish state', async () => {

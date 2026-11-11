@@ -2,6 +2,7 @@
 // The lifecycle sets the build, swap and protocol fields. The sync, upstream and publish fields are set by 2.10g, 2.10f
 // and 2.10d through the setters. The node state is read from the supervisor, and the changeset size from the repo,
 // on each snapshot.
+import type { RenamedDocument } from '../documents/reapply.ts';
 import type { Supervisor } from './supervisor.ts';
 
 /** Where the builder stands: `off` with --bundle, otherwise idle, building, or failed (the last build failed). */
@@ -26,6 +27,8 @@ interface StatusBody {
   };
   readonly lastSync: string | null;
   readonly syncError: string | null;
+  /** The saved documents that upstream renamed, as of the last re-apply (2.10c, 2.10j). Empty when there are none. */
+  readonly renamed: readonly RenamedDocument[];
   /** The number of files `cms/work` changes from origin, or null when git cannot count them. */
   readonly changesetSize: number | null;
   readonly publish: PublishState;
@@ -58,6 +61,8 @@ export interface Status extends StatusSource {
   setLastSync(at: string | null): void;
   /** Sets the error of the last sync (2.10g), or clears it with null. */
   setSyncError(text: string | null): void;
+  /** Sets the renamed documents of the last re-apply (2.10c, 2.10j). */
+  setRenamed(renamed: readonly RenamedDocument[]): void;
   /** Sets the upstream build failure (2.10f), or clears it with null. */
   setUpstreamBuildFailed(text: string | null): void;
   /** Sets the publish state (2.10d). */
@@ -80,6 +85,7 @@ interface Values {
   protocolMismatch: string | null;
   lastSync: string | null;
   syncError: string | null;
+  renamed: readonly RenamedDocument[];
   upstreamBuildFailed: string | null;
   publish: PublishState;
 }
@@ -95,6 +101,7 @@ export function createStatus(options: StatusOptions): Status {
     protocolMismatch: null,
     lastSync: null,
     syncError: null,
+    renamed: [],
     upstreamBuildFailed: null,
     publish: 'idle',
   };
@@ -126,6 +133,9 @@ export function createStatus(options: StatusOptions): Status {
     setSyncError(text) {
       values.syncError = text;
     },
+    setRenamed(renamed) {
+      values.renamed = renamed;
+    },
     setUpstreamBuildFailed(text) {
       values.upstreamBuildFailed = text;
     },
@@ -148,6 +158,7 @@ export function createStatus(options: StatusOptions): Status {
         },
         lastSync: values.lastSync,
         syncError: values.syncError,
+        renamed: values.renamed,
         changesetSize: await changesetSize(),
         publish: values.publish,
         errors: {
