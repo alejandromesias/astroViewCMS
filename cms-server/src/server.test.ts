@@ -6,6 +6,7 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { fakeAppDeps } from '../test/helpers/app-deps.ts';
 import { makeTestRoot, removeTestRoot } from '../test/helpers/git.ts';
+import { fetchLocal } from '../test/helpers/local-fetch.ts';
 import { createApp } from './http/app.ts';
 import { startServer } from './server.ts';
 
@@ -43,7 +44,9 @@ describe('startServer', () => {
     const server = await startServer(fakeAppDeps(), 0);
     try {
       const { port } = server.address() as AddressInfo;
-      const response = await fetch(`http://127.0.0.1:${port}/nope`);
+      const response = await fetchLocal(`http://127.0.0.1:${port}/nope`, {
+        headers: { host: 'localhost' },
+      });
       expect(response.status).toBe(404);
       expect(await response.json()).toEqual({ error: 'not_found' });
     } finally {
@@ -55,8 +58,9 @@ describe('startServer', () => {
     const server = await startServer(fakeAppDeps(), 0);
     try {
       const { port } = server.address() as AddressInfo;
-      const response = await fetch(`http://127.0.0.1:${port}/nope`, {
+      const response = await fetchLocal(`http://127.0.0.1:${port}/nope`, {
         method: 'POST',
+        headers: { host: 'localhost' },
         body: 'x',
       });
       expect(response.status).toBe(404);
@@ -129,7 +133,9 @@ describe('startServer: bridge edge cases', () => {
     const server = await startServer(fakeAppDeps(), 0);
     try {
       const { port } = server.address() as AddressInfo;
-      const response = await fetch(`http://127.0.0.1:${port}/x`);
+      const response = await fetchLocal(`http://127.0.0.1:${port}/x`, {
+        headers: { host: 'localhost' },
+      });
       expect(response.status).toBe(201);
       expect(response.headers.get('x-app')).toBe('yes');
       expect(await response.text()).toBe('ok');
@@ -147,7 +153,9 @@ describe('startServer: bridge edge cases', () => {
     const server = await startServer(fakeAppDeps(), 0);
     try {
       const { port } = server.address() as AddressInfo;
-      const response = await fetch(`http://127.0.0.1:${port}/x`);
+      const response = await fetchLocal(`http://127.0.0.1:${port}/x`, {
+        headers: { host: 'localhost' },
+      });
       expect(response.status).toBe(500);
       expect(response.headers.get('content-type')).toBe('application/json');
       expect(await response.json()).toEqual({ error: 'internal_error' });
@@ -167,8 +175,8 @@ describe('startServer: bridge edge cases', () => {
     const server = await startServer(fakeAppDeps(), 0);
     try {
       const { port } = server.address() as AddressInfo;
-      await fetch(`http://127.0.0.1:${port}/a/b?q=1`, {
-        headers: { 'x-test': 'yes' },
+      await fetchLocal(`http://127.0.0.1:${port}/a/b?q=1`, {
+        headers: { host: 'localhost', 'x-test': 'yes' },
       });
       expect(seen?.method).toBe('GET');
       // The URL base is the fixed loopback address, never the Host header, and has no port.
@@ -188,8 +196,9 @@ describe('startServer: bridge edge cases', () => {
     const server = await startServer(fakeAppDeps(), 0);
     try {
       const { port } = server.address() as AddressInfo;
-      const response = await fetch(`http://127.0.0.1:${port}/x`, {
+      const response = await fetchLocal(`http://127.0.0.1:${port}/x`, {
         method: 'HEAD',
+        headers: { host: 'localhost' },
       });
       expect(response.status).toBe(200);
       expect(seenMethod).toBe('HEAD');
@@ -212,7 +221,7 @@ describe('startServer: bridge edge cases', () => {
         host: '127.0.0.1',
         port,
         path: '/c',
-        headers: { 'Set-Cookie': ['a=1', 'b=2'] },
+        headers: { host: 'localhost', 'Set-Cookie': ['a=1', 'b=2'] },
       });
       req.end();
       const [res] = await once(req, 'response');
@@ -230,9 +239,9 @@ describe('startServer: uploads stream through the bridge', () => {
     const { root, server } = await uploadServer();
     try {
       const { port } = server.address() as AddressInfo;
-      const response = await fetch(`http://127.0.0.1:${port}/api/media`, {
+      const response = await fetchLocal(`http://127.0.0.1:${port}/api/media`, {
         method: 'POST',
-        headers: { 'content-type': 'image/png' },
+        headers: { host: 'localhost', 'content-type': 'image/png' },
         body: PNG,
       });
       expect(response.status).toBe(201);
@@ -266,9 +275,9 @@ describe('startServer: uploads stream through the bridge', () => {
         },
         { highWaterMark: 0 },
       );
-      const outcome = await fetch(`http://127.0.0.1:${port}/api/media`, {
+      const outcome = await fetchLocal(`http://127.0.0.1:${port}/api/media`, {
         method: 'POST',
-        headers: { 'content-type': 'image/png' },
+        headers: { host: 'localhost', 'content-type': 'image/png' },
         body,
         duplex: 'half',
       } as RequestInit).then(
@@ -299,7 +308,9 @@ describe('startServer: uploads stream through the bridge', () => {
       socket.destroy();
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(fs.existsSync(stagingDir)).toBe(false);
-      const response = await fetch(`http://127.0.0.1:${port}/nope`);
+      const response = await fetchLocal(`http://127.0.0.1:${port}/nope`, {
+        headers: { host: 'localhost' },
+      });
       expect(response.status).toBe(404);
     } finally {
       await close(server);

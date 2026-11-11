@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { Hono } from 'hono';
 import { revisionOf } from 'preview-contract';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fakeAppDeps } from '../../test/helpers/app-deps.ts';
+import { createTestApp, fakeAppDeps } from '../../test/helpers/app-deps.ts';
 import {
   bundleFolder,
   FIXTURE_BUNDLE,
@@ -18,7 +18,6 @@ import type { Repo } from '../git/ops.ts';
 import { createReferenceIndex } from '../references/reference-index.ts';
 import type { DeleteGuard, PreviewClient } from '../save/context.ts';
 import { createDeleteGuard } from '../save/delete-guard.ts';
-import { createApp } from './app.ts';
 import { MAX_BODY_BYTES, registerChangeRoutes } from './changes-routes.ts';
 
 // Each save and read here runs real git calls, so one test takes a few seconds under load.
@@ -157,7 +156,7 @@ async function saveApp(
   const root = await makeTestRoot();
   folders.push(root);
   const { repo: saves, state, config } = await saveRepoIn(root);
-  const app = createApp({
+  const app = createTestApp({
     ...fakeAppDeps(),
     media: {
       stagingDir: join(root, 'staging'),

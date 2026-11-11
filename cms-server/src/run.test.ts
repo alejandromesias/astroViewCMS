@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ZodError } from 'zod';
 import { FIXTURE_BUNDLE } from '../test/helpers/bundle.ts';
 import { makeTestRoot, removeTestRoot } from '../test/helpers/git.ts';
+import { fetchLocal } from '../test/helpers/local-fetch.ts';
 import { type BundleSource, directoryBundleSource } from './bundle/source.ts';
 import { type CmsConfig, parseConfig } from './config/schema.ts';
 import type { Env, Secrets } from './config/secrets.ts';
@@ -450,21 +451,23 @@ describe('run', () => {
     const running = await run(['site/cms.config.ts'], {}, h.deps);
     const base = `http://127.0.0.1:${portOfServer(running.server)}`;
     try {
-      const page = await fetch(`${base}/`);
+      const page = await fetchLocal(`${base}/`);
       expect(page.status).toBe(200);
       expect(await page.text()).toBe(PAGE.html);
-      expect((await fetch(`${base}/editor.css`)).status).toBe(200);
-      const status = await fetch(`${base}/api/status`);
+      expect((await fetchLocal(`${base}/editor.css`)).status).toBe(200);
+      const status = await fetchLocal(`${base}/api/status`);
       expect(status.status).toBe(200);
       // The bundle key is null, and the preview status is beside it (2.9c): the builder is on.
       expect(await status.json()).toMatchObject({
         bundle: null,
         builder: 'on',
       });
-      const schema = await fetch(`${base}/api/schema`);
+      const schema = await fetchLocal(`${base}/api/schema`);
       expect(schema.status).toBe(503);
       expect(await schema.json()).toEqual({ error: 'no-bundle' });
-      const staged = await fetch(`${base}/media/staging/${'a'.repeat(64)}.png`);
+      const staged = await fetchLocal(
+        `${base}/media/staging/${'a'.repeat(64)}.png`,
+      );
       expect(staged.status).toBe(404);
       expect(await staged.text()).toBe('Not Found');
     } finally {
@@ -494,7 +497,7 @@ describe('run', () => {
           bundleId: identity.bundleId,
           dir: resolve(bundleDir),
         });
-        const status = await fetch(`${base}/api/status`);
+        const status = await fetchLocal(`${base}/api/status`);
         // The bundle key as before; the preview status beside it says the builder is off (2.9c).
         expect(await status.json()).toMatchObject({
           bundle: {
@@ -504,7 +507,7 @@ describe('run', () => {
           builder: 'off',
           build: { state: 'off', error: null },
         });
-        expect((await fetch(`${base}/api/schema`)).status).toBe(200);
+        expect((await fetchLocal(`${base}/api/schema`)).status).toBe(200);
       } finally {
         await running.stop();
       }
@@ -535,7 +538,7 @@ describe('run', () => {
         'cms started',
         expect.objectContaining({ bundle: identity.bundleId }),
       );
-      const page = await fetch(
+      const page = await fetchLocal(
         `http://127.0.0.1:${portOfServer(running.server)}/`,
       );
       expect(page.status).toBe(200);

@@ -5,6 +5,7 @@ import type { StatusSource } from '../preview/status.ts';
 import { registerBundleRoutes } from './bundle-routes.ts';
 import { registerChangeRoutes, type SaveRouteDeps } from './changes-routes.ts';
 import { type EditorRouteDeps, editorRoutes } from './editor-routes.ts';
+import { rejectUnlessHostAllowed } from './guard.ts';
 import { type MediaRouteDeps, mediaRoutes } from './media.ts';
 import {
   type OverlayRouteDeps,
@@ -38,6 +39,13 @@ export interface AppDeps {
 // Hono only routes (PHASE-2-DESIGN 4.1): the modules behind the routes don't import Hono.
 export function createApp(deps: AppDeps): Hono {
   const app = new Hono();
+  // Before any route, so every route refuses a Host that is not this CMS's (2.9f). The CMS origin is the media
+  // deps' `cmsOrigin`, which run.ts sets from origins.cms.
+  app.use('*', async (c, next) => {
+    const refused = rejectUnlessHostAllowed(c.req.raw, deps.media.cmsOrigin);
+    if (refused !== null) return refused;
+    await next();
+  });
   app.route('/', editorRoutes(deps.editor));
   app.route('/', mediaRoutes(deps.media));
   if (deps.bundle !== undefined && deps.workingCopy !== undefined)

@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { revisionOf, revisionOfEntry } from 'preview-contract';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fakeAppDeps } from '../../test/helpers/app-deps.ts';
+import { createTestApp, fakeAppDeps } from '../../test/helpers/app-deps.ts';
 import {
   bundleFolder,
   FIXTURE_BUNDLE,
@@ -16,7 +16,6 @@ import {
 import { directoryBundleSource } from '../bundle/source.ts';
 import { GitError } from '../git/exec.ts';
 import type { Repo } from '../git/ops.ts';
-import { createApp } from './app.ts';
 
 // The working copy the route tests read from: a copy of the bundle fixture's source files, made before each test.
 let sample = '';
@@ -30,7 +29,7 @@ afterEach(async () => {
 
 /** The app over one bundle folder and one working copy (the fixture source copy by default). */
 const appOver = (dir: string, root: string = sample) =>
-  createApp({
+  createTestApp({
     ...fakeAppDeps(),
     bundle: directoryBundleSource(dir),
     workingCopy: root,
@@ -56,9 +55,9 @@ async function fixtureRevisions(): Promise<[string, string][]> {
 
 describe('the bundle routes in createApp', () => {
   it('registers the bundle routes only when the bundle dep is given', async () => {
-    expect((await createApp(fakeAppDeps()).request('/api/status')).status).toBe(
-      404,
-    );
+    expect(
+      (await createTestApp(fakeAppDeps()).request('/api/status')).status,
+    ).toBe(404);
     expect((await appOver(FIXTURE_BUNDLE).request('/api/status')).status).toBe(
       200,
     );
@@ -100,7 +99,7 @@ describe('GET /api/status with the preview status (2.9c)', () => {
   } as const;
 
   it('adds the status beside the bundle key', async () => {
-    const app = createApp({
+    const app = createTestApp({
       ...fakeAppDeps(),
       bundle: directoryBundleSource(FIXTURE_BUNDLE),
       workingCopy: sample,
@@ -119,7 +118,7 @@ describe('GET /api/status with the preview status (2.9c)', () => {
 
   it('adds the status beside a null bundle as well', async () => {
     const dir = await bundleFolder({ 'bundle.json': null });
-    const app = createApp({
+    const app = createTestApp({
       ...fakeAppDeps(),
       bundle: directoryBundleSource(dir),
       workingCopy: sample,
@@ -522,7 +521,7 @@ describe('GET /api/documents?key=', () => {
       locked: () => Promise.reject(new Error('GET takes no lock')),
       showAt: () => Promise.reject(new Error('GET reads no text')),
     };
-    const app = createApp({
+    const app = createTestApp({
       ...fakeAppDeps(),
       bundle: directoryBundleSource(FIXTURE_BUNDLE),
       workingCopy: root,
@@ -565,7 +564,7 @@ describe('GET /api/documents?key=', () => {
       locked: () => Promise.reject(new Error('GET takes no lock')),
       showAt: () => Promise.reject(new Error('GET reads no text')),
     };
-    const app = createApp({
+    const app = createTestApp({
       ...fakeAppDeps(),
       bundle: directoryBundleSource(FIXTURE_BUNDLE),
       workingCopy: root,
@@ -598,7 +597,7 @@ describe('GET /api/documents?key=', () => {
         locked: () => Promise.reject(new Error('GET takes no lock')),
         showAt: () => Promise.reject(new Error('GET reads no text')),
       };
-      const app = createApp({
+      const app = createTestApp({
         ...fakeAppDeps(),
         bundle: directoryBundleSource(FIXTURE_BUNDLE),
         workingCopy: root,
@@ -1012,7 +1011,7 @@ describe('GET /api/documents?collection= reads the working copy', () => {
 
 describe('errors of the bundle routes', () => {
   it('lets an error that is not a BundleError reach the default 500, not bundle-invalid', async () => {
-    const app = createApp({
+    const app = createTestApp({
       ...fakeAppDeps(),
       bundle: {
         current: async () => {
