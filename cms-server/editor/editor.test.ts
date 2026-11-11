@@ -74,6 +74,15 @@ const DOCUMENTS: Record<string, unknown> = {
     buildTime: false,
     revision: 'r-broken',
   },
+  'broken/null-markdown': {
+    key: 'broken/null-markdown',
+    file: 'src/content/broken.md',
+    format: 'md',
+    editable: true,
+    buildTime: false,
+    revision: 'r-null',
+    value: null,
+  },
   'rules/one': {
     key: 'rules/one',
     file: 'src/content/rules.toml',
@@ -445,6 +454,15 @@ describe('loading documents', () => {
         .querySelector('textarea')!
         .closest('[data-slot="fields"]'),
     ).toHaveProperty('hidden', true);
+  });
+
+  it('treats a Markdown document whose value is null as a failed load, not as a crash', async () => {
+    await editor.open('broken/null-markdown');
+    expect(
+      editor
+        .section('broken/null-markdown')
+        .querySelector('[data-slot="note"]')!.textContent,
+    ).toBe('Could not load: the answer has the wrong shape');
   });
 
   it('says why a document could not be loaded, and does not retry it', async () => {

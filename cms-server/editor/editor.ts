@@ -54,10 +54,18 @@ function isEditorDocument(value: unknown): value is EditorDocument {
     typeof info.editable === 'boolean' &&
     typeof info.buildTime === 'boolean' &&
     typeof info.revision === 'string' &&
-    // The server sends `value` for every editable document (bundle-routes.ts 195), so a missing one is a broken answer.
-    (!info.editable || info.value !== undefined) &&
-    (info.buildTimeFields === undefined || Array.isArray(info.buildTimeFields))
+    (info.buildTimeFields === undefined ||
+      Array.isArray(info.buildTimeFields)) &&
+    hasEditableValue(info)
   );
+}
+
+/** The server sends `value` for every editable document (bundle-routes.ts 195), and a Markdown value is an object (`{ data, body }`). */
+function hasEditableValue(info: Record<string, unknown>): boolean {
+  if (!info.editable) return true;
+  if (info.format === 'md' || info.format === 'mdx')
+    return recordOf(info.value) !== undefined;
+  return info.value !== undefined;
 }
 
 function isPreviewUrl(value: unknown): value is PreviewUrl {
