@@ -23,10 +23,11 @@ const ENCODED_BACKSLASH = /%5c/i;
 /**
  * True when a query parameter of the path is `preview_token`, however it is spelled. Each segment after `?` or `&` is read
  * the way the gate reads it (its first name, decoded, through URLSearchParams), so `preview%5Ftoken=x` and a bare
- * `preview_token` count too (Codex review, PR 41).
+ * `preview_token` count too (Codex review, PR 41). The fragment is never sent, so it is cut first: a `#` ends the query.
  */
 function carriesTokenParam(path: string): boolean {
-  return path
+  const query = path.split('#')[0] ?? '';
+  return query
     .split(/[?&]/)
     .slice(1)
     .some((segment) => {

@@ -33,10 +33,16 @@ describe('isSitePath', () => {
     ['a percent-encoded backslash in lower case', '/%5chost'],
     ['a path with a token already', '/a?preview_token=x'],
     ['a path with a token after another parameter', '/a?x=1&preview_token=x'],
-    ['a token inside a fragment', '/a#b?preview_token=x'],
     ['a token whose name is percent-encoded', '/foo?preview%5Ftoken=bad'],
     ['a token with no value', '/foo?preview_token'],
     ['a token with no value after another parameter', '/foo?x=1&preview_token'],
+    // The fragment is not sent, so the name before `#` is the query's last name, and the minted token follows it.
+    ['a bare token name right before a fragment', '/foo?preview_token#x'],
+    ['an encoded token name right before a fragment', '/foo?preview%5Ftoken#x'],
+    [
+      'a bare token name after another parameter, before a fragment',
+      '/foo?x=1&preview_token#y',
+    ],
   ])('refuses %s (%j)', (_name, path) => {
     expect(isSitePath(path)).toBe(false);
   });
@@ -44,6 +50,8 @@ describe('isSitePath', () => {
   it.each([
     ['the root', '/'],
     ['a path with a query and a fragment', '/a/b?x=1#y'],
+    // A token inside a fragment is never sent to the gate, so it does not collide with the minted one.
+    ['a token inside a fragment', '/a#b?preview_token=x'],
     [
       'a parameter whose name only starts with the token name',
       '/a?preview_tokens=1',
