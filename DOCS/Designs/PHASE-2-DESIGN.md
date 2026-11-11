@@ -162,7 +162,8 @@ change reaches the site**; the developer waits, fixes and retries **(user)**.
   `origin/main` and `cms/work`: each with its saved value, or deleted, plus
   the **base revision** it was saved over.
 - **Sync** (a poll of the remote every 60 s while a session is open, and
-  always before publish): `git fetch`. If `origin/main` moved, rebuild
+  always before publish): `git fetch`, with no repo lock held (one fetch at a time). If `origin/main`
+  moved, take the lock and rebuild
   `cms/work` as `origin/main` plus the saved changeset **re-applied per
   document**, not with `git rebase`:
   - for each saved document, write its saved value into the **upstream**
@@ -638,8 +639,14 @@ end of phase 2, with their tests moved or rewritten against the new routes.
 - Write routes need `Content-Type: application/json` (or multipart for
   media: a raw image body with `image/*`, which forces a CORS preflight) and
   refuse `Sec-Fetch-Site: cross-site`, as the preview routes do.
-  With no auth until phase 4, this and the `127.0.0.1` bind are the only
-  protection, so the README says so.
+- Every request must carry a `Host` the CMS accepts: `localhost`, `127.0.0.1`
+  or `[::1]` on the CMS port, or the host of `origins.cms`. Anything else
+  gets `421 { error: 'misdirected', message }` (2.9f). A DNS-rebinding page is
+  same-origin in the browser's eyes, so the `Sec-Fetch-Site` check does not
+  stop it, and it could read drafts or save and publish. This rule covers the
+  read routes too.
+  With no auth until phase 4, this, the `Host` check and the `127.0.0.1` bind
+  are the only protection, so the README says so.
 
 ### 5.10 Configuration
 

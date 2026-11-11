@@ -1546,6 +1546,10 @@ plan, and a one-line pointer stays here.
 
 ### Phase 4: hosting and auth
 
+- **Show the delete-guard recheck after a sync (decided 2026-11-10).** Phase 2
+  runs the recheck only at publish (WORKPLAN-PHASE-2 2.10c, item 9). Phase 4
+  surfaces a sync-time `referenced-by` in the status, once the editor can show
+  it.
 - **Verify the preview gate cookie in Safari and Firefox (decided
   2026-11-01).** `__Host-preview; HttpOnly; Secure; SameSite=None;
   Partitioned; Path=/` was checked only in Chromium 156

@@ -101,7 +101,7 @@ Rules for running tasks in parallel:
 | 6 | 2.0j (alone, `[build]`), 2.1h (now also `repo.ts`, before 2.5b), 2.5b, 2.6a, 2.9a, 2.10a, 2.5c (moved here 2026-11-04; starts after 2.10a merges) |
 | 7 | 2.6b, 2.9c, 2.10b, 2.1j (last, alone: it edits `repo.ts` and `ops.ts`) |
 | 8 | 2.7d (seam PR, first), then 2.7b, 2.7c, 2.9d; merge order 2.9d, 2.7c, 2.7b (2.7d, 2.9d, 2.7c and 2.7b merged 2026-11-10; wave closed 2026-11-10, `mutation-full` green at 93.58%, tag `wave-8-closed`) |
-| 9 | 2.9e, 2.10c, 2.11b (2.11b starts at once, since the shapes of 2.9e are fixed; it merges after 2.9e) |
+| 9 | 2.9e, 2.10c, 2.11b (2.11b starts at once, since the shapes of 2.9e are fixed; it merges after 2.9e), then 2.9f after 2.9e (Host check, 2026-11-10) |
 | 10 | 2.10d, 2.10g (one merged after the other: both edit `app.ts` and `run.ts`) |
 | 11 | 2.10e, 2.11c, 2.12a |
 | 12 | 2.10f, 2.11d |
@@ -2765,6 +2765,13 @@ Design 4.4, 5.6.
   6. **Staging files stay after a save** (`save/images.ts` never deletes them), so the `url` of a media entry stays loadable from the preview iframe. Pin it in a test.
   7. **Files.** New route module(s) in `http/`, registered in `app.ts`; `run.ts` passes the token secret, the preview origin and the preview client's `warm`. Mutation floors apply to each changed file.
 
+#### 2.9f Host allowlist on every CMS route — after 2.9e (added 2026-11-10)
+
+- Every request to the CMS origin is refused with `421 { error: 'misdirected', message }` unless its `Host` header is `localhost:<port>`, `127.0.0.1:<port>`, `[::1]:<port>`, or the host of `origins.cms` (PHASE-2-DESIGN 5.9). One check in the shared HTTP code, before routing, so it covers the reads (`GET /api/documents`, `/api/changes`, `/api/overlay`, `/api/preview-url`, `/api/status`) and the writes (`PUT /api/changes`, `POST /api/publish`, `POST /api/media`).
+- **Why:** a DNS-rebinding page is same-origin in the browser's eyes, so the `Sec-Fetch-Site` and `Content-Type` checks do not stop it. It could read drafts, and it could save and publish.
+- **Done when:** a table test covers each allowed form and near misses (`localhost.evil.test`, `127.0.0.1.nip.io`, a `Host` with a wrong port, a missing `Host`), each with the exact 421 body. A write from a rebinding host (a valid JSON body, `Sec-Fetch-Site: same-origin`) is refused and touches no file.
+- **Files.** `http/app.ts` (the check), with its own test file. 2.9e edits `app.ts` too, so this task starts after 2.9e merges. Mutation floors apply to each changed file.
+
 ### 2.10 Sync and publish — after 2.3c, 2.4a, 2.5 · ∥ 2.6, 2.7, 2.8, 2.9
 
 Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
@@ -2840,6 +2847,7 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
   added a new referrer).
 - **From the 2.6b Result (2026-11-09):** the guard's index is cached per bundle, and a content-only sync keeps the same bundle, so the guard needs an "invalidate" call (it marks the index stale). 2.10c makes that call after every re-apply that changes the working copy.
 - **From the wave 8 review (2026-11-10):** `save/warnings.ts` and `save/delete-guard.ts` each have their own Markdown-format helpers (2.7c Result). Move them to one shared module and import it from both. This task reopens `delete-guard.ts`, so it is the place.
+- **Amended 2026-11-10 (item 9):** sync does not run the recheck in phase 2. The first bullet's recheck is the function `recheck`, which publish (2.10d) calls.
 - **Done when (revised 2026-11-10; publish is 2.10d, so the HTTP-level 409 moves there):** at function level with the git harness, (a) a content-only upstream change adds a reference to an author the CMS user deleted: the guard is invalidated and the recheck answers `referenced-by`; (b) an upstream push adds a post that references that author: a new bundle is swapped in and the recheck answers `referenced-by`. The 409 through `POST /api/publish` is a test of 2.10d.
 - **Gaps settled (calls, 2026-11-10; the user agreed each).** Wave 9. The task now owns the sync orchestration that 2.10g and 2.10d both need, so they do not write it twice and collide on `status.ts`, `run.ts` and `app.ts`.
   1. **Two entry points, or publish deadlocks.** Publish holds the repo lock when it syncs, and the lock is not re-entrant. `syncLocked(tx)` does the work and expects the lock to be held; `syncNow()` takes the lock and calls `syncLocked`. The poll loop (2.10g) calls `syncNow`; publish (2.10d) calls `syncLocked`.
@@ -2849,6 +2857,8 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
   5. **A lock timeout inside `syncNow` skips the tick.** It is not a `syncError` and gets no back-off: a publish holding the lock is normal. Other failures are `syncError`, as in 2.10g.
   6. **Tests, both paths at function level** (the two cases of "Done when"), plus: `syncNow` takes the lock and `syncLocked` does not (a fake `locked` that fails on a second take); the lock timeout skips the tick; `renamed` reaches the status.
   7. **Files.** A new module (`sync/sync.ts` or `git/sync-routine.ts`; the builder picks), `save/context.ts` and `save/delete-guard.ts` (`invalidate`), `preview/status.ts`, and the shared Markdown-format helper from the wave 8 review. `run.ts` builds `syncNow` for 2.10g and 2.10d to use; nothing calls it in production until they do. Mutation floors apply to each changed file.
+  8. **Fetch outside the lock (decided 2026-11-10, after the PR review of #40).** A slow fetch under the lock makes saves answer `503 busy` (the lock waiters give up after 30 s). So `syncNow` fetches first, with no repo lock: `Repo.fetchOrigin()`, one fetch at a time through a fetch line of its own (`git -c gc.auto=0 fetch origin`, so a fetch never starts a repack in the middle of a save). It takes the lock only when `origin/<branch>` differs from the tip that the last successful sync integrated (kept in memory; after a restart the first tick integrates). Under the lock the integration uses `tx.fetch(bundles, { remote: false })`, so the network is not hit twice. An unmoved origin answers `{ kind: 'unchanged' }`, sets `lastSync` and clears `syncError`, and takes no lock. A failed fetch is a failed sync, and the tip is not remembered, so the next tick tries again. `syncLocked` still fetches under the lock by default (`remote` true), because publish (2.10d) fetches under the lock, through the same fetch line.
+  9. **No recheck in sync (decided 2026-11-10, after the PR review of #40).** Phase 2 has no production caller for the sync-time recheck: publish (2.10d) calls `recheck`, and sync does not. Reason: a content-only sync clears the index, so the recheck would force a rebuild on each upstream move, and nothing in phase 2 reads a sync-time `referenced-by`. Phase 4 surfaces it in the status after a sync (SYSTEM-DESIGN section 12).
 
 #### 2.10d Publish — after 2.10a, 2.10c, 2.9c, 2.9d
 
