@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { fakeAppDeps, PREVIEW_ORIGIN } from '../../test/helpers/app-deps.ts';
-import { createApp } from './app.ts';
+import {
+  createTestApp,
+  fakeAppDeps,
+  PREVIEW_ORIGIN,
+} from '../../test/helpers/app-deps.ts';
 
 const CSP = [
   "default-src 'none'",
@@ -15,7 +18,7 @@ const CSP = [
 describe('editor routes', () => {
   it('serves the page at / with its type and security headers', async () => {
     const deps = fakeAppDeps();
-    const response = await createApp(deps).request('/');
+    const response = await createTestApp(deps).request('/');
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe(
       'text/html; charset=utf-8',
@@ -33,7 +36,7 @@ describe('editor routes', () => {
     'serves %s with its type and the same headers',
     async (path, type, field) => {
       const deps = fakeAppDeps();
-      const response = await createApp(deps).request(path);
+      const response = await createTestApp(deps).request(path);
       expect(response.status).toBe(200);
       expect(response.headers.get('content-type')).toBe(type);
       expect(response.headers.get('x-content-type-options')).toBe('nosniff');

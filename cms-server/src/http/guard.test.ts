@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { rejectCrossSite, rejectUnlessContentType } from './guard.ts';
+import {
+  rejectCrossSite,
+  rejectUnlessContentType,
+  rejectUnlessHostAllowed,
+} from './guard.ts';
 
 const IMAGE = /^image\//;
 const request = (headers: Record<string, string> = {}) =>
@@ -69,5 +73,65 @@ describe('rejectUnlessContentType', () => {
         IMAGE,
       ),
     ).toBeNull();
+  });
+});
+
+describe('rejectUnlessHostAllowed', () => {
+  const CMS = 'http://cms.localhost:4400';
+  const MISDIRECTED = {
+    error: 'misdirected',
+    message: 'The Host header is not an address of this CMS.',
+  };
+  const withHost = (host?: string) =>
+    new Request('http://cms.localhost:4400/api/changes', {
+      method: 'PUT',
+      headers: host === undefined ? {} : { host },
+    });
+
+  it.each([
+    ['localhost'],
+    ['localhost:4400'],
+    ['127.0.0.1'],
+    ['127.0.0.1:4400'],
+    ['[::1]'],
+    ['[::1]:4400'],
+    ['cms.localhost'],
+    ['cms.localhost:4400'],
+  ])('lets the Host %s through', (host) => {
+    expect(rejectUnlessHostAllowed(withHost(host), CMS)).toBeNull();
+  });
+
+  it.each([
+    ['localhost.evil.test'],
+    ['localhost.evil.test:4400'],
+    ['127.0.0.1.nip.io'],
+    ['127.0.0.1.nip.io:4400'],
+    ['evil.test'],
+    ['localhost:4401'],
+    ['localhost:44000'],
+    ['127.0.0.1:80'],
+    ['[::1]:4401'],
+    ['cms.localhost:4401'],
+    ['cms.evil.test'],
+  ])('refuses the Host %s with 421 and the misdirected body', async (host) => {
+    const response = rejectUnlessHostAllowed(withHost(host), CMS);
+    expect(response?.status).toBe(421);
+    expect(await response?.json()).toStrictEqual(MISDIRECTED);
+  });
+
+  it('refuses a request with no Host header, with 421 and the misdirected body', async () => {
+    const response = rejectUnlessHostAllowed(withHost(), CMS);
+    expect(response?.status).toBe(421);
+    expect(await response?.json()).toStrictEqual(MISDIRECTED);
+  });
+
+  it('allows only the bare name when origins.cms names no port', () => {
+    const noPort = 'http://cms.localhost';
+    expect(
+      rejectUnlessHostAllowed(withHost('cms.localhost'), noPort),
+    ).toBeNull();
+    expect(
+      rejectUnlessHostAllowed(withHost('cms.localhost:80'), noPort)?.status,
+    ).toBe(421);
   });
 });

@@ -5,6 +5,7 @@ import type { StatusSource } from '../preview/status.ts';
 import { registerBundleRoutes } from './bundle-routes.ts';
 import { registerChangeRoutes, type SaveRouteDeps } from './changes-routes.ts';
 import { type EditorRouteDeps, editorRoutes } from './editor-routes.ts';
+import { rejectUnlessHostAllowed } from './guard.ts';
 import { type MediaRouteDeps, mediaRoutes } from './media.ts';
 import {
   type OverlayRouteDeps,
@@ -19,6 +20,8 @@ import {
 export interface AppDeps {
   readonly editor: EditorRouteDeps;
   readonly media: MediaRouteDeps;
+  // The CMS's own origin (origins.cms). The Host check (2.9f) allows its host; run.ts sets it.
+  readonly cmsOrigin: string;
   // Optional until 2.9c: the bundle routes are registered only when this and `workingCopy` are given.
   readonly bundle?: BundleSource;
   // The site folder of the working copy: the files of the bundle's documents are read from it (WORKPLAN 2.4b).
@@ -38,6 +41,12 @@ export interface AppDeps {
 // Hono only routes (PHASE-2-DESIGN 4.1): the modules behind the routes don't import Hono.
 export function createApp(deps: AppDeps): Hono {
   const app = new Hono();
+  // Before any route, so every route refuses a Host that is not this CMS's (2.9f).
+  app.use('*', async (c, next) => {
+    const refused = rejectUnlessHostAllowed(c.req.raw, deps.cmsOrigin);
+    if (refused !== null) return refused;
+    await next();
+  });
   app.route('/', editorRoutes(deps.editor));
   app.route('/', mediaRoutes(deps.media));
   if (deps.bundle !== undefined && deps.workingCopy !== undefined)
