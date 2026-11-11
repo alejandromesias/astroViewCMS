@@ -17,8 +17,9 @@ interface FetchApp {
 
 export function startServer(deps: AppDeps, port: number): Promise<Server> {
   const app: FetchApp = createApp(deps);
-  // Node answers a request with no Host header 400 before the app sees it. With requireHostHeader off, the app's Host
-  // check answers it 421, as for any other Host (2.9f).
+  // RFC 9112 section 3.2 says a server answers 400 to an HTTP/1.1 request with no Host, and Node does so before the app
+  // sees it. requireHostHeader is off on purpose: the app's Host check answers such a request 421, as it does any other
+  // Host the spec refuses (2.9f). This departs from RFC 9112 for this case.
   const server = createServer({ requireHostHeader: false }, (req, res) => {
     void handle(app, req, res);
   });
