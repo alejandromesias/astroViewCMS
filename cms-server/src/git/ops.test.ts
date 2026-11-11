@@ -1175,7 +1175,7 @@ describe('openRepo: fetch', () => {
       syncError: {
         kind: 'failed',
         message:
-          'git fetch origin failed (exit 128): fatal: unable to access: Could not resolve host: github.com',
+          'git fetch --no-auto-gc --no-auto-maintenance origin failed (exit 128): fatal: unable to access: Could not resolve host: github.com',
       },
     });
   });
@@ -1189,7 +1189,8 @@ describe('openRepo: fetch', () => {
       ok: false,
       syncError: {
         kind: 'failed',
-        message: 'git fetch origin timed out after 60000 ms',
+        message:
+          'git fetch --no-auto-gc --no-auto-maintenance origin timed out after 60000 ms',
       },
     });
   });

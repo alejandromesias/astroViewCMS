@@ -74,6 +74,11 @@ export type FetchResult =
     }
   | { ok: false; syncError: SyncError };
 
+/** What `Repo.fetchOrigin` found: the tip of `origin/<branch>` after the fetch, or the failure (2.10c). */
+export type FetchOriginResult =
+  | { ok: true; upstream: string }
+  | { ok: false; syncError: SyncError };
+
 /**
  * What `tx.reapply` returns (2.10b, 2.10j). `tip` is the new tip of `cms/work`, `upstream` itself when nothing is saved.
  * `renamed` lists the saved documents whose file upstream renamed. The save still writes the old path, so the list is
@@ -112,9 +117,13 @@ export interface RepoTx {
   /**
    * Fetches `origin`, then classifies the change from the current bundle's commit (`siteCommit`) to `origin/<branch>`
    * (2.10a). Never throws: a failed fetch comes back as `{ ok: false, syncError }`. With no bundle, or an unreadable
-   * one, the change is `code`.
+   * one, the change is `code`. `remote` (default true) runs the network fetch first, under the fetch line (2.10c). False
+   * uses the refs as they are: the sync already fetched them, outside the lock (`fetchOrigin`).
    */
-  fetch(bundles: BundleStore): Promise<FetchResult>;
+  fetch(
+    bundles: BundleStore,
+    options?: { readonly remote?: boolean },
+  ): Promise<FetchResult>;
   /**
    * Rebuilds `cms/work` as `upstream` plus the saved changeset (2.10b): one commit on `upstream`, with the saved
    * documents written into the upstream text. Returns the new tip of `cms/work` (`upstream` itself when nothing is
@@ -136,6 +145,11 @@ export interface RepoTx {
 export interface Repo {
   /** Runs `work` with the lock held. The lock is not re-entrant: do not call `locked` inside `work`. */
   locked<T>(holder: string, work: (tx: RepoTx) => Promise<T>): Promise<T>;
+  /**
+   * Fetches `origin` with no repo lock held, one fetch at a time (2.10c), and answers the tip of `origin/<branch>`. A
+   * failure comes back as `{ ok: false, syncError }`. Never throws.
+   */
+  fetchOrigin(): Promise<FetchOriginResult>;
   /** The paths that `cms/work` changes from `origin/<branch>`, site-relative, in path order. */
   changedPaths(): Promise<ChangedPath[]>;
   /** The text of `path` at `ref`, or `null` when it is missing there or is a folder. A missing `ref` throws. */
@@ -408,13 +422,22 @@ export function openRepo({
     return { mode, sha };
   }
 
+  // The network fetch, one at a time (2.10c): the sync's probe runs with no repo lock, and publish fetches under it, so
+  // they share this line. No auto gc or maintenance: a repack must not start in the middle of a save. A waiter gives up
+  // after two minutes, twice the git timeout, so it is not a lock timeout.
+  const fetches = createMutex({ timeoutMs: 120_000 });
+  const fetchRemote = (): Promise<string> =>
+    fetches.run('fetch', () =>
+      git(['fetch', '--no-auto-gc', '--no-auto-maintenance', 'origin']),
+    );
+
   const tx: RepoTx = {
     reapply,
     revParse,
     // Fetches `origin`, then classifies the change. Every failure is returned as a sync error, never thrown.
-    async fetch(bundles) {
+    async fetch(bundles, { remote: fetchFirst = true } = {}) {
       try {
-        await git(['fetch', 'origin']);
+        if (fetchFirst) await fetchRemote();
         const upstream = (await git(['rev-parse', `origin/${branch}`])).trim();
         const reapply = (await mergeBase()) !== upstream;
         const bundle = await currentBundle(bundles);
@@ -515,6 +538,15 @@ export function openRepo({
 
   return {
     locked: (holder, work) => mutex.run(holder, () => work(tx)),
+    async fetchOrigin() {
+      try {
+        await fetchRemote();
+        const upstream = (await git(['rev-parse', `origin/${branch}`])).trim();
+        return { ok: true, upstream };
+      } catch (error: unknown) {
+        return { ok: false, syncError: syncErrorOf(error, remote) };
+      }
+    },
     changedPaths,
     async showAt(ref, path) {
       const bytes = await showAtBytes(ref, path);

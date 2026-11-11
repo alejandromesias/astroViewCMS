@@ -515,6 +515,8 @@ describe('GET /api/documents?key=', () => {
       revParse: () => Promise.reject(new Error('revParse is not used here')),
       showAtBytes: async () => null,
       overwrittenSince: async () => new Map(),
+      fetchOrigin: () =>
+        Promise.reject(new Error('fetchOrigin is not used here')),
       locked: () => Promise.reject(new Error('GET takes no lock')),
       showAt: () => Promise.reject(new Error('GET reads no text')),
     };
@@ -554,6 +556,8 @@ describe('GET /api/documents?key=', () => {
       revParse: () => Promise.reject(new Error('revParse is not used here')),
       showAtBytes: async () => null,
       overwrittenSince: async () => new Map(),
+      fetchOrigin: () =>
+        Promise.reject(new Error('fetchOrigin is not used here')),
       locked: () => Promise.reject(new Error('GET takes no lock')),
       showAt: () => Promise.reject(new Error('GET reads no text')),
     };
@@ -583,6 +587,8 @@ describe('GET /api/documents?key=', () => {
         revParse: () => Promise.reject(new Error('revParse is not used here')),
         showAtBytes: async () => null,
         overwrittenSince: async () => new Map(),
+        fetchOrigin: () =>
+          Promise.reject(new Error('fetchOrigin is not used here')),
         locked: () => Promise.reject(new Error('GET takes no lock')),
         showAt: () => Promise.reject(new Error('GET reads no text')),
       };

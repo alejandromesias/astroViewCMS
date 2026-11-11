@@ -45,6 +45,7 @@ const repo: Repo = {
   showAtBytes: async (_ref, path) =>
     path === BLOG_1 ? Buffer.from(OLD) : null,
   overwrittenSince: async () => new Map(),
+  fetchOrigin: () => Promise.reject(new Error('fetchOrigin is not used here')),
   locked: () => Promise.reject(new Error('GET takes no lock')),
   showAt: () => Promise.reject(new Error('GET reads no text')),
 };

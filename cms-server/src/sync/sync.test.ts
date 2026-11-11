@@ -20,7 +20,13 @@ import { type BundleStore, createBundleStore } from '../bundle/store.ts';
 import type { CmsConfig } from '../config/schema.ts';
 import type { RenamedDocument } from '../documents/reapply.ts';
 import { LockTimeoutError } from '../git/mutex.ts';
-import type { FetchResult, ReapplyResult, Repo, RepoTx } from '../git/ops.ts';
+import type {
+  FetchOriginResult,
+  FetchResult,
+  ReapplyResult,
+  Repo,
+  RepoTx,
+} from '../git/ops.ts';
 import { type RepoState, WORK, WORK_REF } from '../git/repo.ts';
 import type { RecheckInput } from '../save/context.ts';
 import { createDeleteGuard } from '../save/delete-guard.ts';
@@ -319,9 +325,15 @@ describe('the sync routine, with fakes', () => {
     };
   }
 
-  // A repo whose `locked` runs its work with `tx`. It counts the takes, and it throws when a take starts while one is held.
-  function repoOf(tx: SyncTx): {
-    repo: Pick<Repo, 'locked'>;
+  // A repo whose `locked` runs its work with `tx`, and whose `fetchOrigin` answers `origin.current`. It counts the takes, and it
+  // throws when a take starts while one is held.
+  function repoOf(
+    tx: SyncTx,
+    origin: { current: FetchOriginResult } = {
+      current: { ok: true, upstream: 'upstream-sha' },
+    },
+  ): {
+    repo: Pick<Repo, 'locked' | 'fetchOrigin'>;
     takes: () => number;
   } {
     let held = false;
@@ -340,12 +352,13 @@ describe('the sync routine, with fakes', () => {
             held = false;
           }
         },
+        fetchOrigin: async () => origin.current,
       },
     };
   }
 
   // A sync over the fakes, with its spies.
-  function syncOver(tx: SyncTx, repo: Pick<Repo, 'locked'>) {
+  function syncOver(tx: SyncTx, repo: Pick<Repo, 'locked' | 'fetchOrigin'>) {
     const status = statusSpy();
     const guard = { invalidate: vi.fn() };
     const trigger = vi.fn();
@@ -390,10 +403,11 @@ describe('the sync routine, with fakes', () => {
   });
 
   it('skips the tick when the lock times out: no error, no status change, no back-off signal', async () => {
-    const repo: Pick<Repo, 'locked'> = {
+    const repo: Pick<Repo, 'locked' | 'fetchOrigin'> = {
       locked: async () => {
         throw new LockTimeoutError('publish', 30_000);
       },
+      fetchOrigin: async () => ({ ok: true, upstream: 'upstream-sha' }),
     };
     const { sync, status, trigger } = syncOver(txOf(), repo);
     expect(await sync.syncNow()).toStrictEqual({ kind: 'skipped' });
@@ -403,13 +417,91 @@ describe('the sync routine, with fakes', () => {
   });
 
   it('rethrows an error of the lock that is not a timeout', async () => {
-    const repo: Pick<Repo, 'locked'> = {
+    const repo: Pick<Repo, 'locked' | 'fetchOrigin'> = {
       locked: async () => {
         throw new Error('the clone is gone');
       },
+      fetchOrigin: async () => ({ ok: true, upstream: 'upstream-sha' }),
     };
     const { sync } = syncOver(txOf(), repo);
     await expect(sync.syncNow()).rejects.toThrow('the clone is gone');
+  });
+
+  it('syncNow fetches with no lock, and takes the lock only while origin moved since the last sync', async () => {
+    const tx = txOf();
+    const origin = {
+      current: { ok: true, upstream: 'sha-1' } as FetchOriginResult,
+    };
+    const { repo, takes } = repoOf(tx, origin);
+    const { sync, status } = syncOver(tx, repo);
+    expect((await sync.syncNow()).kind).toBe('synced');
+    expect(takes()).toBe(1);
+    // The integration fetched without a second network fetch: the probe already did it.
+    expect(tx.fetch).toHaveBeenCalledWith(expect.anything(), { remote: false });
+    expect(await sync.syncNow()).toStrictEqual({ kind: 'unchanged' });
+    expect(takes()).toBe(1);
+    expect(status.setLastSync).toHaveBeenCalledTimes(2);
+    origin.current = { ok: true, upstream: 'sha-2' };
+    expect((await sync.syncNow()).kind).toBe('synced');
+    expect(takes()).toBe(2);
+  });
+
+  it('a failed origin fetch is a failed sync: its message is the status error, it takes no lock, and nothing else moves', async () => {
+    const tx = txOf();
+    const origin = {
+      current: {
+        ok: false,
+        syncError: { kind: 'failed', message: 'git fetch failed: offline' },
+      } as FetchOriginResult,
+    };
+    const { repo, takes } = repoOf(tx, origin);
+    const { sync, status, guard, trigger } = syncOver(tx, repo);
+    expect(await sync.syncNow()).toStrictEqual({
+      kind: 'failed',
+      message: 'git fetch failed: offline',
+    });
+    expect(takes()).toBe(0);
+    expect(status.setSyncError).toHaveBeenCalledWith(
+      'git fetch failed: offline',
+    );
+    expect(status.setLastSync).not.toHaveBeenCalled();
+    expect(tx.reapply).not.toHaveBeenCalled();
+    expect(guard.invalidate).not.toHaveBeenCalled();
+    expect(trigger).not.toHaveBeenCalled();
+  });
+
+  it('a failed integration is not remembered: the next tick takes the lock and tries again', async () => {
+    const tx = txOf({
+      fetch: vi
+        .fn<SyncTx['fetch']>()
+        .mockResolvedValueOnce({
+          ok: false,
+          syncError: { kind: 'failed', message: 'git fetch failed: busy' },
+        })
+        .mockResolvedValue({
+          ok: true,
+          upstream: 'upstream-sha',
+          reapply: false,
+          change: 'none',
+          paths: [],
+        }),
+    });
+    const { repo, takes } = repoOf(tx);
+    const { sync } = syncOver(tx, repo);
+    expect(await sync.syncNow()).toStrictEqual({
+      kind: 'failed',
+      message: 'git fetch failed: busy',
+    });
+    expect((await sync.syncNow()).kind).toBe('synced');
+    expect(takes()).toBe(2);
+  });
+
+  it('syncLocked fetches over the network by default, as publish needs', async () => {
+    const tx = txOf();
+    const { repo } = repoOf(tx);
+    const { sync } = syncOver(tx, repo);
+    await repo.locked('publish', (held) => sync.syncLocked(held));
+    expect(tx.fetch).toHaveBeenCalledWith(expect.anything(), { remote: true });
   });
 
   it('a failed fetch is a failed sync: its message is the status error, and nothing else moves', async () => {

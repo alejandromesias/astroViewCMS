@@ -50,6 +50,8 @@ function lockedRepo(tx: RepoTx, holders: string[]): Repo {
     mergeBase: async () => 'base',
     revParse: () => Promise.reject(new Error('revParse is not used here')),
     overwrittenSince: async () => new Map(),
+    fetchOrigin: () =>
+      Promise.reject(new Error('fetchOrigin is not used here')),
   };
 }
 
