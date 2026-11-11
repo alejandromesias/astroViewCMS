@@ -227,6 +227,7 @@ export function openRepo({
   // read: no commit, a commit that git does not have, or a failed diff.
   async function upstreamChanges(
     siteCommit: string | null,
+    upstream: string,
   ): Promise<ChangedPath[] | null> {
     if (siteCommit === null) return null;
     try {
@@ -239,7 +240,7 @@ export function openRepo({
         '--name-status',
         '-z',
         '--no-renames',
-        `${siteCommit}...origin/${branch}`,
+        `${siteCommit}...${upstream}`,
         '--',
       ]);
       return parseNameStatus(output, '.');
@@ -449,12 +450,13 @@ export function openRepo({
       try {
         if (fetchFirst) await fetchRemote();
         const upstream = (await git(['rev-parse', `origin/${branch}`])).trim();
-        const reapply = (await mergeBase()) !== upstream;
+        // Every read below uses the pinned `upstream`, so origin moving mid-call cannot mix two tips (2.10c).
+        const reapply = (await mergeBase(upstream)) !== upstream;
         const bundle = await currentBundle(bundles);
         const changes =
           bundle === null
             ? null
-            : await upstreamChanges(bundle.identity.siteCommit);
+            : await upstreamChanges(bundle.identity.siteCommit, upstream);
         const change = classifyChange({
           changes,
           documents: bundle === null ? null : [...bundle.documents.values()],
