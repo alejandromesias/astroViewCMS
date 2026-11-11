@@ -253,6 +253,7 @@ describe('run', () => {
             mediaFile: join(siteDir, 'media.json'),
             cmsOrigin: CMS_ORIGIN,
           },
+          cmsOrigin: CMS_ORIGIN,
           bundle: expect.any(Object) as BundleSource,
           workingCopy: 'repo',
           repo: expect.any(Object) as Repo,

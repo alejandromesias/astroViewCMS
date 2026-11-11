@@ -7,7 +7,7 @@ import {
   bundleFolder,
   removeBundleFolders,
 } from '../../test/helpers/bundle.ts';
-import { makeTestRoot, removeTestRoot } from '../../test/helpers/git.ts';
+import { git, makeTestRoot, removeTestRoot } from '../../test/helpers/git.ts';
 import { saveRepoIn } from '../../test/helpers/repo.ts';
 import { previewSays } from '../../test/helpers/save-context.ts';
 import { type BundleSource, directoryBundleSource } from '../bundle/source.ts';
@@ -228,7 +228,7 @@ describe('PUT /api/changes from a rebinding Host', () => {
       repo: saves,
       save: { config, preview: previewSays() },
     });
-    return { app, siteFolder: state.siteFolder };
+    return { app, siteFolder: state.siteFolder, repoDir: state.repoDir };
   }
 
   // A save that renames the author Ana, over `before` (her file as it is now).
@@ -245,7 +245,7 @@ describe('PUT /api/changes from a rebinding Host', () => {
   }
 
   it('refuses the save with 421 and changes no file', async () => {
-    const { app, siteFolder } = await saveApp();
+    const { app, siteFolder, repoDir } = await saveApp();
     const before = await readFile(join(siteFolder, ANA), 'utf8');
     const response = await app.request('/api/changes', {
       method: 'PUT',
@@ -259,6 +259,8 @@ describe('PUT /api/changes from a rebinding Host', () => {
     expect(response.status).toBe(421);
     expect(await response.json()).toStrictEqual(MISDIRECTED);
     expect(await readFile(join(siteFolder, ANA), 'utf8')).toBe(before);
+    // No file changed anywhere in the repo, not only the one document.
+    expect(await git(repoDir, ['status', '--porcelain'])).toBe('');
   });
 
   it('saves the same body sent to localhost', async () => {

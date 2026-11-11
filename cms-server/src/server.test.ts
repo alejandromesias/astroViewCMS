@@ -54,6 +54,49 @@ describe('startServer', () => {
     }
   });
 
+  it('refuses a rebinding Host and a request with no Host with 421 over HTTP (2.9f)', async () => {
+    const server = await startServer(fakeAppDeps(), 0);
+    try {
+      const { port } = server.address() as AddressInfo;
+      const rebinding = await fetchLocal(
+        `http://127.0.0.1:${port}/api/schema`,
+        { headers: { host: 'localhost.evil.test' } },
+      );
+      expect(rebinding.status).toBe(421);
+      expect(await rebinding.json()).toEqual({
+        error: 'misdirected',
+        message: 'The Host header is not an address of this CMS.',
+      });
+      // Node adds a Host header unless `setHost` is false, so this request has none on the wire.
+      const noHost = await new Promise<{ status: number; body: string }>(
+        (resolve, reject) => {
+          const req = httpRequest(
+            { host: '127.0.0.1', port, path: '/api/schema', setHost: false },
+            (res) => {
+              let body = '';
+              res.setEncoding('utf8');
+              res.on('data', (chunk: string) => {
+                body += chunk;
+              });
+              res.on('end', () =>
+                resolve({ status: res.statusCode ?? 0, body }),
+              );
+            },
+          );
+          req.on('error', reject);
+          req.end();
+        },
+      );
+      expect(noHost.status).toBe(421);
+      expect(JSON.parse(noHost.body)).toEqual({
+        error: 'misdirected',
+        message: 'The Host header is not an address of this CMS.',
+      });
+    } finally {
+      await close(server);
+    }
+  });
+
   it('reads a request body without failing, then answers the app response', async () => {
     const server = await startServer(fakeAppDeps(), 0);
     try {

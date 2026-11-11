@@ -267,6 +267,7 @@ export async function run(
       mediaFile: join(siteDir, 'media.json'),
       cmsOrigin: config.origins.cms,
     },
+    cmsOrigin: config.origins.cms,
     bundle: source,
     // The repo's site folder (repoDir joined with the config's siteDir): where the bundle's document files are.
     workingCopy: repo.siteFolder,

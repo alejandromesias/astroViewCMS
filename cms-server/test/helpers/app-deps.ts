@@ -20,12 +20,14 @@ export function fakeAppDeps(): AppDeps {
       mediaFile: 'unused-media.json',
       cmsOrigin: 'http://cms.localhost:4400',
     },
+    cmsOrigin: 'http://cms.localhost:4400',
   };
 }
 
 /** The app of createApp, where a request with no Host header gets `Host: localhost`. Hono's `app.request` sends none,
  *  and the guard refuses one without (http/guard.ts); a browser or curl always sends one. A test that sets its own
- *  `host` header keeps it. Takes a path or URL string, not a Request. */
+ *  `host` header keeps it. Takes a path or URL string, not a Request, and wraps `app.request` only: `app.fetch` gets
+ *  no default Host, so a test that calls it must set one. */
 export function createTestApp(deps: AppDeps): Hono {
   const app = createApp(deps);
   const request = app.request;

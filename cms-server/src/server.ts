@@ -17,7 +17,9 @@ interface FetchApp {
 
 export function startServer(deps: AppDeps, port: number): Promise<Server> {
   const app: FetchApp = createApp(deps);
-  const server = createServer((req, res) => {
+  // Node answers a request with no Host header 400 before the app sees it. With requireHostHeader off, the app's Host
+  // check answers it 421, as for any other Host (2.9f).
+  const server = createServer({ requireHostHeader: false }, (req, res) => {
     void handle(app, req, res);
   });
   return new Promise((resolve, reject) => {
