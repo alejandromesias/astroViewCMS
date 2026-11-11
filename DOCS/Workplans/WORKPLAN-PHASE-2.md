@@ -1146,6 +1146,14 @@ Steps, in order:
   - Not yet verified: the nightly skip (`gate` on a `schedule` run with nothing outside `DOCS/` changed) and the trend table of the merge job. The first scheduled run will show both.
   - The wave 9 close uses this same run's per-file scores (`cms-server/src/documents/overlay.ts` 97.56, `cms-server/src/preview/preview-url.ts` 90.91, `cms-server/src/sync/sync.ts` 94.83, `cms-server/src/git/sync.ts` 94.23). `cms-server/editor/editor.ts` is not in the Stryker `mutate` list, so it has no score. Wave 9 is not closed here.
 
+#### 2.1t Split the cms-git Stryker group by file — after 2.1s · [ci] · IN REVIEW 2026-11-11 (done when a full run by hand has finished)
+
+- **Why.** In the first full run (2.1s Result) `cms-git` took 22.3 minutes, twice any other shard, and set the length of the run. A folder split does not help: `git/` is one folder and `ops.ts` has 515 of its 1073 mutants (48%; `repo.ts` 281, `exec.ts` 190, `sync.ts` and `mutex.ts` 87).
+- **Change.** A group `cms-git-ops` for `cms-server/src/git/ops.ts` alone (rule before the `cms-git` folder rule in `scripts/lib/stryker-plan.ts`, `stryker.cms-git-ops.config.mjs`, a line in the `mutation-full.yml` matrix: twelve shards). `cms-git` keeps the other four files. Tests and docs list the new group.
+- **Expected.** Each of the two takes about 11 minutes if time follows mutant count; the run then takes as long as the slowest of `cms-git-ops`, `cms-server` and `cms-documents` (about 11 minutes). `ops.test.ts` is 2,183 lines, so `ops.ts` may take more than its share (up to about 14 minutes).
+- **Done when.** The pull request is green and merged, and a full run by hand has finished; its Result records the time of both git shards. If `cms-git-ops` is over 20 minutes, split `ops.ts` no further by file: its tests are the cost, and that is a test-speed task.
+- **Result.** (to fill in after the merge and the full run)
+
 ### 2.2 Format codecs — after 2.1a · ∥ 2.3, 2.1b to 2.1d, 2.0
 
 Design 5.4, D13. Common rules for every codec: a value that equals what was
