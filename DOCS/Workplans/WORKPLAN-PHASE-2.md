@@ -1123,7 +1123,7 @@ Steps, in order:
 - **Rule.** A change that touches only `DOCS/` may go straight to `main` with no ask per commit when it records work or decisions the user asked for (policy of 2026-11-09; until then the user had to ask in that message). `.githooks/pre-push` refuses any push to `main` that changes a file outside `DOCS/`. The rule is in `DOCS/README.md` section 2; changing the exception itself still goes through a PR.
 - **Result (2026-11-08, #27).** The hook is in place. Tested by hand: a docs-only push passes, a mixed push is refused. Follow-up #31 (2026-11-09): the hook diffs with `--no-renames`, so a file moved out of `DOCS/` lists both paths and is refused.
 
-#### 2.1s Fewer and shorter Stryker waits — after 2.1q · [ci] [docs] · IN REVIEW 2026-11-11 (#43; done when the first full run by hand has finished)
+#### 2.1s Fewer and shorter Stryker waits — after 2.1q · [ci] [docs] · DONE 2026-11-11 (#43, merged as `991e9cf`; first full run `43111321045`, see Result)
 
 - **Why.** Measured 2026-11-07 to 2026-11-11 (about 150 runs): `mutation-diff` took about 2 minutes on a pull request (0.5 to 7.4), so a single run was cheap; the cost was in the number of runs (6 to 9 pushes per pull request, each 4 to 9 minutes with `fast` first), and in the nightly `cms-server` shard, which grew from 30 to 60 minutes in three days and set the length of the whole run.
 - **Change.**
@@ -1140,7 +1140,11 @@ Steps, in order:
 - **File ownership.** `.github/workflows/ci.yml`, `.github/workflows/mutation-full.yml`, `scripts/lib/stryker-plan.ts`, `scripts/lib/stryker-timing.ts`, `scripts/stryker-changed.ts` (and their tests), the `stryker.cms-*.config.mjs` files, and the docs named above.
 - **Cost of the parallel jobs (decided 2026-11-11).** With no `needs: fast`, `e2e` and `mutation-diff` also run on a push where `fast` fails: 1 of 19 pull-request runs in the sample (about 5%), roughly 4 minutes of free runner time on a public repo. Cancelling them from a step of `fast` (`gh run cancel`, with `actions: write`) was rejected: it needs a wider token, does nothing on a fork pull request, and can turn the `fast` check into "cancelled" instead of "failed", which hides the real failure. Keeping `needs: fast` would add about 1.5 minutes to every push to save that. Accepted. Revisit if the runs become billed (a private repo) or fast failures pass 20% of pushes.
 - **Renderer shard.** 34 files, the largest group by file count, took 4 to 6 minutes in the four nightly runs of 2026-11-08 to 2026-11-11, so its 120-minute limit has a wide margin.
-- **Result.** (to fill in after the merge and the first full run)
+- **Result (2026-11-11, PR #43 merged as `991e9cf`, on `main` at `34598da`).** First full run by hand, `mutation-full` run `43111321045`, `workflow_dispatch`. Green: `gate` (15 s, ran, since a run by hand always runs), the eleven shards, and `merge` (23 s). Total 23 minutes, not the ~60 minutes estimated from the old `cms-server` shard. Overall 93.60% over 120 files; no failures; 3 files under 80, all listed only: `preview-contract/src/schema.ts` 57.14, `preview-render-server/src/bundle.ts` 45.00, `preview-render-server/src/overlay/errors.ts` 57.14.
+  - Time per shard (rounded, slowest first): `cms-git` 22.3 min, `cms-server` 10.5, `cms-documents` 10.5, `cms-preview` 5.9, `renderer` 5.8, `cms-save` 5.7, `serve` 4.5, `cms-codecs` 4.2, `preview` 1.6, `contract` 0.7, `protocol` 0.5. Shards run in parallel, so the run takes as long as `cms-git`.
+  - Follow-up: `cms-git` is over the 20-minute line, so its split by folder is the next Stryker task (CI-PIPELINE.md section 6). Not built here; it needs its own task.
+  - Not yet verified: the nightly skip (`gate` on a `schedule` run with nothing outside `DOCS/` changed) and the trend table of the merge job. The first scheduled run will show both.
+  - The wave 9 close uses this same run's per-file scores (`cms-server/src/documents/overlay.ts` 97.56, `cms-server/src/preview/preview-url.ts` 90.91, `cms-server/src/sync/sync.ts` 94.83, `cms-server/src/git/sync.ts` 94.23). `cms-server/editor/editor.ts` is not in the Stryker `mutate` list, so it has no score. Wave 9 is not closed here.
 
 ### 2.2 Format codecs — after 2.1a · ∥ 2.3, 2.1b to 2.1d, 2.0
 
