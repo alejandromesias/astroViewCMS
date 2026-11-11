@@ -1148,9 +1148,9 @@ Steps, in order:
 
 #### 2.1t Split the cms-git Stryker group by file — after 2.1s · [ci] · IN REVIEW 2026-11-11 (done when a full run by hand has finished)
 
-- **Why.** In the first full run (2.1s Result) `cms-git` took 22.3 minutes, twice any other shard, and set the length of the run. A folder split does not help: `git/` is one folder and `ops.ts` has 515 of its 1073 mutants (48%; `repo.ts` 281, `exec.ts` 190, `sync.ts` and `mutex.ts` 87).
+- **Why.** In the first full run (2.1s Result) `cms-git` took 22.3 minutes, twice any other shard, and set the length of the run. A folder split does not help: `git/` is one folder and `ops.ts` has 515 of its 1073 mutants (48%; `repo.ts` 281, `exec.ts` 190, `sync.ts` and `mutex.ts` together 87).
 - **Change.** A group `cms-git-ops` for `cms-server/src/git/ops.ts` alone (rule before the `cms-git` folder rule in `scripts/lib/stryker-plan.ts`, `stryker.cms-git-ops.config.mjs`, a line in the `mutation-full.yml` matrix: twelve shards). `cms-git` keeps the other four files. Tests and docs list the new group.
-- **Expected.** Each of the two takes about 11 minutes if time follows mutant count; the run then takes as long as the slowest of `cms-git-ops`, `cms-server` and `cms-documents` (about 11 minutes). `ops.test.ts` is 2,183 lines, so `ops.ts` may take more than its share (up to about 14 minutes).
+- **Expected.** If time follows mutant count: `cms-git-ops` about 10.7 minutes (515/1073 × 22.3) and `cms-git` about 11.6 (558/1073 × 22.3). The run then takes as long as the slowest of `cms-git`, `cms-git-ops`, `cms-server` and `cms-documents`, about 11 to 12 minutes. Time may not follow mutant count (`ops.test.ts` is 2,183 lines), so the real numbers come from the full run.
 - **Done when.** The pull request is green and merged, and a full run by hand has finished; its Result records the time of both git shards. If `cms-git-ops` is over 20 minutes, split `ops.ts` no further by file: its tests are the cost, and that is a test-speed task.
 - **Result.** (to fill in after the merge and the full run)
 
