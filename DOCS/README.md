@@ -15,7 +15,7 @@ and holds the working rules and commands that apply to every phase.
    │
    └─ Workplans/ (steps and tasks, one per phase)
         WORKPLAN-PHASE-0-1.md     phases 0 and 1: closed 2026-10-31, kept as the record
-        WORKPLAN-PHASE-2.md       phase 2: current (58 tasks, with dependencies in the headlines)
+        WORKPLAN-PHASE-2.md       phase 2: current (59 tasks, with dependencies in the headlines)
 
  How the code works today        PREVIEW-RENDER-SERVER.md (the renderer, the bridge, the routes)
  Rules for code and tests        Guidelines/IMPLEMENTATION-RECOMMENDATIONS.md, Guidelines/TESTING-RECOMMENDATIONS.md
