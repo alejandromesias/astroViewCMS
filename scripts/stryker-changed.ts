@@ -6,7 +6,13 @@
 // --base defaults to origin/main. The changed set is the diff from the merge base to HEAD, so commit first:
 // stryker-run.mjs refuses a dirty tree. Each group runs through stryker-run.mjs, never `npx stryker run`.
 import { spawnSync } from 'node:child_process';
-import { readFileSync, rmSync } from 'node:fs';
+import {
+  appendFileSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { GROUP_NAMES, type Plan, planFiles } from './lib/stryker-plan.ts';
@@ -19,6 +25,7 @@ import {
   readWaivers,
   writePlan,
 } from './lib/stryker-reports.ts';
+import { type GroupTiming, renderTimings } from './lib/stryker-timing.ts';
 
 const STRYKER_RUN = fileURLToPath(
   new URL('./stryker-run.mjs', import.meta.url),
@@ -155,10 +162,15 @@ function clean(options: Options): void {
   );
 }
 
-function runGroups(groups: Record<string, string[]>): number {
+// Runs the groups one after another. Each group's time goes to `timings` and to <group>/timing.json beside its report.
+function runGroups(
+  groups: Record<string, string[]>,
+  timings: GroupTiming[],
+): number {
   for (const [group, files] of Object.entries(groups)) {
     const out = join(REPORT_ROOT, group);
     console.log(`\nstryker-changed: group ${group}, ${files.length} file(s)`);
+    const started = Date.now();
     const result = spawnSync(
       process.execPath,
       [STRYKER_RUN, `stryker.${group}.config.mjs`, '--mutate', files.join(',')],
@@ -169,6 +181,14 @@ function runGroups(groups: Record<string, string[]>): number {
         env: { ...process.env, AVC_STRYKER_OUT: out },
       },
     );
+    const timing = {
+      group,
+      files: files.length,
+      seconds: (Date.now() - started) / 1000,
+    };
+    timings.push(timing);
+    mkdirSync(out, { recursive: true });
+    writeFileSync(join(out, 'timing.json'), `${JSON.stringify(timing)}\n`);
     if (result.status !== 0) {
       console.error(
         `stryker-changed: group ${group} failed (exit ${result.status ?? 'signal'})`,
@@ -179,13 +199,24 @@ function runGroups(groups: Record<string, string[]>): number {
   return 0;
 }
 
+// Prints the time per group and adds it to the CI job summary.
+function publishTimings(timings: readonly GroupTiming[]): void {
+  const markdown = renderTimings(timings);
+  if (markdown === '') return;
+  console.log(`\n${markdown}`);
+  const step = process.env.GITHUB_STEP_SUMMARY;
+  if (step !== undefined && step !== '') appendFileSync(step, markdown);
+}
+
 function main(args: readonly string[]): number {
   const options = parseOptions(args);
   const { plan: planned, mergeBase } = plan(options);
   if (!options.run) return 0;
   clean(options);
   writePlan(REPORT_ROOT, { ...planned, base: options.base, mergeBase });
-  const failed = runGroups(planned.groups);
+  const timings: GroupTiming[] = [];
+  const failed = runGroups(planned.groups, timings);
+  publishTimings(timings);
   if (failed !== 0) return failed;
   // A shard leaves the judgement to the merge job of mutation-full.yml.
   if (options.group !== undefined) return 0;

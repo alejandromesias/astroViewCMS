@@ -1,4 +1,4 @@
-# Whole-repo mutation run (WORKPLAN 2.1l), nightly and by hand. One shard per Stryker group; each shard runs every
+# Whole-repo mutation run (WORKPLAN 2.1l and 2.1r), nightly and by hand. One shard per Stryker group; each shard runs every
 # file of its group with that group's config (scripts/lib/stryker-plan.ts). The merge job judges the whole run: it
 # fails under the overall floor of 75 and lists the files under 80. Its summary.json is the per-file baseline.
 name: mutation-full
@@ -12,15 +12,61 @@ permissions:
   contents: read
 
 jobs:
+  # The nightly run is skipped when nothing outside DOCS/ changed on main since the last green run of this
+  # workflow (WORKPLAN 2.1r). A run by hand always runs.
+  gate:
+    name: is there anything new to mutate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Decide
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          run=true
+          if [ "$EVENT" = schedule ]; then
+            last=$(gh run list --workflow mutation-full.yml --status success --limit 1 --json headSha -q '.[0].headSha // ""')
+            if [ -n "$last" ] && git cat-file -e "$last^{commit}" 2>/dev/null && git diff --quiet "$last" HEAD -- . ':!DOCS'; then
+              run=false
+              echo "Nothing outside DOCS/ changed since the last green run ($last): skipped." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
   shard:
     name: mutation ${{ matrix.group }}
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 330
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         # The groups of scripts/lib/stryker-plan.ts. A new group needs a line here too.
-        group: [serve, preview, renderer, protocol, contract, cms-server]
+        group:
+          [
+            serve,
+            preview,
+            renderer,
+            protocol,
+            contract,
+            cms-preview,
+            cms-save,
+            cms-documents,
+            cms-git,
+            cms-codecs,
+            cms-server,
+          ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -46,8 +92,8 @@ jobs:
 
   merge:
     name: whole-run verdict and baseline
-    needs: shard
-    if: always()
+    needs: [gate, shard]
+    if: always() && needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # actions: read lets the trend step download the last runs' baselines (WORKPLAN 2.1p).

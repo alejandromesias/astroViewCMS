@@ -77,7 +77,16 @@ only.
   merge commit once all three are green. For now the user merges the pull
   request; agents report when it is green and leave it open. (Revisit this rule
   to let agents merge.) A wave is a milestone, not a branch: it
-  is closed when `mutation-full` is green, and tagged `wave-<n>-closed`.
+  is closed when `mutation-full` is green, and tagged `wave-<n>-closed`. Start that
+  run by hand when the last pull request of the wave is merged
+  (`gh workflow run mutation-full.yml`); do not wait for the nightly, which skips a
+  night when nothing outside `DOCS/` changed.
+- **Push rarely (since 2026-11-11).** Each push to a pull request branch runs all
+  three checks again (4 to 9 minutes). Run the targeted tests locally first; push
+  when the task is reviewable, then only to fix a red check or answer a review
+  comment, with every known fix in one push. Aim for 2 or 3 pushes per pull
+  request. Do not poll a run in progress; read the result once it is due, and wait
+  for it only after the last push. Details: CI-PIPELINE.md, "How often to push".
 - **Watch the pipeline.** After a push, read `fast`, `e2e` and `mutation-diff`
   with `gh pr checks` or `gh run list`, and fix failures on the branch. Kill or
   classify Stryker survivors. A task is not done while a check is red or
