@@ -71,16 +71,20 @@ export async function validateChanges(
  * origin (a draft's ref) and by `<folder>/<id16>.<format>` (a saved image's project path), the two refs that the
  * renderer looks up (WORKPLAN 2.7b). Two ids with the same 16-character prefix share one path: the first keeps it, the
  * clash is logged, and nothing throws, so that one clash never fails every save of the site.
+ * `keep` takes the 16-character name of an entry (its `revisionOf`) and says whether the entry is mapped; the overlay
+ * maps only the images the bundle lacks (WORKPLAN 2.9e). Every entry is mapped when it is not given.
  */
 export async function mediaMapOf(
   media: MediaFiles,
   folder: string,
   log: Logger,
+  keep: (name: string) => boolean = () => true,
 ): Promise<Record<string, MediaInfo>> {
   const entries = await readMedia(media.mediaFile);
   const map = new Map<string, MediaInfo>();
   const pathOwners = new Map<string, string>();
   for (const [id, measures] of entries) {
+    if (!keep(id.slice(0, 16))) continue;
     const info: MediaInfo = {
       url: `${media.cmsOrigin}/media/staging/${id}.${measures.format}`,
       width: measures.width,

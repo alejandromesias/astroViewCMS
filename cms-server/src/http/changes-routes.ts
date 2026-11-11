@@ -56,7 +56,8 @@ function asksRebuild(body: unknown): boolean {
 }
 
 // A git failure while the changes are read: 500 `changes-unavailable`, as GET /api/documents?key= answers it. Other errors are not caught here.
-function changesUnavailable(c: Context, error: unknown): Response {
+// Exported for GET /api/overlay (2.9e), which reads the changes the same way.
+export function changesUnavailable(c: Context, error: unknown): Response {
   if (!(error instanceof GitError)) throw error;
   return c.json({ error: 'changes-unavailable', message: error.message }, 500);
 }

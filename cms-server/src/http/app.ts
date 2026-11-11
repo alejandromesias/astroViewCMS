@@ -6,6 +6,14 @@ import { registerBundleRoutes } from './bundle-routes.ts';
 import { registerChangeRoutes, type SaveRouteDeps } from './changes-routes.ts';
 import { type EditorRouteDeps, editorRoutes } from './editor-routes.ts';
 import { type MediaRouteDeps, mediaRoutes } from './media.ts';
+import {
+  type OverlayRouteDeps,
+  registerOverlayRoutes,
+} from './overlay-routes.ts';
+import {
+  type PreviewUrlRouteDeps,
+  registerPreviewUrlRoutes,
+} from './preview-url-routes.ts';
 
 // What the routes need from the outside. Each route group adds its own field.
 export interface AppDeps {
@@ -21,6 +29,10 @@ export interface AppDeps {
   readonly save?: SaveRouteDeps | undefined;
   // The preview status that GET /api/status adds beside the bundle (2.9c). Registered with `bundle` and `workingCopy`.
   readonly status?: StatusSource | undefined;
+  // GET /api/overlay (2.9e). Registered with `bundle`, `workingCopy` and `repo`. `mediaFolder` is config.media.folder.
+  readonly overlay?: Pick<OverlayRouteDeps, 'mediaFolder' | 'log'> | undefined;
+  // GET /api/preview-url (2.9e). Registered whenever it is given: the URL needs no bundle.
+  readonly previewUrl?: PreviewUrlRouteDeps | undefined;
 }
 
 // Hono only routes (PHASE-2-DESIGN 4.1): the modules behind the routes don't import Hono.
@@ -48,6 +60,22 @@ export function createApp(deps: AppDeps): Hono {
       media: deps.media,
       save: deps.save,
     });
+  if (
+    deps.bundle !== undefined &&
+    deps.workingCopy !== undefined &&
+    deps.repo !== undefined &&
+    deps.overlay !== undefined
+  )
+    registerOverlayRoutes(app, {
+      source: deps.bundle,
+      repo: deps.repo,
+      siteFolder: deps.workingCopy,
+      media: deps.media,
+      mediaFolder: deps.overlay.mediaFolder,
+      log: deps.overlay.log,
+    });
+  if (deps.previewUrl !== undefined)
+    registerPreviewUrlRoutes(app, deps.previewUrl);
   app.notFound((c) => c.json({ error: 'not_found' }, 404));
   return app;
 }

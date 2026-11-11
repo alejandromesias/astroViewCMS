@@ -265,6 +265,14 @@ describe('run', () => {
             guard: expect.any(Object) as DeleteGuard,
             onRebuild: expect.any(Function) as () => void,
           },
+          overlay: { mediaFolder: 'src/assets/uploads', log: h.log },
+          previewUrl: {
+            origin: PREVIEW_ORIGIN,
+            site: 'sample-site',
+            tokenSecret: SECRETS.previewTokenSecret,
+            warm: expect.any(Function) as () => Promise<void>,
+            log: h.log,
+          },
         },
         4400,
       );

@@ -227,4 +227,25 @@ describe('mediaMapOf', () => {
       { path: `${FOLDER}/${'a'.repeat(16)}.png`, kept: ID_A, skipped: ID_B },
     );
   });
+
+  it('maps only the entries that keep accepts, and gives it the 16-character name of each id', async () => {
+    const folder = await tempWorkingCopy({
+      'media.json': `{"${ID_A}":${entry('png')},"${'b'.repeat(64)}":${entry('webp')}}\n`,
+    });
+    const names: string[] = [];
+    const map = await mediaMapOf(
+      mediaOf(folder),
+      FOLDER,
+      silentLog(),
+      (name) => {
+        names.push(name);
+        return name !== 'a'.repeat(16);
+      },
+    );
+    expect(names).toStrictEqual(['a'.repeat(16), 'b'.repeat(16)]);
+    expect(Object.keys(map)).toStrictEqual([
+      `${MEDIA.cmsOrigin}/media/staging/${'b'.repeat(64)}.webp`,
+      `${FOLDER}/${'b'.repeat(16)}.webp`,
+    ]);
+  });
 });

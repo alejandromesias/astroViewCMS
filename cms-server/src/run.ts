@@ -259,6 +259,16 @@ export async function run(
       guard: createDeleteGuard(),
       onRebuild,
     },
+    // GET /api/overlay: the site's image folder, and the log of a clash (2.9e).
+    overlay: { mediaFolder: config.media.folder, log: deps.logger },
+    // GET /api/preview-url: the preview origin and site, the token secret, and the node's warm-up (2.9e).
+    previewUrl: {
+      origin: config.origins.preview,
+      site: config.site,
+      tokenSecret: secrets.previewTokenSecret,
+      warm: () => preview.warm(),
+      log: deps.logger,
+    },
   };
   const server = await deps.startServer(appDeps, cmsPort);
   const stop = stopOnce(server, supervisor, lifecycle);
