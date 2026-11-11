@@ -34,6 +34,9 @@ describe('isSitePath', () => {
     ['a path with a token already', '/a?preview_token=x'],
     ['a path with a token after another parameter', '/a?x=1&preview_token=x'],
     ['a token inside a fragment', '/a#b?preview_token=x'],
+    ['a token whose name is percent-encoded', '/foo?preview%5Ftoken=bad'],
+    ['a token with no value', '/foo?preview_token'],
+    ['a token with no value after another parameter', '/foo?x=1&preview_token'],
   ])('refuses %s (%j)', (_name, path) => {
     expect(isSitePath(path)).toBe(false);
   });
@@ -41,6 +44,11 @@ describe('isSitePath', () => {
   it.each([
     ['the root', '/'],
     ['a path with a query and a fragment', '/a/b?x=1#y'],
+    [
+      'a parameter whose name only starts with the token name',
+      '/a?preview_tokens=1',
+    ],
+    ['a parameter whose value names the token', '/a?x=preview_token'],
   ])('accepts %s (%j)', (_name, path) => {
     expect(isSitePath(path)).toBe(true);
   });

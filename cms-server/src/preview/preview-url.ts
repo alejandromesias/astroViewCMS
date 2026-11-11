@@ -17,10 +17,23 @@ export const INVALID_PATH_MESSAGE =
 
 /** A path that starts with one slash: not `//` and not `/\`. */
 const SINGLE_SLASH = /^\/(?![\\/])/;
-/** A `preview_token` query parameter anywhere in the path. The test does not stop at `#`, so one inside a fragment is refused too. */
-const TOKEN_IN_QUERY = new RegExp(`[?&]${TOKEN_PARAM}=`);
 /** A percent-encoded backslash, in any case. A decoder turns it into a backslash, so it is refused here too. */
 const ENCODED_BACKSLASH = /%5c/i;
+
+/**
+ * True when a query parameter of the path is `preview_token`, however it is spelled. Each segment after `?` or `&` is read
+ * the way the gate reads it (its first name, decoded, through URLSearchParams), so `preview%5Ftoken=x` and a bare
+ * `preview_token` count too (Codex review, PR 41).
+ */
+function carriesTokenParam(path: string): boolean {
+  return path
+    .split(/[?&]/)
+    .slice(1)
+    .some((segment) => {
+      const [pair] = [...new URLSearchParams(segment)];
+      return pair?.[0] === TOKEN_PARAM;
+    });
+}
 
 /**
  * True for a site path: one leading slash, then a path with no backslash, no encoded backslash and no control character.
@@ -30,7 +43,7 @@ export function isSitePath(path: string): boolean {
   if (!SINGLE_SLASH.test(path)) return false;
   if (path.includes('\\') || ENCODED_BACKSLASH.test(path)) return false;
   // A token the caller put in the path would sit beside ours, and the node's gate needs every token to verify.
-  if (TOKEN_IN_QUERY.test(path)) return false;
+  if (carriesTokenParam(path)) return false;
   return ![...path].some((char) => {
     const code = char.charCodeAt(0);
     return code < 0x20 || code === 0x7f;
