@@ -66,6 +66,14 @@ const DOCUMENTS: Record<string, unknown> = {
     revision: 'r-theme',
     value: {},
   },
+  'broken/no-value': {
+    key: 'broken/no-value',
+    file: 'src/content/broken.json',
+    format: 'json',
+    editable: true,
+    buildTime: false,
+    revision: 'r-broken',
+  },
   'rules/one': {
     key: 'rules/one',
     file: 'src/content/rules.toml',
@@ -314,6 +322,11 @@ describe('on preview:ready', () => {
       () => Response.json({ documents: 'none' }),
       'Could not load the overlay: the answer has the wrong shape',
     ],
+    [
+      'an array',
+      () => Response.json([]),
+      'Could not load the overlay: the answer has the wrong shape',
+    ],
   ])(
     'shows %s of the overlay, and starts without it',
     async (_, answer, message) => {
@@ -325,6 +338,12 @@ describe('on preview:ready', () => {
       // The refusal stays in the status line after the page's first ready.
       expect(without.status().textContent).toBe(
         `${message}. Page ready: /blog`,
+      );
+      expect(without.status().dataset.state).toBe('error');
+      // The priming draft renders at once, so the refusal stays after a render too.
+      without.rendered([]);
+      expect(without.status().textContent).toBe(
+        `${message}. Rendered /blog in 0.3 ms; documents: none`,
       );
       expect(without.status().dataset.state).toBe('error');
     },
@@ -412,6 +431,20 @@ describe('loading documents', () => {
     expect(editor.section('rules/one').textContent).toContain('Shown as built');
     editor.ready();
     expect(editor.lastDraft().documents).toEqual({});
+  });
+
+  it('treats an editable document without a value as a failed load, not as {}', async () => {
+    await editor.open('broken/no-value');
+    expect(
+      editor.section('broken/no-value').querySelector('[data-slot="note"]')!
+        .textContent,
+    ).toBe('Could not load: the answer has the wrong shape');
+    expect(
+      editor
+        .section('broken/no-value')
+        .querySelector('textarea')!
+        .closest('[data-slot="fields"]'),
+    ).toHaveProperty('hidden', true);
   });
 
   it('says why a document could not be loaded, and does not retry it', async () => {

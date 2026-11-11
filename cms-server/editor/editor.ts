@@ -54,6 +54,8 @@ function isEditorDocument(value: unknown): value is EditorDocument {
     typeof info.editable === 'boolean' &&
     typeof info.buildTime === 'boolean' &&
     typeof info.revision === 'string' &&
+    // The server sends `value` for every editable document (bundle-routes.ts 195), so a missing one is a broken answer.
+    (!info.editable || info.value !== undefined) &&
     (info.buildTimeFields === undefined || Array.isArray(info.buildTimeFields))
   );
 }
@@ -288,16 +290,13 @@ export async function startEditor(
 
     if (info?.editable) {
       const markdown = info.format === 'md' || info.format === 'mdx';
-      const raw = (info.value ?? (markdown ? { data: {}, body: '' } : {})) as {
-        data?: unknown;
-        body?: string;
-      };
+      const raw = info.value as { data?: unknown; body?: string };
       view.saved = markdown
         ? {
             value: JSON.stringify(raw.data ?? {}, null, 2),
             body: raw.body ?? '',
           }
-        : { value: JSON.stringify(info.value ?? {}, null, 2), body: '' };
+        : { value: JSON.stringify(info.value, null, 2), body: '' };
 
       // biome-ignore lint/style/noNonNullAssertion: the template and the markup guarantee this element
       view.value = section.querySelector<HTMLTextAreaElement>(
@@ -486,9 +485,10 @@ export async function startEditor(
       else setStatus(`Page ready: ${message.path}`);
       sendDraft();
     } else if (message.type === 'preview:rendered') {
-      setStatus(
-        `Rendered ${message.path} in ${message.renderMs} ms; documents: ${message.documents.join(', ') || 'none'}`,
-      );
+      // The priming draft renders right after ready, so the overlay refusal stays on this line too.
+      const rendered = `Rendered ${message.path} in ${message.renderMs} ms; documents: ${message.documents.join(', ') || 'none'}`;
+      if (overlayProblem) setStatus(`${overlayProblem}. ${rendered}`, 'error');
+      else setStatus(rendered);
       showLimits(message.limits);
       showDocuments(message.documents);
     } else {
