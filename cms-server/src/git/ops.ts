@@ -12,7 +12,10 @@ import {
 } from '../bundle/read.ts';
 import type { BundleStore } from '../bundle/store.ts';
 import type { CmsConfig } from '../config/schema.ts';
-import { changesetWithTombstones } from '../documents/changeset.ts';
+import {
+  type ChangesetRepo,
+  changesetWithTombstones,
+} from '../documents/changeset.ts';
 import { type FileOp, planWrite } from '../documents/plan-write.ts';
 import {
   commitParagraphs,
@@ -165,6 +168,11 @@ export interface Repo {
    * upstream sha. When a key repeats, the newest save (and the last line of it) wins. Read without the lock.
    */
   overwrittenSince(): Promise<ReadonlyMap<string, string>>;
+  /**
+   * A changeset reader whose reads all see the origin tip that is current when this is called (2.10c). A locked save
+   * takes it under the lock, so its changeset cannot mix two tips.
+   */
+  changesetReader(): Promise<ChangesetRepo>;
 }
 
 /** The trailer that a re-apply save writes for each document it overwrote (2.10b). */
@@ -276,6 +284,17 @@ export function openRepo({
       `${upstream}..${WORK}`,
     ]);
     return parseOverwrote(output);
+  }
+
+  // A changeset reader that reads origin's tip once, now, so its reads cannot mix two tips (2.10c). A locked save calls it under the lock.
+  async function changesetReader(): Promise<ChangesetRepo> {
+    const upstream = (await git(['rev-parse', `origin/${branch}`])).trim();
+    return {
+      changedPaths: () => changedPaths(upstream),
+      mergeBase: () => mergeBase(upstream),
+      showAtBytes,
+      overwrittenSince: () => overwrittenSince(upstream),
+    };
   }
 
   // The file operations, trailers and renamed documents of the saved changeset, planned on `upstream` (2.10b, 2.10j).
@@ -568,6 +587,7 @@ export function openRepo({
     mergeBase,
     revParse,
     overwrittenSince,
+    changesetReader,
   };
 }
 

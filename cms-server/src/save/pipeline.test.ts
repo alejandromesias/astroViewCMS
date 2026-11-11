@@ -37,12 +37,26 @@ afterEach(async () => {
   await Promise.all(folders.splice(0).map((folder) => removeTestRoot(folder)));
 });
 
-// A repo whose lock records the holder and runs the work with `tx`. The reads are not used by these tests.
-function lockedRepo(tx: RepoTx, holders: string[]): Repo {
+// A repo whose lock records the holder and runs the work with `tx`. `readers` records the holder that held the lock
+// when the changeset reader was taken ('no lock' when none). The other reads are not used by these tests.
+function lockedRepo(
+  tx: RepoTx,
+  holders: string[],
+  readers: string[] = [],
+): Repo {
+  let held: string | undefined;
   return {
-    locked<T>(holder: string, work: (tx: RepoTx) => Promise<T>): Promise<T> {
+    async locked<T>(
+      holder: string,
+      work: (tx: RepoTx) => Promise<T>,
+    ): Promise<T> {
       holders.push(holder);
-      return work(tx);
+      held = holder;
+      try {
+        return await work(tx);
+      } finally {
+        held = undefined;
+      }
     },
     changedPaths: async () => [],
     showAt: async () => null,
@@ -52,6 +66,15 @@ function lockedRepo(tx: RepoTx, holders: string[]): Repo {
     overwrittenSince: async () => new Map(),
     fetchOrigin: () =>
       Promise.reject(new Error('fetchOrigin is not used here')),
+    changesetReader: async () => {
+      readers.push(held ?? 'no lock');
+      return {
+        changedPaths: async () => [],
+        mergeBase: async () => 'base',
+        showAtBytes: async () => null,
+        overwrittenSince: async () => new Map(),
+      };
+    },
   };
 }
 
@@ -273,6 +296,16 @@ describe('saveChanges', () => {
       status: 200,
       body: { revisions: {}, warnings: [], rebuild: false },
     });
+  });
+
+  it('takes the changeset reader once, under the save lock, so the changeset reads one origin tip', async () => {
+    const readers: string[] = [];
+    await saveChanges(
+      inputOf([], async () => bundleOf([])),
+      lockedRepo(fakeTx(), [], readers),
+      { stages: [() => Promise.resolve(undefined)] },
+    );
+    expect(readers).toStrictEqual(['save']);
   });
 
   it('answers 503 no-bundle, without running a stage, when there is no bundle', async () => {

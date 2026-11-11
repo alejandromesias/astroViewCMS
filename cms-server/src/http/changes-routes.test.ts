@@ -46,6 +46,8 @@ const repo: Repo = {
     path === BLOG_1 ? Buffer.from(OLD) : null,
   overwrittenSince: async () => new Map(),
   fetchOrigin: () => Promise.reject(new Error('fetchOrigin is not used here')),
+  changesetReader: () =>
+    Promise.reject(new Error('changesetReader is not used here')),
   locked: () => Promise.reject(new Error('GET takes no lock')),
   showAt: () => Promise.reject(new Error('GET reads no text')),
 };
@@ -624,6 +626,8 @@ describe('PUT /api/changes', () => {
             exitCode: 128,
           }),
         ),
+      // The save takes its changeset reader under the lock, so the failing read is the reader's.
+      changesetReader: async () => failing,
     };
     const app = new Hono();
     registerChangeRoutes(app, {
