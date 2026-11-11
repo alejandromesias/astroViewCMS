@@ -19,8 +19,8 @@ export type SyncTx = Pick<RepoTx, 'fetch' | 'reapply' | 'revParse'>;
 
 /**
  * What a sync did. `synced`: `cms/work` is upstream plus the saved changes, `tip` is its head, and `renamed` lists the
- * documents upstream renamed in this sync's re-apply (none when there was no re-apply). `failed`: nothing moved, and
- * `message` (redacted) is the status's `syncError`.
+ * documents upstream renamed in this sync's re-apply (none when there was no re-apply). `upstream` is the origin tip this
+ * sync integrated, as read under the lock. `failed`: nothing moved, and `message` (redacted) is the status's `syncError`.
  */
 type SyncOutcome =
   | {
@@ -28,6 +28,7 @@ type SyncOutcome =
       readonly change: SyncChange;
       readonly tip: string;
       readonly renamed: readonly RenamedDocument[];
+      readonly upstream: string;
     }
   | { readonly kind: 'failed'; readonly message: string };
 
@@ -115,7 +116,13 @@ export function createSync({
     if (fetched.change === 'code') trigger('sync-code');
     status.setLastSync(now().toISOString());
     status.setSyncError(null);
-    return { kind: 'synced', change: fetched.change, tip, renamed };
+    return {
+      kind: 'synced',
+      change: fetched.change,
+      tip,
+      renamed,
+      upstream: fetched.upstream,
+    };
   }
 
   async function syncNow(): Promise<SyncNowOutcome> {
@@ -131,7 +138,8 @@ export function createSync({
       const outcome = await repo.locked('sync', (tx) =>
         syncLocked(tx, { remote: false }),
       );
-      if (outcome.kind === 'synced') known = probe.upstream;
+      // The tip the integration read under the lock, which can be newer than the probe's.
+      if (outcome.kind === 'synced') known = outcome.upstream;
       return outcome;
     } catch (error: unknown) {
       if (error instanceof LockTimeoutError) return { kind: 'skipped' };

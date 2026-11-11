@@ -211,8 +211,9 @@ export function openRepo({
     });
 
   // The commit `cms/work` and `origin/<branch>` share. `fetch` compares it with `origin/<branch>` for `reapply`.
-  async function mergeBase(): Promise<string> {
-    return (await git(['merge-base', `origin/${branch}`, WORK])).trim();
+  // A locked caller passes the upstream it pinned, so origin moving between reads cannot mix two tips (2.10c).
+  async function mergeBase(upstream = `origin/${branch}`): Promise<string> {
+    return (await git(['merge-base', upstream, WORK])).trim();
   }
 
   // The full sha that `ref` names. `--verify` makes a missing ref fail rather than print the name back.
@@ -248,13 +249,15 @@ export function openRepo({
   }
 
   // Compares the two commits with the merge base, so upstream's new commits do not show as reversed edits.
-  async function changedPaths(): Promise<ChangedPath[]> {
+  async function changedPaths(
+    upstream = `origin/${branch}`,
+  ): Promise<ChangedPath[]> {
     const output = await git([
       'diff',
       '--name-status',
       '-z',
       '--no-renames',
-      `origin/${branch}...${WORK}`,
+      `${upstream}...${WORK}`,
       '--',
       scope,
     ]);
@@ -262,12 +265,14 @@ export function openRepo({
   }
 
   // Oldest first, so a later line (a newer save) replaces an earlier one in `parseOverwrote`.
-  async function overwrittenSince(): Promise<Map<string, string>> {
+  async function overwrittenSince(
+    upstream = `origin/${branch}`,
+  ): Promise<Map<string, string>> {
     const output = await git([
       'log',
       '--reverse',
       `--format=%(trailers:key=${OVERWROTE_TRAILER},valueonly)`,
-      `origin/${branch}..${WORK}`,
+      `${upstream}..${WORK}`,
     ]);
     return parseOverwrote(output);
   }
@@ -287,13 +292,18 @@ export function openRepo({
       throw new Error(
         `There is no bundle to re-apply the saves on. The saves stay on ${WORK}.`,
       );
-    const older = await overwrittenSince();
+    const older = await overwrittenSince(upstream);
     const { changeset, tombstones } = await changesetWithTombstones({
       bundle,
-      repo: { changedPaths, mergeBase, showAtBytes, overwrittenSince },
+      repo: {
+        changedPaths: () => changedPaths(upstream),
+        mergeBase: () => mergeBase(upstream),
+        showAtBytes,
+        overwrittenSince: () => overwrittenSince(upstream),
+      },
       siteFolder: state.siteFolder,
     });
-    const base = await mergeBase();
+    const base = await mergeBase(upstream);
     // The renames upstream made since the merge base (2.10j). Git's rename detection is on by `-M`, not by config, so a
     // rename is found whatever `diff.renames` says. Repo-wide, so a rename into or out of the site folder shows too.
     const renames = parseRenames(
@@ -345,7 +355,7 @@ export function openRepo({
         `HEAD is on ${head}, not ${WORK}. A re-apply needs ${WORK} checked out.`,
       );
     const oldTip = (await git(['rev-parse', WORK_REF])).trim();
-    const changed = await changedPaths();
+    const changed = await changedPaths(upstream);
     const saves = await plannedSaves(changed, upstream, bundles, collections);
     const dir = join(cmsDir, site, 'tmp', `reapply-${randomUUID()}`);
     await mkdir(dir, { recursive: true });

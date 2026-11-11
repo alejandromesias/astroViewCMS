@@ -198,6 +198,7 @@ describe('syncNow on a real clone (2.10c, both paths of the done-when)', () => {
       change: 'none',
       tip: await fixture.repo.revParse(WORK),
       renamed: [],
+      upstream: await fixture.repo.revParse('origin/main'),
     });
     expect(trigger).not.toHaveBeenCalled();
     expect(status.setLastSync).toHaveBeenCalledWith(NOW_TEXT);
@@ -237,6 +238,7 @@ describe('syncNow on a real clone (2.10c, both paths of the done-when)', () => {
       change: 'content-only',
       tip: await fixture.repo.revParse(WORK),
       renamed: [],
+      upstream: await fixture.repo.revParse('origin/main'),
     });
     expect(trigger).not.toHaveBeenCalled();
     expect(
@@ -290,6 +292,7 @@ describe('syncNow on a real clone (2.10c, both paths of the done-when)', () => {
       change: 'code',
       tip: await fixture.repo.revParse(WORK),
       renamed: [],
+      upstream: await fixture.repo.revParse('origin/main'),
     });
     expect(trigger).toHaveBeenCalledTimes(1);
     expect(trigger).toHaveBeenCalledWith('sync-code');
@@ -382,6 +385,7 @@ describe('the sync routine, with fakes', () => {
       change: 'none',
       tip: 'head-sha',
       renamed: [],
+      upstream: 'upstream-sha',
     });
     expect(takes()).toBe(1);
   });
@@ -398,6 +402,7 @@ describe('the sync routine, with fakes', () => {
       change: 'none',
       tip: 'head-sha',
       renamed: [],
+      upstream: 'upstream-sha',
     });
     expect(takes()).toBe(1);
   });
@@ -428,7 +433,19 @@ describe('the sync routine, with fakes', () => {
   });
 
   it('syncNow fetches with no lock, and takes the lock only while origin moved since the last sync', async () => {
-    const tx = txOf();
+    // The integration reads the tip that origin has, as the probe did.
+    const integrated = { upstream: 'sha-1' };
+    const tx = txOf({
+      fetch: vi.fn(
+        async (): Promise<FetchResult> => ({
+          ok: true,
+          upstream: integrated.upstream,
+          reapply: false,
+          change: 'none',
+          paths: [],
+        }),
+      ),
+    });
     const origin = {
       current: { ok: true, upstream: 'sha-1' } as FetchOriginResult,
     };
@@ -442,8 +459,33 @@ describe('the sync routine, with fakes', () => {
     expect(takes()).toBe(1);
     expect(status.setLastSync).toHaveBeenCalledTimes(2);
     origin.current = { ok: true, upstream: 'sha-2' };
+    integrated.upstream = 'sha-2';
     expect((await sync.syncNow()).kind).toBe('synced');
     expect(takes()).toBe(2);
+  });
+
+  it('remembers the tip the integration read under the lock, not the tip of the probe', async () => {
+    const origin = {
+      current: { ok: true, upstream: 'sha-1' } as FetchOriginResult,
+    };
+    // origin moved from sha-1 (the probe) to sha-2 before the lock: the integration read sha-2.
+    const tx = txOf({
+      fetch: vi.fn(
+        async (): Promise<FetchResult> => ({
+          ok: true,
+          upstream: 'sha-2',
+          reapply: false,
+          change: 'none',
+          paths: [],
+        }),
+      ),
+    });
+    const { repo, takes } = repoOf(tx, origin);
+    const { sync } = syncOver(tx, repo);
+    expect((await sync.syncNow()).kind).toBe('synced');
+    origin.current = { ok: true, upstream: 'sha-2' };
+    expect(await sync.syncNow()).toStrictEqual({ kind: 'unchanged' });
+    expect(takes()).toBe(1);
   });
 
   it('a failed origin fetch is a failed sync: its message is the status error, it takes no lock, and nothing else moves', async () => {
@@ -584,6 +626,7 @@ describe('the sync routine, with fakes', () => {
       change: 'content-only',
       tip: 'reapplied-sha',
       renamed,
+      upstream: 'upstream-sha',
     });
     expect(tx.reapply).toHaveBeenCalledWith('upstream-sha', expect.anything());
     expect(guard.invalidate).toHaveBeenCalledTimes(1);
@@ -618,6 +661,7 @@ describe('the sync routine, with fakes', () => {
       change: 'none',
       tip: 'head-sha',
       renamed: [],
+      upstream: 'upstream-sha',
     });
     expect(tx.revParse).toHaveBeenCalledWith(WORK_REF);
     expect(tx.reapply).not.toHaveBeenCalled();
