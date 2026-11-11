@@ -57,7 +57,7 @@ Rules for running tasks in parallel:
   No local Stryker run is needed; a local run is the exception
   (TESTING-RECOMMENDATIONS.md section 7). Older tasks that say "Stryker run"
   mean this.
-- **Push rarely (since 2026-11-11, 2.1r).** Every push to a pull request branch runs
+- **Push rarely (since 2026-11-11, 2.1s).** Every push to a pull request branch runs
   `fast`, `e2e` and `mutation-diff` again. Run the targeted tests locally, push when
   the task is reviewable, then only to fix a red check or answer a review comment, with
   all known fixes in one push: 2 or 3 pushes per pull request. Do not poll a run in
@@ -1068,7 +1068,7 @@ Steps, in order:
   - `.mutation-waivers.json`: `[{ file, floor, reason, task }]`. The reason names the WORKPLAN task that classified the survivors. It starts empty; an entry is added only when a real run needs one.
   - `scripts/check.ts`: `--mutation` runs the changed-files check, the same as CI, not a whole-repo `npx stryker run`. The whole repo runs as `mutation-full` in CI.
   - Job `mutation-diff` in `ci.yml` (`needs: fast`, `timeout-minutes: 240`, `fetch-depth: 0`): runs `node scripts/stryker-changed.ts --run`, which runs each group and judges the changed set. It uploads `reports/mutation-diff` (14 days). With no changed `src` file it exits green with an empty table; on `main` the changed set is always empty.
-  - `.github/workflows/mutation-full.yml`: `schedule` (nightly 03:17 UTC) and `workflow_dispatch`. A matrix of six shards, one per group (`timeout-minutes: 330`; eleven shards of 120 minutes since 2.1r), each running every file of its group and uploading its reports (90 days). A `merge` job downloads them and runs `stryker-summary.ts --full`: it fails under the overall floor of 75 and lists the files under 80; its `summary.json` is the per-file baseline artifact.
+  - `.github/workflows/mutation-full.yml`: `schedule` (nightly 03:17 UTC) and `workflow_dispatch`. A matrix of six shards, one per group (`timeout-minutes: 330`; eleven shards of 120 minutes since 2.1s), each running every file of its group and uploading its reports (90 days). A `merge` job downloads them and runs `stryker-summary.ts --full`: it fails under the overall floor of 75 and lists the files under 80; its `summary.json` is the per-file baseline artifact.
 - **Verify.** Unit tests in the `scripts` project (74 tests with the 2.1n ones) for the planning rules (`stryker-plan`), the scoring and waiver rules (`stryker-score`), the report reading (`stryker-reports`) and the orchestrator's options (`stryker-changed`). Locally: `node scripts/stryker-changed.ts` prints the groups for a branch with no Stryker run; `node scripts/stryker-changed.ts --all` lists the six groups (108 files at this commit). One local smoke run of the `protocol` group, then `scripts/stryker-summary.ts`, judged the file at 97.22%.
 - **Done when.** Both blocking outcomes are seen on pushed branches (green and red). Each `mutation-full` shard finishes within its limit and produces the baseline artifact. `stryker-run.mjs` uses the shared module. `check.ts --mutation` runs the changed-files check.
 - **File ownership.** `scripts/stryker-changed.ts`, `scripts/stryker-summary.ts`, `scripts/lib/stryker-plan.ts`, `scripts/lib/stryker-score.ts`, `scripts/lib/stryker-reports.ts` (and their tests), `scripts/stryker-run.mjs`, `scripts/lib/link-modules.ts` (the `.bin` symlinks on POSIX), the six triage configs and their Vitest configs (`renderer`, `protocol` and `contract` new), `.mutation-waivers.json`, the `mutation-diff` job in `ci.yml`, `.github/workflows/mutation-full.yml`, `scripts/check.ts` (`--mutation`), `knip.json`.
@@ -1123,7 +1123,7 @@ Steps, in order:
 - **Rule.** A change that touches only `DOCS/` may go straight to `main` with no ask per commit when it records work or decisions the user asked for (policy of 2026-11-09; until then the user had to ask in that message). `.githooks/pre-push` refuses any push to `main` that changes a file outside `DOCS/`. The rule is in `DOCS/README.md` section 2; changing the exception itself still goes through a PR.
 - **Result (2026-11-08, #27).** The hook is in place. Tested by hand: a docs-only push passes, a mixed push is refused. Follow-up #31 (2026-11-09): the hook diffs with `--no-renames`, so a file moved out of `DOCS/` lists both paths and is refused.
 
-#### 2.1r Fewer and shorter Stryker waits — after 2.1q · [ci] [docs] · DONE 2026-11-11 (see Result)
+#### 2.1s Fewer and shorter Stryker waits — after 2.1q · [ci] [docs] · IN REVIEW 2026-11-11 (#43; done when the first full run by hand has finished)
 
 - **Why.** Measured 2026-11-07 to 2026-11-11 (about 150 runs): `mutation-diff` took about 2 minutes on a pull request (0.5 to 7.4), so a single run was cheap; the cost was in the number of runs (6 to 9 pushes per pull request, each 4 to 9 minutes with `fast` first), and in the nightly `cms-server` shard, which grew from 30 to 60 minutes in three days and set the length of the whole run.
 - **Change.**
@@ -1138,6 +1138,8 @@ Steps, in order:
 - **Done when.** The pull request is green and merged, and the first full run by hand has finished with all eleven shards.
 - **Follow-up (after the first run).** Read the group times in the summary. If a group is over 20 minutes, split it by folder (CI-PIPELINE.md section 6). If the sum of the groups is much more than the old 60 minutes of runner time, the groups' dry runs cost too much, and the shared Vitest config of `cms-*` is the place to look. Check two weeks later: pushes per pull request, and how many nightly runs were skipped.
 - **File ownership.** `.github/workflows/ci.yml`, `.github/workflows/mutation-full.yml`, `scripts/lib/stryker-plan.ts`, `scripts/lib/stryker-timing.ts`, `scripts/stryker-changed.ts` (and their tests), the `stryker.cms-*.config.mjs` files, and the docs named above.
+- **Cost of the parallel jobs (decided 2026-11-11).** With no `needs: fast`, `e2e` and `mutation-diff` also run on a push where `fast` fails: 1 of 19 pull-request runs in the sample (about 5%), roughly 4 minutes of free runner time on a public repo. Cancelling them from a step of `fast` (`gh run cancel`, with `actions: write`) was rejected: it needs a wider token, does nothing on a fork pull request, and can turn the `fast` check into "cancelled" instead of "failed", which hides the real failure. Keeping `needs: fast` would add about 1.5 minutes to every push to save that. Accepted. Revisit if the runs become billed (a private repo) or fast failures pass 20% of pushes.
+- **Renderer shard.** 34 files, the largest group by file count, took 4 to 6 minutes in the four nightly runs of 2026-11-08 to 2026-11-11, so its 120-minute limit has a wide margin.
 - **Result.** (to fill in after the merge and the first full run)
 
 ### 2.2 Format codecs — after 2.1a · ∥ 2.3, 2.1b to 2.1d, 2.0

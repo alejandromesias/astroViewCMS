@@ -1,4 +1,4 @@
-# CI (WORKPLAN 2.1k, 2.1l and 2.1r). The three jobs run side by side. Gates: `fast` (the npm run check --fast set), `e2e` (end-to-end and browser
+# CI (WORKPLAN 2.1k, 2.1l and 2.1s). The three jobs run side by side. Gates: `fast` (the npm run check --fast set), `e2e` (end-to-end and browser
 # suites) and `mutation-diff` (Stryker on the files the branch changed). The nightly whole-repo run is
 # mutation-full.yml. Runs on push to main, pull requests and by hand. Read-only token: no secret is needed.
 name: CI
@@ -102,7 +102,7 @@ jobs:
           if-no-files-found: warn
 
   mutation-diff:
-    # No `needs: fast` (WORKPLAN 2.1r): the three gates run side by side, so a push waits for the slowest one.
+    # No `needs: fast` (WORKPLAN 2.1s): the three gates run side by side, so a push waits for the slowest one.
     # Stryker on the source files this branch changed (against origin/main). Blocks when the changed set scores
     # under 75 overall, or a file under 80 unless .mutation-waivers.json lowers its floor (WORKPLAN 2.1l).
     # On main the changed set is empty, so the job passes at once.

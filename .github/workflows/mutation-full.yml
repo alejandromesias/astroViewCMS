@@ -1,4 +1,4 @@
-# Whole-repo mutation run (WORKPLAN 2.1l and 2.1r), nightly and by hand. One shard per Stryker group; each shard runs every
+# Whole-repo mutation run (WORKPLAN 2.1l and 2.1s), nightly and by hand. One shard per Stryker group; each shard runs every
 # file of its group with that group's config (scripts/lib/stryker-plan.ts). The merge job judges the whole run: it
 # fails under the overall floor of 75 and lists the files under 80. Its summary.json is the per-file baseline.
 name: mutation-full
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   # The nightly run is skipped when nothing outside DOCS/ changed on main since the last green run of this
-  # workflow (WORKPLAN 2.1r). A run by hand always runs.
+  # workflow (WORKPLAN 2.1s). A run by hand always runs.
   gate:
     name: is there anything new to mutate
     runs-on: ubuntu-latest
@@ -131,13 +131,16 @@ jobs:
             mkdir -p "reports/trend/$(date -u +%Y-%m-%dT%H-%M)-current"
             cp reports/mutation-diff/summary.json "reports/trend/$(date -u +%Y-%m-%dT%H-%M)-current/"
           fi
-          gh run list --workflow mutation-full.yml --status success --limit 10 \
+          # A night the gate skipped is a successful run with no baseline: look through 30 runs, keep 10.
+          gh run list --workflow mutation-full.yml --status success --limit 30 \
             --json databaseId,createdAt,headSha \
             -q '.[] | "\(.databaseId) \(.createdAt) \(.headSha[0:7])"' > reports/trend/runs.txt
+          kept=0
           while read -r id created sha; do
+            [ "$kept" -ge 10 ] && break
             dir="reports/trend/${created//:/-}-$sha"
             mkdir -p "$dir"
-            gh run download "$id" -n mutation-baseline -D "$dir" </dev/null || rm -rf "$dir"
+            if gh run download "$id" -n mutation-baseline -D "$dir" </dev/null; then kept=$((kept + 1)); else rm -rf "$dir"; fi
           done < reports/trend/runs.txt
           mapfile -t folders < <(find reports/trend -mindepth 1 -maxdepth 1 -type d | sort)
           node scripts/trend.ts "${folders[@]}" >> "$GITHUB_STEP_SUMMARY"

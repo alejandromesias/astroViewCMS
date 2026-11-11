@@ -1,4 +1,4 @@
-// How long each Stryker group took (WORKPLAN 2.1r). stryker-changed.ts measures a run per group; this renders the
+// How long each Stryker group took (WORKPLAN 2.1s). stryker-changed.ts measures a run per group; this renders the
 // numbers as the job-summary table, so a slow group shows up and the groups can be rebalanced.
 
 export interface GroupTiming {

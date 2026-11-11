@@ -3,7 +3,7 @@
 How the checks run on GitHub Actions, which ones block a merge, and how to read
 and extend them. The tools themselves are described in
 [QUALITY-TOOLING.md](QUALITY-TOOLING.md). Built in WORKPLAN-PHASE-2.md, tasks
-2.1k (stage 1), 2.1l (mutation testing) and 2.1r (fewer and shorter waits).
+2.1k (stage 1), 2.1l (mutation testing) and 2.1s (fewer and shorter waits).
 Hardening that is not built yet is in section 8; a proposal that is not built is
 in section 9.
 
@@ -22,10 +22,13 @@ in section 9.
 | `nightly.yml` | nightly 02:37 UTC, by hand | `measure` | memory of one preview process and the listing-route tripwire, printed to artifacts (not a gate, `continue-on-error`) | 45 min |
 | `security.yml` | push to `main`, weekly, by hand | `codeql`, `osv-sarif` | CodeQL for JavaScript and TypeScript; osv-scanner results as SARIF in the Security tab (reports, not gates) | 30 min, 10 min |
 
-- **The three jobs of `ci.yml` run side by side** (since 2026-11-11, 2.1r): `e2e` and
+- **The three jobs of `ci.yml` run side by side** (since 2026-11-11, 2.1s): `e2e` and
   `mutation-diff` do not wait for `fast`, so a push is green after the slowest of the three,
-  not after `fast` plus the slowest. If `fast` fails, the other two still run; read the
-  `fast` log first, since a type error there explains most red runs.
+  not after `fast` plus the slowest. If `fast` fails, the other two still run (about 1 push in 20,
+  roughly 4 free runner minutes); read the `fast` log first. They are not cancelled from a
+  step of `fast`: that needs `actions: write`, does nothing on a fork pull request, and can turn
+  the `fast` check into "cancelled" and hide the failure. Revisit if the repository becomes
+  private (billed minutes) or `fast` fails on more than 1 push in 5.
 - Every workflow has `permissions: contents: read`, uses no secret and runs on
   `pull_request`, never `pull_request_target`. The repo is public.
 - A pull-request run cancels the one it supersedes. Runs on `main` are not
@@ -91,7 +94,7 @@ default `main`). It runs the steps below, with the changed set taken from
    | `cms-codecs` | `cms-server/src/codecs/`, `cms-server/src/schema/` | `stryker.cms-codecs.config.mjs` |
    | `cms-server` | the rest of `cms-server/src/` (`http/`, `config/`, `bundle/`, the top-level files, and any new folder) | `stryker.cms-server.config.mjs` |
 
-   The `cms-server` package is split by folder (2.1r), because the single `cms-server` group had grown
+   The `cms-server` package is split by folder (2.1s), because the single `cms-server` group had grown
    from 30 to 60 minutes in three days and set the length of the whole nightly run. The
    six `cms-*` groups share the Vitest config `vitest.mutation.cms-server.config.ts`. A file counts for
    the first group whose prefix matches, so a new folder under `cms-server/src/` falls into
@@ -135,8 +138,8 @@ Add an entry only when a real run needs one, and review it like code.
 **The nightly run skips quiet nights.** The `gate` job of `mutation-full.yml` compares
 `main` with the commit of the last green `mutation-full` run. When nothing outside
 `DOCS/` differs, the shards and the merge job are skipped and the run's summary
-says so. A skipped night counts as a green run in the run list, so the trend
-table of the merge job can show fewer than 10 real runs.
+says so. A skipped night counts as a green run in the run list; the trend step of
+the merge job looks through the last 30 runs and keeps the 10 newest that have a baseline.
 
 ### How often to push a pull request branch
 
