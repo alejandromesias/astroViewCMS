@@ -101,7 +101,7 @@ Rules for running tasks in parallel:
 | 6 | 2.0j (alone, `[build]`), 2.1h (now also `repo.ts`, before 2.5b), 2.5b, 2.6a, 2.9a, 2.10a, 2.5c (moved here 2026-11-04; starts after 2.10a merges) |
 | 7 | 2.6b, 2.9c, 2.10b, 2.1j (last, alone: it edits `repo.ts` and `ops.ts`) |
 | 8 | 2.7d (seam PR, first), then 2.7b, 2.7c, 2.9d; merge order 2.9d, 2.7c, 2.7b (2.7d, 2.9d, 2.7c and 2.7b merged 2026-11-10; wave closed 2026-11-10, `mutation-full` green at 93.58%, tag `wave-8-closed`) |
-| 9 | 2.9e, 2.10c, 2.11b (2.11b starts at once, since the shapes of 2.9e are fixed; it merges after 2.9e), then 2.9f after 2.9e (Host check, 2026-11-10) |
+| 9 | 2.9e, 2.10c, 2.11b (2.11b starts at once, since the shapes of 2.9e are fixed; it merges after 2.9e), then 2.9f after 2.9e (Host check, 2026-11-10). PRs #41, #39 and #40 merged 2026-11-10 (`10777b0`, `5ea1def`, `3137bd4`; merged in the order #41, #39, #40, each with CI green on its head) |
 | 10 | 2.10d, 2.10g (one merged after the other: both edit `app.ts` and `run.ts`) |
 | 11 | 2.10e, 2.11c, 2.12a |
 | 12 | 2.10f, 2.11d |
@@ -2738,7 +2738,7 @@ Design 4.4, 5.6.
 
 - **Result (2026-11-10, #35, head `5cac165`, merge `bfe33e8`):** `preview/client.ts` holds `createPreviewClient` (`validate`, `warm`) and `PreviewUnavailableError`. The 503 text order is build error, then node error, then the generic text. The 422 list needs at least one error (review fix in `5cac165`: an empty list is no answer, so the save answers 503). Kept as built: the node-error text is "The preview node failed: <error>", and `warm()` also refuses while the node is not ready. The real-node e2e is a second case in `start.e2e.test.ts`: a valid save gets 200, an invalid one gets 422 with the node's errors. It passes 2 of 2.
 
-#### 2.9e Overlay, preview URL, warm-up — after 2.9c, 2.9d, 2.7a, 2.5b
+#### 2.9e Overlay, preview URL, warm-up — after 2.9c, 2.9d, 2.7a, 2.5b · merged as #41 (`10777b0`, 2026-11-10; head `60f1bae`, CI green)
 
 - `GET /api/overlay`: `{ documents, media }`. Documents whose working-copy
   revision differs from the bundle's `documents.json` (deleted ones as
@@ -2764,6 +2764,7 @@ Design 4.4, 5.6.
   5. **Warm-up.** The first `preview-url` of a session (no call in the last 30 minutes; one stamp for the server, clock injected) awaits `warm()`, about 1 s. A failed warm-up is logged and does not fail the route; the stamp is set only after a success.
   6. **Staging files stay after a save** (`save/images.ts` never deletes them), so the `url` of a media entry stays loadable from the preview iframe. Pin it in a test.
   7. **Files.** New route module(s) in `http/`, registered in `app.ts`; `run.ts` passes the token secret, the preview origin and the preview client's `warm`. Mutation floors apply to each changed file.
+- **Result (2026-11-10, PR #41 at `60f1bae`; CI green; merged as `10777b0`).** `documents/overlay.ts` (a read-only document whose file is gone is `null`), `http/overlay-routes.ts`, `http/preview-url-routes.ts`, `preview/preview-url.ts` (`isSitePath`, `previewUrlOf`, the warm-up). The token check reads each query segment the way the gate does (first name, decoded) and cuts the fragment first, because the gate never sees it. Codex review of `3c87366` found the encoded name, the bare `preview_token`, and a name right before `#`; all three are refused. Tests: preview-url and preview-url-routes 37/37; biome and tsc clean; CI green at `60f1bae`. The e2e start file last ran at `7daeea9`; its path has not changed since. Open: `overlay-routes` maps every error to `changes-unavailable` (nit). Not in this task: the Host check (2.9f), so DNS rebinding stays open until it lands.
 
 #### 2.9f Host allowlist on every CMS route — after 2.9e (added 2026-11-10)
 
@@ -2840,7 +2841,7 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
   - **Departures.** (a) `reapply` takes the `BundleStore` as well as the upstream sha, as `fetch` does: the documents of the save come from the bundle. (b) The start-up move updates refs only; the checkout that follows in `ensureRepo` brings the working copy up to `cms/work`. The in-process move uses `reset --hard`, as specified. (c) `openRepo`'s config takes `collections` and `media` as optional; a re-apply without them throws, so the `preview/` build-commit test (not touched) still type-checks. (d) A `cms/work` that is missing at start-up is set to `cms/work-next`, not kept as "neither", so no re-applied save is dropped. (e) A saved document or file that cannot be read makes the re-apply throw, so the sync fails and nothing moves. (f) Written documents are mode 100644.
   - **Calls where the plan was open.** (1) A document the upstream commit lacks is written into an empty text by `planWrite`; a shared file it lacks starts from `[]`, or from `{}` when its base file is keyed. (2) Trailers compare the upstream revision with the base revision: a save that recreates a document upstream deleted, or reformats its file, records an overwrite; a delete of a document upstream already deleted records none. (3) Older trailers are carried over only for documents still in the changeset. (4) A re-apply whose tree equals upstream makes no commit, so its trailers go with it. (5) A crash between `update-ref cms/work-next` and `update-ref cms/work-prev` keeps `cms/work` (the saves are safe) and logs both shas; the next sync re-applies.
 
-#### 2.10c Sync routine and guard recheck — after 2.6b, 2.10b (renamed 2026-11-10)
+#### 2.10c Sync routine and guard recheck — after 2.6b, 2.10b (renamed 2026-11-10) · merged as #40 (`3137bd4`, 2026-11-10; head `daceb31`, CI green)
 
 - After a re-apply, rebuild the reference index and run the delete guard
   over the whole changeset against the new upstream (a developer may have
@@ -2859,6 +2860,8 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
   7. **Files.** A new module (`sync/sync.ts` or `git/sync-routine.ts`; the builder picks), `save/context.ts` and `save/delete-guard.ts` (`invalidate`), `preview/status.ts`, and the shared Markdown-format helper from the wave 8 review. `run.ts` builds `syncNow` for 2.10g and 2.10d to use; nothing calls it in production until they do. Mutation floors apply to each changed file.
   8. **Fetch outside the lock (decided 2026-11-10, after the PR review of #40).** A slow fetch under the lock makes saves answer `503 busy` (the lock waiters give up after 30 s). So `syncNow` fetches first, with no repo lock: `Repo.fetchOrigin()`, one fetch at a time through a fetch line of its own (`git -c gc.auto=0 fetch origin`, so a fetch never starts a repack in the middle of a save). It takes the lock only when `origin/<branch>` differs from the tip that the last successful sync integrated (kept in memory; after a restart the first tick integrates). Under the lock the integration uses `tx.fetch(bundles, { remote: false })`, so the network is not hit twice. An unmoved origin answers `{ kind: 'unchanged' }`, sets `lastSync` and clears `syncError`, and takes no lock. A failed fetch is a failed sync, and the tip is not remembered, so the next tick tries again. `syncLocked` still fetches under the lock by default (`remote` true), because publish (2.10d) fetches under the lock, through the same fetch line.
   9. **No recheck in sync (decided 2026-11-10, after the PR review of #40).** Phase 2 has no production caller for the sync-time recheck: publish (2.10d) calls `recheck`, and sync does not. Reason: a content-only sync clears the index, so the recheck would force a rebuild on each upstream move, and nothing in phase 2 reads a sync-time `referenced-by`. Phase 4 surfaces it in the status after a sync (SYSTEM-DESIGN section 12).
+
+- **Result (2026-11-10, PR #40 at `daceb31`; CI green; merged as `3137bd4`).** `git/ops.ts`: `Repo.fetchOrigin`; the fetch runs under its own mutex (`timeoutMs` 120 s); `tx.fetch` takes a `remote` option; every read of a locked call uses one origin tip (`mergeBase`, `upstreamChanges`), and `changesetReader()` pins origin for a locked save. `sync/sync.ts`: `syncLocked` and `syncNow` (a probe, then the lock only when origin moved); `known` records the tip the integration read under the lock. `save/pipeline.ts` takes the changeset reader under the lock. `run.ts` logs when a sync finds code but the builder is off. **No retry of a failed sync-code build (decided and kept):** the failure shows as `failedCommit` in the status `build` block (`preview/status.ts`); the build is retried on restart or the next origin move, as the lifecycle does. Tests: sync 18/18; ops 103/103, plus the reader test; bundle-routes, changes-routes and pipeline pass; the e2e start file 2/2; typecheck and biome clean. Accepted, not done: GET routes (bundle, changes) read origin live (reads only); no race test inside `tx.fetch` (it needs a seam); six biome organizeImports failures, also on main (separate cleanup). **Required before 2.10g:** a run-level test that calls `syncNow` through `run()`. None exists yet.
 
 #### 2.10d Publish — after 2.10a, 2.10c, 2.9c, 2.9d
 
@@ -3052,7 +3055,7 @@ Design 5.8. This is still a test tool, not the phase 3 editor.
   - `npx biome` failed here ("could not determine executable"); the checks used
     `./node_modules/.bin/biome`.
 
-#### 2.11b Data sources — after 2.11a, 2.4b, 2.7a, 2.9e
+#### 2.11b Data sources — after 2.11a, 2.4b, 2.7a, 2.9e · merged as #39 (`5ea1def`, 2026-11-10; head `95a2be7`, CI green)
 
 - Swap the editor's data calls as in the table of design 5.8: documents from
   `GET /api/documents?key=`, uploads to `POST /api/media`, the initial overlay
@@ -3069,6 +3072,8 @@ Design 5.8. This is still a test tool, not the phase 3 editor.
   4. **Document reshape.** `EditorDocument` is built from the new body, including `editable` and `buildTime`. A document with `editable: false` is shown read-only.
   5. **Errors.** A `400` or `503` from `preview-url` is shown with its `message`, and the iframe is not loaded.
   6. **Tests.** `cms-server/editor/editor.test.ts` (the 2.11a copy) is rewritten against these routes; the original in `preview-render-server/test-editor/` stays until 2.12a. The protocol-mismatch check on `ready` stays and keeps its test.
+
+- **Result (2026-11-10, PR #39 at `95a2be7`; CI green; merged as `5ea1def`).** `cms-server/editor/editor.ts` and `editor.test.ts`, `cms-server/src/editor/page.test.ts`. The overlay refusal stays on the status line through `ready` and through the render. `isEditorDocument` needs a `value` for an editable document, and an object for Markdown, so a `null` Markdown value is refused as a failed load. `isOverlay` refuses arrays. Tests: editor and page 51/51; biome and tsc clean; CI green at `95a2be7`. Not covered: the editor is not run in a browser (happy-dom tests only).
 
 #### 2.11c Save and the changeset list — after 2.11b, 2.5c
 
