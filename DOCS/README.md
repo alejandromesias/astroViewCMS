@@ -43,7 +43,7 @@ first).
 When a phase starts, its items move out of SYSTEM-DESIGN section 12 into its
 design or plan, and section 12 keeps a one-line pointer.
 
-**Current phase: 2** (waves 1 to 8 closed; wave 9 next; the CI setup is done, see CI-PIPELINE.md). Read SYSTEM-DESIGN.md (sections 1 to 6, 9, 11),
+**Current phase: 2** (waves 1 to 9 closed; wave 10 next; the CI setup is done, see CI-PIPELINE.md). Read SYSTEM-DESIGN.md (sections 1 to 6, 9, 11),
 then PHASE-2-DESIGN.md, then WORKPLAN-PHASE-2.md. Older code comments say
 "WORKPLAN task 1.x": those tasks are in WORKPLAN-PHASE-0-1.md.
 
