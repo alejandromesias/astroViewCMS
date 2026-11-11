@@ -18,6 +18,15 @@ const RULES: ReadonlyArray<{ group: string; prefixes: readonly string[] }> = [
   { group: 'renderer', prefixes: ['preview-render-server/src/'] },
   { group: 'protocol', prefixes: ['preview-protocol/src/'] },
   { group: 'contract', prefixes: ['preview-contract/src/'] },
+  // cms-server is split by folder so the nightly run finishes in parallel (WORKPLAN 2.1s). `cms-server` is the rest.
+  { group: 'cms-preview', prefixes: ['cms-server/src/preview/'] },
+  { group: 'cms-save', prefixes: ['cms-server/src/save/'] },
+  { group: 'cms-documents', prefixes: ['cms-server/src/documents/'] },
+  { group: 'cms-git', prefixes: ['cms-server/src/git/'] },
+  {
+    group: 'cms-codecs',
+    prefixes: ['cms-server/src/codecs/', 'cms-server/src/schema/'],
+  },
   { group: 'cms-server', prefixes: ['cms-server/src/'] },
 ];
 

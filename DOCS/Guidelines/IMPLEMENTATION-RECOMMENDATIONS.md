@@ -55,7 +55,7 @@ Mutation testing showed that some code cannot be checked by any test. For exampl
 
 ## 7. How to run a task
 
-Before you start, read [DOCS/README.md](../README.md) section 2 (working rules: one branch and worktree per task, pull request, merge commit, watching the pipeline, no local Stryker) and [CI-PIPELINE.md](CI-PIPELINE.md) (the checks and how to read them). They are the source of truth; this file does not repeat them.
+Before you start, read [DOCS/README.md](../README.md) section 2 (working rules: one branch and worktree per task, pull request, merge commit, push rarely, watching the pipeline, no local Stryker) and [CI-PIPELINE.md](CI-PIPELINE.md) (the checks and how to read them). They are the source of truth; this file does not repeat them.
 
 **Watch every pull request you open.** After you generate a PR, or review a subagent's result for one, call `link_pull_request` with its full URL, then `watch_pull_request`. Keep it watched until it fails, has a review comment, or is ready to merge, and act on that event. Call `unwatch_pull_request` before you hand back. Subagents do not watch; the agent that owns the PR does.
 

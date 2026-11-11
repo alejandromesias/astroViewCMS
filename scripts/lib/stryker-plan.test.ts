@@ -1,5 +1,12 @@
+import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { groupOf, isMutated, planFiles, sourceOf } from './stryker-plan.ts';
+import {
+  GROUP_NAMES,
+  groupOf,
+  isMutated,
+  planFiles,
+  sourceOf,
+} from './stryker-plan.ts';
 
 // The base config's `mutate` list, as stryker.config.json has it.
 const MUTATE = [
@@ -24,7 +31,14 @@ describe('groupOf', () => {
     ['preview-render-server/src/render/envelope.ts', 'renderer'],
     ['preview-protocol/src/index.ts', 'protocol'],
     ['preview-contract/src/revision.ts', 'contract'],
-    ['cms-server/src/git/repo.ts', 'cms-server'],
+    ['cms-server/src/git/repo.ts', 'cms-git'],
+    ['cms-server/src/preview/supervisor.ts', 'cms-preview'],
+    ['cms-server/src/save/write.ts', 'cms-save'],
+    ['cms-server/src/documents/paths.ts', 'cms-documents'],
+    ['cms-server/src/codecs/yaml.ts', 'cms-codecs'],
+    ['cms-server/src/schema/walk.ts', 'cms-codecs'],
+    ['cms-server/src/http/changes-routes.ts', 'cms-server'],
+    ['cms-server/src/run.ts', 'cms-server'],
   ])('puts %s in group %s', (file, group) => {
     expect(groupOf(file)).toBe(group);
   });
@@ -39,6 +53,35 @@ describe('groupOf', () => {
     expect(groupOf('preview-render-server/src/serve-extra/x.ts')).toBe(
       'renderer',
     );
+  });
+});
+
+describe('the cms-server groups', () => {
+  it('cover every folder of cms-server/src, so a new folder lands in the rest group and not nowhere', () => {
+    expect(GROUP_NAMES).toEqual([
+      'serve',
+      'preview',
+      'renderer',
+      'protocol',
+      'contract',
+      'cms-preview',
+      'cms-save',
+      'cms-documents',
+      'cms-git',
+      'cms-codecs',
+      'cms-server',
+    ]);
+    expect(groupOf('cms-server/src/brand-new/x.ts')).toBe('cms-server');
+  });
+
+  it('has a Stryker config for every group', () => {
+    for (const group of GROUP_NAMES) {
+      expect(
+        existsSync(
+          new URL(`../../stryker.${group}.config.mjs`, import.meta.url),
+        ),
+      ).toBe(true);
+    }
   });
 });
 
@@ -105,7 +148,7 @@ describe('planFiles', () => {
     expect(plan).toEqual({
       groups: {
         serve: ['preview-render-server/src/serve/static.ts'],
-        'cms-server': ['cms-server/src/git/repo.ts'],
+        'cms-git': ['cms-server/src/git/repo.ts'],
       },
       dropped: [
         'DOCS/WORKPLAN-PHASE-2.md',
