@@ -13,7 +13,7 @@ import type { SyncNowOutcome } from './sync.ts';
 export const SESSION_MS = 5 * 60 * 1000;
 
 /** The longest delay between two syncs while they fail, in milliseconds (2.10g item 3). */
-export const MAX_BACKOFF_MS = 10 * 60 * 1000;
+const MAX_BACKOFF_MS = 10 * 60 * 1000;
 
 /** The parts of the loop: the sync, the status, the trigger, the node check, the interval and the clock. */
 export interface PollDeps {
