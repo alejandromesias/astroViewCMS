@@ -18,12 +18,12 @@ import {
   removeTestRoot,
 } from '../../test/helpers/git.ts';
 import { saveRepoIn, silentLog } from '../../test/helpers/repo.ts';
-import { previewSays } from '../../test/helpers/save-context.ts';
 import { directoryBundleSource } from '../bundle/source.ts';
 import { createBundleStore } from '../bundle/store.ts';
 import { type ExecFn, realExec } from '../git/exec.ts';
 import { openRepo, type Repo } from '../git/ops.ts';
 import { createStatus } from '../preview/status.ts';
+import type { PreviewClient } from '../save/context.ts';
 import { createDeleteGuard } from '../save/delete-guard.ts';
 import { createPublish, type PublishAnswer } from './publish.ts';
 import { createSync } from './sync.ts';
@@ -63,6 +63,8 @@ interface Rig {
   readonly remoteHead: () => Promise<string>;
   readonly remoteText: (path: string) => Promise<string>;
   readonly remoteLog: () => Promise<string[]>;
+  /** The rebuilds the saves asked for, in order, and whether each was asked for while its save still held the repo lock. */
+  readonly rebuilds: { readonly insideLock: boolean }[];
 }
 
 interface RigOptions {
@@ -72,6 +74,8 @@ interface RigOptions {
   readonly remoteHook?: string;
   /** What the wait for the preview's builds does, with the repo lock released. */
   readonly onWait?: (repo: Repo) => Promise<void>;
+  /** The answer of the preview node to a save's validate (valid by default). */
+  readonly validate?: PreviewClient['validate'];
 }
 
 async function rigOf(options: RigOptions = {}): Promise<Rig> {
@@ -123,16 +127,40 @@ async function rigOf(options: RigOptions = {}): Promise<Rig> {
     }),
     changedPaths: () => repo.changedPaths(),
   });
+  // Every call of the repo goes through here, which counts the calls whose work is under way: that is the lock held.
+  let underLock = 0;
+  const observed: Repo = {
+    ...repo,
+    locked: (holder, work) =>
+      repo.locked(holder, async (tx) => {
+        underLock += 1;
+        try {
+          return await work(tx);
+        } finally {
+          underLock -= 1;
+        }
+      }),
+  };
+  // A rebuild that a save asks for counts as under way for the publish, as the lifecycle's trigger does (it counts at once).
+  const rebuilds: { insideLock: boolean }[] = [];
   const trigger = vi.fn();
-  const sync = createSync({ repo, bundles, guard, status, trigger });
+  const sync = createSync({
+    repo: observed,
+    bundles,
+    guard,
+    status,
+    trigger,
+  });
   const media = {
     stagingDir: join(root, 'staging'),
     mediaFile: join(root, 'media.json'),
     cmsOrigin: 'http://cms.localhost:4400',
   };
-  const preview = previewSays();
+  const preview: PreviewClient = {
+    validate: options.validate ?? (async () => []),
+  };
   const publish = createPublish({
-    repo,
+    repo: observed,
     bundles,
     siteFolder: state.siteFolder,
     config,
@@ -142,7 +170,7 @@ async function rigOf(options: RigOptions = {}): Promise<Rig> {
     syncLocked: sync.syncLocked,
     status,
     builds: {
-      busy: () => false,
+      busy: () => rebuilds.length > 0,
       waitForIdle: async () => {
         await options.onWait?.(repo);
         return true;
@@ -157,8 +185,15 @@ async function rigOf(options: RigOptions = {}): Promise<Rig> {
     media,
     bundle: source,
     workingCopy: state.siteFolder,
-    repo,
-    save: { config, preview, guard },
+    repo: observed,
+    save: {
+      config,
+      preview,
+      guard,
+      onRebuild: () => {
+        rebuilds.push({ insideLock: underLock > 0 });
+      },
+    },
   });
   const devClone = await cloneRemote(remote, join(root, 'dev'));
   const seed = (await git(remote, ['rev-parse', 'main'])).trim();
@@ -181,6 +216,7 @@ async function rigOf(options: RigOptions = {}): Promise<Rig> {
     status,
     guard,
     devClone,
+    rebuilds,
     async dev(files, message) {
       await git(devClone, ['fetch', 'origin']);
       await git(devClone, ['reset', '--hard', 'origin/main']);
@@ -576,6 +612,91 @@ describe('publish when the remote moves during the push (R3, R4)', () => {
       state: 'idle',
       error: null,
     });
+  });
+});
+
+describe('publish queued behind a save that asks for a rebuild', () => {
+  const CONFIG = 'src/config/config.json';
+
+  // A promise the test settles by hand.
+  function deferred(): { promise: Promise<void>; resolve: () => void } {
+    let resolve: () => void = () => {};
+    const promise = new Promise<void>((done) => {
+      resolve = done;
+    });
+    return { promise, resolve };
+  }
+
+  it('answers 503 build-in-progress and pushes nothing: the rebuild is under way before the save lets go of the lock', async () => {
+    const reachedWait = deferred();
+    const releaseWait = deferred();
+    const validating = deferred();
+    const holdSave = deferred();
+    let gated = false;
+    const rig = await rigOf({
+      onWait: async () => {
+        reachedWait.resolve();
+        await releaseWait.promise;
+      },
+      validate: async () => {
+        if (gated) {
+          validating.resolve();
+          await holdSave.promise;
+        }
+        return [];
+      },
+    });
+    await saveAna(rig, 'Ana T.');
+    gated = true;
+    const publishing = rig.publish();
+    // The publish has synced, released the lock, and waits for the builds.
+    await reachedWait.promise;
+    const before = await readFile(join(rig.siteFolder, CONFIG), 'utf8');
+    const config = JSON.parse(before);
+    const saving = rig.put({
+      changes: [
+        {
+          document: 'data:src/config/config.json',
+          baseRevision: revisionOf(before),
+          data: {
+            ...config,
+            site: { ...config.site, base_url: 'https://elsewhere.example' },
+          },
+        },
+      ],
+    });
+    // The save holds the lock while the node checks it. The publish is let go, and queues for its second lock.
+    await validating.promise;
+    releaseWait.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    holdSave.resolve();
+    const saved = await saving;
+    expect(saved.status).toBe(200);
+    expect((await saved.json()).rebuild).toBe(true);
+    const answer = await publishing;
+    expect(answer).toMatchObject({
+      status: 503,
+      body: { error: 'build-in-progress' },
+    });
+    expect(rig.pushes()).toBe(0);
+    expect(await rig.remoteHead()).toBe(rig.seed);
+    // The save asked for its rebuild once, and while it still held the lock.
+    expect(rig.rebuilds).toStrictEqual([{ insideLock: true }]);
+    // Both saves are kept on cms/work, and the publish status is idle.
+    await expect(rig.repo.changedPaths()).resolves.toStrictEqual([
+      { path: CONFIG, status: 'modified' },
+      { path: ANA, status: 'modified' },
+    ]);
+    expect((await rig.status.snapshot()).publish).toStrictEqual({
+      state: 'idle',
+      error: null,
+    });
+  });
+
+  it('a save that changes no build-time field asks for no rebuild', async () => {
+    const rig = await rigOf();
+    await saveAna(rig, 'Ana T.');
+    expect(rig.rebuilds).toStrictEqual([]);
   });
 });
 

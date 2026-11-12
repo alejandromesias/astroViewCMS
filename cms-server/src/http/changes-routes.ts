@@ -12,7 +12,11 @@ import type { Repo } from '../git/ops.ts';
 import { type Logger, logger } from '../log.ts';
 import { parseSaveBody } from '../save/body.ts';
 import { busyStop } from '../save/busy.ts';
-import type { DeleteGuard, PreviewClient } from '../save/context.ts';
+import type {
+  AfterCommitHook,
+  DeleteGuard,
+  PreviewClient,
+} from '../save/context.ts';
 import { createDeleteGuard } from '../save/delete-guard.ts';
 import { saveChanges } from '../save/pipeline.ts';
 import { BodyTooLargeError, readBody } from './body.ts';
@@ -29,7 +33,11 @@ export interface SaveRouteDeps {
   readonly preview: PreviewClient;
   readonly log?: Logger;
   readonly guard?: DeleteGuard | undefined;
-  /** Called after a 200 save whose body asks for a rebuild (`rebuild: true`), so the preview is built again (2.9c). Not awaited. */
+  /**
+   * Called for a save that asks for a rebuild (`rebuild: true`), so the preview is built again (2.9c). It runs after the
+   * save's commit and still under the repo lock (an after-commit hook), so a publish queued for the lock sees the build
+   * as started (2.10d). Not awaited.
+   */
   readonly onRebuild?: (() => void) | undefined;
 }
 
@@ -41,16 +49,6 @@ export interface ChangeRouteDeps {
   readonly siteFolder: string;
   readonly media: MediaRouteDeps;
   readonly save?: SaveRouteDeps | undefined;
-}
-
-// True when a save answer's body asks for a rebuild: its `rebuild` flag is true.
-function asksRebuild(body: unknown): boolean {
-  return (
-    typeof body === 'object' &&
-    body !== null &&
-    'rebuild' in body &&
-    body.rebuild === true
-  );
 }
 
 // A git failure while the changes are read: 500 `changes-unavailable`, as GET /api/documents?key= answers it. Other errors are not caught here.
@@ -83,6 +81,10 @@ export function registerChangeRoutes(app: Hono, deps: ChangeRouteDeps): void {
     const log = save.log ?? logger;
     // One guard for the app: its reference index is built once per bundle, and kept across saves.
     const guard = save.guard ?? createDeleteGuard();
+    // Under the save's lock, after the commit, so the build is under way by the time a queued publish gets the lock.
+    const rebuildAfterCommit: AfterCommitHook = async (ctx) => {
+      if (ctx.rebuild) save.onRebuild?.();
+    };
     app.put('/api/changes', async (c) => {
       const request = c.req.raw;
       const rejection = rejectUnlessContentType(request, JSON_CONTENT_TYPE);
@@ -117,12 +119,10 @@ export function registerChangeRoutes(app: Hono, deps: ChangeRouteDeps): void {
             media: deps.media,
             log,
             guard,
+            afterCommit: [rebuildAfterCommit],
           },
           deps.repo,
         );
-        // A save that changed a build-time field asks for a rebuild. The answer does not wait for the build.
-        if (answer.status === 200 && asksRebuild(answer.body))
-          save.onRebuild?.();
         return c.json(answer.body, answer.status);
       } catch (error: unknown) {
         // A lock that stayed busy for 30 s is 503 busy (2.10d); the save did not start.

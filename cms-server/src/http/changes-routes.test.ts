@@ -555,6 +555,21 @@ describe('PUT /api/changes', () => {
     expect(asked).toStrictEqual(['rebuild']);
   });
 
+  it('does not call onRebuild for a save that changes no build-time field', async () => {
+    const asked: string[] = [];
+    const { app, siteFolder } = await saveApp(
+      previewSays(),
+      undefined,
+      undefined,
+      () => asked.push('rebuild'),
+    );
+    const before = await readFile(join(siteFolder, ANA), 'utf8');
+    const res = await put(app, anaUpdate(before, 'Ana T.'));
+    expect(res.status).toBe(200);
+    expect((await res.json()).rebuild).toBe(false);
+    expect(asked).toStrictEqual([]);
+  });
+
   it('does not call onRebuild for a save that answers 400', async () => {
     const asked: string[] = [];
     const { app } = await saveApp(previewSays(), undefined, undefined, () =>
