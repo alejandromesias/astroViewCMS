@@ -22,6 +22,8 @@ const RULES: ReadonlyArray<{ group: string; prefixes: readonly string[] }> = [
   { group: 'cms-preview', prefixes: ['cms-server/src/preview/'] },
   { group: 'cms-save', prefixes: ['cms-server/src/save/'] },
   { group: 'cms-documents', prefixes: ['cms-server/src/documents/'] },
+  // ops.ts is about half of the git mutants, so it is a group of its own (WORKPLAN 2.1t). Before the folder rule.
+  { group: 'cms-git-ops', prefixes: ['cms-server/src/git/ops.ts'] },
   { group: 'cms-git', prefixes: ['cms-server/src/git/'] },
   {
     group: 'cms-codecs',

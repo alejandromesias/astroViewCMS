@@ -50,7 +50,7 @@ tests for it; the full unit suite is for a person running the checks.
 | Budget tests | bridge size, render latency, memory growth | tests | gate | local `--e2e`, CI `e2e` |
 | Browser tests | the preview in a real Chromium: hydration, morphing, styles, editor origins | `preview-render-server/vitest.browser.config.ts` | gate | local `--e2e`, CI `e2e` |
 | Memory metric | rss and private memory of one preview process, idle, after warm-up, after renders | `scripts/measure-memory.mjs` | neither (a number to record) | local |
-| Stryker | whether the tests catch changes to the code | `stryker.config.json`, `stryker.<group>.config.mjs`, `.mutation-waivers.json` | gate (75 changed set, 80 per changed file) | CI `mutation-diff` (in parallel with `fast` and `e2e`), CI `mutation-full` (11 shards, skipped on a quiet night), CI `mutation-branch` (by hand); local only as an exception |
+| Stryker | whether the tests catch changes to the code | `stryker.config.json`, `stryker.<group>.config.mjs`, `.mutation-waivers.json` | gate (75 changed set, 80 per changed file) | CI `mutation-diff` (in parallel with `fast` and `e2e`), CI `mutation-full` (12 shards, skipped on a quiet night), CI `mutation-branch` (by hand); local only as an exception |
 
 "Gate" means a failure should stop a change from landing (and fails the
 build in CI; see [CI-PIPELINE.md](CI-PIPELINE.md)). "Report" means the output needs a human reading it.
@@ -371,7 +371,7 @@ rules that came from it:
 4. **Agents.** Builder briefs for agents that may run Stryker carry the same rule. Agents that
    edit code run with `isolation: "worktree"`, but a Stryker run still goes through the script.
 
-Configs: one per group (`stryker.<group>.config.mjs`, groups in CI-PIPELINE.md section 3; `cms-server` is six groups by folder since 2.1s). Output: `reports/stryker-runs/<stamp>/`
+Configs: one per group (`stryker.<group>.config.mjs`, groups in CI-PIPELINE.md section 3; `cms-server` is seven groups (six by folder or file, plus the rest) since 2.1s and 2.1t). Output: `reports/stryker-runs/<stamp>/`
 (`run.json` has the config, arguments and `HEAD`), plus the console output. Each run starts
 from an empty incremental file, so the accumulated `reports/stryker-triage-*.json` files are
 not updated. `--mutate` is required; the whole repo runs in CI as `mutation-full`.
