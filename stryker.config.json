@@ -10,6 +10,8 @@
     "cms-server/src/**/*.ts",
     "!cms-server/src/**/*.test.ts",
     "!cms-server/src/main.ts",
+    "cms-server/editor/**/*.ts",
+    "!cms-server/editor/**/*.test.ts",
     "preview-render-server/src/**/*.ts",
     "!preview-render-server/src/**/*.test.ts",
     "!preview-render-server/src/**/*.d.ts",

@@ -16,6 +16,8 @@ const MUTATE = [
   '!preview-protocol/src/**/*.test.ts',
   'cms-server/src/**/*.ts',
   '!cms-server/src/**/*.test.ts',
+  'cms-server/editor/**/*.ts',
+  '!cms-server/editor/**/*.test.ts',
   'preview-render-server/src/**/*.ts',
   '!preview-render-server/src/**/*.test.ts',
   '!preview-render-server/src/**/*.d.ts',
@@ -39,6 +41,7 @@ describe('groupOf', () => {
     ['cms-server/src/schema/walk.ts', 'cms-codecs'],
     ['cms-server/src/http/changes-routes.ts', 'cms-server'],
     ['cms-server/src/run.ts', 'cms-server'],
+    ['cms-server/editor/editor.ts', 'cms-editor'],
   ])('puts %s in group %s', (file, group) => {
     expect(groupOf(file)).toBe(group);
   });
@@ -70,8 +73,10 @@ describe('the cms-server groups', () => {
       'cms-git',
       'cms-codecs',
       'cms-server',
+      'cms-editor',
     ]);
     expect(groupOf('cms-server/src/brand-new/x.ts')).toBe('cms-server');
+    expect(groupOf('cms-server/editor/brand-new.ts')).toBe('cms-editor');
   });
 
   it('has a Stryker config for every group', () => {
