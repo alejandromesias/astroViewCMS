@@ -24,6 +24,7 @@ import type { SweepOptions } from './preview/sweep.ts';
 import { describeError, parseArgs, portOf, type RunDeps, run } from './run.ts';
 import type { DeleteGuard } from './save/context.ts';
 import { startServer as listen } from './server.ts';
+import type { PublishAnswer } from './sync/publish.ts';
 
 const USAGE = 'Usage: node src/main.ts [config-file] [--bundle <folder>]';
 const CMS_ORIGIN = 'http://127.0.0.1:4400';
@@ -267,6 +268,9 @@ describe('run', () => {
             guard: expect.any(Object) as DeleteGuard,
             onRebuild: expect.any(Function) as () => void,
           },
+          publish: {
+            publish: expect.any(Function) as () => Promise<PublishAnswer>,
+          },
           overlay: { mediaFolder: 'src/assets/uploads', log: h.log },
           previewUrl: {
             origin: PREVIEW_ORIGIN,
@@ -328,6 +332,38 @@ describe('run', () => {
             },
           ),
         );
+      } finally {
+        await running.stop();
+      }
+    } finally {
+      await removeTestRoot(root);
+    }
+  });
+
+  it('wires publish: it syncs under the repo lock first, so a clone git cannot read answers 502 sync-failed and the status says failed (2.10d)', async () => {
+    const root = await makeTestRoot();
+    try {
+      const bundleDir = join(root, 'build');
+      await cp(FIXTURE_BUNDLE, join(bundleDir, 'manifest'), {
+        recursive: true,
+      });
+      const h = harness();
+      const running = await run(
+        ['--bundle', bundleDir, join(root, 'cms.config.ts')],
+        {},
+        { ...h.deps, directoryBundleSource },
+      );
+      try {
+        const appDeps = vi.mocked(h.deps.startServer).mock.calls[0]?.[0];
+        const answer = await appDeps?.publish?.publish();
+        expect(answer?.status).toBe(502);
+        expect(answer).toMatchObject({ body: { error: 'sync-failed' } });
+        const snapshot = await appDeps?.status?.snapshot();
+        expect(snapshot?.publish).toStrictEqual({
+          state: 'failed',
+          error: (answer?.body as { message: string } | undefined)?.message,
+        });
+        expect(snapshot?.syncError).not.toBeNull();
       } finally {
         await running.stop();
       }

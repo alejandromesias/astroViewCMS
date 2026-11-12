@@ -34,6 +34,7 @@ import {
   runGit,
 } from './exec.ts';
 import { createMutex, type Mutex } from './mutex.ts';
+import { isPushRace, type PushResult } from './push.ts';
 import {
   cloneEnv,
   moveWork,
@@ -142,6 +143,27 @@ export interface RepoTx {
   restore(paths: readonly string[]): Promise<void>;
   /** The full sha that `ref` names (`git rev-parse --verify`). A missing ref throws. The trigger reads `cms/work` this way under the lock (2.9c-B). */
   revParse(ref: string): Promise<string>;
+  /**
+   * Whether the tree of `cms/work` differs from the tree of the commit it sits on (the merge base with
+   * `origin/<branch>`), which is what a publish would push (2.10d). After a sync that base is the origin tip, so a save
+   * that was later reverted to the upstream values counts as no change.
+   */
+  hasSavedChanges(): Promise<boolean>;
+  /**
+   * The squash of a publish (2.10d): one commit with `message`, the tree of `cms/work`, and the merge base of `cms/work`
+   * and `origin/<branch>` as its only parent. It is built with plumbing, so no branch, index or working copy changes, and
+   * the author is the clone's identity (`git.author`). Returns its sha, or `null` when there are no saved changes. The
+   * parent is the commit `cms/work` was re-applied on, not the ref's current tip: if a fetch moved the ref since, the
+   * push is refused as a non-fast-forward instead of undoing upstream's change.
+   */
+  squash(message: string): Promise<string | null>;
+  /**
+   * Pushes `commit` to `refs/heads/<branch>` of `origin`, never forced (2.10d). A refusal because the remote moved is
+   * `race: true`; any other failure is `race: false`. Both carry git's redacted message. Never throws for a git failure.
+   */
+  push(commit: string): Promise<PushResult>;
+  /** Moves `cms/work` and the working copy to `commit` (`reset --hard`), once a publish has pushed it (2.10d). `cms/work` must be checked out. */
+  resetWork(commit: string): Promise<void>;
 }
 
 /** The repo operations of one start. */
@@ -461,9 +483,55 @@ export function openRepo({
       git(['fetch', '--no-auto-gc', '--no-auto-maintenance', 'origin']),
     );
 
+  // The tree of `cms/work` and the tree of the commit it sits on (the merge base with origin), and that commit.
+  async function publishTrees(): Promise<{
+    base: string;
+    tree: string;
+    baseTree: string;
+  }> {
+    const base = await mergeBase();
+    const tree = (await git(['rev-parse', `${WORK_REF}^{tree}`])).trim();
+    const baseTree = (await git(['rev-parse', `${base}^{tree}`])).trim();
+    return { base, tree, baseTree };
+  }
+
   const tx: RepoTx = {
     reapply,
     revParse,
+    async hasSavedChanges() {
+      const { tree, baseTree } = await publishTrees();
+      return tree !== baseTree;
+    },
+    async squash(message) {
+      const { base, tree, baseTree } = await publishTrees();
+      if (tree === baseTree) return null;
+      return (
+        await git(['commit-tree', tree, '-p', base, '-m', message])
+      ).trim();
+    },
+    // `origin`, by name, so git updates `origin/<branch>` too. No `+` and no `--force`: a moved remote is refused.
+    async push(commit) {
+      assertRef(commit);
+      try {
+        await git(['push', 'origin', `${commit}:refs/heads/${branch}`]);
+        return { ok: true };
+      } catch (error: unknown) {
+        return {
+          ok: false,
+          race: error instanceof GitError && isPushRace(error.stderr),
+          message: syncErrorOf(error, remote).message,
+        };
+      }
+    },
+    async resetWork(commit) {
+      assertRef(commit);
+      const head = (await git(['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
+      if (head !== WORK)
+        throw new Error(
+          `HEAD is on ${head}, not ${WORK}. A publish needs ${WORK} checked out.`,
+        );
+      await git(['reset', '--hard', commit]);
+    },
     // Fetches `origin`, then classifies the change. Every failure is returned as a sync error, never thrown.
     async fetch(bundles, { remote: fetchFirst = true } = {}) {
       try {

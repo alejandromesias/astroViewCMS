@@ -11,6 +11,15 @@ type BuildState = 'off' | 'idle' | 'building' | 'failed';
 /** The publish state (2.10d): idle, publishing, or failed (the last publish failed). */
 type PublishState = 'idle' | 'publishing' | 'failed';
 
+/**
+ * The last publish outcome until someone acts on it (2.10d). `error` is the message of a failed publish (a 502 or an
+ * unexpected 500) and null in every other state. A 409, 422 or 503 answer leaves it idle: the answer carries the details.
+ */
+interface PublishStatus {
+  readonly state: PublishState;
+  readonly error: string | null;
+}
+
 /** What GET /api/status adds to its `bundle` key. */
 interface StatusBody {
   readonly builder: 'on' | 'off';
@@ -31,7 +40,7 @@ interface StatusBody {
   readonly renamed: readonly RenamedDocument[];
   /** The number of files `cms/work` changes from origin, or null when git cannot count them. */
   readonly changesetSize: number | null;
-  readonly publish: PublishState;
+  readonly publish: PublishStatus;
   readonly errors: {
     readonly protocolMismatch: string | null;
     readonly upstreamBuildFailed: string | null;
@@ -65,8 +74,10 @@ export interface Status extends StatusSource {
   setRenamed(renamed: readonly RenamedDocument[]): void;
   /** Sets the upstream build failure (2.10f), or clears it with null. */
   setUpstreamBuildFailed(text: string | null): void;
-  /** Sets the publish state (2.10d). */
-  setPublish(state: PublishState): void;
+  /** Sets the publish state (2.10d). `error` is the message of a failed publish; it is cleared (null) by default. */
+  setPublish(state: PublishState, error?: string | null): void;
+  /** The renamed documents of the last re-apply, as `setRenamed` set them (2.10d: the publish answer carries them). */
+  getRenamed(): readonly RenamedDocument[];
 }
 
 /** The options of the holder. `builder` is `off` with --bundle. `node` and `changedPaths` are read on each snapshot. */
@@ -87,7 +98,7 @@ interface Values {
   syncError: string | null;
   renamed: readonly RenamedDocument[];
   upstreamBuildFailed: string | null;
-  publish: PublishState;
+  publish: PublishStatus;
 }
 
 /** Makes the status holder. Its fields start empty, and the builder's state is `off` when the builder is off. */
@@ -103,7 +114,7 @@ export function createStatus(options: StatusOptions): Status {
     syncError: null,
     renamed: [],
     upstreamBuildFailed: null,
-    publish: 'idle',
+    publish: { state: 'idle', error: null },
   };
   // The changeset size: the paths `cms/work` changes from origin, or null when git cannot count them.
   const changesetSize = (): Promise<number | null> =>
@@ -139,8 +150,11 @@ export function createStatus(options: StatusOptions): Status {
     setUpstreamBuildFailed(text) {
       values.upstreamBuildFailed = text;
     },
-    setPublish(state) {
-      values.publish = state;
+    setPublish(state, error = null) {
+      values.publish = { state, error };
+    },
+    getRenamed() {
+      return values.renamed;
     },
     async snapshot() {
       const current = node();

@@ -2181,3 +2181,294 @@ describe('openRepo: site folder with a trailing slash', () => {
     ]);
   });
 });
+
+describe('openRepo: publish primitives (2.10d)', () => {
+  const MESSAGE = 'cms: publish 1 documents';
+
+  // A fixture whose clone has one save of notes/a.md on cms/work.
+  async function savedFixture(): Promise<{
+    root: string;
+    fixture: Fixture;
+    repo: Repo;
+    seed: string;
+  }> {
+    const root = await newRoot();
+    const fixture = await fixtureIn(root, 'site');
+    const repo = repoOf(fixture);
+    const seed = await headOf(fixture);
+    await edit(fixture, 'notes/a.md', 'alpha, saved\n');
+    await save(repo, ['notes/a.md'], 'cms: save notes/a');
+    return { root, fixture, repo, seed };
+  }
+
+  const remoteHead = async (fixture: Fixture): Promise<string> =>
+    (await git(fixture.config.remote, ['rev-parse', 'main'])).trim();
+
+  describe('hasSavedChanges', () => {
+    it('is false on a fresh clone, and true after a save', async () => {
+      const root = await newRoot();
+      const fixture = await fixtureIn(root, 'site');
+      const repo = repoOf(fixture);
+      await expect(
+        repo.locked('t', (tx) => tx.hasSavedChanges()),
+      ).resolves.toBe(false);
+      await edit(fixture, 'notes/a.md', 'alpha, saved\n');
+      await save(repo, ['notes/a.md'], 'cms: save notes/a');
+      await expect(
+        repo.locked('t', (tx) => tx.hasSavedChanges()),
+      ).resolves.toBe(true);
+    });
+
+    it('is false when a later save put the upstream text back: the trees are equal', async () => {
+      const { fixture, repo } = await savedFixture();
+      await edit(fixture, 'notes/a.md', 'alpha\n');
+      await save(repo, ['notes/a.md'], 'cms: save notes/a again');
+      await expect(
+        repo.locked('t', (tx) => tx.hasSavedChanges()),
+      ).resolves.toBe(false);
+    });
+
+    it('compares with the commit cms/work sits on, not with a tip that a fetch moved', async () => {
+      const root = await newRoot();
+      const fixture = await fixtureIn(root, 'site');
+      const repo = repoOf(fixture);
+      await pushFrom(root, fixture.config.remote, (dir) =>
+        writeFiles(dir, { 'site/notes/b.md': 'beta, by a developer\n' }),
+      );
+      await expect(repo.fetchOrigin()).resolves.toMatchObject({ ok: true });
+      // cms/work has no saves: its tree equals its base, though origin's tree differs.
+      await expect(
+        repo.locked('t', (tx) => tx.hasSavedChanges()),
+      ).resolves.toBe(false);
+    });
+  });
+
+  describe('squash', () => {
+    it('answers null when there are no saved changes, and makes no commit', async () => {
+      const fixture = await fixtureIn(await newRoot(), 'site');
+      const objects = async (): Promise<string> =>
+        (await git(fixture.state.repoDir, ['count-objects'])).trim();
+      const before = await objects();
+      await expect(
+        repoOf(fixture).locked('t', (tx) => tx.squash(MESSAGE)),
+      ).resolves.toBeNull();
+      await expect(objects()).resolves.toBe(before);
+    });
+
+    it('makes one commit: the tree of cms/work, the base as its only parent, the message and the configured author', async () => {
+      const { fixture, repo, seed } = await savedFixture();
+      await edit(fixture, 'notes/b.md', 'beta, saved\n');
+      await save(repo, ['notes/b.md'], 'cms: save notes/b');
+      const tip = await headOf(fixture);
+      const commit = (await repo.locked('t', (tx) => tx.squash(MESSAGE))) ?? '';
+      expect(commit).toMatch(/^[0-9a-f]{40}$/);
+      const dir = fixture.state.repoDir;
+      await expect(
+        git(dir, ['rev-list', '--parents', '-n', '1', commit]),
+      ).resolves.toBe(`${commit} ${seed}\n`);
+      await expect(git(dir, ['rev-parse', `${commit}^{tree}`])).resolves.toBe(
+        await git(dir, ['rev-parse', `${tip}^{tree}`]),
+      );
+      await expect(
+        git(dir, ['log', '-1', '--format=%an|%ae|%cn|%ce|%B', commit]),
+      ).resolves.toBe(
+        `astroViewCMS|cms@localhost|astroViewCMS|cms@localhost|${MESSAGE}\n\n`,
+      );
+    });
+
+    it('changes no branch, index or file: cms/work and the working copy stay as they were', async () => {
+      const { fixture, repo } = await savedFixture();
+      const tip = await headOf(fixture);
+      await repo.locked('t', (tx) => tx.squash(MESSAGE));
+      await expect(headOf(fixture)).resolves.toBe(tip);
+      await expect(
+        git(fixture.state.repoDir, ['status', '--porcelain']),
+      ).resolves.toBe('');
+      await expect(
+        git(fixture.state.repoDir, ['branch', '--list']),
+      ).resolves.toBe('* cms/work\n  main\n');
+    });
+
+    it('keeps a message of several paragraphs as given', async () => {
+      const { fixture, repo } = await savedFixture();
+      const commit =
+        (await repo.locked('t', (tx) =>
+          tx.squash('cms: publish 1 documents\n\nsecond paragraph'),
+        )) ?? '';
+      await expect(
+        git(fixture.state.repoDir, ['log', '-1', '--format=%B', commit]),
+      ).resolves.toBe('cms: publish 1 documents\n\nsecond paragraph\n\n');
+    });
+
+    it('takes the commit cms/work sits on as its parent, not the tip of a ref that a fetch moved', async () => {
+      const { root, fixture, repo, seed } = await savedFixture();
+      const pushed = await pushFrom(root, fixture.config.remote, (dir) =>
+        writeFiles(dir, { 'site/notes/b.md': 'beta, by a developer\n' }),
+      );
+      await expect(repo.fetchOrigin()).resolves.toMatchObject({
+        ok: true,
+        upstream: pushed,
+      });
+      const commit = (await repo.locked('t', (tx) => tx.squash(MESSAGE))) ?? '';
+      const parents = await git(fixture.state.repoDir, [
+        'log',
+        '-1',
+        '--format=%P',
+        commit,
+      ]);
+      expect(parents.trim()).toBe(seed);
+    });
+  });
+
+  describe('push', () => {
+    it('pushes the commit to the branch of origin, and origin/<branch> follows', async () => {
+      const { fixture, repo } = await savedFixture();
+      const result = await repo.locked('t', async (tx) => {
+        const commit = await tx.squash(MESSAGE);
+        return { commit, pushed: await tx.push(commit ?? '') };
+      });
+      expect(result.pushed).toStrictEqual({ ok: true });
+      await expect(remoteHead(fixture)).resolves.toBe(result.commit);
+      await expect(
+        git(fixture.state.repoDir, ['rev-parse', 'origin/main']),
+      ).resolves.toBe(`${result.commit}\n`);
+    });
+
+    it('gives git exactly `push origin <sha>:refs/heads/<branch>`: no force option, no plus sign', async () => {
+      const { fixture } = await savedFixture();
+      const calls: string[][] = [];
+      const recording: ExecFn = (file, args, options) => {
+        calls.push([...args]);
+        return realExec(file, args, options);
+      };
+      const repo = openRepo({ ...fixture, exec: recording });
+      const commit = await repo.locked('t', async (tx) => {
+        const made = (await tx.squash(MESSAGE)) ?? '';
+        await tx.push(made);
+        return made;
+      });
+      expect(calls.filter((args) => args.includes('push'))).toStrictEqual([
+        [
+          '-c',
+          'protocol.ext.allow=never',
+          'push',
+          'origin',
+          `${commit}:refs/heads/main`,
+        ],
+      ]);
+    });
+
+    it('is a race when the remote moved, and the developer commit stays on the remote', async () => {
+      const { root, fixture, repo } = await savedFixture();
+      const pushed = await pushFrom(root, fixture.config.remote, (dir) =>
+        writeFiles(dir, { 'site/notes/b.md': 'beta, by a developer\n' }),
+      );
+      const result = await repo.locked('t', async (tx) =>
+        tx.push((await tx.squash(MESSAGE)) ?? ''),
+      );
+      expect(result).toMatchObject({ ok: false, race: true });
+      await expect(remoteHead(fixture)).resolves.toBe(pushed);
+    });
+
+    it('is not a race when a hook declines, and the message is the one git gave', async () => {
+      const { fixture } = await savedFixture();
+      const declined =
+        '! [remote rejected] x -> main (pre-receive hook declined)';
+      const repo = openRepo({
+        ...fixture,
+        exec: failing('push', { code: 1, stderr: ` ${declined}\n` }),
+      });
+      const commit = await headOf(fixture);
+      const result = await repo.locked('t', (tx) => tx.push(commit));
+      expect(result).toStrictEqual({
+        ok: false,
+        race: false,
+        message: `git push origin ${commit}:refs/heads/main failed (exit 1): ${declined}`,
+      });
+    });
+
+    it('is not a race for a timeout, which leaves no refusal text', async () => {
+      const { fixture } = await savedFixture();
+      const repo = openRepo({
+        ...fixture,
+        exec: failing('push', { killed: true, stderr: '' }),
+      });
+      const commit = await headOf(fixture);
+      await expect(
+        repo.locked('t', (tx) => tx.push(commit)),
+      ).resolves.toMatchObject({ ok: false, race: false });
+    });
+
+    it('hides the credentials of the remote in the message', async () => {
+      const { fixture } = await savedFixture();
+      const repo = openRepo({
+        ...fixture,
+        exec: failing('push', {
+          code: 128,
+          stderr:
+            'fatal: unable to access https://user:secret@example.test/r.git\n',
+        }),
+      });
+      const commit = await headOf(fixture);
+      const result = await repo.locked('t', (tx) => tx.push(commit));
+      expect(result).toMatchObject({ ok: false, race: false });
+      expect(JSON.stringify(result)).not.toContain('secret');
+    });
+
+    it('refuses a commit that git would read as an option', async () => {
+      const { repo } = await savedFixture();
+      await expect(
+        repo.locked('t', (tx) => tx.push('--force')),
+      ).rejects.toThrow('invalid ref: "--force"');
+    });
+  });
+
+  describe('resetWork', () => {
+    it('moves cms/work and the working copy to the commit', async () => {
+      const { fixture, repo } = await savedFixture();
+      const commit = await repo.locked('t', async (tx) => {
+        const made = (await tx.squash(MESSAGE)) ?? '';
+        await tx.push(made);
+        await tx.resetWork(made);
+        return made;
+      });
+      await expect(headOf(fixture)).resolves.toBe(commit);
+      await expect(
+        git(fixture.state.repoDir, ['status', '--porcelain']),
+      ).resolves.toBe('');
+      await expect(
+        readFile(join(fixture.state.siteFolder, 'notes/a.md'), 'utf8'),
+      ).resolves.toBe('alpha, saved\n');
+      await expect(repo.changedPaths()).resolves.toStrictEqual([]);
+    });
+
+    it('moves cms/work to an older commit too: a changeset that turned out empty goes back to its base', async () => {
+      const { fixture, repo, seed } = await savedFixture();
+      await repo.locked('t', (tx) => tx.resetWork(seed));
+      await expect(headOf(fixture)).resolves.toBe(seed);
+      await expect(
+        readFile(join(fixture.state.siteFolder, 'notes/a.md'), 'utf8'),
+      ).resolves.toBe('alpha\n');
+    });
+
+    it('refuses when cms/work is not checked out, and moves nothing', async () => {
+      const { fixture, repo, seed } = await savedFixture();
+      await git(fixture.state.repoDir, ['checkout', '-b', 'other']);
+      await expect(
+        repo.locked('t', (tx) => tx.resetWork(seed)),
+      ).rejects.toThrow(
+        'HEAD is on other, not cms/work. A publish needs cms/work checked out.',
+      );
+      await expect(
+        git(fixture.state.repoDir, ['rev-parse', 'cms/work']),
+      ).resolves.not.toBe(`${seed}\n`);
+    });
+
+    it('refuses a commit that git would read as an option', async () => {
+      const { repo } = await savedFixture();
+      await expect(
+        repo.locked('t', (tx) => tx.resetWork('--hard')),
+      ).rejects.toThrow('invalid ref: "--hard"');
+    });
+  });
+});

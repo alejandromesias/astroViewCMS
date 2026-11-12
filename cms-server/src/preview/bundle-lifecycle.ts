@@ -85,6 +85,13 @@ export interface BundleLifecycle {
   stop(): Promise<void>;
   /** The bundles whose swap is queued or running: the builder keeps them when it collects old bundles (2.9c review). */
   pendingSwaps(): ReadonlySet<string>;
+  /** True while a trigger is under way (a build, its swap, or a nested protocol rebuild). A publish reads it (2.10d). */
+  busy(): boolean;
+  /**
+   * Resolves true once no trigger is under way, at once when none is, or false after `timeoutMs` (2.10d). A publish waits
+   * here, with the repo lock released, for the build that a sync of code asked for.
+   */
+  waitForIdle(timeoutMs: number): Promise<boolean>;
 }
 
 // The error a build gets when it is asked for after stop.
@@ -126,6 +133,8 @@ export function createBundleLifecycle(
   let latestSwap = 0;
   // The triggers under way (build, serve and swap). The build state is building while any runs, and idle or failed once the last one ends.
   let inFlight = 0;
+  // The publishes waiting for `inFlight` to reach 0: each resolves its wait with true.
+  const idleWaiters = new Set<() => void>();
   // Whether the most recent build that ended failed. A nested build (a protocol rebuild) can fail while its outer trigger is
   // still under way, so the state at the end is read from this, not from the outer trigger's own outcome.
   let lastBuildFailed = false;
@@ -226,6 +235,10 @@ export function createBundleLifecycle(
     } finally {
       inFlight -= 1;
       working.delete(work);
+      if (inFlight === 0) {
+        for (const waiter of idleWaiters) waiter();
+        idleWaiters.clear();
+      }
     }
   }
 
@@ -421,7 +434,25 @@ export function createBundleLifecycle(
     }
   }
 
-  return { start, trigger, stop, pendingSwaps };
+  /** True while any trigger is under way. */
+  function busy(): boolean {
+    return inFlight > 0;
+  }
+
+  /** Waits for `inFlight` to reach 0, up to `timeoutMs`. */
+  function waitForIdle(timeoutMs: number): Promise<boolean> {
+    if (inFlight === 0) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      // A waiter that timed out stays in the set until the next idle, which calls it with no effect.
+      const timer = setTimeout(() => resolve(false), timeoutMs);
+      idleWaiters.add(() => {
+        clearTimeout(timer);
+        resolve(true);
+      });
+    });
+  }
+
+  return { start, trigger, stop, pendingSwaps, busy, waitForIdle };
 }
 
 /** The text of a failed build's first error: its message, with the file it names when there is one. */

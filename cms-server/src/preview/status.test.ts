@@ -32,7 +32,7 @@ describe('the status snapshot', () => {
       syncError: null,
       renamed: [],
       changesetSize: 2,
-      publish: 'idle',
+      publish: { state: 'idle', error: null },
       errors: { protocolMismatch: null, upstreamBuildFailed: null, swap: null },
     });
   });
@@ -84,7 +84,7 @@ describe('the setters', () => {
     status.setLastSync('2026-11-09T10:00:00.000Z');
     status.setSyncError('fetch failed');
     status.setUpstreamBuildFailed('upstream does not build');
-    status.setPublish('failed');
+    status.setPublish('failed', 'The remote refused the push');
     expect(await status.snapshot()).toStrictEqual({
       builder: 'on',
       build: {
@@ -97,7 +97,7 @@ describe('the setters', () => {
       syncError: 'fetch failed',
       renamed: [],
       changesetSize: 2,
-      publish: 'failed',
+      publish: { state: 'failed', error: 'The remote refused the push' },
       errors: {
         protocolMismatch: 'Bundle b-1 speaks protocol 1',
         upstreamBuildFailed: 'upstream does not build',
@@ -121,7 +121,7 @@ describe('the setters', () => {
     expect((await status.snapshot()).renamed).toStrictEqual([]);
   });
 
-  it('each setter clears its field with null, or with idle for the publish state', async () => {
+  it('each setter clears its field with null, or with idle and no error for the publish state', async () => {
     const status = createStatus(optionsOf());
     status.setBuildError('x');
     status.setFailedCommit('x');
@@ -130,7 +130,7 @@ describe('the setters', () => {
     status.setLastSync('x');
     status.setSyncError('x');
     status.setUpstreamBuildFailed('x');
-    status.setPublish('publishing');
+    status.setPublish('failed', 'x');
     status.setBuildError(null);
     status.setFailedCommit(null);
     status.setSwapError(null);
@@ -143,9 +143,36 @@ describe('the setters', () => {
       build: { error: null, failedCommit: null },
       lastSync: null,
       syncError: null,
-      publish: 'idle',
+      publish: { state: 'idle', error: null },
       errors: { protocolMismatch: null, upstreamBuildFailed: null, swap: null },
     });
+  });
+
+  it('publishing carries no error, and a failed publish keeps the one it was given', async () => {
+    const status = createStatus(optionsOf());
+    status.setPublish('publishing');
+    expect((await status.snapshot()).publish).toStrictEqual({
+      state: 'publishing',
+      error: null,
+    });
+    status.setPublish('failed', 'The remote refused the push');
+    expect((await status.snapshot()).publish).toStrictEqual({
+      state: 'failed',
+      error: 'The remote refused the push',
+    });
+    status.setPublish('publishing');
+    expect((await status.snapshot()).publish).toStrictEqual({
+      state: 'publishing',
+      error: null,
+    });
+  });
+
+  it('getRenamed answers what setRenamed was given, and nothing before', () => {
+    const status = createStatus(optionsOf());
+    expect(status.getRenamed()).toStrictEqual([]);
+    const renamed = [{ key: 'blog/a', from: 'a.md', to: 'b.md' }];
+    status.setRenamed(renamed);
+    expect(status.getRenamed()).toStrictEqual(renamed);
   });
 
   it('the build state can go from failed back to idle', async () => {

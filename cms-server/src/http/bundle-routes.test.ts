@@ -94,7 +94,7 @@ describe('GET /api/status with the preview status (2.9c)', () => {
     syncError: null,
     renamed: [],
     changesetSize: 3,
-    publish: 'idle',
+    publish: { state: 'idle', error: null },
     errors: { protocolMismatch: null, upstreamBuildFailed: null, swap: null },
   } as const;
 

@@ -11,19 +11,17 @@ import { GitError } from '../git/exec.ts';
 import type { Repo } from '../git/ops.ts';
 import { type Logger, logger } from '../log.ts';
 import { parseSaveBody } from '../save/body.ts';
+import { busyStop } from '../save/busy.ts';
 import type { DeleteGuard, PreviewClient } from '../save/context.ts';
 import { createDeleteGuard } from '../save/delete-guard.ts';
 import { saveChanges } from '../save/pipeline.ts';
 import { BodyTooLargeError, readBody } from './body.ts';
 import { withBundle } from './bundle-routes.ts';
-import { rejectUnlessContentType } from './guard.ts';
+import { JSON_CONTENT_TYPE, rejectUnlessContentType } from './guard.ts';
 import type { MediaRouteDeps } from './media.ts';
 
 /** Largest save body, in bytes: 4 MiB, as the render routes' cap (`MAX_BODY_BYTES`, D16). */
 export const MAX_BODY_BYTES = 4 * 1024 * 1024;
-
-// The content type of a save body: JSON, with or without parameters.
-const JSON_TYPE = /^application\/json\s*(;|$)/i;
 
 /** What PUT needs beyond the repo: the config's collections, the preview node, the log (the real logger by default), and the delete guard (2.6b; one is made per app by default). */
 export interface SaveRouteDeps {
@@ -87,7 +85,7 @@ export function registerChangeRoutes(app: Hono, deps: ChangeRouteDeps): void {
     const guard = save.guard ?? createDeleteGuard();
     app.put('/api/changes', async (c) => {
       const request = c.req.raw;
-      const rejection = rejectUnlessContentType(request, JSON_TYPE);
+      const rejection = rejectUnlessContentType(request, JSON_CONTENT_TYPE);
       if (rejection) return rejection;
 
       let bytes: Uint8Array;
@@ -127,6 +125,9 @@ export function registerChangeRoutes(app: Hono, deps: ChangeRouteDeps): void {
           save.onRebuild?.();
         return c.json(answer.body, answer.status);
       } catch (error: unknown) {
+        // A lock that stayed busy for 30 s is 503 busy (2.10d); the save did not start.
+        const busy = busyStop(error);
+        if (busy !== undefined) return c.json(busy.body, busy.status);
         // A git failure escapes only from the stages before the write (write.ts answers its own), so nothing was written.
         return changesUnavailable(c, error);
       }
