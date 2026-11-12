@@ -113,7 +113,7 @@ describe('run() with the real parts', () => {
         syncError: null,
         renamed: [],
         changesetSize: 0,
-        publish: 'idle',
+        publish: { state: 'idle', error: null },
         errors: {
           protocolMismatch: null,
           upstreamBuildFailed: null,
