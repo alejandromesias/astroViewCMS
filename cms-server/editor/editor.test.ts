@@ -953,6 +953,16 @@ describe('draft image upload', () => {
       () => Response.json({ ...entry, format: 1 }, { status: 201 }),
       'Upload failed: the answer has the wrong shape',
     ],
+    [
+      'the url is not a string',
+      () => Response.json({ ...entry, url: 5 }, { status: 201 }),
+      'Upload failed: the answer has the wrong shape',
+    ],
+    [
+      'the answer is not an object',
+      () => Response.json([], { status: 201 }),
+      'Upload failed: the answer has the wrong shape',
+    ],
   ])(
     'shows an upload where %s, and sends nothing',
     async (_, answer, message) => {
