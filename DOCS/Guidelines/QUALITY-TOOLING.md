@@ -371,7 +371,7 @@ rules that came from it:
 4. **Agents.** Builder briefs for agents that may run Stryker carry the same rule. Agents that
    edit code run with `isolation: "worktree"`, but a Stryker run still goes through the script.
 
-Configs: one per group (`stryker.<group>.config.mjs`, groups in CI-PIPELINE.md section 3; `cms-server` is seven groups (six by folder or file, plus the rest) since 2.1s and 2.1t). Output: `reports/stryker-runs/<stamp>/`
+Configs: one per group (`stryker.<group>.config.mjs`, groups in CI-PIPELINE.md section 3; `cms-server/src/` is seven groups (six by folder or file, plus the rest) since 2.1s and 2.1t; `cms-editor` is `cms-server/editor/`). Output: `reports/stryker-runs/<stamp>/`
 (`run.json` has the config, arguments and `HEAD`), plus the console output. Each run starts
 from an empty incremental file, so the accumulated `reports/stryker-triage-*.json` files are
 not updated. `--mutate` is required; the whole repo runs in CI as `mutation-full`.
