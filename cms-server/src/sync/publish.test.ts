@@ -82,6 +82,8 @@ interface RigOptions {
   readonly squashThrows?: unknown;
   readonly maxBatchBytes?: number;
   readonly buildWaitMs?: number;
+  /** Whether a builder runs (the default). */
+  readonly builderOn?: boolean;
 }
 
 function rig(options: RigOptions = {}) {
@@ -218,6 +220,7 @@ function rig(options: RigOptions = {}) {
     syncLocked,
     status,
     builds,
+    builderOn: options.builderOn ?? true,
     trigger,
     log,
     readChangeset,
@@ -646,6 +649,42 @@ describe('createPublish: a retry whose sync changes the code', () => {
     expect((await status.snapshot()).publish).toStrictEqual({
       state: 'idle',
       error: null,
+    });
+  });
+
+  it('with the builder off it keeps the status and the code, but says no build is waited for', async () => {
+    const { publish, tx, trigger, status } = rig({
+      builderOn: false,
+      pushes: [RACE, OK],
+      syncs: [synced(), synced({ change: 'code' })],
+    });
+    const answer = await publish();
+    expect(answer).toStrictEqual({
+      status: 503,
+      body: {
+        error: 'build-in-progress',
+        message:
+          'The upstream code changed while the publish ran, so nothing was published. Try again.',
+      },
+    });
+    expect(tx.push).toHaveBeenCalledTimes(1);
+    expect(tx.resetWork).not.toHaveBeenCalled();
+    expect(trigger).not.toHaveBeenCalled();
+    expect((await status.snapshot()).publish).toStrictEqual({
+      state: 'idle',
+      error: null,
+    });
+  });
+
+  it('with the builder off, the other 503 build-in-progress keeps its text: it only comes from a build that runs', async () => {
+    const { publish } = rig({ builderOn: false, idle: false });
+    expect(await publish()).toMatchObject({
+      status: 503,
+      body: {
+        error: 'build-in-progress',
+        message:
+          'The preview is still being rebuilt, so the changes cannot be checked yet. Nothing was published. Try again once the build is done.',
+      },
     });
   });
 

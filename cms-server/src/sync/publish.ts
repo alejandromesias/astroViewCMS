@@ -40,6 +40,10 @@ const MAX_RETRIES = 3;
 const BUILD_IN_PROGRESS =
   'The preview is still being rebuilt, so the changes cannot be checked yet. Nothing was published. Try again once the build is done.';
 
+/** The text of the same 503 when no builder runs (`--bundle`): the retry's sync found new code, and no build will follow it. */
+const CODE_CHANGED =
+  'The upstream code changed while the publish ran, so nothing was published. Try again.';
+
 /** A document the publish overwrote: the upstream commit whose version the CMS value replaced. */
 interface Overwritten {
   readonly key: string;
@@ -84,6 +88,8 @@ export interface PublishDeps {
   readonly syncLocked: (tx: SyncTx) => Promise<SyncOutcome>;
   readonly status: Pick<Status, 'setPublish' | 'setRenamed' | 'getRenamed'>;
   readonly builds: Builds;
+  /** Whether a builder runs. With `--bundle` it does not, and a code change found by a retry has no build to wait for. */
+  readonly builderOn: boolean;
   /** Asks for the rebuild of the published commit (2.9c). Not awaited: the build takes the repo lock itself. */
   readonly trigger: (reason: 'publish') => void;
   readonly log: Logger;
@@ -124,6 +130,7 @@ export function createPublish({
   syncLocked,
   status,
   builds,
+  builderOn,
   trigger,
   log,
   buildWaitMs = BUILD_WAIT_MS,
@@ -133,6 +140,10 @@ export function createPublish({
   const buildInProgress: SaveStop = {
     status: 503,
     body: { error: 'build-in-progress', message: BUILD_IN_PROGRESS },
+  };
+  const codeChanged: SaveStop = {
+    status: 503,
+    body: { error: 'build-in-progress', message: CODE_CHANGED },
   };
   const nothingToPublish: PublishAnswer = {
     status: 200,
@@ -207,7 +218,7 @@ export function createPublish({
         // validated again; new code can, and the sync has just asked for its rebuild, so the values would be checked
         // against the old node. Nothing is pushed: the saves stay on `cms/work`, and a publish later waits for that build.
         const { change } = await synced(tx);
-        if (change === 'code') return buildInProgress;
+        if (change === 'code') return builderOn ? buildInProgress : codeChanged;
         const again = await prepare();
         if ('status' in again) return again;
         prepared = again;

@@ -284,6 +284,7 @@ export async function run(
     syncLocked: sync.syncLocked,
     status,
     builds,
+    builderOn: lifecycle !== undefined,
     trigger: (reason) => {
       if (lifecycle === undefined)
         deps.logger.info('A publish finished, but the builder is off');

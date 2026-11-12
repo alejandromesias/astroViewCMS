@@ -148,6 +148,7 @@ async function rigOf(options: RigOptions = {}): Promise<Rig> {
         return true;
       },
     },
+    builderOn: true,
     trigger,
     log: silentLog(),
   });
