@@ -2990,6 +2990,8 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
   4. **Stop.** `stop()` in `run.ts` cancels the timer and waits for a sync under way. The clock and the timer are injected.
   5. **Errors thrown by `syncNow`.** `syncNow` rethrows anything that is not a lock timeout (`sync/sync.ts`). The loop catches it, sets `syncError` in the status, backs off as in item 3, and does not crash. Test: a `syncNow` that throws sets `syncError`, delays the next poll, and clears on the next success.
 
+- **Result (2026-11-12, PR #47; merge pending).** Accepted cost: `nodeServes` is `state === 'ready'`, so it also reads false while the node is starting or restarting. A content-only change that lands in that short window can ask for one build that was not needed. The lifecycle dedupes by commit, so the cost is harmless. Tests: `sync/poll.test.ts` (18 cases, fake timers); `run.test.ts` has the failed-first-build case, a content-only change with the node ready (no build), and with no node serving (one build of the new HEAD).
+
 #### 2.10h Re-apply records for CMS-created documents the bundle lacks — after 2.10b · [fix] · DONE 2026-11-08 (#26; see Result)
 
 - **Why.** Found in the review of PR #23 (Codex, `372e7f4`, `documents/reapply.ts`). If upstream independently adds a document the CMS created, the first re-apply keeps the CMS version through its `createdRecords` entry. On a later sync, before the bundle is rebuilt, that file is in the merge base, so `changesetOf` sees it as `modified` and does not list it in `createdRecords`. The lookup is empty and `planWrite` fails with "There is no document". Confirmed on `main` (`documents/changeset.ts`: a record is pushed only when the status is `created`).
