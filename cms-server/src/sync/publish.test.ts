@@ -652,7 +652,7 @@ describe('createPublish: a retry whose sync changes the code', () => {
     });
   });
 
-  it('with the builder off it keeps the status and the code, but says no build is waited for', async () => {
+  it('with the builder off it answers 503 upstream-changed: the code is not a build wait, because no build runs', async () => {
     const { publish, tx, trigger, status } = rig({
       builderOn: false,
       pushes: [RACE, OK],
@@ -662,7 +662,7 @@ describe('createPublish: a retry whose sync changes the code', () => {
     expect(answer).toStrictEqual({
       status: 503,
       body: {
-        error: 'build-in-progress',
+        error: 'upstream-changed',
         message:
           'The upstream code changed while the publish ran, so nothing was published. Try again.',
       },

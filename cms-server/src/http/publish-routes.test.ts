@@ -71,6 +71,13 @@ describe('POST /api/publish', () => {
       },
     ],
     [
+      '503 upstream-changed',
+      {
+        status: 503,
+        body: { error: 'upstream-changed', message: 'Try again' },
+      },
+    ],
+    [
       '500',
       {
         status: 500,

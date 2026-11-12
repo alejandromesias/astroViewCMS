@@ -40,7 +40,7 @@ const MAX_RETRIES = 3;
 const BUILD_IN_PROGRESS =
   'The preview is still being rebuilt, so the changes cannot be checked yet. Nothing was published. Try again once the build is done.';
 
-/** The text of the same 503 when no builder runs (`--bundle`): the retry's sync found new code, and no build will follow it. */
+/** The text of a 503 `upstream-changed`, the answer when no builder runs (`--bundle`): the retry's sync found new code, and no build will follow it. */
 const CODE_CHANGED =
   'The upstream code changed while the publish ran, so nothing was published. Try again.';
 
@@ -143,7 +143,7 @@ export function createPublish({
   };
   const codeChanged: SaveStop = {
     status: 503,
-    body: { error: 'build-in-progress', message: CODE_CHANGED },
+    body: { error: 'upstream-changed', message: CODE_CHANGED },
   };
   const nothingToPublish: PublishAnswer = {
     status: 200,
