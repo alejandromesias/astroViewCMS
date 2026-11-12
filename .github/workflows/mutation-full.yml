@@ -63,6 +63,7 @@ jobs:
             cms-preview,
             cms-save,
             cms-documents,
+            cms-git-ops,
             cms-git,
             cms-codecs,
             cms-server,

@@ -35,7 +35,7 @@ describe('parseOptions', () => {
     ],
     [
       ['--all', '--group', 'sample-site'],
-      '--group must be one of serve, preview, renderer, protocol, contract, cms-preview, cms-save, cms-documents, cms-git, cms-codecs, cms-server, cms-editor',
+      '--group must be one of serve, preview, renderer, protocol, contract, cms-preview, cms-save, cms-documents, cms-git-ops, cms-git, cms-codecs, cms-server, cms-editor',
     ],
   ])('rejects %j', (args, message) => {
     expect(() => parseOptions(args)).toThrow(message);

@@ -1,4 +1,4 @@
-// Group `cms-git` of scripts/lib/stryker-plan.ts (a folder split of cms-server, WORKPLAN 2.1s). It shares the Vitest config of group `cms-server`.
+// Group `cms-git` of scripts/lib/stryker-plan.ts (a folder split of cms-server, WORKPLAN 2.1s). It covers cms-server/src/git/ except ops.ts, which is group `cms-git-ops` (WORKPLAN 2.1t). It shares the Vitest config of group `cms-server`.
 // Triage config: the base config with a scoped Vitest config and its own incremental file, so a
 // focused run does not execute every package's tests or overwrite the baseline report.
 // Use: node scripts/stryker-run.mjs stryker.cms-git.config.mjs --mutate "<files>"
