@@ -116,7 +116,7 @@ describe('createPollLoop', () => {
     expect(log.warn).toHaveBeenCalledWith('The sync failed', { error: 'boom' });
   });
 
-  it('with an interval over ten minutes, a failure keeps the interval: the back-off never shortens it', async () => {
+  it('a back-off never shortens an interval over ten minutes: a failure waits the interval again', async () => {
     const start = Date.now();
     const times: number[] = [];
     const { loop } = loopOf({
@@ -130,6 +130,27 @@ describe('createPollLoop', () => {
     loop.touch();
     await vi.advanceTimersByTimeAsync(2_400_000);
     expect(times).toEqual([1_200_000, 2_400_000]);
+  });
+
+  it('a throw after a sync (the node check here) is one failed sync, and the loop still polls again', async () => {
+    const start = Date.now();
+    const times: number[] = [];
+    const { loop, status, trigger } = loopOf({
+      nodeServes: () => {
+        throw new Error('node check broke');
+      },
+      syncNow: vi.fn(() => {
+        times.push(Date.now() - start);
+        return Promise.resolve(syncedOf('content-only'));
+      }),
+    });
+    keepOpen(loop);
+    loop.touch();
+    // Each failed tick waits longer: 60 s, then 60 + 120 s.
+    await vi.advanceTimersByTimeAsync(180_000);
+    expect(times).toEqual([60_000, 180_000]);
+    expect(status.setSyncError).toHaveBeenCalledWith('node check broke');
+    expect(trigger).not.toHaveBeenCalled();
   });
 
   it('a failed outcome backs off too, and the loop leaves the status to syncNow', async () => {

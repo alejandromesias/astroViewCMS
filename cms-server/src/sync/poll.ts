@@ -83,27 +83,33 @@ export function createPollLoop({
       return;
     }
     inFlight = pollOnce();
-    await inFlight;
-    inFlight = undefined;
-    if (!stopped) schedule();
+    try {
+      await inFlight;
+    } finally {
+      inFlight = undefined;
+      // Scheduled even when the tick threw, so one failure cannot end the loop.
+      if (!stopped) schedule();
+    }
   }
 
+  // Never rejects: a throw from syncNow, or from the work after it (the trigger, the node check), is one failed sync.
   async function pollOnce(): Promise<void> {
-    let outcome: SyncNowOutcome;
     try {
-      outcome = await syncNow();
+      react(await syncNow());
     } catch (error: unknown) {
       const message = redact(messageOf(error));
       failures += 1;
       status.setSyncError(message);
       log.warn('The sync failed', { error: message });
-      return;
     }
+  }
+
+  function react(outcome: SyncNowOutcome): void {
     switch (outcome.kind) {
       case 'synced':
-        failures = 0;
         if (outcome.change === 'content-only' && !nodeServes())
           trigger('sync-code');
+        failures = 0;
         return;
       case 'unchanged':
         failures = 0;

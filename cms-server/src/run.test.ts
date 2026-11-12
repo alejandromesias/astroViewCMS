@@ -1,12 +1,18 @@
 import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { type BundleJson, bundleJsonSchema } from 'preview-contract';
 import { describe, expect, it, vi } from 'vitest';
 import { ZodError } from 'zod';
 import { FIXTURE_BUNDLE } from '../test/helpers/bundle.ts';
-import { git, makeTestRoot, removeTestRoot } from '../test/helpers/git.ts';
+import {
+  cloneRemote,
+  commitAndPush,
+  git,
+  makeTestRoot,
+  removeTestRoot,
+} from '../test/helpers/git.ts';
 import { fetchLocal } from '../test/helpers/local-fetch.ts';
 import { saveRepoIn } from '../test/helpers/repo.ts';
 import { type BundleSource, directoryBundleSource } from './bundle/source.ts';
@@ -847,8 +853,10 @@ describe('run: sync and publish on a real clone', () => {
 
   // Starts run() over a new clone. With `bundleMode` set to flag, the fixture bundle is the --bundle folder (the builder is off);
   // otherwise the fixture bundle is the served one of a state file, and the builder is a spy whose builds fail.
+  // With `first`, there is no state file and the builder is on: the first start's build is the one that runs, and the
+  // node reads as stopped (no node runs, no bundle).
   async function started(
-    bundleMode: 'flag' | 'state',
+    bundleMode: 'flag' | 'state' | 'first',
     syncIntervalSeconds?: number,
   ): Promise<Real> {
     const root = await makeTestRoot();
@@ -873,6 +881,7 @@ describe('run: sync and publish on a real clone', () => {
       },
       repoState: clone.state,
       builder,
+      ...(bundleMode === 'first' ? { nodeState: 'stopped' as const } : {}),
     });
     const args = [join(root, 'cms.config.ts')];
     let deps: RunDeps = h.deps;
@@ -883,7 +892,7 @@ describe('run: sync and publish on a real clone', () => {
       });
       args.unshift('--bundle', bundleDir);
       deps = { ...h.deps, directoryBundleSource };
-    } else {
+    } else if (bundleMode === 'state') {
       const identity = await fixtureIdentity();
       const siteDir = join(root, '.cms', clone.config.site);
       await cp(
@@ -974,6 +983,51 @@ describe('run: sync and publish on a real clone', () => {
       });
     } finally {
       await real.stop();
+    }
+  });
+
+  it('a first build that fails, then an upstream change: one build of the new HEAD, and the failed commit is not built again (2.10g)', async () => {
+    const real = await started('first', 1);
+    const otherRoot = await makeTestRoot();
+    try {
+      const base = `http://127.0.0.1:${portOfServer(real.running.server)}`;
+      // The first start builds origin's tip, and the build fails: there is no bundle and no node.
+      await vi.waitFor(() => expect(real.builder).toHaveBeenCalledTimes(1), {
+        timeout: 5_000,
+      });
+      const builds = vi.mocked(real.builder);
+      const failed = builds.mock.calls[0]?.[0]?.commit;
+      // A second clone pushes an upstream change to a content file.
+      const upstream = join(otherRoot, 'upstream');
+      await cloneRemote(real.clone.config.remote, upstream);
+      // The file's path inside the repo: the site folder is a folder of the clone.
+      const file = join(
+        relative(real.clone.state.repoDir, real.clone.state.siteFolder),
+        ANA,
+      );
+      const ana = JSON.parse(
+        await readFile(join(real.clone.state.siteFolder, ANA), 'utf8'),
+      );
+      const pushed = await commitAndPush(
+        upstream,
+        { [file]: `${JSON.stringify({ ...ana, name: 'Ana T.' }, null, 2)}\n` },
+        'upstream: rename Ana',
+      );
+      // The first call starts the loop; its sync one interval later finds the change and asks for one build of the new HEAD.
+      await fetchLocal(`${base}/api/status`);
+      await vi.waitFor(() => expect(real.builder).toHaveBeenCalledTimes(2), {
+        timeout: 5_000,
+      });
+      expect(builds.mock.calls.map(([job]) => job.commit)).toEqual([
+        failed,
+        pushed,
+      ]);
+      // Origin does not move again, so the loop asks for no more builds.
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      expect(real.builder).toHaveBeenCalledTimes(2);
+    } finally {
+      await real.stop();
+      await removeTestRoot(otherRoot);
     }
   });
 
