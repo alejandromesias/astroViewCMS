@@ -30,6 +30,8 @@ const RULES: ReadonlyArray<{ group: string; prefixes: readonly string[] }> = [
     prefixes: ['cms-server/src/codecs/', 'cms-server/src/schema/'],
   },
   { group: 'cms-server', prefixes: ['cms-server/src/'] },
+  // The browser editor is not under cms-server/src/ (WORKPLAN 2.11e).
+  { group: 'cms-editor', prefixes: ['cms-server/editor/'] },
 ];
 
 export const GROUP_NAMES: readonly string[] = RULES.map((rule) => rule.group);

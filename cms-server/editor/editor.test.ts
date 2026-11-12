@@ -91,12 +91,48 @@ const DOCUMENTS: Record<string, unknown> = {
     buildTime: false,
     revision: 'r-rules',
   },
+  'blog/post': {
+    key: 'blog/post',
+    file: 'src/content/blog/post.mdx',
+    format: 'mdx',
+    editable: true,
+    buildTime: false,
+    revision: 'r-post',
+    value: { data: { title: 'Post' }, body: '# Post' },
+  },
+  'blog/no-body': {
+    key: 'blog/no-body',
+    file: 'src/content/blog/no-body.md',
+    format: 'md',
+    editable: true,
+    buildTime: false,
+    revision: 'r-nobody',
+    value: { data: { title: 'Bare' } },
+  },
+  'data:src/config/menu.json': {
+    key: 'data:src/config/menu.json',
+    file: 'src/config/menu.json',
+    format: 'json',
+    editable: true,
+    buildTime: true,
+    revision: 'r-menu',
+    value: { items: [] },
+  },
+  'data:src/config/rules.toml': {
+    key: 'data:src/config/rules.toml',
+    file: 'src/config/rules.toml',
+    format: 'toml',
+    editable: false,
+    buildTime: true,
+    buildTimeFields: ['rules.limit'],
+    revision: 'r-rulestoml',
+  },
 };
 
 interface SetupOptions {
   search?: string;
-  /** The answer of `GET /api/preview-url`, in place of the working one. */
-  preview?: Response;
+  /** The answer of `GET /api/preview-url`, in place of the working one; an Error makes the request fail. */
+  preview?: Response | Error;
   /** The answer of `GET /api/overlay`, in place of an empty overlay. */
   overlay?: Response;
 }
@@ -118,6 +154,7 @@ async function setup({ search = '', preview, overlay }: SetupOptions = {}) {
     if (url === '/api/overlay')
       return overlay ?? Response.json({ documents: {}, media: {} });
     if (url.startsWith('/api/preview-url?path=')) {
+      if (preview instanceof Error) throw preview;
       if (preview) return preview;
       const path = decodeURIComponent(
         url.slice('/api/preview-url?path='.length),
@@ -253,6 +290,33 @@ describe('loading the page', () => {
       expect(refused.iframe.src).toBeUndefined();
     },
   );
+
+  it.each([
+    ['a non-string url', { url: 1, origin: PREVIEW_ORIGIN }],
+    ['a non-string origin', { url: `${PREVIEW_ORIGIN}/`, origin: null }],
+    ['no origin', { url: `${PREVIEW_ORIGIN}/` }],
+    ['an array', []],
+    ['nothing', null],
+  ])(
+    'does not open the preview when its answer has %s, and says so',
+    async (_, answer) => {
+      const broken = await setup({ preview: Response.json(answer) });
+      expect(broken.status().textContent).toBe(
+        'Could not open the preview: the answer has the wrong shape',
+      );
+      expect(broken.status().dataset.state).toBe('error');
+      expect(broken.iframe.src).toBeUndefined();
+    },
+  );
+
+  it('says why the preview could not be asked for, when the request fails', async () => {
+    const down = await setup({ preview: new TypeError('Failed to fetch') });
+    expect(down.status().textContent).toBe(
+      'Could not open the preview: Failed to fetch',
+    );
+    expect(down.status().dataset.state).toBe('error');
+    expect(down.iframe.src).toBeUndefined();
+  });
 });
 
 describe('protocol mismatch', () => {
@@ -334,6 +398,21 @@ describe('on preview:ready', () => {
     [
       'an array',
       () => Response.json([]),
+      'Could not load the overlay: the answer has the wrong shape',
+    ],
+    [
+      'a documents map that is not one',
+      () => Response.json({ documents: 'none', media: {} }),
+      'Could not load the overlay: the answer has the wrong shape',
+    ],
+    [
+      'a media map that is not one',
+      () => Response.json({ documents: {}, media: [] }),
+      'Could not load the overlay: the answer has the wrong shape',
+    ],
+    [
+      'no media map',
+      () => Response.json({ documents: {} }),
       'Could not load the overlay: the answer has the wrong shape',
     ],
   ])(
@@ -855,6 +934,35 @@ describe('draft image upload', () => {
       () => Response.json({ url: 5 }, { status: 201 }),
       'Upload failed: the answer has the wrong shape',
     ],
+    [
+      'the width is not a number',
+      () => Response.json({ ...entry, width: '10' }, { status: 201 }),
+      'Upload failed: the answer has the wrong shape',
+    ],
+    [
+      'the height is missing',
+      () =>
+        Response.json(
+          { id: entry.id, url: entry.url, width: 10, format: 'png' },
+          { status: 201 },
+        ),
+      'Upload failed: the answer has the wrong shape',
+    ],
+    [
+      'the format is not a string',
+      () => Response.json({ ...entry, format: 1 }, { status: 201 }),
+      'Upload failed: the answer has the wrong shape',
+    ],
+    [
+      'the url is not a string',
+      () => Response.json({ ...entry, url: 5 }, { status: 201 }),
+      'Upload failed: the answer has the wrong shape',
+    ],
+    [
+      'the answer is not an object',
+      () => Response.json([], { status: 201 }),
+      'Upload failed: the answer has the wrong shape',
+    ],
   ])(
     'shows an upload where %s, and sends nothing',
     async (_, answer, message) => {
@@ -885,6 +993,75 @@ describe('draft image upload', () => {
     expect(editor.drafts()).toHaveLength(0);
   });
 
+  it('does not send a draft before the preview is open', async () => {
+    editor = await setup({
+      preview: Response.json(
+        {
+          error: 'preview-unavailable',
+          message: 'the renderer is not running',
+        },
+        { status: 503 },
+      ),
+    });
+    editor.fetch.mockResolvedValueOnce(Response.json(entry, { status: 201 }));
+    choose(
+      new File([new Uint8Array([1])], 'retrato.png', { type: 'image/png' }),
+    );
+    await vi.waitFor(() =>
+      expect(editor.status().textContent).toBe('Uploaded retrato.png'),
+    );
+    expect(editor.drafts()).toHaveLength(0);
+  });
+
+  it('uploads even when the preview window is not there yet', async () => {
+    Object.defineProperty(editor.iframe, 'contentWindow', {
+      value: null,
+      configurable: true,
+    });
+    await upload();
+    expect(editor.status().textContent).toBe('Uploaded retrato.png');
+    expect(editor.status().dataset.state).toBe('ok');
+  });
+
+  it('does nothing when the file dialog gives no file', () => {
+    editor.ready();
+    const before = editor.status().textContent;
+    const input = document.getElementById('upload') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: [], configurable: true });
+    input.dispatchEvent(new Event('change'));
+    expect(editor.fetch).not.toHaveBeenCalledWith(
+      '/api/media',
+      expect.anything(),
+    );
+    expect(editor.status().textContent).toBe(before);
+  });
+
+  it('shows a failed upload as an error, with the text of its answer trimmed', async () => {
+    editor.fetch.mockResolvedValueOnce(
+      new Response('  Too big\n', { status: 413 }),
+    );
+    choose(new File([new Uint8Array([1])], 'big.png', { type: 'image/png' }));
+    await vi.waitFor(() =>
+      expect(editor.status().textContent).toBe('Upload failed (413): Too big'),
+    );
+    expect(editor.status().dataset.state).toBe('error');
+  });
+
+  it('does nothing when the browser has no clipboard API', () => {
+    Object.defineProperty(window.navigator, 'clipboard', {
+      value: undefined,
+      configurable: true,
+    });
+    const onError = vi.fn();
+    window.addEventListener('error', onError);
+    try {
+      document.getElementById('upload-copy')!.click();
+      expect(onError).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('error', onError);
+    }
+  });
+
   it('copies the URL', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(window.navigator, 'clipboard', {
@@ -895,5 +1072,192 @@ describe('draft image upload', () => {
       '/__preview-media/x.png';
     document.getElementById('upload-copy')!.click();
     expect(writeText).toHaveBeenCalledWith('/__preview-media/x.png');
+  });
+});
+
+describe('the shape of a document answer', () => {
+  /** A document the page can read, with one field changed in each case. */
+  const valid = {
+    key: 'bad/doc',
+    file: 'src/content/bad.json',
+    format: 'json',
+    editable: true,
+    buildTime: false,
+    revision: 'r-bad',
+    value: {},
+  };
+  const noteOf = (key: string) =>
+    editor.section(key).querySelector<HTMLElement>('[data-slot="note"]')!
+      .textContent;
+  const refused = 'Could not load: the answer has the wrong shape';
+
+  it.each([
+    ['key', { key: 1 }],
+    ['file', { file: 1 }],
+    ['format', { format: 1 }],
+    ['editable', { editable: 'yes' }],
+    ['buildTime', { buildTime: 'no' }],
+    ['revision', { revision: 1 }],
+    ['buildTimeFields', { buildTimeFields: 'site.title' }],
+  ])('refuses a document whose %s has the wrong type', async (_, change) => {
+    editor.fetch.mockResolvedValueOnce(Response.json({ ...valid, ...change }));
+    await editor.open('bad/doc');
+    expect(noteOf('bad/doc')).toBe(refused);
+  });
+
+  it.each([
+    ['an array', []],
+    ['a string', 'text'],
+    ['a number', 42],
+    ['null', null],
+  ])('refuses a document that is %s', async (_, body) => {
+    editor.fetch.mockResolvedValueOnce(Response.json(body));
+    await editor.open('bad/doc');
+    expect(noteOf('bad/doc')).toBe(refused);
+  });
+
+  it.each([
+    ['md', 'text'],
+    ['md', 42],
+    ['mdx', 'text'],
+    ['mdx', 42],
+  ])(
+    'refuses a %s document whose value is not an object (%j)',
+    async (format, value) => {
+      editor.fetch.mockResolvedValueOnce(
+        Response.json({ ...valid, format, value }),
+      );
+      await editor.open('bad/doc');
+      expect(noteOf('bad/doc')).toBe(refused);
+    },
+  );
+
+  it.each([
+    [42, '42'],
+    ['text', '"text"'],
+    [[], '[]'],
+  ])(
+    'shows a JSON document whose value is %j in its textbox',
+    async (value, text) => {
+      editor.fetch.mockResolvedValueOnce(Response.json({ ...valid, value }));
+      await editor.open('bad/doc');
+      expect(noteOf('bad/doc')).toBe('');
+      expect(editor.value('bad/doc').value).toBe(text);
+    },
+  );
+
+  it('says what a failed answer is when its JSON has no message', async () => {
+    editor.fetch.mockResolvedValueOnce(
+      Response.json({ error: 'not-found' }, { status: 404 }),
+    );
+    await editor.open('ghost/doc');
+    expect(noteOf('ghost/doc')).toBe(
+      'Could not load (404): {"error":"not-found"}',
+    );
+  });
+});
+
+describe('the form of each kind of document', () => {
+  const noteEl = (key: string) =>
+    editor.section(key).querySelector<HTMLElement>('[data-slot="note"]')!;
+  const slotEl = (key: string, name: string) =>
+    editor.section(key).querySelector<HTMLElement>(`[data-slot="${name}"]`)!;
+
+  it('shows a plain JSON document with no note, and its labels', async () => {
+    await editor.open('authors/ana');
+    expect(noteEl('authors/ana').hidden).toBe(true);
+    expect(noteEl('authors/ana').textContent).toBe('');
+    expect(noteEl('authors/ana').dataset.state).toBeUndefined();
+    expect(slotEl('authors/ana', 'file').textContent).toBe(
+      'src/content/authors/ana.json (json)',
+    );
+    expect(editor.value('authors/ana').getAttribute('aria-label')).toBe(
+      'authors/ana (JSON)',
+    );
+    expect(slotEl('authors/ana', 'body-field').hidden).toBe(true);
+  });
+
+  it.each([
+    ['blog/blog-1', { title: 'One', draft: false }, 'Hello *world*'],
+    ['blog/post', { title: 'Post' }, '# Post'],
+    ['blog/no-body', { title: 'Bare' }, ''],
+  ])(
+    'shows the frontmatter and body of %s in their own textboxes',
+    async (key, data, body) => {
+      await editor.open(key);
+      expect(editor.value(key).value).toBe(JSON.stringify(data, null, 2));
+      expect(editor.value(key).getAttribute('aria-label')).toBe(
+        `${key} frontmatter (JSON)`,
+      );
+      expect(slotEl(key, 'value-label').textContent).toBe('Frontmatter (JSON)');
+      expect(slotEl(key, 'body-field').hidden).toBe(false);
+      expect(editor.body(key).value).toBe(body);
+      expect(editor.body(key).getAttribute('aria-label')).toBe(`${key} body`);
+    },
+  );
+
+  it('shows the build-time note of a document, and "the whole file" when it names no field', async () => {
+    await editor.open(
+      'data:src/config/config.json',
+      'data:src/config/menu.json',
+    );
+    expect(noteEl('data:src/config/config.json').hidden).toBe(false);
+    expect(noteEl('data:src/config/config.json').textContent).toBe(
+      'Some fields apply after rebuild: site.base_url, site.title',
+    );
+    expect(noteEl('data:src/config/menu.json').textContent).toBe(
+      'Some fields apply after rebuild: the whole file',
+    );
+  });
+
+  it('joins the notes of a read-only document with ". ", and hides its fields', async () => {
+    await editor.open('data:src/config/rules.toml', 'rules/one');
+    expect(noteEl('data:src/config/rules.toml').textContent).toBe(
+      'Some fields apply after rebuild: rules.limit. Shown as built (this format is not edited here)',
+    );
+    expect(noteEl('rules/one').hidden).toBe(false);
+    expect(noteEl('rules/one').textContent).toBe(
+      'Shown as built (this format is not edited here)',
+    );
+    expect(slotEl('rules/one', 'fields').hidden).toBe(true);
+  });
+
+  it('gives a failed load a note in the error state, and no file name', async () => {
+    await editor.open('nope/missing');
+    expect(noteEl('nope/missing').textContent).toBe(
+      'Could not load (404): Unknown document "nope/missing"',
+    );
+    expect(noteEl('nope/missing').hidden).toBe(false);
+    expect(noteEl('nope/missing').dataset.state).toBe('error');
+    expect(slotEl('nope/missing', 'file').textContent).toBe('');
+  });
+});
+
+describe('the status line', () => {
+  it('marks the page as ready in the ok state', () => {
+    editor.ready('/blog');
+    expect(editor.status().textContent).toBe('Page ready: /blog');
+    expect(editor.status().dataset.state).toBe('ok');
+  });
+
+  it('lists several 422 errors that have no form, joined with "; "', async () => {
+    await editor.open('authors/ana');
+    editor.fromPage({
+      type: 'preview:error',
+      path: '/blog',
+      status: 422,
+      message: 'invalid',
+      errors: [
+        {
+          key: 'blog/other',
+          path: ['links', 0, 'url'],
+          message: 'Invalid url',
+        },
+        { key: 'blog/more', path: ['title'], message: 'Required' },
+      ],
+    });
+    expect(editor.status().textContent).toBe(
+      '/blog failed (422): invalid (blog/other links.0.url: Invalid url; blog/more title: Required)',
+    );
   });
 });
