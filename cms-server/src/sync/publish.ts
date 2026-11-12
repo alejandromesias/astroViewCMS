@@ -203,8 +203,11 @@ export function createPublish({
     for (let retry = 0; retry <= MAX_RETRIES; retry += 1) {
       if (retry > 0) {
         // The remote moved: fetch it, re-apply the saves on it, and look at the changeset again (the sync may have
-        // recorded new overwrites, or a referrer of a deleted document). It is not validated again.
-        await synced(tx);
+        // recorded new overwrites, or a referrer of a deleted document). Content cannot change the schema, so it is not
+        // validated again; new code can, and the sync has just asked for its rebuild, so the values would be checked
+        // against the old node. Nothing is pushed: the saves stay on `cms/work`, and a publish later waits for that build.
+        const { change } = await synced(tx);
+        if (change === 'code') return buildInProgress;
         const again = await prepare();
         if ('status' in again) return again;
         prepared = again;

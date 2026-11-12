@@ -620,6 +620,68 @@ describe('createPublish: builds', () => {
   });
 });
 
+describe('createPublish: a retry whose sync changes the code', () => {
+  it('answers 503 build-in-progress instead of pushing a changeset that was validated against the old code', async () => {
+    const { publish, tx, preview, trigger, status, syncLocked, guard } = rig({
+      pushes: [RACE, OK],
+      syncs: [synced(), synced({ change: 'code' })],
+    });
+    const answer = await publish();
+    expect(answer).toStrictEqual({
+      status: 503,
+      body: {
+        error: 'build-in-progress',
+        message:
+          'The preview is still being rebuilt, so the changes cannot be checked yet. Nothing was published. Try again once the build is done.',
+      },
+    });
+    expect(syncLocked).toHaveBeenCalledTimes(2);
+    // One push, no second squash; the saves are not reset, and no publish build is asked for.
+    expect(tx.push).toHaveBeenCalledTimes(1);
+    expect(tx.squash).toHaveBeenCalledTimes(1);
+    expect(tx.resetWork).not.toHaveBeenCalled();
+    expect(guard.invalidate).not.toHaveBeenCalled();
+    expect(trigger).not.toHaveBeenCalled();
+    expect(preview.validate).toHaveBeenCalledTimes(1);
+    expect((await status.snapshot()).publish).toStrictEqual({
+      state: 'idle',
+      error: null,
+    });
+  });
+
+  it('stops before it reads the changeset again', async () => {
+    const { publish, guard } = rig({
+      pushes: [RACE],
+      syncs: [synced(), synced({ change: 'code' })],
+    });
+    await publish();
+    expect(guard.recheck).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['none', 'content-only'] as const)(
+    'a %s change keeps the retry going: it pushes again and publishes',
+    async (change) => {
+      const { publish, tx } = rig({
+        pushes: [RACE, OK],
+        syncs: [synced(), synced({ change })],
+      });
+      expect(await publish()).toMatchObject({
+        status: 200,
+        body: { commit: 'c2' },
+      });
+      expect(tx.push).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it('a code change in the first sync does not stop the publish: the wait covers that rebuild', async () => {
+    const { publish, builds } = rig({
+      syncs: [synced({ change: 'code' })],
+    });
+    expect(await publish()).toMatchObject({ status: 200 });
+    expect(builds.waitForIdle).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('createPublish: the push', () => {
   it('a refused push syncs again and pushes again: the second commit is the one that is reset, announced and returned', async () => {
     const { publish, events, log, syncLocked, preview, guard, trigger, tx } =

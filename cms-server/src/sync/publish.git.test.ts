@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createTestApp, fakeAppDeps } from '../../test/helpers/app-deps.ts';
 import {
   bundleFolder,
+  FIXTURE_BUNDLE,
   removeBundleFolders,
 } from '../../test/helpers/bundle.ts';
 import {
@@ -31,6 +32,7 @@ import { createSync } from './sync.ts';
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 const ANA = 'src/content/authors/ana-torres.json';
+const KOFI = 'src/content/authors/kofi-mensah.json';
 const LEE = 'src/content/authors/lee.json';
 
 const roots: string[] = [];
@@ -97,7 +99,17 @@ async function rigOf(options: RigOptions = {}): Promise<Rig> {
     state,
     exec,
   });
-  const source = directoryBundleSource(await bundleFolder());
+  // The bundle was built on the seed commit, so a developer's push is classified against it: an edit of a document
+  // file is content-only, anything else (a new file) is code.
+  const seedTip = (await git(remote, ['rev-parse', 'main'])).trim();
+  const identity = JSON.parse(
+    await readFile(join(FIXTURE_BUNDLE, 'bundle.json'), 'utf8'),
+  );
+  const source = directoryBundleSource(
+    await bundleFolder({
+      'bundle.json': JSON.stringify({ ...identity, siteCommit: seedTip }),
+    }),
+  );
   const bundles = createBundleStore(source);
   const guard = createDeleteGuard();
   const status = createStatus({
@@ -205,8 +217,12 @@ async function saveAna(rig: Rig, name: string): Promise<void> {
 }
 
 // The text of Ana's file as the developer's clone has it, with a new name (a developer's edit of the same document).
-async function anaWithName(rig: Rig, name: string): Promise<string> {
-  const text = await readFile(join(rig.devClone, 'site', ANA), 'utf8');
+async function anaWithName(
+  rig: Rig,
+  name: string,
+  path = ANA,
+): Promise<string> {
+  const text = await readFile(join(rig.devClone, 'site', path), 'utf8');
   return `${JSON.stringify({ ...JSON.parse(text), name }, null, 2)}\n`;
 }
 
@@ -422,7 +438,35 @@ describe('publish after the developer changed a saved document (R4)', () => {
 });
 
 describe('publish when the remote moves during the push (R3, R4)', () => {
-  it('a push race ends in a retry that succeeds, with the developer’s commit under the publish and nothing lost', async () => {
+  it('a push race whose retry brings a content-only change ends in a retry that succeeds, with the developer’s commit under the publish and nothing lost', async () => {
+    let devCommit = '';
+    const rig = await rigOf({
+      beforePush: async (attempt, get) => {
+        if (attempt === 1)
+          devCommit = await get().dev(
+            { [KOFI]: await anaWithName(get(), 'Kofi by a developer', KOFI) },
+            'dev: edit Kofi',
+          );
+      },
+    });
+    await saveAna(rig, 'Ana T.');
+    const answer = await rig.publish();
+    expect(answer).toMatchObject({ status: 200 });
+    expect(rig.pushes()).toBe(2);
+    expect(await rig.remoteLog()).toStrictEqual([
+      'cms: publish 1 documents',
+      'dev: edit Kofi',
+      'seed: site',
+    ]);
+    expect((await git(rig.remote, ['rev-parse', 'main^'])).trim()).toBe(
+      devCommit,
+    );
+    expect(nameOf(await rig.remoteText(ANA))).toBe('Ana T.');
+    expect(nameOf(await rig.remoteText(KOFI))).toBe('Kofi by a developer');
+    await expect(rig.repo.changedPaths()).resolves.toStrictEqual([]);
+  });
+
+  it('a push race whose retry brings a code change answers 503 build-in-progress: no second push, the saves stay saved, and the status is idle', async () => {
     let devCommit = '';
     const rig = await rigOf({
       beforePush: async (attempt, get) => {
@@ -435,18 +479,26 @@ describe('publish when the remote moves during the push (R3, R4)', () => {
     });
     await saveAna(rig, 'Ana T.');
     const answer = await rig.publish();
-    expect(answer).toMatchObject({ status: 200 });
-    expect(rig.pushes()).toBe(2);
-    expect(await rig.remoteLog()).toStrictEqual([
-      'cms: publish 1 documents',
-      'dev: add an author',
-      'seed: site',
+    expect(answer).toMatchObject({
+      status: 503,
+      body: { error: 'build-in-progress' },
+    });
+    expect(rig.pushes()).toBe(1);
+    // The remote is the developer's, and the sync of the retry asked for the rebuild of the new code.
+    expect(await rig.remoteHead()).toBe(devCommit);
+    expect(rig.trigger).toHaveBeenCalledWith('sync-code');
+    expect(rig.trigger).not.toHaveBeenCalledWith('publish');
+    // Nothing is lost: the save is still on cms/work, re-applied on the developer's commit.
+    await expect(rig.repo.changedPaths()).resolves.toStrictEqual([
+      { path: ANA, status: 'modified' },
     ]);
-    expect((await git(rig.remote, ['rev-parse', 'main^'])).trim()).toBe(
-      devCommit,
+    expect(nameOf(await readFile(join(rig.siteFolder, ANA), 'utf8'))).toBe(
+      'Ana T.',
     );
-    expect(nameOf(await rig.remoteText(ANA))).toBe('Ana T.');
-    await expect(rig.repo.changedPaths()).resolves.toStrictEqual([]);
+    expect((await rig.status.snapshot()).publish).toStrictEqual({
+      state: 'idle',
+      error: null,
+    });
   });
 
   it('a race on the very document that was saved names the overwrite in the retried commit', async () => {
@@ -477,7 +529,7 @@ describe('publish when the remote moves during the push (R3, R4)', () => {
     const rig = await rigOf({
       beforePush: async (attempt, get) => {
         last = await get().dev(
-          { 'src/content/authors/extra.json': `{"name":"Extra ${attempt}"}\n` },
+          { [KOFI]: await anaWithName(get(), `Kofi ${attempt}`, KOFI) },
           `dev: push ${attempt}`,
         );
       },
@@ -509,9 +561,7 @@ describe('publish when the remote moves during the push (R3, R4)', () => {
       beforePush: async (attempt, get) => {
         if (attempt <= 4)
           await get().dev(
-            {
-              'src/content/authors/extra.json': `{"name":"Extra ${attempt}"}\n`,
-            },
+            { [KOFI]: await anaWithName(get(), `Kofi ${attempt}`, KOFI) },
             `dev: push ${attempt}`,
           );
       },
