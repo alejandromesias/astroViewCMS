@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { BundleSource } from '../bundle/source.ts';
 import type { Repo } from '../git/ops.ts';
 import type { StatusSource } from '../preview/status.ts';
+import type { PollLoop } from '../sync/poll.ts';
 import { registerBundleRoutes } from './bundle-routes.ts';
 import { registerChangeRoutes, type SaveRouteDeps } from './changes-routes.ts';
 import { type EditorRouteDeps, editorRoutes } from './editor-routes.ts';
@@ -42,6 +43,8 @@ export interface AppDeps {
   readonly previewUrl?: PreviewUrlRouteDeps | undefined;
   // POST /api/publish (2.10d). Registered whenever it is given.
   readonly publish?: PublishRouteDeps | undefined;
+  // Each /api call is recorded here, so the poll loop syncs while a session is open (2.10g). Without it the loop never starts.
+  readonly activity?: Pick<PollLoop, 'touch'> | undefined;
 }
 
 // Hono only routes (PHASE-2-DESIGN 4.1): the modules behind the routes don't import Hono.
@@ -51,6 +54,11 @@ export function createApp(deps: AppDeps): Hono {
   app.use('*', async (c, next) => {
     const refused = rejectUnlessHostAllowed(c.req.raw, deps.cmsOrigin);
     if (refused !== null) return refused;
+    await next();
+  });
+  // After the Host check, so a refused request is not activity. Every /api call counts (2.10g item 2).
+  app.use('/api/*', async (_c, next) => {
+    deps.activity?.touch();
     await next();
   });
   app.route('/', editorRoutes(deps.editor));

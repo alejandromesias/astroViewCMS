@@ -52,6 +52,7 @@ import {
 import type { MediaFiles } from './save/context.ts';
 import { createDeleteGuard } from './save/delete-guard.ts';
 import { startServer } from './server.ts';
+import { createPollLoop, type PollLoop } from './sync/poll.ts';
 import { type Builds, createPublish } from './sync/publish.ts';
 import { createSync, type SyncNowOutcome } from './sync/sync.ts';
 
@@ -65,9 +66,9 @@ export interface StartArgs {
 export interface Running {
   readonly server: Server;
   readonly supervisor: Supervisor;
-  /** Closes the server, then stops the preview node. Later calls wait for the first one's result. */
+  /** Closes the server, then the poll loop, the builds and the preview node. Later calls wait for the first one's result. */
   stop(): Promise<void>;
-  /** One sync under the repo lock (2.10c). The poll loop (2.10g) calls it; nothing calls it in production until then. */
+  /** One sync under the repo lock (2.10c). The poll loop (2.10g) calls it, and a test can call it too. */
   readonly syncNow: () => Promise<SyncNowOutcome>;
 }
 
@@ -245,16 +246,28 @@ export async function run(
   // The sync routine (2.10c). Its `sync-code` trigger is the lifecycle's, read when it fires; with --bundle there is no
   // lifecycle, so the trigger is only logged.
   const bundles = createBundleStore(source);
+  const syncTrigger = (reason: 'sync-code'): void => {
+    if (lifecycle === undefined)
+      deps.logger.info('A sync found a code change, but the builder is off');
+    else void lifecycle.trigger(reason);
+  };
   const sync = createSync({
     repo: openedRepo,
     bundles,
     guard,
     status,
-    trigger: (reason) => {
-      if (lifecycle === undefined)
-        deps.logger.info('A sync found a code change, but the builder is off');
-      else void lifecycle.trigger(reason);
-    },
+    trigger: syncTrigger,
+  });
+  // The poll loop (2.10g): it syncs while an /api call was recent. While no node serves, a content-only change asks for a
+  // build too (the failed-first-build recovery). With --bundle there is no builder, so there is nothing to recover.
+  const poll = createPollLoop({
+    syncNow: sync.syncNow,
+    status,
+    trigger: syncTrigger,
+    nodeServes: () =>
+      lifecycle === undefined || supervisor.status().state === 'ready',
+    intervalMs: config.syncIntervalSeconds * 1000,
+    log: deps.logger,
   });
   // The save's check and warm-up go to the node on the preview port, with the internal bearer (2.9d).
   const preview = createPreviewClient({
@@ -309,6 +322,8 @@ export async function run(
     },
     // POST /api/publish (2.10d).
     publish: { publish },
+    // Each /api call starts or keeps the poll loop (2.10g).
+    activity: { touch: poll.touch },
     // GET /api/overlay: the site's image folder, and the log of a clash (2.9e).
     overlay: { mediaFolder: config.media.folder, log: deps.logger },
     // GET /api/preview-url: the preview origin and site, the token secret, and the node's warm-up (2.9e).
@@ -321,7 +336,7 @@ export async function run(
     },
   };
   const server = await deps.startServer(appDeps, cmsPort);
-  const stop = stopOnce(server, supervisor, lifecycle);
+  const stop = stopOnce(server, poll, supervisor, lifecycle);
   // A server that closes on its own also stops the node. The stop started by stop() is the same one, so it runs once.
   server.once('close', () => {
     void stop();
@@ -436,15 +451,17 @@ async function prepareBuilder(
   return createStateStore(start.stateFile, initial, deps.logger);
 }
 
-/** The stop of a running CMS: the server first, then the builds, then the node. The first call does the work; later calls return the same promise. */
+/** The stop of a running CMS: the server first, then the poll loop, the builds and the node. The first call does the work; later calls return the same promise. */
 function stopOnce(
   server: Server,
+  poll: PollLoop,
   supervisor: Supervisor,
   lifecycle: BundleLifecycle | undefined,
 ): () => Promise<void> {
   let stopping: Promise<void> | undefined;
   return () => {
     stopping ??= closeServer(server)
+      .then(() => poll.stop())
       .then(() => lifecycle?.stop())
       .then(() => supervisor.stop());
     return stopping;

@@ -300,6 +300,7 @@ describe('run', () => {
           publish: {
             publish: expect.any(Function) as () => Promise<PublishAnswer>,
           },
+          activity: { touch: expect.any(Function) as () => void },
           overlay: { mediaFolder: 'src/assets/uploads', log: h.log },
           previewUrl: {
             origin: PREVIEW_ORIGIN,
@@ -846,7 +847,10 @@ describe('run: sync and publish on a real clone', () => {
 
   // Starts run() over a new clone. With `bundleMode` set to flag, the fixture bundle is the --bundle folder (the builder is off);
   // otherwise the fixture bundle is the served one of a state file, and the builder is a spy whose builds fail.
-  async function started(bundleMode: 'flag' | 'state'): Promise<Real> {
+  async function started(
+    bundleMode: 'flag' | 'state',
+    syncIntervalSeconds?: number,
+  ): Promise<Real> {
     const root = await makeTestRoot();
     const clone = await saveRepoIn(root);
     const bearers: (string | undefined)[] = [];
@@ -860,6 +864,8 @@ describe('run: sync and publish on a real clone', () => {
     const h = harness({
       config: {
         ...clone.config,
+        syncIntervalSeconds:
+          syncIntervalSeconds ?? clone.config.syncIntervalSeconds,
         origins: {
           cms: CMS_ORIGIN,
           preview: `http://127.0.0.1:${portOfServer(node)}`,
@@ -941,6 +947,31 @@ describe('run: sync and publish on a real clone', () => {
         'A sync found a code change, but the builder is off',
       );
       expect(real.builder).not.toHaveBeenCalled();
+    } finally {
+      await real.stop();
+    }
+  });
+
+  it('an /api call starts the poll loop, which then syncs on its own, one interval later (2.10g)', async () => {
+    const real = await started('flag', 1);
+    try {
+      const base = `http://127.0.0.1:${portOfServer(real.running.server)}`;
+      // The call is the first activity: no sync has run yet, so the status has no lastSync.
+      const first = await fetchLocal(`${base}/api/status`);
+      expect(await first.json()).toMatchObject({ lastSync: null });
+      // The loop's sync finds the upstream code change of the fixture, and logs it as the builder-off message.
+      await vi.waitFor(
+        () =>
+          expect(real.h.log.info).toHaveBeenCalledWith(
+            'A sync found a code change, but the builder is off',
+          ),
+        { timeout: 5_000 },
+      );
+      const later = await fetchLocal(`${base}/api/status`);
+      expect(await later.json()).toMatchObject({
+        lastSync: expect.any(String),
+        syncError: null,
+      });
     } finally {
       await real.stop();
     }

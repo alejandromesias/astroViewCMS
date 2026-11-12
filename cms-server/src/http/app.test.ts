@@ -139,6 +139,25 @@ describe('createApp', () => {
     expect(await response.json()).toEqual({ error: 'not_found' });
   });
 
+  it('records each /api call as activity, and no other request (2.10g)', async () => {
+    const touch = vi.fn();
+    const app = createTestApp({ ...fakeAppDeps(), activity: { touch } });
+    await app.request('/');
+    expect(touch).not.toHaveBeenCalled();
+    await app.request('/api/nope');
+    expect(touch).toHaveBeenCalledTimes(1);
+  });
+
+  it('records no activity for a request the Host check refuses (2.10g)', async () => {
+    const touch = vi.fn();
+    const app = createTestApp({ ...fakeAppDeps(), activity: { touch } });
+    const response = await app.request('/api/nope', {
+      headers: { host: 'evil.example' },
+    });
+    expect(response.status).toBe(421);
+    expect(touch).not.toHaveBeenCalled();
+  });
+
   it.each(['POST', 'PUT', 'DELETE'])(
     'answers a JSON 404 for %s on an unknown path',
     async (method) => {
