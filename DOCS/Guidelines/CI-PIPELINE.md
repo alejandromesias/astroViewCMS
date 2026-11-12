@@ -15,7 +15,7 @@ in section 9.
 | | | `e2e` | cms-server end-to-end, preview end-to-end and budgets, browser suite (Chromium) | 40 min |
 | | | `mutation-diff` | Stryker on the source files the branch changed, then the judgement (section 3) | 240 min |
 | `mutation-full.yml` | nightly 03:17 UTC, by hand | `gate` | nightly only: skips the run when nothing outside `DOCS/` changed since the last green run (section 4) | 10 min |
-| | | `shard` x13 (needs `gate`) | Stryker on every file of one group each; `cms-server` is seven groups: six by folder or file, plus the rest (section 3); `cms-editor` is the thirteenth | 120 min each |
+| | | `shard` x13 (needs `gate`) | Stryker on every file of one group each; `cms-server/src/` is seven groups: six by folder or file, plus the rest (section 3); `cms-editor` is the thirteenth | 120 min each |
 | | | `merge` | judges the whole run, keeps the per-file baseline | 15 min |
 | `mutation-branch.yml` | by hand only (`workflow_dispatch`, inputs `ref` and `base`) | `mutation` | Stryker on the files one pushed branch changed against `base` (default `main`), then the judgement of `mutation-diff`. No pull request needed | 240 min |
 | `windows.yml` | weekly, Monday 05:23 UTC, by hand | `unit` | `npm run coverage` on `windows-latest` (not a gate) | 40 min |
@@ -96,7 +96,7 @@ default `main`). It runs the steps below, with the changed set taken from
    | `cms-server` | the rest of `cms-server/src/` (`http/`, `config/`, `bundle/`, the top-level files, and any new folder) | `stryker.cms-server.config.mjs` |
    | `cms-editor` | `cms-server/editor/` (the browser editor, 2.11e) | `stryker.cms-editor.config.mjs` |
 
-   The `cms-server` package is split into seven groups: six by folder or file, plus the rest. It was split by
+   The `cms-server/src/` code is split into seven groups: six by folder or file, plus the rest. It was split by
    folder in 2.1s, because the single `cms-server` group had grown from 30 to 60 minutes in three days and
    set the length of the whole nightly run, and `git/ops.ts` was split off by file in 2.1t, because it holds
    about half of the git mutants and `cms-git` took 22 minutes. The seven `cms-server/src/` groups share the Vitest config `vitest.mutation.cms-server.config.ts`; `cms-editor` has its own, `vitest.mutation.cms-editor.config.ts`, which runs the editor's happy-dom tests. A file counts for
@@ -211,7 +211,7 @@ on a clean tree.
 A new Stryker group needs a rule in `scripts/lib/stryker-plan.ts` (before the
 rule whose prefix contains its folder), a `stryker.<group>.config.mjs`, a Vitest
 config (a new `vitest.mutation.<group>.config.ts`, or the one of the package, as the
-`cms-*` groups share `vitest.mutation.cms-server.config.ts`) and a line in the
+`cms-server/src/` groups share `vitest.mutation.cms-server.config.ts`) and a line in the
 `matrix` of `mutation-full.yml`. `stryker-plan.test.ts` fails when a group has no
 config file.
 
