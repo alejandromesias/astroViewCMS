@@ -22,7 +22,7 @@ export type SyncTx = Pick<RepoTx, 'fetch' | 'reapply' | 'revParse'>;
  * documents upstream renamed in this sync's re-apply (none when there was no re-apply). `upstream` is the origin tip this
  * sync integrated, as read under the lock. `failed`: nothing moved, and `message` (redacted) is the status's `syncError`.
  */
-type SyncOutcome =
+export type SyncOutcome =
   | {
       readonly kind: 'synced';
       readonly change: SyncChange;

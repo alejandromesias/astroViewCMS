@@ -49,8 +49,10 @@ import {
   type SweepResult,
   sweepLeftovers,
 } from './preview/sweep.ts';
+import type { MediaFiles } from './save/context.ts';
 import { createDeleteGuard } from './save/delete-guard.ts';
 import { startServer } from './server.ts';
+import { type Builds, createPublish } from './sync/publish.ts';
 import { createSync, type SyncNowOutcome } from './sync/sync.ts';
 
 /** The arguments of the start. `bundleDir` is the renderer's build folder (its `manifest/` holds the five files). */
@@ -242,9 +244,10 @@ export async function run(
   };
   // The sync routine (2.10c). Its `sync-code` trigger is the lifecycle's, read when it fires; with --bundle there is no
   // lifecycle, so the trigger is only logged.
+  const bundles = createBundleStore(source);
   const sync = createSync({
     repo: openedRepo,
-    bundles: createBundleStore(source),
+    bundles,
     guard,
     status,
     trigger: (reason) => {
@@ -260,13 +263,38 @@ export async function run(
     nodeState: () => supervisor.status().state,
     status,
   });
+  const media: MediaFiles = {
+    stagingDir: join(siteDir, 'staging'),
+    mediaFile: join(siteDir, 'media.json'),
+    cmsOrigin: config.origins.cms,
+  };
+  // Publish (2.10d) waits for the lifecycle's builds; with --bundle there are none. Its `publish` rebuild is logged only then.
+  const builds: Builds = lifecycle ?? {
+    busy: () => false,
+    waitForIdle: () => Promise.resolve(true),
+  };
+  const publish = createPublish({
+    repo: openedRepo,
+    bundles,
+    siteFolder: repo.siteFolder,
+    config,
+    preview,
+    media,
+    guard,
+    syncLocked: sync.syncLocked,
+    status,
+    builds,
+    builderOn: lifecycle !== undefined,
+    trigger: (reason) => {
+      if (lifecycle === undefined)
+        deps.logger.info('A publish finished, but the builder is off');
+      else void lifecycle.trigger(reason);
+    },
+    log: deps.logger,
+  });
   const appDeps: AppDeps = {
     editor: { page: editorPage, previewOrigin: config.origins.preview },
-    media: {
-      stagingDir: join(siteDir, 'staging'),
-      mediaFile: join(siteDir, 'media.json'),
-      cmsOrigin: config.origins.cms,
-    },
+    media,
     cmsOrigin: config.origins.cms,
     bundle: source,
     // The repo's site folder (repoDir joined with the config's siteDir): where the bundle's document files are.
@@ -279,6 +307,8 @@ export async function run(
       guard,
       onRebuild,
     },
+    // POST /api/publish (2.10d).
+    publish: { publish },
     // GET /api/overlay: the site's image folder, and the log of a clash (2.9e).
     overlay: { mediaFolder: config.media.folder, log: deps.logger },
     // GET /api/preview-url: the preview origin and site, the token secret, and the node's warm-up (2.9e).

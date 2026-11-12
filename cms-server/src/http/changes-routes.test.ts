@@ -14,6 +14,7 @@ import { saveRepoIn } from '../../test/helpers/repo.ts';
 import { fakeTx, previewSays } from '../../test/helpers/save-context.ts';
 import { directoryBundleSource } from '../bundle/source.ts';
 import { GitError } from '../git/exec.ts';
+import { LockTimeoutError } from '../git/mutex.ts';
 import type { Repo } from '../git/ops.ts';
 import { createReferenceIndex } from '../references/reference-index.ts';
 import type { DeleteGuard, PreviewClient } from '../save/context.ts';
@@ -554,6 +555,21 @@ describe('PUT /api/changes', () => {
     expect(asked).toStrictEqual(['rebuild']);
   });
 
+  it('does not call onRebuild for a save that changes no build-time field', async () => {
+    const asked: string[] = [];
+    const { app, siteFolder } = await saveApp(
+      previewSays(),
+      undefined,
+      undefined,
+      () => asked.push('rebuild'),
+    );
+    const before = await readFile(join(siteFolder, ANA), 'utf8');
+    const res = await put(app, anaUpdate(before, 'Ana T.'));
+    expect(res.status).toBe(200);
+    expect((await res.json()).rebuild).toBe(false);
+    expect(asked).toStrictEqual([]);
+  });
+
   it('does not call onRebuild for a save that answers 400', async () => {
     const asked: string[] = [];
     const { app } = await saveApp(previewSays(), undefined, undefined, () =>
@@ -612,6 +628,44 @@ describe('PUT /api/changes', () => {
       duplex: 'half',
     } as RequestInit);
     expect(res.status).toBe(500);
+  });
+
+  it('answers 503 busy when the repo lock stays busy, and writes nothing (2.10d)', async () => {
+    const siteFolder = await workingCopy();
+    const busy: Repo = {
+      ...repo,
+      locked: () => Promise.reject(new LockTimeoutError('publish', 30_000)),
+    };
+    const app = new Hono();
+    registerChangeRoutes(app, {
+      source: directoryBundleSource(FIXTURE_BUNDLE),
+      repo: busy,
+      siteFolder,
+      media: fakeAppDeps().media,
+      save: {
+        config: { collections: {}, media: { folder: 'src/assets/uploads' } },
+        preview: previewSays(),
+      },
+    });
+    const res = await put(
+      app,
+      JSON.stringify({
+        changes: [
+          {
+            document: 'blog/blog-1',
+            baseRevision: revisionOf(OLD),
+            data: { data: { title: 'Other' }, body: 'other\n' },
+          },
+        ],
+      }),
+    );
+    expect(res.status).toBe(503);
+    expect(await res.json()).toStrictEqual({
+      error: 'busy',
+      message:
+        'The site is busy with another operation (publish). Try again in a moment.',
+    });
+    expect(await readFile(join(siteFolder, BLOG_1), 'utf8')).toBe(NEW);
   });
 
   it('answers 500 changes-unavailable when git cannot read the changes before the save, and writes nothing', async () => {

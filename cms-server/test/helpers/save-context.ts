@@ -77,6 +77,18 @@ export function fakeTx(overrides: Partial<RepoTx> = {}): RepoTx {
     reapply: vi.fn(async () => {
       throw new Error('reapply is not used by a save');
     }),
+    hasSavedChanges: vi.fn(async () => {
+      throw new Error('hasSavedChanges is not used by a save');
+    }),
+    squash: vi.fn(async () => {
+      throw new Error('squash is not used by a save');
+    }),
+    push: vi.fn(async () => {
+      throw new Error('push is not used by a save');
+    }),
+    resetWork: vi.fn(async () => {
+      throw new Error('resetWork is not used by a save');
+    }),
     ...overrides,
   };
 }

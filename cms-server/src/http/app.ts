@@ -15,6 +15,10 @@ import {
   type PreviewUrlRouteDeps,
   registerPreviewUrlRoutes,
 } from './preview-url-routes.ts';
+import {
+  type PublishRouteDeps,
+  registerPublishRoutes,
+} from './publish-routes.ts';
 
 // What the routes need from the outside. Each route group adds its own field.
 export interface AppDeps {
@@ -36,6 +40,8 @@ export interface AppDeps {
   readonly overlay?: Pick<OverlayRouteDeps, 'mediaFolder' | 'log'> | undefined;
   // GET /api/preview-url (2.9e). Registered whenever it is given: the URL needs no bundle.
   readonly previewUrl?: PreviewUrlRouteDeps | undefined;
+  // POST /api/publish (2.10d). Registered whenever it is given.
+  readonly publish?: PublishRouteDeps | undefined;
 }
 
 // Hono only routes (PHASE-2-DESIGN 4.1): the modules behind the routes don't import Hono.
@@ -85,6 +91,7 @@ export function createApp(deps: AppDeps): Hono {
     });
   if (deps.previewUrl !== undefined)
     registerPreviewUrlRoutes(app, deps.previewUrl);
+  if (deps.publish !== undefined) registerPublishRoutes(app, deps.publish);
   app.notFound((c) => c.json({ error: 'not_found' }, 404));
   return app;
 }

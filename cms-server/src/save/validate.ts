@@ -25,24 +25,7 @@ export async function validateChanges(
   try {
     errors = await ctx.preview.validate(documents, media);
   } catch (error) {
-    // The client's error names the build or node error, and logs its HTTP status when there was an answer.
-    const reason = error instanceof Error ? error.message : String(error);
-    ctx.log.warn(
-      'the preview node did not check the save',
-      error instanceof PreviewUnavailableError && error.status !== null
-        ? { reason, status: error.status }
-        : { reason },
-    );
-    return {
-      status: 503,
-      body: {
-        error: 'preview-unavailable',
-        message:
-          error instanceof PreviewUnavailableError
-            ? error.message
-            : PREVIEW_UNAVAILABLE_TEXT,
-      },
-    };
+    return previewUnavailableStop(error, ctx.log);
   }
   ctx.refinements = [
     ...new Set(
@@ -51,6 +34,40 @@ export async function validateChanges(
         .map((error) => error.key),
     ),
   ];
+  return invalidStop(errors);
+}
+
+/**
+ * The 503 for a node that could not check the values. The client's error names the build or node error, and the log gets
+ * its HTTP status when there was an answer. A save and a publish (2.10d) both answer with it.
+ */
+export function previewUnavailableStop(error: unknown, log: Logger): SaveStop {
+  const reason = error instanceof Error ? error.message : String(error);
+  log.warn(
+    'the preview node did not check the save',
+    error instanceof PreviewUnavailableError && error.status !== null
+      ? { reason, status: error.status }
+      : { reason },
+  );
+  return {
+    status: 503,
+    body: {
+      error: 'preview-unavailable',
+      message:
+        error instanceof PreviewUnavailableError
+          ? error.message
+          : PREVIEW_UNAVAILABLE_TEXT,
+    },
+  };
+}
+
+/**
+ * The 422 for the errors of a check, or undefined when none blocks. A refinement that threw does not block (5.1 item 9).
+ * A save and a publish (2.10d) both answer with it.
+ */
+export function invalidStop(
+  errors: readonly FieldError[],
+): SaveStop | undefined {
   const blocking = errors.filter((error) => error.kind !== 'refinement-threw');
   if (blocking.length === 0) return undefined;
   return {

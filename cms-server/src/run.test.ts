@@ -1,13 +1,14 @@
 import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
-import type { Server } from 'node:http';
+import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { type BundleJson, bundleJsonSchema } from 'preview-contract';
 import { describe, expect, it, vi } from 'vitest';
 import { ZodError } from 'zod';
 import { FIXTURE_BUNDLE } from '../test/helpers/bundle.ts';
-import { makeTestRoot, removeTestRoot } from '../test/helpers/git.ts';
+import { git, makeTestRoot, removeTestRoot } from '../test/helpers/git.ts';
 import { fetchLocal } from '../test/helpers/local-fetch.ts';
+import { saveRepoIn } from '../test/helpers/repo.ts';
 import { type BundleSource, directoryBundleSource } from './bundle/source.ts';
 import { type CmsConfig, parseConfig } from './config/schema.ts';
 import type { Env, Secrets } from './config/secrets.ts';
@@ -21,9 +22,20 @@ import type { BuildJob, BuildResult } from './preview/build-runner.ts';
 import { encodeState } from './preview/state.ts';
 import type { Supervisor, SupervisorOptions } from './preview/supervisor.ts';
 import type { SweepOptions } from './preview/sweep.ts';
-import { describeError, parseArgs, portOf, type RunDeps, run } from './run.ts';
+import {
+  describeError,
+  parseArgs,
+  portOf,
+  type RunDeps,
+  type Running,
+  run,
+} from './run.ts';
 import type { DeleteGuard } from './save/context.ts';
 import { startServer as listen } from './server.ts';
+import type { PublishAnswer } from './sync/publish.ts';
+
+// The tests on a real clone run several git calls each, so one takes a few seconds under load.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
 
 const USAGE = 'Usage: node src/main.ts [config-file] [--bundle <folder>]';
 const CMS_ORIGIN = 'http://127.0.0.1:4400';
@@ -78,6 +90,14 @@ function harness(
     bundle?: BundleSource;
     startResult?: { ok: true } | { ok: false; error: string };
     repoError?: Error;
+    /** The config the loader returns (the sample-site one by default). */
+    config?: CmsConfig;
+    /** The state `ensureRepo` returns (a folder that is no git clone by default). */
+    repoState?: RepoState;
+    /** The builder `createBuilder` returns (one whose builds fail by default). */
+    builder?: Builder;
+    /** The node state the supervisor reports (ready by default). */
+    nodeState?: ReturnType<Supervisor['status']>['state'];
   } = {},
 ) {
   const servers: Server[] = [];
@@ -88,7 +108,7 @@ function harness(
     swap: vi.fn(() => Promise.resolve({ ok: true as const })),
     stop: vi.fn(() => Promise.resolve()),
     status: vi.fn(() => ({
-      state: 'ready' as const,
+      state: options.nodeState ?? ('ready' as const),
       port: 4401,
       bundleId: null,
       failures: 0,
@@ -96,15 +116,19 @@ function harness(
     })),
   };
   const deps: RunDeps = {
-    loadConfig: vi.fn((_path: string) => Promise.resolve(configOf())),
+    loadConfig: vi.fn((_path: string) =>
+      Promise.resolve(options.config ?? configOf()),
+    ),
     loadSecrets: vi.fn((_dir: string, _env: Env) => Promise.resolve(SECRETS)),
     ensureRepo: vi.fn((_options: EnsureRepoOptions) =>
       options.repoError === undefined
-        ? Promise.resolve<RepoState>({
-            repoDir: 'repo',
-            siteFolder: 'repo',
-            recovered: false,
-          })
+        ? Promise.resolve<RepoState>(
+            options.repoState ?? {
+              repoDir: 'repo',
+              siteFolder: 'repo',
+              recovered: false,
+            },
+          )
         : Promise.reject(options.repoError),
     ),
     loadEditorPage: vi.fn(() => Promise.resolve(PAGE)),
@@ -117,7 +141,9 @@ function harness(
       Promise.resolve({ worktrees: [], bundles: [], temp: [] }),
     ),
     checkAstroResolves: vi.fn((_siteFolder: string) => '/astro/index.js'),
-    createBuilder: vi.fn((_options: BuildCommitOptions) => fakeBuilder()),
+    createBuilder: vi.fn(
+      (_options: BuildCommitOptions) => options.builder ?? fakeBuilder(),
+    ),
     // The real listen, on a free port: the routes answer over HTTP. The port asked for is only recorded.
     startServer: vi.fn(async (appDeps: AppDeps, _port: number) => {
       const server = await listen(appDeps, 0);
@@ -175,6 +201,7 @@ describe('portOf', () => {
   it('returns the port of an origin', () => {
     expect(portOf('origins.cms', 'http://127.0.0.1:4400')).toBe(4400);
     expect(portOf('origins.cms', 'http://127.0.0.1:65535')).toBe(65535);
+    expect(portOf('origins.cms', 'http://127.0.0.1:1')).toBe(1);
   });
 
   it.each([
@@ -182,6 +209,9 @@ describe('portOf', () => {
     'http://127.0.0.1:0',
     'http://127.0.0.1:65536',
     'http://127.0.0.1:abc',
+    'http://127.0.0.1:4400/path',
+    'http://127.0.0.1:44x0',
+    'http://127.0.0.1:',
   ])(
     'refuses %s, which has no numeric port, and names the setting',
     (origin) => {
@@ -267,6 +297,9 @@ describe('run', () => {
             guard: expect.any(Object) as DeleteGuard,
             onRebuild: expect.any(Function) as () => void,
           },
+          publish: {
+            publish: expect.any(Function) as () => Promise<PublishAnswer>,
+          },
           overlay: { mediaFolder: 'src/assets/uploads', log: h.log },
           previewUrl: {
             origin: PREVIEW_ORIGIN,
@@ -328,6 +361,38 @@ describe('run', () => {
             },
           ),
         );
+      } finally {
+        await running.stop();
+      }
+    } finally {
+      await removeTestRoot(root);
+    }
+  });
+
+  it('wires publish: it syncs under the repo lock first, so a clone git cannot read answers 502 sync-failed and the status says failed (2.10d)', async () => {
+    const root = await makeTestRoot();
+    try {
+      const bundleDir = join(root, 'build');
+      await cp(FIXTURE_BUNDLE, join(bundleDir, 'manifest'), {
+        recursive: true,
+      });
+      const h = harness();
+      const running = await run(
+        ['--bundle', bundleDir, join(root, 'cms.config.ts')],
+        {},
+        { ...h.deps, directoryBundleSource },
+      );
+      try {
+        const appDeps = vi.mocked(h.deps.startServer).mock.calls[0]?.[0];
+        const answer = await appDeps?.publish?.publish();
+        expect(answer?.status).toBe(502);
+        expect(answer).toMatchObject({ body: { error: 'sync-failed' } });
+        const snapshot = await appDeps?.status?.snapshot();
+        expect(snapshot?.publish).toStrictEqual({
+          state: 'failed',
+          error: (answer?.body as { message: string } | undefined)?.message,
+        });
+        expect(snapshot?.syncError).not.toBeNull();
       } finally {
         await running.stop();
       }
@@ -595,5 +660,400 @@ describe('run', () => {
     await expect(run([missing], {})).rejects.toMatchObject({
       code: 'ERR_MODULE_NOT_FOUND',
     });
+  });
+
+  it.each([
+    ['origins.cms', { cms: 'http://127.0.0.1', preview: PREVIEW_ORIGIN }],
+    ['origins.preview', { cms: CMS_ORIGIN, preview: 'http://127.0.0.1' }],
+  ])(
+    'a %s without a port fails the start by naming that setting, before anything is read',
+    async (setting, origins) => {
+      const h = harness({ config: { ...configOf(), origins } });
+      await expect(run(['cms.config.ts'], {}, h.deps)).rejects.toThrow(
+        new Error(
+          `${setting} must name a port, for example http://127.0.0.1:4400`,
+        ),
+      );
+      expect(h.deps.loadSecrets).not.toHaveBeenCalled();
+      expect(h.deps.startServer).not.toHaveBeenCalled();
+    },
+  );
+});
+
+// The bundles the builder keeps, and the start-up of the lifecycle, with a state file on disk.
+describe('run: the state of the builder', () => {
+  const kept = {
+    current: { bundleId: 'b-current', baseCommit: 'a'.repeat(40) },
+    lastGood: { bundleId: 'b-good', baseCommit: 'b'.repeat(40) },
+    protocolAttempts: new Map<string, number>(),
+  };
+
+  // A root whose `.cms/sample-site/state.json` holds `kept`, and the path of a config file in it.
+  async function rootWithState(): Promise<{ root: string; config: string }> {
+    const root = await makeTestRoot();
+    const siteDir = join(root, '.cms', 'sample-site');
+    await mkdir(siteDir, { recursive: true });
+    await writeFile(join(siteDir, 'state.json'), encodeState(kept));
+    return { root, config: join(root, 'cms.config.ts') };
+  }
+
+  it('keeps the served and the last good bundle of the state file, also when the builder asks before the lifecycle exists', async () => {
+    const { root, config } = await rootWithState();
+    try {
+      const h = harness();
+      let askedEarly: ReadonlySet<string> | undefined;
+      h.deps.createBuilder = vi.fn((options: BuildCommitOptions) => {
+        // The lifecycle is made after the builder, so it does not exist yet: no swap is pending.
+        askedEarly = options.keptBundles?.();
+        return fakeBuilder();
+      });
+      const running = await run([config], {}, h.deps);
+      try {
+        expect(askedEarly).toStrictEqual(new Set(['b-current', 'b-good']));
+        const options = vi.mocked(h.deps.createBuilder).mock.calls[0]?.[0];
+        expect(options?.keptBundles?.()).toStrictEqual(
+          new Set(['b-current', 'b-good']),
+        );
+      } finally {
+        await running.stop();
+      }
+    } finally {
+      await removeTestRoot(root);
+    }
+  });
+
+  it('logs a start-up that fails after the server listens, with the error’s message, and keeps listening', async () => {
+    const { root, config } = await rootWithState();
+    try {
+      const h = harness();
+      vi.mocked(h.supervisor.start).mockRejectedValueOnce(
+        new Error('spawn failed'),
+      );
+      const running = await run([config], {}, h.deps);
+      try {
+        await vi.waitFor(() =>
+          expect(h.log.error).toHaveBeenCalledWith(
+            'The preview start-up failed',
+            { error: 'spawn failed' },
+          ),
+        );
+        expect(running.server.listening).toBe(true);
+      } finally {
+        await running.stop();
+      }
+    } finally {
+      await removeTestRoot(root);
+    }
+  });
+});
+
+// The preview client of the save routes: it asks the node on the preview port, with the internal bearer, once the node is ready.
+describe('run: the preview client', () => {
+  // A node that answers every validate with 200, and records the bearer it was given.
+  async function fakeNode(): Promise<{
+    server: Server;
+    port: number;
+    bearers: (string | undefined)[];
+  }> {
+    const bearers: (string | undefined)[] = [];
+    const server = createServer((request, response) => {
+      bearers.push(request.headers.authorization);
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end('{"valid":true}');
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', resolve),
+    );
+    return { server, port: portOfServer(server), bearers };
+  }
+
+  it('asks the node on the preview port with the internal bearer when the supervisor says it is ready', async () => {
+    const node = await fakeNode();
+    try {
+      const h = harness({
+        config: {
+          ...configOf(),
+          origins: {
+            cms: CMS_ORIGIN,
+            preview: `http://127.0.0.1:${node.port}`,
+          },
+        },
+      });
+      const running = await run(['cms.config.ts'], {}, h.deps);
+      try {
+        const appDeps = vi.mocked(h.deps.startServer).mock.calls[0]?.[0];
+        await expect(
+          appDeps?.save?.preview.validate({}, {}),
+        ).resolves.toStrictEqual([]);
+        expect(node.bearers).toStrictEqual([
+          `Bearer ${SECRETS.previewInternalSecret}`,
+        ]);
+      } finally {
+        await running.stop();
+      }
+    } finally {
+      node.server.close();
+    }
+  });
+
+  it('does not ask the node while the supervisor says it is not ready: the answer names the build error of the status', async () => {
+    const node = await fakeNode();
+    try {
+      const h = harness({
+        nodeState: 'stopped',
+        config: {
+          ...configOf(),
+          origins: {
+            cms: CMS_ORIGIN,
+            preview: `http://127.0.0.1:${node.port}`,
+          },
+        },
+      });
+      const running = await run(['cms.config.ts'], {}, h.deps);
+      try {
+        const appDeps = vi.mocked(h.deps.startServer).mock.calls[0]?.[0];
+        // The first build fails (the repo folder of the harness is no clone), and its error is in the status.
+        await vi.waitFor(async () =>
+          expect(
+            (await appDeps?.status?.snapshot())?.build.error,
+          ).not.toBeNull(),
+        );
+        await expect(appDeps?.save?.preview.validate({}, {})).rejects.toThrow(
+          /^The preview build failed: /,
+        );
+        expect(node.bearers).toStrictEqual([]);
+      } finally {
+        await running.stop();
+      }
+    } finally {
+      node.server.close();
+    }
+  });
+});
+
+// The sync and the publish through a real clone (bare remote, `saveRepoIn`), a fake preview node and a fake builder.
+describe('run: sync and publish on a real clone', () => {
+  const ANA = 'src/content/authors/ana-torres.json';
+
+  interface Real {
+    h: ReturnType<typeof harness>;
+    running: Running;
+    builder: ReturnType<typeof fakeBuilder>;
+    clone: Awaited<ReturnType<typeof saveRepoIn>>;
+    bearers: (string | undefined)[];
+    stop: () => Promise<void>;
+  }
+
+  // Starts run() over a new clone. With `bundleMode` set to flag, the fixture bundle is the --bundle folder (the builder is off);
+  // otherwise the fixture bundle is the served one of a state file, and the builder is a spy whose builds fail.
+  async function started(bundleMode: 'flag' | 'state'): Promise<Real> {
+    const root = await makeTestRoot();
+    const clone = await saveRepoIn(root);
+    const bearers: (string | undefined)[] = [];
+    const node = createServer((request, response) => {
+      bearers.push(request.headers.authorization);
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end('{"valid":true}');
+    });
+    await new Promise<void>((resolve) => node.listen(0, '127.0.0.1', resolve));
+    const builder = fakeBuilder();
+    const h = harness({
+      config: {
+        ...clone.config,
+        origins: {
+          cms: CMS_ORIGIN,
+          preview: `http://127.0.0.1:${portOfServer(node)}`,
+        },
+      },
+      repoState: clone.state,
+      builder,
+    });
+    const args = [join(root, 'cms.config.ts')];
+    let deps: RunDeps = h.deps;
+    if (bundleMode === 'flag') {
+      const bundleDir = join(root, 'build');
+      await cp(FIXTURE_BUNDLE, join(bundleDir, 'manifest'), {
+        recursive: true,
+      });
+      args.unshift('--bundle', bundleDir);
+      deps = { ...h.deps, directoryBundleSource };
+    } else {
+      const identity = await fixtureIdentity();
+      const siteDir = join(root, '.cms', clone.config.site);
+      await cp(
+        FIXTURE_BUNDLE,
+        join(siteDir, 'bundles', identity.bundleId, 'manifest'),
+        { recursive: true },
+      );
+      const entry = {
+        bundleId: identity.bundleId,
+        baseCommit: (
+          await git(clone.state.repoDir, ['rev-parse', 'origin/main'])
+        ).trim(),
+      };
+      await writeFile(
+        join(siteDir, 'state.json'),
+        encodeState({
+          current: entry,
+          lastGood: entry,
+          protocolAttempts: new Map(),
+        }),
+      );
+    }
+    const running = await run(args, {}, deps);
+    return {
+      h,
+      running,
+      builder,
+      clone,
+      bearers,
+      stop: async () => {
+        await running.stop();
+        node.close();
+        await removeTestRoot(root);
+      },
+    };
+  }
+
+  // Saves a change of Ana's name on cms/work, as a save would: edit the file and commit it.
+  async function saveAna(real: Real): Promise<void> {
+    const file = join(real.clone.state.siteFolder, ANA);
+    const ana = JSON.parse(await readFile(file, 'utf8'));
+    await writeFile(
+      file,
+      `${JSON.stringify({ ...ana, name: 'Ana T.' }, null, 2)}\n`,
+    );
+    await git(real.clone.state.repoDir, ['add', '--all']);
+    await git(real.clone.state.repoDir, ['commit', '--message', 'cms: save']);
+  }
+
+  const remoteHead = async (real: Real): Promise<string> =>
+    (await git(real.clone.config.remote, ['rev-parse', 'main'])).trim();
+
+  it('with the builder off, a sync that finds code only logs it', async () => {
+    const real = await started('flag');
+    try {
+      await expect(real.running.syncNow()).resolves.toMatchObject({
+        kind: 'synced',
+        change: 'code',
+      });
+      expect(real.h.log.info).toHaveBeenCalledWith(
+        'A sync found a code change, but the builder is off',
+      );
+      expect(real.builder).not.toHaveBeenCalled();
+    } finally {
+      await real.stop();
+    }
+  });
+
+  it('with the builder on, a sync that finds code asks for a build, and logs nothing about the builder being off', async () => {
+    const real = await started('state');
+    try {
+      await expect(real.running.syncNow()).resolves.toMatchObject({
+        kind: 'synced',
+        change: 'code',
+      });
+      await vi.waitFor(() =>
+        expect(real.h.log.info).toHaveBeenCalledWith('A build was asked for', {
+          reason: 'sync-code',
+        }),
+      );
+      expect(real.h.log.info).not.toHaveBeenCalledWith(
+        'A sync found a code change, but the builder is off',
+      );
+    } finally {
+      await real.stop();
+    }
+  });
+
+  it('builds on the first start against origin/<branch>: the state records the origin tip as the base', async () => {
+    // No state file: the first start builds. The fake builder passes, so the lifecycle swaps and writes the state.
+    const root = await makeTestRoot();
+    const clone = await saveRepoIn(root);
+    const builder = Object.assign(
+      vi.fn(
+        async (job: BuildJob): Promise<BuildResult> => ({
+          bundleId: job.bundleId,
+          dir: join(root, 'bundles', job.bundleId),
+          ok: true,
+          firstError: null,
+        }),
+      ),
+      { stop: vi.fn(() => Promise.resolve()) },
+    );
+    const h = harness({
+      config: {
+        ...clone.config,
+        origins: { cms: CMS_ORIGIN, preview: PREVIEW_ORIGIN },
+      },
+      repoState: clone.state,
+      builder,
+    });
+    const running = await run([join(root, 'cms.config.ts')], {}, h.deps);
+    try {
+      const tip = (
+        await git(clone.state.repoDir, ['rev-parse', 'origin/main'])
+      ).trim();
+      await vi.waitFor(async () => {
+        const text = await readFile(
+          join(root, '.cms', clone.config.site, 'state.json'),
+          'utf8',
+        );
+        expect(JSON.parse(text).current.baseCommit).toBe(tip);
+      });
+    } finally {
+      await running.stop();
+      await removeTestRoot(root);
+    }
+  });
+
+  it('with the builder off, a publish goes through: no wait for builds, the commit is on the remote, and the missing rebuild is logged', async () => {
+    const real = await started('flag');
+    try {
+      await saveAna(real);
+      const appDeps = vi.mocked(real.h.deps.startServer).mock.calls[0]?.[0];
+      const answer = await appDeps?.publish?.publish();
+      const head = await remoteHead(real);
+      expect(answer).toStrictEqual({
+        status: 200,
+        body: { commit: head, overwritten: [], renamed: [] },
+      });
+      expect(real.bearers).toStrictEqual([
+        `Bearer ${SECRETS.previewInternalSecret}`,
+      ]);
+      expect(real.h.log.info).toHaveBeenCalledWith(
+        'A publish finished, but the builder is off',
+      );
+    } finally {
+      await real.stop();
+    }
+  });
+
+  it('with the builder on, a publish asks for the build of the pushed commit, and does not log that the builder is off', async () => {
+    const real = await started('state');
+    try {
+      await saveAna(real);
+      const appDeps = vi.mocked(real.h.deps.startServer).mock.calls[0]?.[0];
+      const answer = await appDeps?.publish?.publish();
+      expect(answer).toMatchObject({ status: 200 });
+      const head = await remoteHead(real);
+      expect(answer).toMatchObject({ body: { commit: head } });
+      await vi.waitFor(() =>
+        expect(real.h.log.info).toHaveBeenCalledWith('A build was asked for', {
+          reason: 'publish',
+        }),
+      );
+      // The build of the publish reads cms/work, which is the pushed commit.
+      await vi.waitFor(() =>
+        expect(vi.mocked(real.builder).mock.calls.at(-1)?.[0].commit).toBe(
+          head,
+        ),
+      );
+      expect(real.h.log.info).not.toHaveBeenCalledWith(
+        'A publish finished, but the builder is off',
+      );
+    } finally {
+      await real.stop();
+    }
   });
 });

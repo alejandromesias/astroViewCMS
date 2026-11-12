@@ -1084,3 +1084,127 @@ describe('stop', () => {
     await stopping;
   });
 });
+
+describe('busy and waitForIdle (2.10d)', () => {
+  // A rig whose builds stay open until the test releases them, one at a time.
+  async function heldRig() {
+    const releases: ((result: BuildResult) => void)[] = [];
+    const rig = await rigOf({
+      build: () =>
+        new Promise<BuildResult>((resolve) => {
+          releases.push(resolve);
+        }),
+    });
+    const release = (index: number): void =>
+      releases[index]?.({
+        bundleId: `b-${index + 1}`,
+        dir: path.join(BUNDLES, `b-${index + 1}`),
+        ok: true,
+        firstError: null,
+      });
+    return { rig, release };
+  }
+
+  it('is not busy, and idle at once, when no trigger runs', async () => {
+    const rig = await rigOf();
+    expect(rig.lifecycle.busy()).toBe(false);
+    await expect(rig.lifecycle.waitForIdle(60_000)).resolves.toBe(true);
+  });
+
+  it('is busy from the moment a trigger is asked for until it ends', async () => {
+    const { rig, release } = await heldRig();
+    const pending = rig.lifecycle.trigger('sync-code');
+    // Synchronously: the trigger counts as under way as soon as it is asked for, before any await.
+    expect(rig.lifecycle.busy()).toBe(true);
+    await settle();
+    expect(rig.lifecycle.busy()).toBe(true);
+    release(0);
+    await pending;
+    expect(rig.lifecycle.busy()).toBe(false);
+  });
+
+  it('waitForIdle resolves true when the trigger ends, and not before', async () => {
+    const { rig, release } = await heldRig();
+    const pending = rig.lifecycle.trigger('sync-code');
+    await settle();
+    let answer: boolean | undefined;
+    const waiting = rig.lifecycle.waitForIdle(60_000).then((idle) => {
+      answer = idle;
+    });
+    await settle();
+    expect(answer).toBeUndefined();
+    release(0);
+    await pending;
+    await waiting;
+    expect(answer).toBe(true);
+  });
+
+  it('waitForIdle waits for every trigger under way, a nested protocol rebuild included', async () => {
+    const { rig, release } = await heldRig();
+    const first = rig.lifecycle.trigger('save-rebuild');
+    await settle();
+    // The second trigger queues behind the first build.
+    const second = rig.lifecycle.trigger('sync-code');
+    await settle();
+    let answer: boolean | undefined;
+    const waiting = rig.lifecycle.waitForIdle(60_000).then((idle) => {
+      answer = idle;
+    });
+    release(0);
+    await first;
+    await settle();
+    // The first trigger is done, and the second is still under way.
+    expect(rig.lifecycle.busy()).toBe(true);
+    expect(answer).toBeUndefined();
+    release(1);
+    await second;
+    await waiting;
+    expect(answer).toBe(true);
+  });
+
+  it('waitForIdle resolves false after the timeout while a trigger still runs, and that waiter is gone afterwards', async () => {
+    const { rig, release } = await heldRig();
+    const pending = rig.lifecycle.trigger('sync-code');
+    await settle();
+    await expect(rig.lifecycle.waitForIdle(20)).resolves.toBe(false);
+    expect(rig.lifecycle.busy()).toBe(true);
+    release(0);
+    await pending;
+    await expect(rig.lifecycle.waitForIdle(60_000)).resolves.toBe(true);
+  });
+
+  it('a failed build ends the wait too: idle means no trigger under way, not a good build', async () => {
+    const rig = await rigOf({ build: failedBuild('does not build') });
+    const pending = rig.lifecycle.trigger('sync-code');
+    const waiting = rig.lifecycle.waitForIdle(60_000);
+    await pending;
+    await expect(waiting).resolves.toBe(true);
+    expect(rig.lifecycle.busy()).toBe(false);
+  });
+
+  it('waitForIdle clears its timer when the wait ends, so the timeout does not keep the process alive', async () => {
+    const { rig, release } = await heldRig();
+    const pending = rig.lifecycle.trigger('sync-code');
+    await settle();
+    const cleared = vi.spyOn(globalThis, 'clearTimeout');
+    const waiting = rig.lifecycle.waitForIdle(60_000);
+    release(0);
+    await pending;
+    await waiting;
+    expect(cleared).toHaveBeenCalledTimes(1);
+    cleared.mockRestore();
+  });
+
+  it('several waiters are all released by one end', async () => {
+    const { rig, release } = await heldRig();
+    const pending = rig.lifecycle.trigger('sync-code');
+    await settle();
+    const waiters = [
+      rig.lifecycle.waitForIdle(60_000),
+      rig.lifecycle.waitForIdle(60_000),
+    ];
+    release(0);
+    await pending;
+    await expect(Promise.all(waiters)).resolves.toStrictEqual([true, true]);
+  });
+});

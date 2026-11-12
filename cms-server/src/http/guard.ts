@@ -33,6 +33,9 @@ export function rejectUnlessHostAllowed(
   );
 }
 
+/** The content type of a JSON body, with or without parameters (a save, a publish). */
+export const JSON_CONTENT_TYPE = /^application\/json\s*(;|$)/i;
+
 /** 404 unless the content type matches `pattern`, then the cross-site check. A cross-origin
  *  page cannot send an image or JSON body without a CORS preflight, which these routes never
  *  answer, so the content type alone keeps other sites out. 404 (not 415) makes the route
