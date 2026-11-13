@@ -1,12 +1,18 @@
 import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { type BundleJson, bundleJsonSchema } from 'preview-contract';
 import { describe, expect, it, vi } from 'vitest';
 import { ZodError } from 'zod';
 import { FIXTURE_BUNDLE } from '../test/helpers/bundle.ts';
-import { git, makeTestRoot, removeTestRoot } from '../test/helpers/git.ts';
+import {
+  cloneRemote,
+  commitAndPush,
+  git,
+  makeTestRoot,
+  removeTestRoot,
+} from '../test/helpers/git.ts';
 import { fetchLocal } from '../test/helpers/local-fetch.ts';
 import { saveRepoIn } from '../test/helpers/repo.ts';
 import { type BundleSource, directoryBundleSource } from './bundle/source.ts';
@@ -300,6 +306,7 @@ describe('run', () => {
           publish: {
             publish: expect.any(Function) as () => Promise<PublishAnswer>,
           },
+          activity: { touch: expect.any(Function) as () => void },
           overlay: { mediaFolder: 'src/assets/uploads', log: h.log },
           previewUrl: {
             origin: PREVIEW_ORIGIN,
@@ -846,7 +853,14 @@ describe('run: sync and publish on a real clone', () => {
 
   // Starts run() over a new clone. With `bundleMode` set to flag, the fixture bundle is the --bundle folder (the builder is off);
   // otherwise the fixture bundle is the served one of a state file, and the builder is a spy whose builds fail.
-  async function started(bundleMode: 'flag' | 'state'): Promise<Real> {
+  // With `first`, there is no state file and the builder is on: the first start's build is the one that runs. With
+  // `seeded`, the state's bundle is built on origin's tip (its siteCommit is in the clone), so a change pushed after it
+  // is classified by its files, not as code. `nodeState` is what the node reads as (ready by default).
+  async function started(
+    bundleMode: 'flag' | 'state' | 'first' | 'seeded',
+    syncIntervalSeconds?: number,
+    nodeState?: 'ready' | 'stopped',
+  ): Promise<Real> {
     const root = await makeTestRoot();
     const clone = await saveRepoIn(root);
     const bearers: (string | undefined)[] = [];
@@ -860,6 +874,8 @@ describe('run: sync and publish on a real clone', () => {
     const h = harness({
       config: {
         ...clone.config,
+        syncIntervalSeconds:
+          syncIntervalSeconds ?? clone.config.syncIntervalSeconds,
         origins: {
           cms: CMS_ORIGIN,
           preview: `http://127.0.0.1:${portOfServer(node)}`,
@@ -867,6 +883,7 @@ describe('run: sync and publish on a real clone', () => {
       },
       repoState: clone.state,
       builder,
+      ...(nodeState === undefined ? {} : { nodeState }),
     });
     const args = [join(root, 'cms.config.ts')];
     let deps: RunDeps = h.deps;
@@ -877,14 +894,20 @@ describe('run: sync and publish on a real clone', () => {
       });
       args.unshift('--bundle', bundleDir);
       deps = { ...h.deps, directoryBundleSource };
-    } else {
+    } else if (bundleMode === 'state' || bundleMode === 'seeded') {
       const identity = await fixtureIdentity();
       const siteDir = join(root, '.cms', clone.config.site);
-      await cp(
-        FIXTURE_BUNDLE,
-        join(siteDir, 'bundles', identity.bundleId, 'manifest'),
-        { recursive: true },
-      );
+      const manifest = join(siteDir, 'bundles', identity.bundleId, 'manifest');
+      await cp(FIXTURE_BUNDLE, manifest, { recursive: true });
+      if (bundleMode === 'seeded') {
+        const seed = (
+          await git(clone.state.repoDir, ['rev-parse', 'origin/main'])
+        ).trim();
+        await writeFile(
+          join(manifest, 'bundle.json'),
+          `${JSON.stringify({ ...identity, siteCommit: seed }, null, 2)}\n`,
+        );
+      }
       const entry = {
         bundleId: identity.bundleId,
         baseCommit: (
@@ -930,6 +953,29 @@ describe('run: sync and publish on a real clone', () => {
   const remoteHead = async (real: Real): Promise<string> =>
     (await git(real.clone.config.remote, ['rev-parse', 'main'])).trim();
 
+  // The sha of `ref` in the CMS's clone.
+  const headOf = async (real: Real, ref: string): Promise<string> =>
+    (await git(real.clone.state.repoDir, ['rev-parse', ref])).trim();
+
+  // Pushes a change to Ana's file from a second clone, as an upstream edit: returns the new origin tip.
+  async function pushAna(real: Real, otherRoot: string): Promise<string> {
+    const upstream = join(otherRoot, 'upstream');
+    await cloneRemote(real.clone.config.remote, upstream);
+    // The site folder is a folder of the repo, so the file's path in the repo starts with it.
+    const file = join(
+      relative(real.clone.state.repoDir, real.clone.state.siteFolder),
+      ANA,
+    );
+    const ana = JSON.parse(
+      await readFile(join(real.clone.state.siteFolder, ANA), 'utf8'),
+    );
+    return commitAndPush(
+      upstream,
+      { [file]: `${JSON.stringify({ ...ana, name: 'Ana T.' }, null, 2)}\n` },
+      'upstream: rename Ana',
+    );
+  }
+
   it('with the builder off, a sync that finds code only logs it', async () => {
     const real = await started('flag');
     try {
@@ -943,6 +989,104 @@ describe('run: sync and publish on a real clone', () => {
       expect(real.builder).not.toHaveBeenCalled();
     } finally {
       await real.stop();
+    }
+  });
+
+  it('an /api call starts the poll loop, which then syncs on its own, one interval later (2.10g)', async () => {
+    const real = await started('flag', 1);
+    try {
+      const base = `http://127.0.0.1:${portOfServer(real.running.server)}`;
+      // The call is the first activity: no sync has run yet, so the status has no lastSync.
+      const first = await fetchLocal(`${base}/api/status`);
+      expect(await first.json()).toMatchObject({ lastSync: null });
+      // The loop's sync finds the upstream code change of the fixture, and logs it as the builder-off message.
+      await vi.waitFor(
+        () =>
+          expect(real.h.log.info).toHaveBeenCalledWith(
+            'A sync found a code change, but the builder is off',
+          ),
+        { timeout: 5_000 },
+      );
+      const later = await fetchLocal(`${base}/api/status`);
+      expect(await later.json()).toMatchObject({
+        lastSync: expect.any(String),
+        syncError: null,
+      });
+    } finally {
+      await real.stop();
+    }
+  });
+
+  it('a first build that fails, then an upstream change: one build of the new HEAD, and the failed commit is not built again (2.10g)', async () => {
+    const real = await started('first', 1);
+    const otherRoot = await makeTestRoot();
+    try {
+      const base = `http://127.0.0.1:${portOfServer(real.running.server)}`;
+      // The first start builds origin's tip, and the build fails: there is no bundle and no node.
+      await vi.waitFor(() => expect(real.builder).toHaveBeenCalledTimes(1), {
+        timeout: 5_000,
+      });
+      const builds = vi.mocked(real.builder);
+      const failed = builds.mock.calls[0]?.[0]?.commit;
+      const pushed = await pushAna(real, otherRoot);
+      // The first call starts the loop; its sync one interval later finds the change and asks for one build of the new HEAD.
+      await fetchLocal(`${base}/api/status`);
+      await vi.waitFor(() => expect(real.builder).toHaveBeenCalledTimes(2), {
+        timeout: 5_000,
+      });
+      expect(builds.mock.calls.map(([job]) => job.commit)).toEqual([
+        failed,
+        pushed,
+      ]);
+      // Origin does not move again, so the loop asks for no more builds.
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      expect(real.builder).toHaveBeenCalledTimes(2);
+    } finally {
+      await real.stop();
+      await removeTestRoot(otherRoot);
+    }
+  });
+
+  it('a content-only upstream change with a node ready: the poll syncs it on its own, and asks for no build (2.10g)', async () => {
+    const real = await started('seeded', 1);
+    const otherRoot = await makeTestRoot();
+    try {
+      const base = `http://127.0.0.1:${portOfServer(real.running.server)}`;
+      const pushed = await pushAna(real, otherRoot);
+      // The first call starts the loop; one interval later its sync moves cms/work to the pushed commit.
+      await fetchLocal(`${base}/api/status`);
+      await vi.waitFor(
+        async () => expect(await headOf(real, 'cms/work')).toBe(pushed),
+        { timeout: 5_000 },
+      );
+      // The loop's check of the node runs just after the sync; one more interval covers it.
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      expect(real.builder).not.toHaveBeenCalled();
+    } finally {
+      await real.stop();
+      await removeTestRoot(otherRoot);
+    }
+  });
+
+  it('a content-only upstream change with no node serving: the poll asks for one build of the new HEAD (2.10g)', async () => {
+    const real = await started('seeded', 1, 'stopped');
+    const otherRoot = await makeTestRoot();
+    try {
+      const base = `http://127.0.0.1:${portOfServer(real.running.server)}`;
+      const pushed = await pushAna(real, otherRoot);
+      await fetchLocal(`${base}/api/status`);
+      await vi.waitFor(() => expect(real.builder).toHaveBeenCalledTimes(1), {
+        timeout: 5_000,
+      });
+      expect(
+        vi.mocked(real.builder).mock.calls.map(([job]) => job.commit),
+      ).toEqual([pushed]);
+      // Origin does not move again, so the loop asks for no more builds.
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      expect(real.builder).toHaveBeenCalledTimes(1);
+    } finally {
+      await real.stop();
+      await removeTestRoot(otherRoot);
     }
   });
 
@@ -994,13 +1138,16 @@ describe('run: sync and publish on a real clone', () => {
       const tip = (
         await git(clone.state.repoDir, ['rev-parse', 'origin/main'])
       ).trim();
-      await vi.waitFor(async () => {
-        const text = await readFile(
-          join(root, '.cms', clone.config.site, 'state.json'),
-          'utf8',
-        );
-        expect(JSON.parse(text).current.baseCommit).toBe(tip);
-      });
+      await vi.waitFor(
+        async () => {
+          const text = await readFile(
+            join(root, '.cms', clone.config.site, 'state.json'),
+            'utf8',
+          );
+          expect(JSON.parse(text).current.baseCommit).toBe(tip);
+        },
+        { timeout: 5_000 },
+      );
     } finally {
       await running.stop();
       await removeTestRoot(root);

@@ -372,10 +372,21 @@ describe('parseConfig rejections', () => {
     [1.5, 'Invalid input: expected int, received number'],
     ['60', 'Invalid input: expected number, received string'],
     [null, 'Invalid input: expected number, received null'],
+    [
+      300,
+      'syncIntervalSeconds must be 299 or less: the sync runs only while a session is open, and a session lasts five minutes',
+    ],
   ])('refuses syncIntervalSeconds %j', (syncIntervalSeconds, message) => {
     expect(rejection({ ...minimal(), syncIntervalSeconds })).toEqual([
       { path: 'syncIntervalSeconds', message },
     ]);
+  });
+
+  it('accepts 299 seconds, the longest interval that syncs inside a session', () => {
+    expect(
+      parseConfig({ ...minimal(), syncIntervalSeconds: 299 })
+        .syncIntervalSeconds,
+    ).toBe(299);
   });
 
   it.each([[[]], [null], ['posts']])(
