@@ -2946,7 +2946,13 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
   builds first when: an MDX body changed, a build-time field changed, a
   validation hit `refinement-threw`, or code moved upstream since the
   current bundle.
-- **From 2.5c (2026-11-05):** a save keeps the keys whose validation hit `refinement-threw` in `ctx.refinements` (`save/validate.ts`), and **nothing stores them**: they are lost when the request ends. Settle where they live (in memory per start, or in `.cms/<site>/`) before this task can use the trigger; add it to the save pipeline's `writeChanges` or an `afterCommit` hook. "Build-time field changed" is the `rebuild` flag the save already answers (`save/rebuild.ts`), which is not stored either.
+- **From 2.5c (2026-11-05), settled 2026-11-13 (the user): the `auto` triggers are recomputed at publish time, and nothing is stored.** A save's `ctx.refinements` and `rebuild` flag are lost when the request ends, and that stays so. Publish already validates the whole changeset (2.10d step 2), so it reads which keys hit `refinement-threw` from that answer (the validate answer must expose them), and it computes "build-time field changed" and "MDX body changed" from the changeset with the logic of `save/rebuild.ts`, run over the changeset instead of one save. "Code moved upstream since the current bundle" comes from sync. Anything the check cannot tell counts as "build": one extra build, never an unchecked MDX change. Nothing goes in `.cms/<site>/` and no save hook is added.
+- **Publish flow (decided 2026-11-13, the user): the build runs with no lock held, on a snapshot, and saves keep working.**
+  1. On a click, publish syncs, validates, and under the lock squashes the candidate commit `C` and notes `cms/work` HEAD as the snapshot `S`. It then releases the lock.
+  2. `C` builds in a worktree with no lock held. Saves, syncs and the poll keep working and add commits to `cms/work` after `S`. While the build runs, `status.publish.state` is `publishing`, and a second `POST /api/publish` answers `409 publish-in-progress` (the editor disables the button and warns that saves made now go in the next publish: 2.11d).
+  3. When the build passes, publish takes the lock and pushes `C`, the commit that was checked. If `cms/work` is still at `S`, it resets `cms/work` to `C` (as 2.10d does). If saves came in during the build, it re-applies `cms/work` onto `C` (the sync's per-document re-apply), so the documents published unchanged drop out of the changeset and the later saves stay as the next changeset. No conflict state is added: the CMS value wins per document, and the next publish's own sync and validation catch what a developer pushed.
+  4. The new publish is allowed again once the push is done.
+  Details: (a) the re-apply onto `C` treats `C` as the new base, so a document saved before `S` and again during the build is not reported as overwriting the user's own publish; (b) a push race after a passing build: with `cms/work` still at `S`, retry as 2.10d does (a content-only sync pushes `C` again without a build; a sync that brought code stops with the 2.10d `503`); with later saves in `cms/work`, stop with a `409` (`remote-moved`, "the remote moved during the publish; nothing was published, your saves are kept, publish again"), since a re-squash would pull the later saves into this publish; (c) the candidate's bundle becomes the current one only after the push succeeded (a failed push leaves the bundle as it was), and the `publish` rebuild of 2.10d item 8 is then skipped; a save during the build that asked for a rebuild runs its own rebuild after that swap, so the newer bundle wins.
 - The candidate is the squashed commit, built in a worktree **before** the
   push and pushed only if the build passes; the same commit is pushed, so
   what was checked is what ships. When it passes, its bundle becomes the
@@ -2956,7 +2962,7 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
 - **Done when (design R6):** a changeset that breaks the build (a draft MDX
   body with an invalid component) is not pushed under `always` and `auto`
   and is pushed under `never`; a plain content change under `auto` skips the
-  build. [build]
+  build. [build] Also, with a candidate build under way: a save is accepted and a second publish answers `409 publish-in-progress`; after the push, the saves made during the build are the next changeset and the next publish sends them alone; a document saved before and during the build is not reported as overwriting the first publish; a push race with later saves answers `409 remote-moved` and pushes nothing; a failed push leaves the bundle unchanged.
 
 #### 2.10f Upstream that doesn't build — after 2.10e, 2.10a, 2.9c
 
@@ -3145,6 +3151,7 @@ Design 5.8. This is still a test tool, not the phase 3 editor.
     duplicate would be pushed.
   - `422`, `424`, `409` and `502`: plain messages, as before.
   - `503 busy` and `503 build-in-progress`: "try again" messages.
+  - `409 publish-in-progress` (2.10e): the button is disabled while `status.publish.state` is `publishing`, with a warning that saves made now go in the next publish. It is enabled again when the state returns to `idle`, and the later saves are then the changeset. `409 remote-moved` (2.10e): nothing was published and the saves are kept; say so and let the user publish again.
   - `503 upstream-changed`: new upstream code arrived during the retry and no
     build will run. Nothing was published and the saves are kept. Say so.
 - The status `publish { state, error }` (from `GET /api/status`) keeps showing
