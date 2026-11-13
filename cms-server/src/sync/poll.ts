@@ -71,8 +71,8 @@ export function createPollLoop({
     );
   }
 
-  function schedule(): void {
-    timer = setTimeout(() => void tick(), delay());
+  function schedule(wait = delay()): void {
+    timer = setTimeout(() => void tick(), wait);
   }
 
   async function tick(): Promise<void> {
@@ -129,7 +129,8 @@ export function createPollLoop({
     lastCall = now();
     if (active || stopped) return;
     active = true;
-    schedule();
+    // A new session starts at the plain interval, whatever the last session's back-off was: a lone call gets its first sync one interval after it.
+    schedule(intervalMs);
   }
 
   async function stop(): Promise<void> {

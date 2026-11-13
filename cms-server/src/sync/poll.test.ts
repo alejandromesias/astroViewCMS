@@ -80,6 +80,29 @@ describe('createPollLoop', () => {
     expect(syncNow).toHaveBeenCalledTimes(5);
   });
 
+  it('a lone call after an idle session syncs one interval later, even when the last session ended in back-off', async () => {
+    const start = Date.now();
+    const times: number[] = [];
+    let calls = 0;
+    const { loop } = loopOf({
+      intervalMs: 299_000,
+      syncNow: vi.fn(() => {
+        times.push(Date.now() - start);
+        calls += 1;
+        if (calls === 1) return Promise.reject(new Error('boom'));
+        return Promise.resolve<SyncNowOutcome>({ kind: 'unchanged' });
+      }),
+    });
+    loop.touch();
+    // The sync at 299 s fails. The next one would wait 598 s, past the session, so the tick at 897 s finds it idle.
+    await vi.advanceTimersByTimeAsync(900_000);
+    expect(times).toEqual([299_000]);
+    loop.touch();
+    // The new session's first sync is one interval after the call (900 s + 299 s), not after the back-off.
+    await vi.advanceTimersByTimeAsync(299_000);
+    expect(times).toEqual([299_000, 1_199_000]);
+  });
+
   it('keeps polling while calls keep coming, and stops after the last one goes five minutes old', async () => {
     const { loop, syncNow } = loopOf();
     loop.touch();
