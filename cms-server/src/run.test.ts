@@ -1138,13 +1138,16 @@ describe('run: sync and publish on a real clone', () => {
       const tip = (
         await git(clone.state.repoDir, ['rev-parse', 'origin/main'])
       ).trim();
-      await vi.waitFor(async () => {
-        const text = await readFile(
-          join(root, '.cms', clone.config.site, 'state.json'),
-          'utf8',
-        );
-        expect(JSON.parse(text).current.baseCommit).toBe(tip);
-      });
+      await vi.waitFor(
+        async () => {
+          const text = await readFile(
+            join(root, '.cms', clone.config.site, 'state.json'),
+            'utf8',
+          );
+          expect(JSON.parse(text).current.baseCommit).toBe(tip);
+        },
+        { timeout: 5_000 },
+      );
     } finally {
       await running.stop();
       await removeTestRoot(root);

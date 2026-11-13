@@ -190,6 +190,41 @@ describe('createPollLoop', () => {
     expect(times).toEqual([299_000, 699_000]);
   });
 
+  it.each([
+    [699_500, [299_000, 699_500]],
+    [750_000, [299_000]],
+  ])(
+    'a sync that ends at %i ms: the next sync runs at the finish if the session is still open, and none runs if it has lapsed',
+    async (finishedAt, expected) => {
+      const start = Date.now();
+      const times: number[] = [];
+      let release: (outcome: SyncNowOutcome) => void = () => {};
+      let calls = 0;
+      const { loop } = loopOf({
+        intervalMs: 299_000,
+        syncNow: vi.fn(() => {
+          times.push(Date.now() - start);
+          calls += 1;
+          if (calls === 1)
+            return new Promise<SyncNowOutcome>((resolve) => {
+              release = resolve;
+            });
+          return Promise.resolve<SyncNowOutcome>({ kind: 'unchanged' });
+        }),
+      });
+      loop.touch();
+      await vi.advanceTimersByTimeAsync(299_000);
+      await vi.advanceTimersByTimeAsync(101_000);
+      loop.touch();
+      // The call at 400 s makes its sync due at 699 s. The first sync ends at `finishedAt`, which is past that.
+      await vi.advanceTimersByTimeAsync(finishedAt - 400_000);
+      release({ kind: 'unchanged' });
+      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(600_000);
+      expect(times).toEqual(expected);
+    },
+  );
+
   it('keeps polling while calls keep coming, and stops after the last one goes five minutes old', async () => {
     const { loop, syncNow } = loopOf();
     loop.touch();
