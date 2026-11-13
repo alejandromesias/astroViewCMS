@@ -25,7 +25,7 @@ before writing tests, [TESTING-RECOMMENDATIONS.md](../Guidelines/TESTING-RECOMME
 |---|---|
 | Phase 2 design | approved by the user, 2026-10-31 |
 | Decisions D17 to D22 | logged in SYSTEM-DESIGN section 11 |
-| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); 2.1g (codecs scope; the rest of its scope moved to 2.1h with deadlines), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a done 2026-11-03 (wave 5 complete, branch `phase-2-wave-5`); 2.0j, 2.1h, 2.5b, 2.5c, 2.6a, 2.9a, 2.10a done 2026-11-03 to 2026-11-06 (wave 6 complete, branch `phase-2-wave-6`); wave 7: 2.1k to 2.1p done 2026-11-07 (CI and quality pipeline; 2.1p verification pending); 2.1q done 2026-11-08 (#27); 2.6b (#22), 2.9c-A (#21), 2.10b (#23), 2.10h (#26) and 2.10i (#28) done 2026-11-08; 2.9c-B (#30) and 2.10j (#29) done 2026-11-09; 2.1r (#31, the pre-push rename fix) done 2026-11-09; 2.1j done 2026-11-09 (#32); 2.9c-B follow-up #33 (a failed build is not built again) merged 2026-11-09. **Wave 7 closed 2026-11-10:** manual `mutation-full` (run `42756802505`) green on `4eee00b`, overall 93.86%; tag `wave-7-closed` on that commit. Four files are under 80, unchanged since wave 6: `bundle.ts` 45, `schema.ts` 57, `overlay/errors.ts` 57, `page.ts` 76. **Wave 8 (2026-11-10):** 2.7d (#34), 2.9d (#35), 2.7c (#36) and 2.7b (#38) merged; **Wave 8 closed 2026-11-10:** manual `mutation-full` (run `42911334503`) green on `1c77ecb`, overall 93.58%; tag `wave-8-closed` on that commit. `images.ts` 84.34, `warnings.ts` 87.80 and `preview/client.ts` 98.08 are at or above 80. Only the same four files are under 80, unchanged: `bundle.ts` 45, `schema.ts` 57, `overlay/errors.ts` 57, `page.ts` 76. **Wave 9 (2026-11-10):** 2.9e (#41, `10777b0`), 2.11b (#39, `5ea1def`) and 2.10c (#40, `3137bd4`) merged; 2.9f (Host check) merged as #42 (`5c2bd04`, 2026-11-11; head `0963451`, CI green). **Wave 9 closed 2026-11-11:** manual `mutation-full` (run `43111321045`) green on `34598da`, overall 93.60%; tag `wave-9-closed` on that commit. `overlay.ts` 97.56, `preview-url.ts` 90.91, `sync.ts` 94.83. `editor.ts` is outside `mutation-full`'s scope (`cms-server/src/**`), so its floor is unmeasured (see 2.11b). Scoped by 2.11e, before the wave 10 full run; 2.11e merged as #45 (`15690af`) on 2026-11-12 (`editor.ts` 97.21%). Still under 80, unchanged: `bundle.ts` 45, `schema.ts` 57, `overlay/errors.ts` 57. The rest not started |
+| Steps 2.0 to 2.13 | 2.0a, 2.0d, 2.0e, 2.0f, 2.0g, 2.0h, 2.0i, 2.8a done 2026-11-01; 2.0b, 2.0c, 2.1a, 2.1b, 2.1c, 2.1d, 2.1e, 2.2a, 2.2b, 2.3a, 2.8b, 2.8c, 2.8d done 2026-11-01 (wave 3 complete); 2.1f, 2.2c, 2.2d, 2.3b, 2.4a, 2.7a, 2.8e, 2.9b, 2.11a done 2026-11-02 (wave 4 complete, branch `phase-2-wave-4`); 2.1g (codecs scope; the rest of its scope moved to 2.1h with deadlines), 2.1i, 2.3c, 2.4b, 2.4c, 2.5a done 2026-11-03 (wave 5 complete, branch `phase-2-wave-5`); 2.0j, 2.1h, 2.5b, 2.5c, 2.6a, 2.9a, 2.10a done 2026-11-03 to 2026-11-06 (wave 6 complete, branch `phase-2-wave-6`); wave 7: 2.1k to 2.1p done 2026-11-07 (CI and quality pipeline; 2.1p verification pending); 2.1q done 2026-11-08 (#27); 2.6b (#22), 2.9c-A (#21), 2.10b (#23), 2.10h (#26) and 2.10i (#28) done 2026-11-08; 2.9c-B (#30) and 2.10j (#29) done 2026-11-09; 2.1r (#31, the pre-push rename fix) done 2026-11-09; 2.1j done 2026-11-09 (#32); 2.9c-B follow-up #33 (a failed build is not built again) merged 2026-11-09. **Wave 7 closed 2026-11-10:** manual `mutation-full` (run `42756802505`) green on `4eee00b`, overall 93.86%; tag `wave-7-closed` on that commit. Four files are under 80, unchanged since wave 6: `bundle.ts` 45, `schema.ts` 57, `overlay/errors.ts` 57, `page.ts` 76. **Wave 8 (2026-11-10):** 2.7d (#34), 2.9d (#35), 2.7c (#36) and 2.7b (#38) merged; **Wave 8 closed 2026-11-10:** manual `mutation-full` (run `42911334503`) green on `1c77ecb`, overall 93.58%; tag `wave-8-closed` on that commit. `images.ts` 84.34, `warnings.ts` 87.80 and `preview/client.ts` 98.08 are at or above 80. Only the same four files are under 80, unchanged: `bundle.ts` 45, `schema.ts` 57, `overlay/errors.ts` 57, `page.ts` 76. **Wave 9 (2026-11-10):** 2.9e (#41, `10777b0`), 2.11b (#39, `5ea1def`) and 2.10c (#40, `3137bd4`) merged; 2.9f (Host check) merged as #42 (`5c2bd04`, 2026-11-11; head `0963451`, CI green). **Wave 9 closed 2026-11-11:** manual `mutation-full` (run `43111321045`) green on `34598da`, overall 93.60%; tag `wave-9-closed` on that commit. `overlay.ts` 97.56, `preview-url.ts` 90.91, `sync.ts` 94.83. `editor.ts` is outside `mutation-full`'s scope (`cms-server/src/**`), so its floor is unmeasured (see 2.11b). Scoped by 2.11e, before the wave 10 full run; 2.11e merged as #45 (`15690af`) on 2026-11-12 (`editor.ts` 97.21%). Still under 80, unchanged: `bundle.ts` 45, `schema.ts` 57, `overlay/errors.ts` 57. **Wave 10 (2026-11-12 to 2026-11-13):** 2.10d (#46, `13645d0`) and 2.10g (#47, `ceeeff3`) merged, after 2.11e (#45, `15690af`). **Wave 10 closed 2026-11-13:** manual `mutation-full` (run `43491378803`) green on `da5388b`, overall 94.15%; tag `wave-10-closed` on that commit. Still under 80, unchanged: `preview-contract/src/schema.ts` 57.14, `preview-render-server/src/bundle.ts` 45.00, `preview-render-server/src/overlay/errors.ts` 57.14. The rest not started |
 
 **Done when:** every row of PHASE-2-DESIGN.md section 1 passes. Section 5
 below maps each row to the test that proves it.
@@ -2906,15 +2906,14 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
 
 - `POST /api/publish` (design 4.2): sync; validate the whole changeset
   against the node of the current bundle (waiting for a running rebuild up
-  to 120 s, else `503 build-in-progress`); squash into one commit on top of
-  `origin/<branch>` on a temporary branch, with the message `cms: publish N
-  documents (overwrote <key> from <sha>, …)` and the configured author;
-  push without force; if rejected because the remote moved, sync and try
-  again, at most 3 times, then `502` and the saves stay saved; on success
-  move `cms/work` to the pushed commit, clear the changeset, trigger a
-  rebuild.
-- Answers: `200 { commit, overwritten }`, `422`, `424 build-failed` (2.10e),
-  `409` for the guard, `502`. Publish and save share the mutex.
+  to 120 s, else `503 build-in-progress`); squash into one commit whose parent
+  is the merge base of `cms/work` and `origin/<branch>` (not the tip), with
+  the message `cms: publish N documents (overwrote <key> from <sha>, …)` and
+  the author `git.author`; push without force; if rejected because the remote
+  moved, sync and retry, at most 3 times, then `502` and the saves stay saved;
+  on success move `cms/work` to the pushed commit, clear the changeset, trigger
+  a rebuild. The settled departures are in Gaps items 1, 7 and 12 below.
+- Answers: see Gaps item 7 below. Publish and save share the mutex.
 - **Done when (design R3, R4):** a publish creates one commit on the remote;
   after the developer pushed a change to a document the CMS had saved, the
   CMS version reaches the remote and the message names the overwritten
@@ -3131,15 +3130,27 @@ Design 5.8. This is still a test tool, not the phase 3 editor.
   the bundle to change (poll `GET /api/status`), then reloads the iframe.
 - **From 2.5c (2026-11-05):** the body is `{ changes: [{ document, baseRevision, data?, deleted? }] }`. A create sends `baseRevision: null` and a key `collection/id`; a key with no collection answers `400 invalid-body`. An update or delete of a missing document answers `409 conflict` with `revision: null`. `409` bodies: `conflict` is `{ error, documents: [{ key, revision, value? }] }`; `exists` and `file-missing` are `{ error, key, message }`. `500 save-failed` means nothing was kept (restored from git); `503 preview-unavailable` means nothing was written.
 - **From the 2.7b review (2026-11-09):** after a save the saved value of an image field is a relative path, while the editor's draft may still hold the staging URL. Sending the staging URL again is safe (same path). After a save, re-read the saved documents (`GET /api/documents?key=`) and replace the draft's staging URLs with the saved paths. A `422` with `code: 'media-collision'` or `'staged-image-missing'` is shown next to the field, so the user can pick another image.
+- **From wave 10 (2.10d, 2026-11-13):** a save can also answer `503 busy` (the repo lock timed out, `save/busy.ts`). Show it as a plain "try again" message, like `503 preview-unavailable`. Publish's answers are in 2.11d.
 - **Done when:** editor unit tests for each response; the form hides and
   restores its draft state as before.
 
 #### 2.11d Publish — after 2.11c, 2.10d
 
 - A Publish button; shows the commit, the overwritten documents,
-  `upstreamBuildFailed`, and the plain messages for `422`, `424`, `409` and
-  `502`.
-- **Done when:** editor unit tests for each answer.
+  `upstreamBuildFailed`, and a message for each answer of `POST /api/publish`
+  (the list is in 2.10d, Gaps item 7):
+  - `200 { commit, overwritten, renamed }`: `commit: null` means nothing
+    differs from upstream, so show "nothing to publish". A non-empty `renamed`
+    is a warning shown before the user publishes again, since a rename
+    duplicate would be pushed.
+  - `422`, `424`, `409` and `502`: plain messages, as before.
+  - `503 busy` and `503 build-in-progress`: "try again" messages.
+  - `503 upstream-changed`: new upstream code arrived during the retry and no
+    build will run. Nothing was published and the saves are kept. Say so.
+- The status `publish { state, error }` (from `GET /api/status`) keeps showing
+  `failed` with its message after a reload, until the next publish starts.
+- **Done when:** editor unit tests for each answer, including `commit: null`,
+  a non-empty `renamed`, and each `503`.
 
 #### 2.11e Mutation scope for the editor — after 2.11b · [ci] · before the wave 10 full run · DONE 2026-11-12 (#45; see Result) (added 2026-11-11)
 
