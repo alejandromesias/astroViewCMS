@@ -103,6 +103,63 @@ describe('createPollLoop', () => {
     expect(times).toEqual([299_000, 1_199_000]);
   });
 
+  it('a call after a gap over five minutes starts a new session: its first sync is one interval after the call, not at the pending back-off', async () => {
+    const start = Date.now();
+    const times: number[] = [];
+    let calls = 0;
+    const { loop } = loopOf({
+      intervalMs: 299_000,
+      syncNow: vi.fn(() => {
+        times.push(Date.now() - start);
+        calls += 1;
+        if (calls === 1)
+          return Promise.resolve<SyncNowOutcome>({
+            kind: 'failed',
+            message: 'boom',
+          });
+        return Promise.resolve<SyncNowOutcome>({ kind: 'unchanged' });
+      }),
+    });
+    loop.touch();
+    // The sync at 299 s fails: the next one is pending at 897 s (299 s + a 598 s back-off).
+    await vi.advanceTimersByTimeAsync(299_000);
+    expect(times).toEqual([299_000]);
+    // At 400 s the session has lapsed (the call at 0 is over five minutes old), and the pending timer is still 497 s away.
+    await vi.advanceTimersByTimeAsync(101_000);
+    loop.touch();
+    await vi.advanceTimersByTimeAsync(299_000);
+    expect(times).toEqual([299_000, 699_000]);
+  });
+
+  it('a call while a sync runs past the session: the next sync is one interval after that sync, not after its back-off', async () => {
+    const start = Date.now();
+    const times: number[] = [];
+    let release: (outcome: SyncNowOutcome) => void = () => {};
+    let calls = 0;
+    const { loop } = loopOf({
+      intervalMs: 299_000,
+      syncNow: vi.fn(() => {
+        times.push(Date.now() - start);
+        calls += 1;
+        if (calls === 1)
+          return new Promise<SyncNowOutcome>((resolve) => {
+            release = resolve;
+          });
+        return Promise.resolve<SyncNowOutcome>({ kind: 'unchanged' });
+      }),
+    });
+    loop.touch();
+    // The sync starts at 299 s and is still under way at 400 s, when the session has lapsed.
+    await vi.advanceTimersByTimeAsync(299_000);
+    await vi.advanceTimersByTimeAsync(101_000);
+    loop.touch();
+    release({ kind: 'failed', message: 'boom' });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(299_000);
+    // A failure would back off 598 s from the finish at 400 s; the new session's sync is at 699 s.
+    expect(times).toEqual([299_000, 699_000]);
+  });
+
   it('keeps polling while calls keep coming, and stops after the last one goes five minutes old', async () => {
     const { loop, syncNow } = loopOf();
     loop.touch();

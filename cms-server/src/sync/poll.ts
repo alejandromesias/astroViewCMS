@@ -32,7 +32,7 @@ export interface PollDeps {
 
 /** The loop: the call that records an API call, and the stop. */
 export interface PollLoop {
-  /** Records an /api call at the current time. When the loop is idle, it starts again. */
+  /** Records an /api call at the current time. When the loop is idle, it starts again; after a lapsed session, its first sync is one interval after this call. */
   touch(): void;
   /** Cancels the next sync and waits for the one under way. The loop does not start again after this. */
   stop(): Promise<void>;
@@ -58,6 +58,8 @@ export function createPollLoop({
   // The sync under way, so stop() can wait for it.
   let inFlight: Promise<void> | undefined;
   let stopped = false;
+  // True when a call starts a new session while a sync is under way: the next sync is one interval after that sync.
+  let restart = false;
 
   function isOpen(): boolean {
     return lastCall !== undefined && now() - lastCall < SESSION_MS;
@@ -88,7 +90,8 @@ export function createPollLoop({
     } finally {
       inFlight = undefined;
       // Scheduled even when the tick threw, so one failure cannot end the loop.
-      if (!stopped) schedule();
+      if (!stopped) schedule(restart ? intervalMs : delay());
+      restart = false;
     }
   }
 
@@ -126,11 +129,23 @@ export function createPollLoop({
   }
 
   function touch(): void {
+    // Checked before the call's time is recorded: a call after five minutes without one starts a new session (2.10g).
+    const newSession = !isOpen();
     lastCall = now();
-    if (active || stopped) return;
-    active = true;
-    // A new session starts at the plain interval, whatever the last session's back-off was: a lone call gets its first sync one interval after it.
-    schedule(intervalMs);
+    if (stopped) return;
+    if (!active) {
+      active = true;
+      schedule(intervalMs);
+      return;
+    }
+    if (!newSession) return;
+    if (inFlight === undefined) {
+      // A back-off timer from the last session is pending: the new session's first sync is one interval after this call.
+      clearTimeout(timer);
+      schedule(intervalMs);
+    } else {
+      restart = true;
+    }
   }
 
   async function stop(): Promise<void> {
