@@ -109,7 +109,7 @@ Rules for running tasks in parallel:
 | 7 | 2.6b, 2.9c, 2.10b, 2.1j (last, alone: it edits `repo.ts` and `ops.ts`) |
 | 8 | 2.7d (seam PR, first), then 2.7b, 2.7c, 2.9d; merge order 2.9d, 2.7c, 2.7b (2.7d, 2.9d, 2.7c and 2.7b merged 2026-11-10; wave closed 2026-11-10, `mutation-full` green at 93.58%, tag `wave-8-closed`) |
 | 9 | 2.9e, 2.10c, 2.11b (2.11b starts at once, since the shapes of 2.9e are fixed; it merges after 2.9e), then 2.9f after 2.9e (Host check, merged as #42 `5c2bd04`, 2026-11-11). Wave 9 closed 2026-11-11 (`mutation-full` green on `34598da`, tag `wave-9-closed`; `editor.ts` is outside `mutation-full`'s scope, see the status line). PRs #41, #39 and #40 merged 2026-11-10 (`10777b0`, `5ea1def`, `3137bd4`; merged in the order #41, #39, #40, each with CI green on its head) |
-| 10 | 2.10d, 2.10g (one merged after the other: both edit `app.ts` and `run.ts`); 2.11e (mutation scope for `editor.ts`) merges before the wave's full run. 2.11e merged as #45 (`15690af`), 2.10d as #46 (`13645d0`), 2.10g as #47 (`ceeeff3`, 2026-11-13). Wave 10 close pending: `mutation-full` by hand on `main`, then tag `wave-10-closed` and the README line |
+| 10 | 2.10d, 2.10g (one merged after the other: both edit `app.ts` and `run.ts`); 2.11e (mutation scope for `editor.ts`) merges before the wave's full run. 2.11e merged as #45 (`15690af`), 2.10d as #46 (`13645d0`), 2.10g as #47 (`ceeeff3`, 2026-11-13). Wave 10 closed 2026-11-13 (`mutation-full` green on `da5388b`, overall 94.15%, tag `wave-10-closed`; files under 80 listed in its summary: `preview-contract/src/schema.ts` 57.14, `preview-render-server/src/bundle.ts` 45.00, `preview-render-server/src/overlay/errors.ts` 57.14) |
 | 11 | 2.10e, 2.11c, 2.12a |
 | 12 | 2.10f, 2.11d |
 | 13 | 2.12b |
