@@ -116,7 +116,16 @@ const CmsConfigSchema = z
         ).default('src/assets/uploads'),
       })
       .prefault({}),
-    syncIntervalSeconds: z.number().int().positive().default(60),
+    // At most 299: the poll loop (sync/poll.ts) syncs only while a session, five minutes long, is open (2.10g).
+    syncIntervalSeconds: z
+      .number()
+      .int()
+      .positive()
+      .max(
+        299,
+        'syncIntervalSeconds must be 299 or less: the sync runs only while a session is open, and a session lasts five minutes',
+      )
+      .default(60),
     collections: collections.default({}),
     git: z
       .strictObject({
