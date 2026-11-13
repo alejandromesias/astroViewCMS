@@ -58,8 +58,8 @@ export function createPollLoop({
   // The sync under way, so stop() can wait for it.
   let inFlight: Promise<void> | undefined;
   let stopped = false;
-  // True when a call starts a new session while a sync is under way: the next sync is one interval after that sync.
-  let restart = false;
+  // The time of the call that started a new session while a sync was under way. The next sync is one interval after that call (or at the sync's finish, if later).
+  let restartAt: number | undefined;
 
   function isOpen(): boolean {
     return lastCall !== undefined && now() - lastCall < SESSION_MS;
@@ -90,8 +90,13 @@ export function createPollLoop({
     } finally {
       inFlight = undefined;
       // Scheduled even when the tick threw, so one failure cannot end the loop.
-      if (!stopped) schedule(restart ? intervalMs : delay());
-      restart = false;
+      if (!stopped)
+        schedule(
+          restartAt === undefined
+            ? delay()
+            : Math.max(0, restartAt + intervalMs - now()),
+        );
+      restartAt = undefined;
     }
   }
 
@@ -131,7 +136,8 @@ export function createPollLoop({
   function touch(): void {
     // Checked before the call's time is recorded: a call after five minutes without one starts a new session (2.10g).
     const newSession = !isOpen();
-    lastCall = now();
+    const callAt = now();
+    lastCall = callAt;
     if (stopped) return;
     if (!active) {
       active = true;
@@ -144,7 +150,7 @@ export function createPollLoop({
       clearTimeout(timer);
       schedule(intervalMs);
     } else {
-      restart = true;
+      restartAt = callAt;
     }
   }
 

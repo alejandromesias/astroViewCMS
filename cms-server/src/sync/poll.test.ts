@@ -160,6 +160,36 @@ describe('createPollLoop', () => {
     expect(times).toEqual([299_000, 699_000]);
   });
 
+  it('a sync that outlives the call which started its session: the next sync is one interval after the call, not after the sync', async () => {
+    const start = Date.now();
+    const times: number[] = [];
+    let release: (outcome: SyncNowOutcome) => void = () => {};
+    let calls = 0;
+    const { loop } = loopOf({
+      intervalMs: 299_000,
+      syncNow: vi.fn(() => {
+        times.push(Date.now() - start);
+        calls += 1;
+        if (calls === 1)
+          return new Promise<SyncNowOutcome>((resolve) => {
+            release = resolve;
+          });
+        return Promise.resolve<SyncNowOutcome>({ kind: 'unchanged' });
+      }),
+    });
+    loop.touch();
+    // The sync starts at 299 s. At 400 s the session has lapsed, and a call starts a new one.
+    await vi.advanceTimersByTimeAsync(299_000);
+    await vi.advanceTimersByTimeAsync(101_000);
+    loop.touch();
+    // The sync finishes at 450 s, after the call. Its next sync is 299 s after the call (699 s), not 299 s after the finish (749 s).
+    await vi.advanceTimersByTimeAsync(50_000);
+    release({ kind: 'unchanged' });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(249_000);
+    expect(times).toEqual([299_000, 699_000]);
+  });
+
   it('keeps polling while calls keep coming, and stops after the last one goes five minutes old', async () => {
     const { loop, syncNow } = loopOf();
     loop.touch();
