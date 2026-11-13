@@ -109,7 +109,7 @@ Rules for running tasks in parallel:
 | 7 | 2.6b, 2.9c, 2.10b, 2.1j (last, alone: it edits `repo.ts` and `ops.ts`) |
 | 8 | 2.7d (seam PR, first), then 2.7b, 2.7c, 2.9d; merge order 2.9d, 2.7c, 2.7b (2.7d, 2.9d, 2.7c and 2.7b merged 2026-11-10; wave closed 2026-11-10, `mutation-full` green at 93.58%, tag `wave-8-closed`) |
 | 9 | 2.9e, 2.10c, 2.11b (2.11b starts at once, since the shapes of 2.9e are fixed; it merges after 2.9e), then 2.9f after 2.9e (Host check, merged as #42 `5c2bd04`, 2026-11-11). Wave 9 closed 2026-11-11 (`mutation-full` green on `34598da`, tag `wave-9-closed`; `editor.ts` is outside `mutation-full`'s scope, see the status line). PRs #41, #39 and #40 merged 2026-11-10 (`10777b0`, `5ea1def`, `3137bd4`; merged in the order #41, #39, #40, each with CI green on its head) |
-| 10 | 2.10d, 2.10g (one merged after the other: both edit `app.ts` and `run.ts`); 2.11e (mutation scope for `editor.ts`) merges before the wave's full run |
+| 10 | 2.10d, 2.10g (one merged after the other: both edit `app.ts` and `run.ts`); 2.11e (mutation scope for `editor.ts`) merges before the wave's full run. 2.11e merged as #45 (`15690af`), 2.10d as #46 (`13645d0`), 2.10g as #47 (`ceeeff3`, 2026-11-13). Wave 10 close pending: `mutation-full` by hand on `main`, then tag `wave-10-closed` and the README line |
 | 11 | 2.10e, 2.11c, 2.12a |
 | 12 | 2.10f, 2.11d |
 | 13 | 2.12b |
@@ -2975,7 +2975,7 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
 - **Type change (from 2.9c-B, 2026-11-09):** the status keeps `upstreamBuildFailed` as plain text, but this task records `{ sha, firstError }`. It changes the field's type in `preview/status.ts`, the setter and the tests that read it.
 - **From the wave 7 review (2026-11-08):** "Sync builds the new upstream tip" now reads: sync builds `cms/work` HEAD after the re-apply (2.9c-B, every trigger builds `cms/work`). When that build fails, build the `origin/<branch>` tip once to tell whose failure it is. If the tip fails too, record `upstreamBuildFailed { sha: <origin SHA>, firstError }`. If the tip passes, the saved changeset breaks the build, and that is reported instead.
 
-#### 2.10g Poll loop — after 2.10a, 2.10c, 2.9e
+#### 2.10g Poll loop — after 2.10a, 2.10c, 2.9e · DONE 2026-11-13 (#47; see Result)
 
 - Sync every `syncIntervalSeconds` while a session is open (any API call in
   the last 5 minutes **(call)**); stops when idle; the clock is injected;
@@ -2992,7 +2992,7 @@ Design 4.2, 4.4. The scenarios of 2.10b are the heart of this phase.
   4. **Stop.** `stop()` in `run.ts` cancels the timer and waits for a sync under way. The clock and the timer are injected.
   5. **Errors thrown by `syncNow`.** `syncNow` rethrows anything that is not a lock timeout (`sync/sync.ts`). The loop catches it, sets `syncError` in the status, backs off as in item 3, and does not crash. Test: a `syncNow` that throws sets `syncError`, delays the next poll, and clears on the next success.
 
-- **Result (2026-11-12, PR #47; merge pending).** Accepted cost: `nodeServes` is `state === 'ready'`, so it also reads false while the node is starting or restarting. A content-only change that lands in that short window can ask for one build that was not needed. The lifecycle dedupes by commit, so the cost is harmless. `syncIntervalSeconds` is capped at 299 in the config, so the first sync after a call lands inside its five-minute window (Codex P2 on b08d2fa). A call that starts a new session gets its first sync one interval after the call (or when a sync under way finishes, if that is later), whatever the last back-off was, even when a back-off timer is pending. A back-off can push a sync past five minutes from a call; that sync still runs if any call came in the last five minutes, and the loop goes idle only after five minutes without a call. Tests: `sync/poll.test.ts` (24 cases, fake timers); `config/schema.test.ts` refuses 300 and accepts 299; `run.test.ts` has the failed-first-build case, a content-only change with the node ready (no build), and with no node serving (one build of the new HEAD).
+- **Result (2026-11-12; merged 2026-11-13 as #47, `ceeeff3`).** Accepted cost: `nodeServes` is `state === 'ready'`, so it also reads false while the node is starting or restarting. A content-only change that lands in that short window can ask for one build that was not needed. The lifecycle dedupes by commit, so the cost is harmless. `syncIntervalSeconds` is capped at 299 in the config, so the first sync after a call lands inside its five-minute window (Codex P2 on b08d2fa). A call that starts a new session gets its first sync one interval after the call (or when a sync under way finishes, if that is later), whatever the last back-off was, even when a back-off timer is pending. A back-off can push a sync past five minutes from a call; that sync still runs if any call came in the last five minutes, and the loop goes idle only after five minutes without a call. Tests: `sync/poll.test.ts` (24 cases, fake timers); `config/schema.test.ts` refuses 300 and accepts 299; `run.test.ts` has the failed-first-build case, a content-only change with the node ready (no build), and with no node serving (one build of the new HEAD).
 
 #### 2.10h Re-apply records for CMS-created documents the bundle lacks — after 2.10b · [fix] · DONE 2026-11-08 (#26; see Result)
 
