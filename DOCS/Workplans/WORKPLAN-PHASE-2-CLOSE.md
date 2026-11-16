@@ -186,10 +186,20 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 
 ### Wave 11
 
+**Start order and decisions (2026-11-16, for Lead-11.16's questions).**
+- The close plan is authoritative; the 2026-11-13 handoff's wave 11 (with 2.10e) is stale.
+- Start together (unit-only, no shared files): 2.14m, 2.13d, 2.10k, 2.14d. 2.10k works in `sync/` and touches `preview-contract/src` only if the validate answer crosses the node boundary. 2.13d lands first on `schema.ts`; later `preview-contract` edits rebase on it.
+- 2.14d holds the `[build]` slot while it runs e2e. 2.12a (`[build]`) starts after that; if both edit the tool configs, the one that starts second rebases. 2.13e runs last. 2.11c starts when 2.14d merges.
+- 2.14d: new leaf package `cms-contract`. It holds wire shapes only: request and answer bodies and the error-code union with its HTTP status. A type that crosses the wire (for example `PublishAnswer`) is defined in the contract, and `sync/` and `save/` import it; types that never cross it stay put. Routes build errors through one typed helper that accepts only codes in the union, which replaces the string literals; that is the type-level check. One runtime test checks that each code's status matches the status map.
+- 2.12a: fix all 12 `organizeImports` failures (`biome check --write`, no behaviour change), including the six in `scripts/`. Remove only what belongs to the test editor. If the `editorOrigins` field in `preview-config.ts` is still how the bridge learns the parent origin, keep it and say so in the PR; removing it is a contract change and needs the user. `cms-server/editor/editor.test.ts` stays in scope only where it names a removed route.
+- 2.13e: a new script `measure:cms-memory` next to `measure:memory`. It uses `sample-site`, a prebuilt bundle and `--bundle` (no builder), a local bare repo. It records the rss of the `cms-server` process alone: at rest after 60 s, then after 50 single-document saves with a `GET /api/changes` and a `GET /api/status` after each.
+- 2.13d: killing survivors with tests is the default. Any accept-as-equivalent or `.mutation-waivers.json` entry needs the user's approval, as in 2.11e.
+- 2.11c: wire shapes come from the 2.14d schemas, not from the log. It is a client task and edits no server route; if it needs a server change, stop and ask.
+
 #### 2.14m osv-scanner off docs-only pushes — `[ci]` · first
 
-- `security.yml` runs on a schedule and on pull requests. A push to `main` that touches only `DOCS/` skips it by path. A new advisory then shows as a failed scheduled run, not a red docs commit.
-- **Done when:** a docs-only push runs no osv step, and the schedule and PR triggers still do.
+- The job that failed on `5079b9c` is `fast gates` in `ci.yml` (it installs osv-scanner and runs `npm run audit`), not `security.yml`. Add `paths-ignore: ['DOCS/**']` to the `push: main` trigger of `ci.yml`, and the same to the `push` trigger of `security.yml`. Leave `pull_request` untouched, so required checks still run on docs PRs. Check that a scheduled run (nightly or `security.yml`) still runs `npm run audit`, so a new advisory shows there; add it if not.
+- **Done when:** a docs-only push to `main` starts no `fast gates` run and no osv step, and the schedule and PR triggers still run the audit.
 
 #### 2.14d `cms-contract`: API schemas and error codes — first code task (A6)
 
