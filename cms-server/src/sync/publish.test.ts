@@ -1,3 +1,4 @@
+import { publishAnswerSchema } from 'cms-contract';
 import type { FieldError, MediaInfo } from 'preview-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -259,6 +260,7 @@ describe('createPublish: the order of a publish', () => {
   it('syncs under a lock, releases it to wait, then rechecks, validates, squashes, pushes and resets under a second lock', async () => {
     const { publish, events } = rig();
     const answer = await publish();
+    expect(publishAnswerSchema.safeParse(answer.body).success).toBe(true);
     expect(answer).toStrictEqual({
       status: 200,
       body: { commit: 'c1', overwritten: [], renamed: [] },

@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { documentListAnswerSchema, statusAnswerSchema } from 'cms-contract';
 import { revisionOf, revisionOfEntry } from 'preview-contract';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestApp, fakeAppDeps } from '../../test/helpers/app-deps.ts';
@@ -107,7 +108,9 @@ describe('GET /api/status with the preview status (2.9c)', () => {
     });
     const response = await app.request('/api/status');
     expect(response.status).toBe(200);
-    expect(await response.json()).toStrictEqual({
+    const body: unknown = await response.json();
+    expect(statusAnswerSchema.safeParse(body).success).toBe(true);
+    expect(body).toStrictEqual({
       bundle: {
         bundleId: 'fixture-2026-11-03',
         siteCommit: '4523c67c55284f8bd3ae1b61caa6d5501ccc77ab',
@@ -338,7 +341,9 @@ describe('GET /api/documents?collection=', () => {
       '/api/documents?collection=pricing',
     );
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ documents: [] });
+    const body: unknown = await response.json();
+    expect(documentListAnswerSchema.safeParse(body).success).toBe(true);
+    expect(body).toEqual({ documents: [] });
   });
 
   it('finds a collection named __proto__ as an ordinary key', async () => {
