@@ -154,7 +154,13 @@ export default function previewRenderServer(
               ),
               regionWrappers(wrappers),
               ...(contentConfig
-                ? [schemaStubs(contentConfig, STUBS[2], STUB_QUERY) as Plugin]
+                ? [
+                    schemaStubs(
+                      contentConfig,
+                      STUBS[2],
+                      STUB_QUERY,
+                    ) as unknown as Plugin,
+                  ]
                 : []),
               contentImportRewrite({
                 srcDir,
