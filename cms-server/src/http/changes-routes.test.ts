@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { changesAnswerSchema } from 'cms-contract';
 import { Hono } from 'hono';
 import { revisionOf } from 'preview-contract';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -80,7 +81,9 @@ describe('GET /api/changes', () => {
   it('answers 200 with each changed document, its base revision and its saved value', async () => {
     const res = await get(FIXTURE_BUNDLE, await workingCopy());
     expect(res.status).toBe(200);
-    expect(await res.json()).toStrictEqual({
+    const body: unknown = await res.json();
+    expect(changesAnswerSchema.safeParse(body).success).toBe(true);
+    expect(body).toStrictEqual({
       documents: [
         {
           key: 'blog/blog-1',

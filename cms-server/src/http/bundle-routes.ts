@@ -2,6 +2,14 @@
 // or one document by key) and GET /api/status. Each one reads the current bundle through the store, and the
 // documents' revisions and values from the working copy. No bundle answers 503 (status: 200 with null), and a
 // file of the bundle that fails to parse answers 500 with its message, which names the file and the field.
+import {
+  apiError,
+  type DocumentBody,
+  type DocumentListItem,
+  documentsQuerySchema,
+  type SchemaBody,
+  type StatusAnswerBody,
+} from 'cms-contract';
 import type { Context, Hono } from 'hono';
 import {
   type Bundle,
@@ -13,39 +21,10 @@ import { type BundleStore, createBundleStore } from '../bundle/store.ts';
 import { type ChangesetRepo, changesetOf } from '../documents/changeset.ts';
 import { collectionOf } from '../documents/paths.ts';
 import type { FileReads } from '../documents/read.ts';
-import {
-  type DocumentError,
-  errorOf,
-  revisionOfDocument,
-} from '../documents/revision.ts';
+import { errorOf, revisionOfDocument } from '../documents/revision.ts';
 import { GitError } from '../git/exec.ts';
 import type { StatusSource } from '../preview/status.ts';
-
-/** One document in the list of GET /api/documents?collection=. `editable` is always a boolean. `revision` is null when the working copy cannot give one, and `error` is set (true) when the document cannot be read. */
-interface DocumentListItem {
-  key: string;
-  file?: string | undefined;
-  revision: string | null;
-  format: DocumentEntry['format'];
-  editable: boolean;
-  buildTime: boolean;
-  buildTimeFields?: string[] | undefined;
-  title?: string;
-  error?: true;
-}
-
-/** The answer of GET /api/documents?key=. `value` is present for an editable document; `error` when its file does not parse. */
-interface DocumentAnswer {
-  key: string;
-  file: string | undefined;
-  value?: unknown;
-  revision: string | null;
-  format: DocumentEntry['format'];
-  editable: boolean;
-  buildTime: boolean;
-  buildTimeFields?: string[] | undefined;
-  error?: DocumentError;
-}
+import { errorJson } from './errors.ts';
 
 /** Registers the bundle routes on `app`. All of them read the bundle through one store; the documents are read from `workingCopy`, the site folder of the working copy. `repo`, when given, lets `GET /api/documents?key=` find a document that a save created (WORKPLAN 2.5c). `status`, when given, adds the preview status to GET /api/status (2.9c). */
 export function registerBundleRoutes(
@@ -64,7 +43,7 @@ export function registerBundleRoutes(
           name,
           ...entry,
         })),
-      }),
+      } satisfies SchemaBody),
     ),
   );
 
@@ -87,8 +66,8 @@ export function registerBundleRoutes(
             siteCommit: identity.siteCommit,
           },
           ...extra,
-        }),
-      () => c.json({ bundle: null, ...extra }),
+        } satisfies StatusAnswerBody),
+      () => c.json({ bundle: null, ...extra } satisfies StatusAnswerBody),
     );
   });
 }
@@ -98,14 +77,17 @@ export async function withBundle(
   c: Context,
   store: BundleStore,
   answer: (bundle: Bundle) => Response | Promise<Response>,
-  missing: () => Response = () => c.json({ error: 'no-bundle' }, 503),
+  missing: () => Response = () => errorJson(c, apiError('no-bundle', {})),
 ): Promise<Response> {
   try {
     const bundle = await store.current();
     return bundle === null ? missing() : await answer(bundle);
   } catch (error) {
     if (error instanceof BundleError) {
-      return c.json({ error: 'bundle-invalid', message: error.message }, 500);
+      return errorJson(
+        c,
+        apiError('bundle-invalid', { message: error.message }),
+      );
     }
     throw error;
   }
@@ -118,23 +100,24 @@ async function documentsAnswer(
   workingCopy: string,
   repo: ChangesetRepo | undefined,
 ): Promise<Response> {
-  const key = c.req.query('key');
+  const { key, collection } = documentsQuerySchema.parse({
+    key: c.req.query('key'),
+    collection: c.req.query('collection'),
+  });
   if (key !== undefined)
     return documentAnswer(c, bundle, key, workingCopy, repo);
-  const collection = c.req.query('collection');
   if (collection === undefined) {
-    return c.json(
-      { error: 'missing-query', message: 'Give a collection or a key.' },
-      400,
+    return errorJson(
+      c,
+      apiError('missing-query', { message: 'Give a collection or a key.' }),
     );
   }
   if (!bundle.collections.has(collection)) {
-    return c.json(
-      {
-        error: 'unknown-collection',
+    return errorJson(
+      c,
+      apiError('unknown-collection', {
         message: `The bundle has no collection "${collection}".`,
-      },
-      404,
+      }),
     );
   }
   // One memo for the request: a file shared by several entries is read once.
@@ -144,7 +127,7 @@ async function documentsAnswer(
       .filter((doc) => collectionOf(doc.key) === collection)
       .map((doc) => listItem(workingCopy, doc, reads)),
   );
-  return c.json({ documents });
+  return c.json({ documents } satisfies { documents: DocumentListItem[] });
 }
 
 /** GET /api/documents?key=: one document with its revision and, when it is editable, its value. A key the bundle lacks, or a document whose file or entry is gone, is 404. A file that does not parse answers 200 with `error` and no value. */
@@ -161,18 +144,17 @@ async function documentAnswer(
   } catch (error: unknown) {
     // The changes could not be read, so the key is not known to be absent: a 404 would say it is.
     if (!(error instanceof GitError)) throw error;
-    return c.json(
-      { error: 'changes-unavailable', message: error.message },
-      500,
+    return errorJson(
+      c,
+      apiError('changes-unavailable', { message: error.message }),
     );
   }
   if (document === undefined) {
-    return c.json(
-      {
-        error: 'unknown-document',
+    return errorJson(
+      c,
+      apiError('unknown-document', {
         message: `The bundle has no document "${key}".`,
-      },
-      404,
+      }),
     );
   }
   // A read-only document (editable false in the manifest) is not parsed, so it has no value.
@@ -184,16 +166,15 @@ async function documentAnswer(
     readable,
   );
   if (facts === null) {
-    return c.json(
-      {
-        error: 'document-missing',
+    return errorJson(
+      c,
+      apiError('document-missing', {
         message: `Document "${key}" is missing from the working copy.`,
-      },
-      404,
+      }),
     );
   }
   const editable = readable && facts.value !== undefined;
-  const answer: DocumentAnswer = {
+  const answer: DocumentBody = {
     key,
     file: document.file,
     revision: facts.revision,

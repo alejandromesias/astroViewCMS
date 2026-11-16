@@ -1,3 +1,4 @@
+import { apiError } from 'cms-contract';
 import { Hono } from 'hono';
 import type { BundleSource } from '../bundle/source.ts';
 import type { Repo } from '../git/ops.ts';
@@ -6,6 +7,7 @@ import type { PollLoop } from '../sync/poll.ts';
 import { registerBundleRoutes } from './bundle-routes.ts';
 import { registerChangeRoutes, type SaveRouteDeps } from './changes-routes.ts';
 import { type EditorRouteDeps, editorRoutes } from './editor-routes.ts';
+import { errorJson } from './errors.ts';
 import { rejectUnlessHostAllowed } from './guard.ts';
 import { type MediaRouteDeps, mediaRoutes } from './media.ts';
 import {
@@ -100,6 +102,6 @@ export function createApp(deps: AppDeps): Hono {
   if (deps.previewUrl !== undefined)
     registerPreviewUrlRoutes(app, deps.previewUrl);
   if (deps.publish !== undefined) registerPublishRoutes(app, deps.publish);
-  app.notFound((c) => c.json({ error: 'not_found' }, 404));
+  app.notFound((c) => errorJson(c, apiError('not_found', {})));
   return app;
 }

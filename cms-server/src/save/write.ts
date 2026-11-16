@@ -3,14 +3,15 @@
 // working copy is as it was before the save. Runs inside the repo lock.
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { apiError } from 'cms-contract';
 import type { DocumentEntry } from '../bundle/read.ts';
 import { changesetOf } from '../documents/changeset.ts';
 import type { FileOp } from '../documents/plan-write.ts';
 import type { FileReads } from '../documents/read.ts';
 import { revisionOfDocument } from '../documents/revision.ts';
 import { errorCode, writeFileAtomic } from '../fs/atomic.ts';
-import type { SaveContext, SaveStop } from './context.ts';
 import type { SaveChange } from './body.ts';
+import type { SaveContext, SaveStop } from './context.ts';
 import { needsRebuild } from './rebuild.ts';
 
 /** Writes the save's files, commits them, runs the after-commit hooks and sets the revisions and the rebuild flag. */
@@ -43,7 +44,7 @@ export async function writeChanges(
       );
       message += `; the working copy could not be restored: ${messageOf(restoreError)}`;
     }
-    return { status: 500, body: { error: 'save-failed', message } };
+    return apiError('save-failed', { message });
   }
   for (const hook of ctx.afterCommit) {
     try {
@@ -61,14 +62,10 @@ export async function writeChanges(
     ctx.log.error('the revisions of a committed save could not be read', {
       reason: messageOf(error),
     });
-    return {
-      status: 500,
-      body: {
-        error: 'save-committed',
-        message:
-          'The save was committed, but its revisions could not be read. Reload the documents before the next save.',
-      },
-    };
+    return apiError('save-committed', {
+      message:
+        'The save was committed, but its revisions could not be read. Reload the documents before the next save.',
+    });
   }
   return undefined;
 }

@@ -22,6 +22,13 @@ export const UNIT_PROJECTS: TestProjectConfiguration[] = [
   },
   {
     test: {
+      name: 'cms-contract',
+      root: 'cms-contract',
+      include: ['src/**/*.test.ts'],
+    },
+  },
+  {
+    test: {
       name: 'cms-server',
       root: 'cms-server',
       include: ['src/**/*.test.ts', 'test/**/*.test.ts', 'editor/**/*.test.ts'],

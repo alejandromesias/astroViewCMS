@@ -2,6 +2,7 @@
 // request's shape, which the editor sends to the render route as it is (documents/overlay.ts). No bundle answers 503,
 // a bundle file that does not parse answers 500, and a git failure answers 500 `changes-unavailable`, as the change
 // routes do. Hono only here; the overlay itself is in documents/overlay.ts.
+import type { OverlayBody } from 'cms-contract';
 import type { Hono } from 'hono';
 import type { BundleSource } from '../bundle/source.ts';
 import { createBundleStore } from '../bundle/store.ts';
@@ -31,16 +32,15 @@ export function registerOverlayRoutes(app: Hono, deps: OverlayRouteDeps): void {
   app.get('/api/overlay', (c) =>
     withBundle(c, store, async (bundle) => {
       try {
-        return c.json(
-          await overlayOf({
-            bundle,
-            repo: deps.repo,
-            siteFolder: deps.siteFolder,
-            media: deps.media,
-            mediaFolder: deps.mediaFolder,
-            log,
-          }),
-        );
+        const body: OverlayBody = await overlayOf({
+          bundle,
+          repo: deps.repo,
+          siteFolder: deps.siteFolder,
+          media: deps.media,
+          mediaFolder: deps.mediaFolder,
+          log,
+        });
+        return c.json(body);
       } catch (error: unknown) {
         return changesUnavailable(c, error);
       }

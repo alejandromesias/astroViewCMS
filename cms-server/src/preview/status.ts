@@ -2,6 +2,7 @@
 // The lifecycle sets the build, swap and protocol fields. The sync, upstream and publish fields are set by 2.10g, 2.10f
 // and 2.10d through the setters. The node state is read from the supervisor, and the changeset size from the repo,
 // on each snapshot.
+import type { StatusBody } from 'cms-contract';
 import type { RenamedDocument } from '../documents/reapply.ts';
 import type { Supervisor } from './supervisor.ts';
 
@@ -18,35 +19,6 @@ type PublishState = 'idle' | 'publishing' | 'failed';
 interface PublishStatus {
   readonly state: PublishState;
   readonly error: string | null;
-}
-
-/** What GET /api/status adds to its `bundle` key. */
-interface StatusBody {
-  readonly builder: 'on' | 'off';
-  /** `failedCommit` is the commit of the last failed build, which is not built again (2.9c-B recovery); null when none failed. */
-  readonly build: {
-    readonly state: BuildState;
-    readonly error: string | null;
-    readonly failedCommit: string | null;
-  };
-  readonly node: {
-    readonly state: ReturnType<Supervisor['status']>['state'];
-    readonly bundleId: string | null;
-    readonly error: string | null;
-  };
-  readonly lastSync: string | null;
-  readonly syncError: string | null;
-  /** The saved documents that upstream renamed, as of the last re-apply (2.10c, 2.10j). Empty when there are none. */
-  readonly renamed: readonly RenamedDocument[];
-  /** The number of files `cms/work` changes from origin, or null when git cannot count them. */
-  readonly changesetSize: number | null;
-  readonly publish: PublishStatus;
-  readonly errors: {
-    readonly protocolMismatch: string | null;
-    readonly upstreamBuildFailed: string | null;
-    /** The error of the last swap that failed (the node was rolled back or restarted). */
-    readonly swap: string | null;
-  };
 }
 
 /** Anything that answers GET /api/status with the status body. */

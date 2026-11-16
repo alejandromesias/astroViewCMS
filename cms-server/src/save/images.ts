@@ -5,6 +5,7 @@
 // Keys and values come from content, so the stage uses Maps, never a plain object lookup.
 import { readFile } from 'node:fs/promises';
 import { join, posix } from 'node:path';
+import { apiError } from 'cms-contract';
 import { collectionOf } from '../documents/paths.ts';
 import { holdingFileOfCreate } from '../documents/plan-write.ts';
 import { errorCode } from '../fs/atomic.ts';
@@ -76,7 +77,7 @@ export const rewriteStagedImages: SaveStage = async (ctx) => {
 };
 
 function refusal(errors: readonly ImageError[]): SaveStop {
-  return { status: 422, body: { error: 'invalid', errors } };
+  return apiError('invalid', { errors: [...errors] });
 }
 
 /** The change with its staged image values rewritten, or the same change when it has none. */

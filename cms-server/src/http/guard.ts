@@ -1,5 +1,7 @@
 // Shared checks for the CMS routes (2.7a gaps, 2.9f; design 5.9). Same rules as
 // preview-render-server/src/request-guard.ts, which stays as it is until the stopgap goes.
+import { apiError } from 'cms-contract';
+import { errorResponse } from './errors.ts';
 
 /** 403 for requests the browser marks cross-site (`Sec-Fetch-Site`), else null. Requests
  *  without the header (curl, older clients) pass. */
@@ -24,12 +26,10 @@ export function rejectUnlessHostAllowed(
     (name) => host === name || (port !== '' && host === `${name}:${port}`),
   );
   if (allowed) return null;
-  return Response.json(
-    {
-      error: 'misdirected',
+  return errorResponse(
+    apiError('misdirected', {
       message: 'The Host header is not an address of this CMS.',
-    },
-    { status: 421 },
+    }),
   );
 }
 

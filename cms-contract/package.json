@@ -1,0 +1,16 @@
+{
+  "name": "cms-contract",
+  "type": "module",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.6.6"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
