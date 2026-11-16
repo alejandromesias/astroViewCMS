@@ -37,6 +37,41 @@ module.exports = {
       to: { path: ['^preview-render-server/', '^sample-site/', '^cms-server/'] },
     },
     {
+      name: 'cms-contract-is-a-leaf',
+      comment:
+        'cms-contract (the API shapes) imports no workspace package. The editor imports it in the browser, and preview-contract pulls in node:crypto.',
+      severity: 'error',
+      from: { path: '^cms-contract/src/', pathNot: TESTS },
+      to: {
+        path: [
+          '^preview-render-server/',
+          '^preview-contract/',
+          '^preview-protocol/',
+          '^sample-site/',
+          '^cms-server/',
+        ],
+      },
+    },
+    {
+      // Until 2.11c, editor.ts takes RenderRequest from preview-contract; that file is the only exception.
+      name: 'editor-imports-only-the-contract',
+      comment:
+        'The test editor imports cms-contract (the API shapes) and preview-protocol (the postMessage protocol), and no other CMS or preview module.',
+      severity: 'error',
+      from: {
+        path: '^cms-server/editor/',
+        pathNot: [TESTS, '^cms-server/editor/editor[.]ts$'],
+      },
+      to: {
+        path: [
+          '^preview-render-server/',
+          '^preview-contract/',
+          '^cms-server/src/',
+          '^sample-site/',
+        ],
+      },
+    },
+    {
       name: 'request-path-no-process-or-git',
       comment: 'The preview node is read-only (decision 4): no child processes, no git, no store/write modules.',
       severity: 'error',
@@ -107,7 +142,7 @@ module.exports = {
       name: 'no-test-in-production',
       comment: 'Production code must not import tests, helpers or fixtures.',
       severity: 'error',
-      from: { path: '^(preview-render-server|preview-protocol|preview-contract|cms-server)/', pathNot: [TESTS, '^preview-render-server/(test|test-editor)/'] },
+      from: { path: '^(preview-render-server|preview-protocol|preview-contract|cms-contract|cms-server)/', pathNot: [TESTS, '^preview-render-server/(test|test-editor)/'] },
       to: { path: TESTS },
     },
     {

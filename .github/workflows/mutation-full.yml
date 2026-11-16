@@ -60,6 +60,7 @@ jobs:
             renderer,
             protocol,
             contract,
+            cms-contract,
             cms-preview,
             cms-save,
             cms-documents,

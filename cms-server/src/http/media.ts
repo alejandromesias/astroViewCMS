@@ -1,5 +1,6 @@
 // POST /api/media and GET /media/staging/<file> (design 5.5, 5.9; 2.7a gaps). Hono only
 // routes: the checks and the files live in media/ and in body.ts and guard.ts.
+import type { MediaBody } from 'cms-contract';
 import { Hono } from 'hono';
 import { type MediaFormat, measureImage } from '../media/measure.ts';
 import { recordMedia } from '../media/metadata.ts';
@@ -77,10 +78,12 @@ export function mediaRoutes(deps: MediaRouteDeps): Hono {
       measures.format,
     );
     await recordMedia(deps.mediaFile, id, measures);
-    return c.json(
-      { id, url: `${deps.cmsOrigin}/media/staging/${name}`, ...measures },
-      201,
-    );
+    const body: MediaBody = {
+      id,
+      url: `${deps.cmsOrigin}/media/staging/${name}`,
+      ...measures,
+    };
+    return c.json(body, 201);
   });
 
   // Not guarded against cross-site requests: the preview iframe is cross-site by design.

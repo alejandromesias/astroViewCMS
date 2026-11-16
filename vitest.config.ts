@@ -38,6 +38,12 @@ export default defineConfig({
           branches: 80,
           statements: 80,
         },
+        'cms-contract/**': {
+          lines: 80,
+          functions: 90,
+          branches: 80,
+          statements: 80,
+        },
         'cms-server/**': {
           lines: 80,
           functions: 90,
@@ -50,6 +56,7 @@ export default defineConfig({
         'preview-render-server/test-editor/**',
         'preview-protocol/src/**',
         'preview-contract/src/**',
+        'cms-contract/src/**',
         'cms-server/src/**',
       ],
       exclude: [

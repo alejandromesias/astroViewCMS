@@ -3,6 +3,7 @@
 // working copy on the first save that deletes something (never for a save that deletes nothing). After the commit, the
 // save's written values update it. A failed update marks it stale, and the next guarded delete rebuilds it. Keys come
 // from content, so the guard uses only Maps and Sets for them.
+import { apiError } from 'cms-contract';
 import type { Bundle, DocumentEntry } from '../bundle/read.ts';
 import { codecFor } from '../codecs/by-format.ts';
 import { changesetOf } from '../documents/changeset.ts';
@@ -186,15 +187,11 @@ function referencedBy(
   const needsDeveloper = referrers.some(
     (referrer) => documents.get(referrer)?.editable === false,
   );
-  return {
-    status: 409,
-    body: {
-      error: 'referenced-by',
-      document,
-      referrers,
-      ...(needsDeveloper ? { needsDeveloper: true } : {}),
-    },
-  };
+  return apiError('referenced-by', {
+    document,
+    referrers: [...referrers],
+    ...(needsDeveloper ? { needsDeveloper: true as const } : {}),
+  });
 }
 
 /**
@@ -264,11 +261,7 @@ function addTo(
 /** The answer of a stage whose reference index could not be built: a JSON 500, and no write. */
 function referenceIndexFailed(error: unknown): SaveStop {
   const reason = error instanceof Error ? error.message : String(error);
-  return {
-    status: 500,
-    body: {
-      error: 'reference-index-failed',
-      message: `The reference index could not be built: ${reason}`,
-    },
-  };
+  return apiError('reference-index-failed', {
+    message: `The reference index could not be built: ${reason}`,
+  });
 }

@@ -5,12 +5,12 @@
 // validate every document, squash `cms/work` into one commit on the commit it sits on, and push it, never forced. A push
 // that is refused because the remote moved syncs and tries again, up to three more times; the saves are never touched
 // until the push has succeeded.
+import { type ApiError, apiError, type PublishBody } from 'cms-contract';
 import type { FieldError, MediaInfo } from 'preview-protocol';
 import { type Bundle, BundleError } from '../bundle/read.ts';
 import type { BundleStore } from '../bundle/store.ts';
 import type { CmsConfig } from '../config/schema.ts';
 import { type Changeset, changesetOf } from '../documents/changeset.ts';
-import type { RenamedDocument } from '../documents/reapply.ts';
 import { redact } from '../git/exec.ts';
 import type { Repo, RepoTx } from '../git/ops.ts';
 import { MAX_BODY_BYTES } from '../http/changes-routes.ts';
@@ -44,30 +44,10 @@ const BUILD_IN_PROGRESS =
 const CODE_CHANGED =
   'The upstream code changed while the publish ran, so nothing was published. Try again.';
 
-/** A document the publish overwrote: the upstream commit whose version the CMS value replaced. */
-interface Overwritten {
-  readonly key: string;
-  readonly commit: string;
-}
-
-/** The 200 answer. `commit` is null when there was nothing to publish. */
-interface PublishBody {
-  readonly commit: string | null;
-  readonly overwritten: readonly Overwritten[];
-  readonly renamed: readonly RenamedDocument[];
-}
-
-/** A failure that sets the publish status to `failed`: 502 for the remote (sync, push), 500 for anything unexpected. */
-interface Failure {
-  readonly status: 500 | 502;
-  readonly body: { readonly error: string; readonly message: string };
-}
-
-/** What a publish answers: 200, a stop of the save pipeline's shape (409, 422, 503), or a failure. */
+/** What a publish answers: 200 with the contract's body, or an error of the contract (a stop of the save pipeline's shape, or a failure). */
 export type PublishAnswer =
   | { readonly status: 200; readonly body: PublishBody }
-  | SaveStop
-  | Failure;
+  | ApiError;
 
 /** The preview's builds, as a publish sees them: whether one runs, and a wait for the end of the running ones. */
 export interface Builds {
@@ -100,14 +80,20 @@ export interface PublishDeps {
   readonly readChangeset?: typeof changesetOf;
 }
 
-/** A publish that failed, with the answer it gives. Thrown inside the lock, so the lock is released by the throw. */
-class PublishFailure extends Error {
-  readonly status: 500 | 502;
-  readonly code: string;
+/** The codes a failed publish answers with (502 for the remote, 500 otherwise: the contract's table gives the status). */
+type PublishFailureCode =
+  | 'sync-failed'
+  | 'push-failed'
+  | 'push-rejected'
+  | 'bundle-invalid'
+  | 'publish-failed';
 
-  constructor(status: 500 | 502, code: string, message: string) {
+/** A publish that failed, with the code it answers. Thrown inside the lock, so the lock is released by the throw. */
+class PublishFailure extends Error {
+  readonly code: PublishFailureCode;
+
+  constructor(code: PublishFailureCode, message: string) {
     super(redact(message));
-    this.status = status;
     this.code = code;
   }
 }
@@ -137,14 +123,12 @@ export function createPublish({
   maxBatchBytes = MAX_BODY_BYTES,
   readChangeset = changesetOf,
 }: PublishDeps): () => Promise<PublishAnswer> {
-  const buildInProgress: SaveStop = {
-    status: 503,
-    body: { error: 'build-in-progress', message: BUILD_IN_PROGRESS },
-  };
-  const codeChanged: SaveStop = {
-    status: 503,
-    body: { error: 'upstream-changed', message: CODE_CHANGED },
-  };
+  const buildInProgress: SaveStop = apiError('build-in-progress', {
+    message: BUILD_IN_PROGRESS,
+  });
+  const codeChanged: SaveStop = apiError('upstream-changed', {
+    message: CODE_CHANGED,
+  });
   const nothingToPublish: PublishAnswer = {
     status: 200,
     body: { commit: null, overwritten: [], renamed: [] },
@@ -157,7 +141,6 @@ export function createPublish({
     const outcome = await syncLocked(tx);
     if (outcome.kind === 'failed')
       throw new PublishFailure(
-        502,
         'sync-failed',
         `The site could not be brought up to date with the remote, so nothing was published: ${outcome.message}`,
       );
@@ -181,9 +164,9 @@ export function createPublish({
       bundle = await bundles.current();
     } catch (error: unknown) {
       if (!(error instanceof BundleError)) throw error;
-      throw new PublishFailure(500, 'bundle-invalid', error.message);
+      throw new PublishFailure('bundle-invalid', error.message);
     }
-    if (bundle === null) return { status: 503, body: { error: 'no-bundle' } };
+    if (bundle === null) return apiError('no-bundle', {});
     // One origin tip for every read of this attempt (2.10c).
     const reader = await repo.changesetReader();
     const referenced = await guard.recheck({
@@ -241,7 +224,6 @@ export function createPublish({
       }
       if (!pushed.race)
         throw new PublishFailure(
-          502,
           'push-failed',
           `The remote refused the push, so nothing was published: ${pushed.message}`,
         );
@@ -254,7 +236,6 @@ export function createPublish({
       );
     }
     throw new PublishFailure(
-      502,
       'push-rejected',
       `The remote branch moved on each of ${MAX_RETRIES + 1} pushes, so nothing was published. The saved changes are kept. Try again in a moment.`,
     );
@@ -310,17 +291,13 @@ export function createPublish({
         error instanceof PublishFailure
           ? error
           : new PublishFailure(
-              500,
               'publish-failed',
               `Publishing failed unexpectedly: ${error instanceof Error ? error.message : String(error)}`,
             );
       if (!(error instanceof PublishFailure))
         log.error('a publish failed unexpectedly', { error: failure.message });
       status.setPublish('failed', failure.message);
-      return {
-        status: failure.status,
-        body: { error: failure.code, message: failure.message },
-      };
+      return apiError(failure.code, { message: failure.message });
     }
   };
 }
@@ -331,7 +308,7 @@ export function createPublish({
  */
 function publishMessage(changeset: Changeset): {
   message: string;
-  overwritten: Overwritten[];
+  overwritten: PublishBody['overwritten'];
 } {
   const overwritten = changeset.documents
     .flatMap((document) =>

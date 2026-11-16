@@ -1,6 +1,11 @@
 // GET /api/preview-url?path= (WORKPLAN 2.9e, PHASE-2-DESIGN 5.9): the URL of a site path on the preview origin, with a
 // fresh token in its query. The first call of a session warms the node first (preview/preview-url.ts). It needs no
 // bundle. A path that is not a site path answers 400 invalid-path. Hono only here; the logic is in preview/preview-url.ts.
+import {
+  apiError,
+  type PreviewUrlBody,
+  previewUrlQuerySchema,
+} from 'cms-contract';
 import type { Hono } from 'hono';
 import { type Logger, logger } from '../log.ts';
 import {
@@ -9,6 +14,7 @@ import {
   isSitePath,
   previewUrlOf,
 } from '../preview/preview-url.ts';
+import { errorJson } from './errors.ts';
 
 /** What the route needs: the preview origin and the site (from the config), the token secret, the node's warm-up, and the log and clock (the real ones by default). */
 export interface PreviewUrlRouteDeps {
@@ -37,20 +43,23 @@ export function registerPreviewUrlRoutes(
     log: deps.log ?? logger,
   });
   app.get('/api/preview-url', async (c) => {
-    const path = c.req.query('path');
-    if (path === undefined || !isSitePath(path))
-      return c.json(
-        { error: 'invalid-path', message: INVALID_PATH_MESSAGE },
-        400,
+    const query = previewUrlQuerySchema.safeParse({
+      path: c.req.query('path'),
+    });
+    if (!query.success || !isSitePath(query.data.path))
+      return errorJson(
+        c,
+        apiError('invalid-path', { message: INVALID_PATH_MESSAGE }),
       );
     await warmUp();
     const url = previewUrlOf({
       origin: deps.origin,
-      path,
+      path: query.data.path,
       site: deps.site,
       secret: deps.tokenSecret,
       now: Math.floor(now() / 1000),
     });
-    return c.json({ url, origin: deps.origin });
+    const body: PreviewUrlBody = { url, origin: deps.origin };
+    return c.json(body);
   });
 }

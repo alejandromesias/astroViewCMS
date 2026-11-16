@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { apiError } from 'cms-contract';
 import { revisionOf } from 'preview-contract';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -158,7 +159,7 @@ describe('the delete guard in a save', () => {
 describe('runStages', () => {
   it('answers with the first stop, and runs no later stage', async () => {
     const later = vi.fn(async () => undefined);
-    const stop: SaveStop = { status: 409, body: { error: 'conflict' } };
+    const stop: SaveStop = apiError('conflict', { documents: [] });
     const answer = await runStages(saveContext(), [
       async () => undefined,
       async () => stop,

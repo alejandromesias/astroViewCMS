@@ -37,6 +37,10 @@
       "entry": ["src/*.test.ts"],
       "project": ["src/**"]
     },
+    "cms-contract": {
+      "entry": ["src/*.test.ts"],
+      "project": ["src/**"]
+    },
     "cms-server": {
       "entry": ["src/**/*.test.ts", "test/**/*.test.ts", "editor/editor.ts", "editor/**/*.test.ts"],
       "project": ["src/**", "test/**", "editor/**"],

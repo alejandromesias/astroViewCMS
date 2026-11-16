@@ -32,6 +32,11 @@ const FAST: Step[] = [
     kind: 'gate',
   },
   {
+    name: 'tsc cms-contract',
+    command: 'npm run typecheck -w cms-contract',
+    kind: 'gate',
+  },
+  {
     name: 'tsc cms-server',
     command: 'npm run typecheck -w cms-server',
     kind: 'gate',

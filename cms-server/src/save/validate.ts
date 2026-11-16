@@ -2,6 +2,7 @@
 // node, with cms-server's own media map (D12), before anything is written. A refinement that threw does not block
 // the save (5.1 item 9); its key is kept for the build check.
 import { posix } from 'node:path';
+import { apiError } from 'cms-contract';
 import type { FieldError, MediaInfo } from 'preview-protocol';
 import type { Logger } from '../log.ts';
 import { readMedia } from '../media/metadata.ts';
@@ -49,16 +50,12 @@ export function previewUnavailableStop(error: unknown, log: Logger): SaveStop {
       ? { reason, status: error.status }
       : { reason },
   );
-  return {
-    status: 503,
-    body: {
-      error: 'preview-unavailable',
-      message:
-        error instanceof PreviewUnavailableError
-          ? error.message
-          : PREVIEW_UNAVAILABLE_TEXT,
-    },
-  };
+  return apiError('preview-unavailable', {
+    message:
+      error instanceof PreviewUnavailableError
+        ? error.message
+        : PREVIEW_UNAVAILABLE_TEXT,
+  });
 }
 
 /**
@@ -70,17 +67,13 @@ export function invalidStop(
 ): SaveStop | undefined {
   const blocking = errors.filter((error) => error.kind !== 'refinement-threw');
   if (blocking.length === 0) return undefined;
-  return {
-    status: 422,
-    body: {
-      error: 'invalid',
-      errors: blocking.map((error) => ({
-        key: error.key,
-        path: error.path,
-        message: error.message,
-      })),
-    },
-  };
+  return apiError('invalid', {
+    errors: blocking.map((error) => ({
+      key: error.key,
+      path: error.path,
+      message: error.message,
+    })),
+  });
 }
 
 /**

@@ -2,6 +2,7 @@
 // cms/work, with their base revisions and saved values. A document that cannot be read carries its own `error`, so a
 // broken file still answers 200. PUT saves a change list (PHASE-2-DESIGN 5.3). No bundle answers 503 and a bundle file
 // that does not parse answers 500, as the other bundle routes do. A git failure answers 500 `changes-unavailable`.
+import { apiError, type ChangesBody } from 'cms-contract';
 import type { Context, Hono } from 'hono';
 import type { BundleSource } from '../bundle/source.ts';
 import { createBundleStore } from '../bundle/store.ts';
@@ -21,6 +22,7 @@ import { createDeleteGuard } from '../save/delete-guard.ts';
 import { saveChanges } from '../save/pipeline.ts';
 import { BodyTooLargeError, readBody } from './body.ts';
 import { withBundle } from './bundle-routes.ts';
+import { errorJson } from './errors.ts';
 import { JSON_CONTENT_TYPE, rejectUnlessContentType } from './guard.ts';
 import type { MediaRouteDeps } from './media.ts';
 
@@ -55,7 +57,10 @@ export interface ChangeRouteDeps {
 // Exported for GET /api/overlay (2.9e), which reads the changes the same way.
 export function changesUnavailable(c: Context, error: unknown): Response {
   if (!(error instanceof GitError)) throw error;
-  return c.json({ error: 'changes-unavailable', message: error.message }, 500);
+  return errorJson(
+    c,
+    apiError('changes-unavailable', { message: error.message }),
+  );
 }
 
 /** Registers GET /api/changes on `app`, and PUT /api/changes when `deps.save` is given. */
@@ -64,13 +69,12 @@ export function registerChangeRoutes(app: Hono, deps: ChangeRouteDeps): void {
   app.get('/api/changes', (c) =>
     withBundle(c, store, async (bundle) => {
       try {
-        return c.json(
-          await changesetOf({
-            bundle,
-            repo: deps.repo,
-            siteFolder: deps.siteFolder,
-          }),
-        );
+        const body: ChangesBody = await changesetOf({
+          bundle,
+          repo: deps.repo,
+          siteFolder: deps.siteFolder,
+        });
+        return c.json(body);
       } catch (error: unknown) {
         return changesUnavailable(c, error);
       }
@@ -95,18 +99,20 @@ export function registerChangeRoutes(app: Hono, deps: ChangeRouteDeps): void {
         bytes = await readBody(request, MAX_BODY_BYTES);
       } catch (error) {
         if (error instanceof BodyTooLargeError)
-          return c.json(
-            {
-              error: 'body-too-large',
+          return errorJson(
+            c,
+            apiError('body-too-large', {
               message: `The body is larger than ${MAX_BODY_BYTES} bytes`,
-            },
-            413,
+            }),
           );
         throw error;
       }
       const body = parseSaveBody(new TextDecoder().decode(bytes));
       if (!body.ok)
-        return c.json({ error: 'invalid-body', message: body.message }, 400);
+        return errorJson(
+          c,
+          apiError('invalid-body', { message: body.message }),
+        );
 
       try {
         const answer = await saveChanges(

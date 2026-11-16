@@ -2,6 +2,7 @@
 // one `locked('save')` call, so the check, the writes and the commit cannot interleave with a sync or another save.
 // A stage answers with a stop, or passes. 2.6b, 2.7b and 2.7c add their stage at the slot marked here, and register
 // their after-commit hooks, so they do not edit each other's code.
+import { apiError, type SaveBody } from 'cms-contract';
 import { type Bundle, BundleError } from '../bundle/read.ts';
 import type { BundleStore } from '../bundle/store.ts';
 import type { CmsConfig } from '../config/schema.ts';
@@ -70,14 +71,12 @@ export async function runStages(
     const stop = await stage(ctx);
     if (stop !== undefined) return stop;
   }
-  return {
-    status: 200,
-    body: {
-      revisions: Object.fromEntries(ctx.revisions),
-      warnings: ctx.warnings,
-      rebuild: ctx.rebuild,
-    },
+  const body: SaveBody = {
+    revisions: Object.fromEntries(ctx.revisions),
+    warnings: [...ctx.warnings],
+    rebuild: ctx.rebuild,
   };
+  return { status: 200, body };
 }
 
 /**
@@ -99,12 +98,9 @@ export function saveChanges(
       bundle = await input.bundles.current();
     } catch (error) {
       if (!(error instanceof BundleError)) throw error;
-      return {
-        status: 500,
-        body: { error: 'bundle-invalid', message: error.message },
-      };
+      return apiError('bundle-invalid', { message: error.message });
     }
-    if (bundle === null) return { status: 503, body: { error: 'no-bundle' } };
+    if (bundle === null) return apiError('no-bundle', {});
     return runStages(
       {
         changes: input.changes,

@@ -5,6 +5,7 @@ import {
   type ServerResponse,
 } from 'node:http';
 import { Readable } from 'node:stream';
+import { apiError } from 'cms-contract';
 import { type AppDeps, createApp } from './http/app.ts';
 
 // Phase 2 has no auth (PHASE-2-DESIGN 5.1), so the server listens on loopback only.
@@ -43,8 +44,9 @@ async function handle(
     res.end(Buffer.from(await response.arrayBuffer()));
   } catch (error) {
     console.error(error);
-    res.writeHead(500, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ error: 'internal_error' }));
+    const answer = apiError('internal_error', {});
+    res.writeHead(answer.status, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(answer.body));
   }
 }
 

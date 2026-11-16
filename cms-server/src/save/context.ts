@@ -1,5 +1,6 @@
 // The shared state of one save (WORKPLAN 2.5c): the inputs, the outputs that the stages fill in, and the types the
 // stages and the pipeline share. Types only, so that the stage modules can import it without an import cycle.
+import type { ApiError, SaveBody, SaveWarning } from 'cms-contract';
 import type { FieldError, MediaInfo } from 'preview-protocol';
 import type { Bundle, DocumentEntry } from '../bundle/read.ts';
 import type { CmsConfig } from '../config/schema.ts';
@@ -30,30 +31,13 @@ export interface MediaFiles {
   readonly cmsOrigin: string;
 }
 
-/** A stop: the save answers `status` with `body`, and no later stage runs. */
-export interface SaveStop {
-  readonly status: 400 | 409 | 422 | 500 | 503;
-  readonly body: Record<string, unknown>;
-}
-
-/** A warning of a save (WORKPLAN 2.7c). It never blocks the save; `path` is the field path, as in a FieldError. */
-interface SaveWarning {
-  readonly key: string;
-  readonly path: readonly (string | number)[];
-  readonly code: string;
-}
+/** A stop: the save answers with this error, and no later stage runs. Built by `apiError`, so its code is in the contract. */
+export type SaveStop = ApiError;
 
 /** A staged image to copy into the site (WORKPLAN 2.7b). `from` is the absolute staging path; `to` is site-relative. */
 interface ImageCopy {
   readonly from: string;
   readonly to: string;
-}
-
-/** The 200 answer of a save (WORKPLAN 2.5c item 10). `warnings` stays empty until 2.7c fills it. */
-interface SaveBody {
-  readonly revisions: Record<string, string>;
-  readonly warnings: readonly SaveWarning[];
-  readonly rebuild: boolean;
 }
 
 /** The answer of a save: 200 with its body, or a stop. */
