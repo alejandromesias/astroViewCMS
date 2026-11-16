@@ -11,7 +11,7 @@ in section 9.
 
 | Workflow | Trigger | Job | What it runs | Limit |
 | --- | --- | --- | --- | --- |
-| `ci.yml` | push to `main`, pull request, by hand | `fast` | `npm run check -- --fast`: tsc (5 packages, the sample site included), Biome, unit tests with coverage floors, Knip, dependency-cruiser, osv-scanner | 25 min |
+| `ci.yml` | push to `main` (not a push that only changes `DOCS/`), pull request, by hand | `fast` | `npm run check -- --fast`: tsc (5 packages, the sample site included), Biome, unit tests with coverage floors, Knip, dependency-cruiser, osv-scanner | 25 min |
 | | | `e2e` | cms-server end-to-end, preview end-to-end and budgets, browser suite (Chromium) | 40 min |
 | | | `mutation-diff` | Stryker on the source files the branch changed, then the judgement (section 3) | 240 min |
 | `mutation-full.yml` | nightly 03:17 UTC, by hand | `gate` | nightly only: skips the run when nothing outside `DOCS/` changed since the last green run (section 4) | 10 min |
@@ -20,7 +20,7 @@ in section 9.
 | `mutation-branch.yml` | by hand only (`workflow_dispatch`, inputs `ref` and `base`) | `mutation` | Stryker on the files one pushed branch changed against `base` (default `main`), then the judgement of `mutation-diff`. No pull request needed | 240 min |
 | `windows.yml` | weekly, Monday 05:23 UTC, by hand | `unit` | `npm run coverage` on `windows-latest` (not a gate) | 40 min |
 | `nightly.yml` | nightly 02:37 UTC, by hand | `measure` | memory of one preview process and the listing-route tripwire, printed to artifacts (not a gate, `continue-on-error`) | 45 min |
-| `security.yml` | push to `main`, weekly, by hand | `codeql`, `osv-sarif` | CodeQL for JavaScript and TypeScript; osv-scanner results as SARIF in the Security tab (reports, not gates) | 30 min, 10 min |
+| `security.yml` | push to `main` (not a push that only changes `DOCS/`), weekly, by hand | `codeql`, `osv-sarif` | CodeQL for JavaScript and TypeScript; osv-scanner results as SARIF in the Security tab (reports). The weekly run also runs `npm run audit` as a gate (2.14m) | 30 min, 10 min |
 
 - **The three jobs of `ci.yml` run side by side** (since 2026-11-11, 2.1s): `e2e` and
   `mutation-diff` do not wait for `fast`, so a push is green after the slowest of the three,
@@ -54,7 +54,8 @@ checks above. Repository admins can bypass it ("always"), so direct pushes by
 the admin still land; other contributors need a green pull request. Direct pushes
 are the policy for changes under `DOCS/` only (README section 2); the `pre-push` hook
 refuses any other file. A red
-guarded push by the admin is not stopped by the ruleset: CI shows it.
+guarded push by the admin is not stopped by the ruleset: CI shows it. A push that
+only changes `DOCS/` starts no workflow run (WORKPLAN 2.14m), so CI shows nothing for it.
 
 The local pre-commit hook (`.githooks/pre-commit`, about 7 seconds) is the fast tier
 in front of CI: two typechecks, `lint`, `format:check` and `depcruise`, all of which
