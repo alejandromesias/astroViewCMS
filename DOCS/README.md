@@ -15,7 +15,9 @@ and holds the working rules and commands that apply to every phase.
    │
    └─ Workplans/ (steps and tasks, one per phase)
         WORKPLAN-PHASE-0-1.md     phases 0 and 1: closed 2026-10-31, kept as the record
-        WORKPLAN-PHASE-2.md       phase 2: current (59 tasks, with dependencies in the headlines)
+        WORKPLAN-PHASE-2-CLOSE.md phase 2: the live plan for waves 11 on (approved 2026-11-16)
+        WORKPLAN-PHASE-2.md       phase 2: the log of waves 1 to 10 (task bodies, Results; frozen)
+        Proposals/                the audit's proposals, folded into the close plan
 
  How the code works today        PREVIEW-RENDER-SERVER.md (the renderer, the bridge, the routes)
  Rules for code and tests        Guidelines/IMPLEMENTATION-RECOMMENDATIONS.md, Guidelines/TESTING-RECOMMENDATIONS.md
@@ -44,7 +46,7 @@ When a phase starts, its items move out of SYSTEM-DESIGN section 12 into its
 design or plan, and section 12 keeps a one-line pointer.
 
 **Current phase: 2** (waves 1 to 10 closed; wave 11 next; the CI setup is done, see CI-PIPELINE.md). Read SYSTEM-DESIGN.md (sections 1 to 6, 9, 11),
-then PHASE-2-DESIGN.md, then WORKPLAN-PHASE-2.md. Older code comments say
+then PHASE-2-DESIGN.md, then WORKPLAN-PHASE-2-CLOSE.md (WORKPLAN-PHASE-2.md is the log). Older code comments say
 "WORKPLAN task 1.x": those tasks are in WORKPLAN-PHASE-0-1.md.
 
 The research that led here (Tina, AstroAdmin, Sveltia, Sitepins) is in the

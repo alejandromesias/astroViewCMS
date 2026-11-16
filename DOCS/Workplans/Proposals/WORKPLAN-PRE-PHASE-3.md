@@ -1,6 +1,6 @@
 # Work plan, pre-phase 3 (proposal)
 
-Written 2026-11-15. Status: **proposal, not approved.** It turns the findings of [SYSTEM-DESIGN-AUDIT.md](../../Designs/SYSTEM-DESIGN-AUDIT.md) into tasks. Nothing here is scheduled until the user accepts it; an accepted task moves into WORKPLAN-PHASE-2.md as step 2.14 (the ids below already fit `npm run worktree`).
+Written 2026-11-15. Status: **superseded by [WORKPLAN-PHASE-2-CLOSE.md](../WORKPLAN-PHASE-2-CLOSE.md) (approved 2026-11-16), which says what was taken and changed.** It turns the findings of [SYSTEM-DESIGN-AUDIT.md](../../Designs/SYSTEM-DESIGN-AUDIT.md) into tasks. Nothing here is scheduled until the user accepts it; an accepted task moves into WORKPLAN-PHASE-2.md as step 2.14 (the ids below already fit `npm run worktree`).
 
 The tasks are suggestions sized by value, not a gate. Three are worth doing even if the rest are dropped: **2.14a** (a second site), **2.14c** (`schema.json` for forms) and **2.14d** (the API contract). Phase 3 is built on all three.
 

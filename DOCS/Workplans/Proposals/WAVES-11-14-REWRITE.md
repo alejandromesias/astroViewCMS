@@ -1,6 +1,6 @@
 # Waves 11 to 14, rewritten (proposal)
 
-Written 2026-11-15, with wave 10 closed and `main` at `7dd6bff`. Status: **proposal, not approved.** If accepted, the wave table and the entries of 2.10e, 2.10f, 2.11c, 2.11d, 2.12c, 2.13a and 2.13c in WORKPLAN-PHASE-2.md are edited to match; until then that plan stands.
+Written 2026-11-15, with wave 10 closed and `main` at `7dd6bff`. Status: **superseded by [WORKPLAN-PHASE-2-CLOSE.md](../WORKPLAN-PHASE-2-CLOSE.md) (approved 2026-11-16), which says what was taken and changed.** If accepted, the wave table and the entries of 2.10e, 2.10f, 2.11c, 2.11d, 2.12c, 2.13a and 2.13c in WORKPLAN-PHASE-2.md are edited to match; until then that plan stands.
 
 Background: [SYSTEM-DESIGN-AUDIT.md](../../Designs/SYSTEM-DESIGN-AUDIT.md) findings A1, A5, A14 and A16. The pre-phase 3 tasks (step 2.14) are in [WORKPLAN-PRE-PHASE-3.md](WORKPLAN-PRE-PHASE-3.md).
 

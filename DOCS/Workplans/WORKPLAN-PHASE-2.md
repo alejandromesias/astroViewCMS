@@ -1,5 +1,7 @@
 # Work plan, phase 2: `cms-server`, single tenant
 
+> **Frozen as the log (2026-11-16).** The live plan for waves 11 on is [WORKPLAN-PHASE-2-CLOSE.md](WORKPLAN-PHASE-2-CLOSE.md). Where the two differ for an open task (2.10e to 2.13c), the close plan wins. Finished task bodies and Results stay here.
+
 Written 2026-10-31, after the user approved
 [PHASE-2-DESIGN.md](../Designs/PHASE-2-DESIGN.md). Steps 2.0 to 2.13 below turn that
 design into tasks. The step numbers differ from the first scaffold of the
