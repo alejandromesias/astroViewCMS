@@ -1,11 +1,15 @@
 # CI (WORKPLAN 2.1k, 2.1l and 2.1s). The three jobs run side by side. Gates: `fast` (the npm run check --fast set), `e2e` (end-to-end and browser
 # suites) and `mutation-diff` (Stryker on the files the branch changed). The nightly whole-repo run is
-# mutation-full.yml. Runs on push to main, pull requests and by hand. Read-only token: no secret is needed.
+# mutation-full.yml. Runs on push to main (not for a push that only changes DOCS/, WORKPLAN 2.14m), pull requests
+# and by hand. Read-only token: no secret is needed.
 name: CI
 
 on:
   push:
     branches: [main]
+    # A push that only changes DOCS/ starts no run, so no osv-scanner audit either. pull_request is not filtered:
+    # docs PRs still run the required checks.
+    paths-ignore: ['DOCS/**']
   pull_request:
   workflow_dispatch:
 

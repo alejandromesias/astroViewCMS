@@ -1,11 +1,14 @@
 # Security scans (WORKPLAN 2.1o): CodeQL for JavaScript and TypeScript, and the osv-scanner results as
-# SARIF in the Security tab. Reports only: the blocking audit gate is `npm run audit` in ci.yml `fast`.
-# Runs on push to main, weekly and by hand. Each job asks for security-events: write, and nothing else.
+# SARIF in the Security tab (reports). The weekly run also runs `npm run audit` as a gate (WORKPLAN 2.14m), so a new
+# advisory fails it; the push gate is `npm run audit` in ci.yml `fast`.
+# Runs on push to main (not for a push that only changes DOCS/), weekly and by hand. Each job asks for security-events:
+# write, and nothing else.
 name: security
 
 on:
   push:
     branches: [main]
+    paths-ignore: ['DOCS/**']
   pull_request:
     branches: [main]
   schedule:
@@ -48,6 +51,7 @@ jobs:
           grep ' osv-scanner_linux_amd64$' osv-scanner_SHA256SUMS | sha256sum -c -
           chmod +x osv-scanner_linux_amd64
           mv osv-scanner_linux_amd64 osv-scanner
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
       - name: Scan the lockfile, same ignores as the audit gate
         # A finding makes osv-scanner exit non-zero; the SARIF is still written and uploaded below.
         run: |
@@ -56,3 +60,7 @@ jobs:
         with:
           sarif_file: osv.sarif
           category: osv-scanner
+      # Scheduled runs only (WORKPLAN 2.14m). On push, ci.yml `fast` runs the same audit.
+      - name: Audit gate, weekly only
+        if: github.event_name == 'schedule'
+        run: npm run audit
