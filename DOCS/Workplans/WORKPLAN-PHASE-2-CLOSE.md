@@ -86,6 +86,7 @@ These are the rules builders keep needing. Each is in the log under the task nam
 | H1 | **2.1p verification:** nine green scheduled nightly runs (2026-11-08 to 2026-11-16). Confirm that the artifacts are there, then mark 2.1p verified. The T3 reminder can go after 2026-12-01 | now |
 | H2 | **2.1t Result:** record both git shard times from run `43491378803` and mark 2.1t done (merged as `20dc360`; its Result is still empty) | now |
 | H3 | **osv-scanner ignore** `GHSA-g3hv-75wg-m249` expires 2026-12-15. An expired entry fails `npm run audit` | revisit 2026-12-01 |
+| H3b | **osv-scanner ignore** `GHSA-fc5q-39xc-vjpf` (picomatch) expires 2026-12-17. Check first whether a patched picomatch exists. An expired entry fails `npm run audit` | revisit 2026-12-01 |
 | H4 | **Codex thread `discussion_r4559166100`** (2.10g), on hold until the Ph2 reviewer re-checks. Close it or drop it | before wave 11 closes |
 | H5 | **`run.test.ts` first-start flake:** one unexplained failure, then green after an explicit 5 s timeout. If it fails again, it becomes a task | watch |
 

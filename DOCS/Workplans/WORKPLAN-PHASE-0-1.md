@@ -1201,7 +1201,7 @@ with the moment to test it:
 | Cause of the 60 px scroll shift (scroll anchoring?) | D6 | Phase 3, with the real editor; one check of `overflow-anchor`. |
 | D7 follow-up: `POSTS` as a parameter | D7 | Done 2026-10-31: `npm run measure:listing -- --posts=N`. |
 | `osv-scanner.toml` ignore for GHSA-g3hv-75wg-m249 (minimatch via Stryker) | `osv-scanner.toml` | Expires 2026-12-15: renew or drop it before then. |
-| `osv-scanner.toml` ignore for GHSA-fc5q-39xc-vjpf (picomatch via astro at runtime and via dev tools) | `osv-scanner.toml` | Expires 2026-12-17: renew or drop it before then. Reason corrected in review of #56. |
+| `osv-scanner.toml` ignore for GHSA-fc5q-39xc-vjpf (picomatch via astro and @astrojs/node at runtime, and via sample-site vite and dev tools) | `osv-scanner.toml` | Expires 2026-12-17: renew or drop it before then. |
 
 ### 1.8b Remove Skott (unscheduled request, 2026-10-31)
 
