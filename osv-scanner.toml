@@ -10,3 +10,12 @@
 id = "GHSA-g3hv-75wg-m249"
 ignoreUntil = 2026-12-15
 reason = "minimatch 10.2.6 via @stryker-mutator/core 10.1.1 (pins ~10.2.4; fix 11.0.1 is major and out of range). Dev only, not shipped; globs come from our own Stryker config"
+
+# picomatch 4.0.7 and 2.3.2 (ReDoS through repeated extglobs). No patched release exists.
+# Dev tooling only: vite, vitest, knip, dependency-cruiser, astro and its unstorage/anymatch
+# chain. The globs come from our own configs, and the package does not ship in the site or the CMS.
+# Recheck when a patched picomatch is released, or when these tools move to a newer picomatch.
+[[IgnoredVulns]]
+id = "GHSA-fc5q-39xc-vjpf"
+ignoreUntil = 2026-12-17
+reason = "picomatch 4.0.7 and 2.3.2 via dev tooling (vite, vitest, knip, dependency-cruiser, astro). No patched release. Dev only, not shipped; globs come from our own configs"
