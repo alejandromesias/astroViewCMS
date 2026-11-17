@@ -563,6 +563,8 @@ export async function startEditor(
     const gone = view.conflict.revision === null;
     view.revision = view.conflict.revision;
     setConflict(view, undefined);
+    // A saved view is not sent by a save, so the kept text becomes an edit and the next save sends it.
+    if (view.state === 'saved') view.state = 'edited';
     if (gone && view.state === 'deleted') {
       // Someone else already deleted it: the draft delete has nothing to delete, so the form locks as after a saved delete.
       view.removed = true;
@@ -571,6 +573,11 @@ export async function startEditor(
       sendDraft();
       view.saveError.textContent =
         'The document is already gone from the working copy. Restore it to create it again.';
+      return;
+    }
+    if (view.state === 'deleted') {
+      view.saveError.textContent =
+        'Your delete is kept. Save again to delete the newer version.';
       return;
     }
     view.saveError.textContent = gone

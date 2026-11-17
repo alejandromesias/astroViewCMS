@@ -2128,12 +2128,82 @@ describe('saving', () => {
     routeSave({
       puts: [Response.json({ revisions: {}, warnings: [], rebuild: false })],
     });
+    expect(saveErrorOf('authors/ana').textContent).toBe(
+      'Your delete is kept. Save again to delete the newer version.',
+    );
     saveButton().click();
     await vi.waitFor(() => expect(saves()).toHaveLength(3));
     expect(JSON.parse(String(saves()[2]?.[1]?.body))).toEqual({
       changes: [
         { document: 'authors/ana', baseRevision: 'r-ana-other', deleted: true },
       ],
+    });
+  });
+
+  it('after a live conflict, "Reset" then "Keep mine" sends the kept text on the next save', async () => {
+    await editor.open('authors/ana');
+    const original = editor.value('authors/ana').value;
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({
+      puts: [
+        Response.json(
+          {
+            error: 'conflict',
+            documents: [{ key: 'authors/ana', revision: 'r-ana-other' }],
+          },
+          { status: 409 },
+        ),
+      ],
+    });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(conflictOf('authors/ana').hidden).toBe(false),
+    );
+    click(section('authors/ana'), 'reset');
+    click(section('authors/ana'), 'keep');
+    routeSave({ puts: [saved('r-ana-3')] });
+    saveButton().click();
+    await vi.waitFor(() => expect(saves()).toHaveLength(2));
+    expect(JSON.parse(String(saves()[1]?.[1]?.body))).toEqual({
+      changes: [
+        {
+          document: 'authors/ana',
+          baseRevision: 'r-ana-other',
+          data: JSON.parse(original),
+        },
+      ],
+    });
+  });
+
+  it('text typed during a pending delete stays in the locked form, and "Restore" sends it', async () => {
+    await editor.open('authors/ana', 'blog/blog-1');
+    click(section('blog/blog-1'), 'delete');
+    let answerPut: (answer: Response) => void = () => {};
+    const base = editor.fetch.getMockImplementation()!;
+    editor.fetch.mockImplementation((input, init) =>
+      String(input) === '/api/changes' && init?.method === 'PUT'
+        ? new Promise<Response>((resolve) => {
+            answerPut = resolve;
+          })
+        : base(input, init),
+    );
+    saveButton().click();
+    await vi.waitFor(() => expect(saves()).toHaveLength(1));
+    type(editor.value('blog/blog-1'), '{"title":"x"}');
+    answerPut(Response.json({ revisions: {}, warnings: [], rebuild: false }));
+    await vi.waitFor(() => expect(saveButton().disabled).toBe(false));
+    expect(editor.value('blog/blog-1').value).toBe('{"title":"x"}');
+    expect(editor.value('blog/blog-1').disabled).toBe(true);
+    click(section('blog/blog-1'), 'restore');
+    routeSave({
+      puts: [Response.json({ revisions: {}, warnings: [], rebuild: false })],
+    });
+    saveButton().click();
+    await vi.waitFor(() => expect(saves()).toHaveLength(2));
+    expect(JSON.parse(String(saves()[1]?.[1]?.body)).changes).toContainEqual({
+      document: 'blog/blog-1',
+      baseRevision: null,
+      data: { body: 'Hello *world*', data: { title: 'x' } },
     });
   });
 
