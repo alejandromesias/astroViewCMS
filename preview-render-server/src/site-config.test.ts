@@ -33,10 +33,7 @@ describe('resolveSiteConfig', () => {
     );
   });
 
-  it('puts the manifests and the upload folder inside the output (the bundle)', () => {
-    expect(resolved.mediaDir).toBe(
-      path.resolve('/work/server/.build/my-site/media'),
-    );
+  it('puts the manifests inside the output (the bundle)', () => {
     expect(resolved.manifestDir).toBe(
       path.resolve('/work/server/.build/my-site/manifest'),
     );
@@ -62,7 +59,6 @@ describe('resolveSiteConfig with overrides', () => {
     expect(resolved.root).toBe(path.resolve('/elsewhere/other-site'));
     expect(resolved.outDir).toBe(path.resolve('/bundles/copy'));
     expect(resolved.regionsDir).toBe(path.resolve('/bundles/copy-regions'));
-    expect(resolved.mediaDir).toBe(path.resolve('/bundles/copy/media'));
     expect(resolved.manifestDir).toBe(path.resolve('/bundles/copy/manifest'));
   });
 
@@ -147,7 +143,6 @@ describe('loadSiteConfig', () => {
       buildDir,
     );
     expect(site.outDir).toBe(path.join(buildDir, 'sample-site'));
-    expect(site.mediaDir).toBe(path.join(buildDir, 'sample-site', 'media'));
   });
 
   it('explains the usage when no file is given', async () => {

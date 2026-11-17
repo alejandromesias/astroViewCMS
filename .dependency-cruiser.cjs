@@ -93,8 +93,6 @@ module.exports = {
           `${SRC}render/runtime\\.ts$`,
           // reads plugin config files
           `${SRC}overlay/plugins\\.ts$`,
-          // reads media files to serve them
-          `${SRC}media-route\\.ts$`,
           // reads the client/ folder to serve static files (createReadStream, statSync); traversal-guarded
           `${SRC}serve/static\\.ts$`,
         ],
@@ -141,7 +139,7 @@ module.exports = {
       name: 'no-test-in-production',
       comment: 'Production code must not import tests, helpers or fixtures.',
       severity: 'error',
-      from: { path: '^(preview-render-server|preview-protocol|preview-contract|cms-contract|cms-server)/', pathNot: [TESTS, '^preview-render-server/(test|test-editor)/'] },
+      from: { path: '^(preview-render-server|preview-protocol|preview-contract|cms-contract|cms-server)/', pathNot: [TESTS, '^preview-render-server/test/'] },
       to: { path: TESTS },
     },
     {

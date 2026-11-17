@@ -10,8 +10,8 @@ import { existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
-  MARKER,
   linkModules,
+  MARKER,
   removeLinkedModules,
 } from './lib/link-modules.ts';
 

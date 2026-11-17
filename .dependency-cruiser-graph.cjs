@@ -15,7 +15,6 @@ module.exports = {
         ...base.options.exclude.path.filter((p) => !p.includes('node_modules')),
         '\\.test\\.ts$',
         '/test/',
-        '^preview-render-server/test-editor/',
         'vitest[^/]*\\.config\\.ts$',
         '\\.d\\.ts$',
       ],

@@ -12,7 +12,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { MARKER, linkModules, removeLinkedModules } from './link-modules.ts';
+import { linkModules, MARKER, removeLinkedModules } from './link-modules.ts';
 
 // Each test gets its own folders: a fake main checkout (with node_modules and two workspace
 // packages) and a worktree with its own copy of one workspace package.

@@ -5,8 +5,8 @@ import { makeTestRoot, removeTestRoot } from '../../test/helpers/git.ts';
 import { silentLog } from '../../test/helpers/repo.ts';
 import {
   bundleOf,
-  MEDIA_CONFIG,
   documentOf,
+  MEDIA_CONFIG,
   saveContext,
 } from '../../test/helpers/save-context.ts';
 import type { Bundle, DocumentEntry } from '../bundle/read.ts';

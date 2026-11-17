@@ -15,7 +15,6 @@ Our own code, in rough priority order.
 | `preview-render-server/src/`              | The product. Integration, render/overlay/schema/manifest logic, routes, request guard, media route.          |
 | `preview-render-server/src/client/`       | Browser-side bridge and patching code that runs inside the preview iframe. Bugs here are visible to editors. |
 | `preview-protocol/src/`                   | The wire contract between editor and renderer. Changes ripple to both sides.                                 |
-| `preview-render-server/test-editor/`      | The test editor page that drives the bridge. Review only when the bridge or protocol changes.                |
 | `preview-render-server/test/e2e/`         | End-to-end and budget tests. Review for flaky or weakened assertions.                                        |
 | `preview-render-server/sites/*.config.ts` | Per-site configuration for the sample sites. Small, but it defines what the e2e suite exercises.             |
 | `scripts/check.ts`                        | The single quality-check runner (`npm run check`).                                                           |
@@ -58,7 +57,7 @@ Unit tests sit beside their source as `*.test.ts`. Review them with the code the
 ### Excluded from coverage and mutation on purpose
 
 Glue files with top-level side effects, covered by the e2e suite rather than unit tests. Missing unit coverage here is expected, not a finding:
-`src/build.ts`, `src/start.ts`, `src/types.ts`, `src/render-route.ts`, `src/validate-route.ts`, `src/warmup-route.ts`, `src/dev/documents-route.ts`, `src/render/runtime.ts`, `src/overlay/content-shim.ts`, `src/overlay/markdown-instance.ts`, `src/schema/stubs-flavor1.ts`. They still deserve a normal read for correctness when changed; the exclusion list lives in `preview-render-server/vitest.config.ts` and `stryker.config.json` and must stay in sync.
+`src/build.ts`, `src/start.ts`, `src/types.ts`, `src/render-route.ts`, `src/validate-route.ts`, `src/warmup-route.ts`, `src/render/runtime.ts`, `src/overlay/content-shim.ts`, `src/overlay/markdown-instance.ts`, `src/schema/stubs-flavor1.ts`. They still deserve a normal read for correctness when changed; the exclusion list lives in `preview-render-server/vitest.config.ts` and `stryker.config.json` and must stay in sync.
 
 ## Review conventions
 

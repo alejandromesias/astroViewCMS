@@ -8,7 +8,7 @@ import { parseCliOptions } from './cli-options.ts';
 import previewRenderServer from './integration.ts';
 import { assertOutDirIsSafe, loadSiteConfig } from './site-config.ts';
 
-// --dev (or PREVIEW_DEV=1) adds the editor's stopgap route /__dev/documents.
+// --dev (or PREVIEW_DEV=1) adds the dev-only route /__dev/memory.
 // --root and --out override the site config's root and output folder (see
 // resolveSiteConfig). --port belongs to start.ts and is ignored here.
 // --bundle-id sets the id in bundle.json (tests); otherwise each build gets a

@@ -24,7 +24,7 @@ export interface CliOptions {
   /** build.ts only: the bundle id written to bundle.json, in place of a fresh
    *  random one (tests use it to know the id). start.ts ignores it. */
   bundleId: string | undefined;
-  /** build.ts only: adds the editor's stopgap route, as PREVIEW_DEV=1 does. */
+  /** build.ts only: adds the dev-only route /__dev/memory, as PREVIEW_DEV=1 does. */
   dev: boolean;
 }
 

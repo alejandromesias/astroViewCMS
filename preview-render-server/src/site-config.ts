@@ -68,13 +68,12 @@ export function resolveSiteConfig(
     root,
     outDir,
     regionsDir: siblingFolder(outDir, 'regions'),
-    mediaDir: path.join(outDir, 'media'),
     manifestDir: path.join(outDir, 'manifest'),
   };
 }
 
 /** Refuses an output folder that a build would clear. clearBundle (integration.ts)
- *  deletes everything directly inside `outDir` except the media folder, so this
+ *  deletes everything directly inside `outDir`, so this
  *  runs before the build starts and throws, naming the folder and the reason, when
  *  `outDir` is the filesystem root, the site root, an ancestor of the site root,
  *  the current folder (`cwd`) or an ancestor of it, or when it exists, is not

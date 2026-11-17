@@ -1,15 +1,15 @@
 import { revisionOf } from 'preview-contract';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  removeWorkingCopies,
-  tempWorkingCopy,
-} from '../../test/helpers/working-copy.ts';
-import {
   bundleOf,
   documentOf,
   emptyChangeset,
   saveContext,
 } from '../../test/helpers/save-context.ts';
+import {
+  removeWorkingCopies,
+  tempWorkingCopy,
+} from '../../test/helpers/working-copy.ts';
 import type { DocumentEntry } from '../bundle/read.ts';
 import { checkRevisions, visibleDocuments } from './conflicts.ts';
 

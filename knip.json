@@ -17,16 +17,14 @@
     "preview-render-server": {
       "entry": [
         "sites/*.config.ts",
-        "src/{render,validate,media,warmup,preview-config}-route.ts",
-        "src/dev/documents-route.ts",
+        "src/{render,validate,warmup,preview-config}-route.ts",
         "src/client/bridge.ts",
         "src/overlay/{content-shim,image-service,data-proxy}.ts",
         "src/render/renderers-anchor.astro",
-        "test-editor/editor.astro",
         "test/browser/commands.ts",
         "test/browser/site.config.ts"
       ],
-      "project": ["src/**", "sites/**", "test/**", "test-editor/**"],
+      "project": ["src/**", "sites/**", "test/**"],
       "ignore": ["test/fixtures/**"]
     },
     "preview-protocol": {

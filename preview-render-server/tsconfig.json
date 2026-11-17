@@ -20,7 +20,7 @@
     "isolatedModules": true,
     "skipLibCheck": true
   },
-  "include": ["src", "sites", "test", "test-editor", "*.ts"],
+  "include": ["src", "sites", "test", "*.ts"],
   "exclude": [
     "test/fixtures/schema-site",
     "test/fixtures/scan-site",

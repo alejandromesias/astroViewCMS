@@ -16,7 +16,7 @@ export default getViteConfig(
       },
     },
     test: {
-      include: ['src/**/*.test.ts', 'test-editor/**/*.test.ts'],
+      include: ['src/**/*.test.ts'],
       restoreMocks: true,
       environmentOptions: {
         happyDOM: {
