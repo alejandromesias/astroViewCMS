@@ -23,7 +23,7 @@ import {
 } from 'cms-contract';
 
 /** The part of a `Response` the API reads. */
-export interface ApiResponse {
+interface ApiResponse {
   readonly ok: boolean;
   readonly status: number;
   json(): Promise<unknown>;
@@ -31,7 +31,7 @@ export interface ApiResponse {
 }
 
 /** The part of a `fetch` request the API makes: a method, its headers and its body. */
-export interface RequestOptions {
+interface RequestOptions {
   readonly method: 'POST' | 'PUT';
   readonly headers: Readonly<Record<string, string>>;
   readonly body: string | Blob;
@@ -44,7 +44,7 @@ export type FetchLike = (
 ) => Promise<ApiResponse>;
 
 /** A contract schema as the API uses it: `safeParse` checks a value and returns it typed. */
-export interface Parser<T> {
+interface Parser<T> {
   safeParse(value: unknown): { success: true; data: T } | { success: false };
 }
 
@@ -65,7 +65,7 @@ export type CodedFailure = {
 }[ErrorCode];
 
 /** A failure without a code: an HTTP answer with another body (`http`), no answer (`network`), or an answer that is not the contract's (`shape`). */
-export type PlainFailure = FailureBase & {
+type PlainFailure = FailureBase & {
   readonly kind: 'http' | 'network' | 'shape';
   readonly code?: undefined;
 };

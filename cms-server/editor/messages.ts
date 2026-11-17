@@ -3,7 +3,7 @@
 import type { SaveBody } from 'cms-contract';
 import type { ApiFailure, CodedFailure } from './api.ts';
 
-export type MessageLevel = 'ok' | 'warning' | 'error';
+type MessageLevel = 'ok' | 'warning' | 'error';
 
 export interface Message {
   readonly level: MessageLevel;
