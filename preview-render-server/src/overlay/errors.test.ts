@@ -42,4 +42,29 @@ describe('DraftError', () => {
         .message,
     ).toBe('Draft a does not match its schema: : bad');
   });
+
+  it.each(['__proto__', 'constructor', 'toString'])(
+    'keeps a draft key named %s, which comes from content',
+    (key) => {
+      const error = new DraftError(key, [
+        { path: ['title'], message: 'Required', kind: 'invalid' },
+      ]);
+      expect(error.key).toBe(key);
+      expect(error.message).toBe(
+        `Draft ${key} does not match its schema: title: Required`,
+      );
+    },
+  );
+
+  it('joins three issues with one separator each, and writes a numeric path segment as a number', () => {
+    expect(
+      new DraftError('a', [
+        { path: ['items', 0, 'id'], message: 'Required', kind: 'invalid' },
+        { path: [], message: 'Refinement threw', kind: 'refinement-threw' },
+        { path: ['z'], message: 'Too long', kind: 'invalid' },
+      ]).message,
+    ).toBe(
+      'Draft a does not match its schema: items.0.id: Required; : Refinement threw; z: Too long',
+    );
+  });
 });
