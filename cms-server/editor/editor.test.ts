@@ -1729,12 +1729,161 @@ describe('saving', () => {
     );
   });
 
+  it('after a save that deletes a document, a later save does not send it again', async () => {
+    await editor.open('authors/ana');
+    click(section('authors/ana'), 'delete');
+    routeSave({
+      puts: [Response.json({ revisions: {}, warnings: [], rebuild: false })],
+      changes: Response.json({
+        documents: [],
+        createdRecords: [],
+        fileErrors: [],
+      }),
+    });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(document.querySelector('#changes-list')!.textContent).toBe(
+        'No changes',
+      ),
+    );
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(editor.status().textContent).toBe('Nothing to save'),
+    );
+    expect(saves()).toHaveLength(1);
+  });
+
+  it('a second save is based on the revision the first one answered, and sends nothing when nothing changed', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({
+      puts: [saved('r-ana-2'), saved('r-ana-3')],
+      reread: () =>
+        Response.json({
+          key: 'authors/ana',
+          format: 'json',
+          editable: true,
+          buildTime: false,
+          revision: 'r-ana-2',
+          value: { name: 'Ana M', links: [] },
+        }),
+    });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(document.querySelector('#changes-list')!.textContent).toBe(
+        'modified: authors/ana',
+      ),
+    );
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(editor.status().textContent).toBe('Nothing to save'),
+    );
+    expect(saves()).toHaveLength(1);
+    edit(editor.value('authors/ana'), '{"name":"Ana N","links":[]}');
+    saveButton().click();
+    await vi.waitFor(() => expect(saves()).toHaveLength(2));
+    expect(
+      JSON.parse(String(saves()[1]?.[1]?.body)).changes[0].baseRevision,
+    ).toBe('r-ana-2');
+  });
+
+  it('a form in another layout of the saved value (compact JSON, other key order) is not sent again', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"links":[],"name":"Ana M"}');
+    routeSave({
+      puts: [saved('r-ana-2')],
+      reread: () =>
+        Response.json({
+          key: 'authors/ana',
+          format: 'json',
+          editable: true,
+          buildTime: false,
+          revision: 'r-ana-2',
+          value: { name: 'Ana M', links: [] },
+        }),
+    });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(document.querySelector('#changes-list')!.textContent).toBe(
+        'modified: authors/ana',
+      ),
+    );
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(editor.status().textContent).toBe('Nothing to save'),
+    );
+    expect(saves()).toHaveLength(1);
+  });
+
+  it('a click while a save runs sends no second save', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({ puts: [saved('r-ana-2')] });
+    saveButton().click();
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(document.querySelector('#changes-list')!.textContent).toBe(
+        'modified: authors/ana',
+      ),
+    );
+    expect(saves()).toHaveLength(1);
+  });
+
+  it('a save whose status before it could not be read says so, and does not reload for a build it cannot compare', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({
+      puts: [saved('r-ana-2', { rebuild: true })],
+      statuses: [new Response(null, { status: 500 })],
+    });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(editor.status().textContent).toBe(
+        'Saved, but the new build could not be checked. Reload the editor later.',
+      ),
+    );
+    expect(previewRequests()).toBe(1);
+  });
+
+  it('"Keep mine" on a conflict whose document is gone says the next save creates it', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({
+      puts: [
+        Response.json(
+          {
+            error: 'conflict',
+            documents: [{ key: 'authors/ana', revision: null }],
+          },
+          { status: 409 },
+        ),
+        saved('r-ana-4'),
+      ],
+    });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(conflictOf('authors/ana').hidden).toBe(false),
+    );
+    click(section('authors/ana'), 'keep');
+    expect(saveErrorOf('authors/ana').textContent).toBe(
+      'The document is gone from the working copy. Save again to create it.',
+    );
+    saveButton().click();
+    await vi.waitFor(() => expect(saves()).toHaveLength(2));
+    expect(
+      JSON.parse(String(saves()[1]?.[1]?.body)).changes[0].baseRevision,
+    ).toBeNull();
+  });
+
   it('a rebuild that is not done after 60 polls says so, and does not load the preview again', async () => {
     await editor.open('authors/ana');
     edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
     routeSave({
       puts: [saved('r-ana-2', { rebuild: true })],
     });
+    const statusCalls = () =>
+      editor.fetch.mock.calls.filter(([url]) => url === '/api/status').length;
+    const statusesBefore = statusCalls();
     vi.useFakeTimers();
     try {
       saveButton().click();
@@ -1751,5 +1900,7 @@ describe('saving', () => {
       'The new build is not ready yet. Reload the editor later.',
     );
     expect(previewRequests()).toBe(1);
+    // One status before the save, then one poll per attempt.
+    expect(statusCalls() - statusesBefore).toBe(61);
   });
 });

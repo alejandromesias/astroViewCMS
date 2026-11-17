@@ -54,6 +54,18 @@ function savedTextOf(info: DocumentBody): { value: string; body: string } {
   };
 }
 
+/** A value as JSON text with each object's keys sorted, so two layouts of one value give the same text. */
+function canonicalText(value: unknown): string {
+  return JSON.stringify(value, (_key, child: unknown) => {
+    if (child === null || typeof child !== 'object' || Array.isArray(child))
+      return child;
+    const record = child as Record<string, unknown>;
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(record).sort()) sorted[key] = record[key];
+    return sorted;
+  });
+}
+
 const LIMIT_NOTES: Record<string, string> = {
   'mdx-body': 'MDX body: preview after save',
   'schema-refinement': 'a schema refinement could not run',
@@ -470,9 +482,14 @@ export async function startEditor(
       view.value.value = replaceStagingUrls(view.value.value, paths);
     if (view.body) view.body.value = replaceStagingUrls(view.body.value, paths);
     view.saved = savedTextOf(answer.body);
-    const same =
-      view.value?.value === view.saved.value &&
-      (view.body === undefined || view.body.value === view.saved.body);
+    // The forms may hold another layout of the saved value (compact JSON, other key order): compare the values, not the text.
+    let same = false;
+    try {
+      same =
+        canonicalText(formValue(view)) === canonicalText(answer.body.value);
+    } catch {
+      same = false;
+    }
     view.state = same ? 'saved' : 'edited';
     keepInOverlay(view.key, answer.body.value);
   }
@@ -500,10 +517,12 @@ export async function startEditor(
   /** "Keep mine": the next save is based on the newer revision, so it overwrites the other change. */
   function keepMine(view: DocumentView) {
     if (view.conflict === undefined) return;
+    const gone = view.conflict.revision === null;
     view.revision = view.conflict.revision;
     setConflict(view, undefined);
-    view.saveError.textContent =
-      'Your version is kept. Save again to overwrite the newer one.';
+    view.saveError.textContent = gone
+      ? 'The document is gone from the working copy. Save again to create it.'
+      : 'Your version is kept. Save again to overwrite the newer one.';
   }
 
   /** Shows the documents that differ from the merge base (GET /api/changes). */
@@ -529,10 +548,18 @@ export async function startEditor(
   }
 
   /** A save with `rebuild` applies after the next build: waits for the bundle to change, then loads the preview again. */
-  async function followRebuild(bundleBefore: string | undefined) {
+  async function followRebuild(bundleBefore: string | null | undefined) {
+    // Without a status from before the save there is nothing to compare the build with: the wait would end at once.
+    if (bundleBefore === undefined) {
+      setStatus(
+        'Saved, but the new build could not be checked. Reload the editor later.',
+        'error',
+      );
+      return;
+    }
     const changed = await waitForNewBundle(
       fetchImpl,
-      bundleBefore,
+      bundleBefore ?? undefined,
       REBUILD_POLL_ATTEMPTS,
     );
     if (changed) await openPreview();
@@ -544,8 +571,18 @@ export async function startEditor(
   }
 
   /** What a saved answer changes: the revisions, the re-read documents, the list, and the rebuild. */
-  async function applySaved(body: SaveBody, bundleBefore: string | undefined) {
+  async function applySaved(
+    body: SaveBody,
+    bundleBefore: string | null | undefined,
+  ) {
     showMessages(saveMessages(body));
+    // A deleted document is not in the answer's revisions: it is gone, so its view leaves the deleted state and holds no revision.
+    for (const view of views.values()) {
+      if (view.state !== 'deleted') continue;
+      view.state = 'saved';
+      view.revision = null;
+      keepInOverlay(view.key, null);
+    }
     for (const [key, revision] of Object.entries(body.revisions)) {
       const view = views.get(key);
       if (view === undefined) continue;
@@ -556,8 +593,24 @@ export async function startEditor(
     if (body.rebuild) await followRebuild(bundleBefore);
   }
 
-  /** Saves every form that differs from its saved text (PUT /api/changes). The bundle before the save is the one a rebuild replaces. */
+  const saveButton = byId<HTMLButtonElement>('save');
+  let saving = false;
+
+  /** Saves the forms one at a time: a click while a save runs does nothing, so two saves never share a base. */
   async function save() {
+    if (saving) return;
+    saving = true;
+    saveButton.disabled = true;
+    try {
+      await saveForms();
+    } finally {
+      saving = false;
+      saveButton.disabled = false;
+    }
+  }
+
+  /** Saves every form that differs from its saved text (PUT /api/changes). The bundle before the save is the one a rebuild replaces. */
+  async function saveForms() {
     for (const view of views.values()) view.saveError.textContent = '';
     const changes = changesOf();
     if (changes === undefined) {
@@ -569,7 +622,9 @@ export async function startEditor(
       return;
     }
     const before = await getStatus(fetchImpl);
-    const bundleBefore = before.ok ? before.body.bundle?.bundleId : undefined;
+    const bundleBefore = before.ok
+      ? (before.body.bundle?.bundleId ?? null)
+      : undefined;
     const answer = await saveChanges(fetchImpl, { changes });
     if (!answer.ok) {
       if (answer.failure.code === 'conflict')
@@ -662,7 +717,7 @@ export async function startEditor(
     void win.navigator.clipboard?.writeText(uploadUrl.textContent ?? '');
   });
 
-  byId<HTMLButtonElement>('save').addEventListener('click', () => void save());
+  saveButton.addEventListener('click', () => void save());
 
   // The overlay first, so the page's first "ready" finds it in place. The
   // listener above is registered before any load, so no message is missed.
