@@ -339,6 +339,8 @@ export async function startEditor(
 
   function lockGone(view: DocumentView) {
     view.state = 'gone';
+    // A render that dropped the key hid the section; a locked form must stay reachable so "Restore" is there.
+    view.section.hidden = false;
     setGone(view, true);
   }
 
@@ -442,13 +444,11 @@ export async function startEditor(
     const changes: SaveRequest['changes'][number][] = [];
     for (const view of views.values()) {
       if (view.state === 'deleted') {
-        // A document with no revision is not in the working copy: there is nothing to delete, and the server would refuse it.
-        if (view.revision !== null)
-          changes.push({
-            document: view.key,
-            baseRevision: view.revision,
-            deleted: true,
-          });
+        changes.push({
+          document: view.key,
+          baseRevision: view.revision,
+          deleted: true,
+        });
       } else if (view.state === 'edited') {
         try {
           changes.push({
@@ -558,6 +558,14 @@ export async function startEditor(
     const gone = view.conflict.revision === null;
     view.revision = view.conflict.revision;
     setConflict(view, undefined);
+    if (gone && view.state === 'deleted') {
+      // Someone else already deleted it: the draft delete has nothing to delete, so the form locks as after a saved delete.
+      view.removed = true;
+      lockGone(view);
+      view.saveError.textContent =
+        'The document is already gone from the working copy. Restore it to create it again.';
+      return;
+    }
     view.saveError.textContent = gone
       ? 'The document is gone from the working copy. Save again to create it.'
       : 'Your version is kept. Save again to overwrite the newer one.';

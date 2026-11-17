@@ -1930,6 +1930,71 @@ describe('saving', () => {
     },
   );
 
+  it('a saved draft delete of a document the render no longer lists keeps its form and Restore visible', async () => {
+    await editor.open('authors/ana', 'blog/blog-1');
+    click(section('authors/ana'), 'delete');
+    editor.rendered(['blog/blog-1'], [], '/blog');
+    expect(section('authors/ana').hidden).toBe(true);
+    routeSave({
+      puts: [Response.json({ revisions: {}, warnings: [], rebuild: false })],
+      changes: Response.json({
+        documents: [],
+        createdRecords: [],
+        fileErrors: [],
+      }),
+    });
+    saveButton().click();
+    await vi.waitFor(() => expect(restoreOf('authors/ana').hidden).toBe(false));
+    expect(section('authors/ana').hidden).toBe(false);
+  });
+
+  it('"Keep mine" on a draft delete whose document someone else already deleted locks the form and says so', async () => {
+    await editor.open('authors/ana');
+    click(section('authors/ana'), 'delete');
+    routeSave({
+      puts: [
+        Response.json(
+          {
+            error: 'conflict',
+            documents: [{ key: 'authors/ana', revision: null }],
+          },
+          { status: 409 },
+        ),
+      ],
+    });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(conflictOf('authors/ana').hidden).toBe(false),
+    );
+    click(section('authors/ana'), 'keep');
+    expect(editor.value('authors/ana').disabled).toBe(true);
+    expect(restoreOf('authors/ana').hidden).toBe(false);
+    expect(saveErrorOf('authors/ana').textContent).toBe(
+      'The document is already gone from the working copy. Restore it to create it again.',
+    );
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(editor.status().textContent).toBe('Nothing to save'),
+    );
+    expect(saves()).toHaveLength(1);
+  });
+
+  it('after a Restore and a save that creates the document, "Reset" leaves the form enabled', async () => {
+    await deleteAndSave(saved('r-ana-new'));
+    click(section('authors/ana'), 'restore');
+    const reads = () =>
+      editor.fetch.mock.calls.filter(([url]) =>
+        String(url).startsWith('/api/documents?key='),
+      ).length;
+    const readsBefore = reads();
+    saveButton().click();
+    // The save's re-read starts only after the save cleared the removed flag.
+    await vi.waitFor(() => expect(reads()).toBe(readsBefore + 1));
+    click(section('authors/ana'), 'reset');
+    expect(editor.value('authors/ana').disabled).toBe(false);
+    expect(restoreOf('authors/ana').hidden).toBe(true);
+  });
+
   it('the form of a saved delete stays shown when the next render does not list the document', async () => {
     await deleteAndSave();
     editor.rendered(['blog/blog-1'], [], '/blog');
