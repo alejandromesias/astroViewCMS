@@ -12,10 +12,10 @@ import { refinementKeysOf } from '../save/validate.ts';
 import type { SyncOutcome } from './sync.ts';
 
 /** `publish.buildCheck`: `always` builds, `never` does not, and `auto` decides from the changeset. */
-export type BuildCheckMode = CmsConfig['publish']['buildCheck'];
+type BuildCheckMode = CmsConfig['publish']['buildCheck'];
 
 /** Why a publish builds. `unknown` is the reason when the check cannot tell and no other reason applies. */
-export type BuildReason =
+type BuildReason =
   | 'mdx-body'
   | 'build-time-field'
   | 'refinement-threw'
