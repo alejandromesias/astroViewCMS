@@ -1815,18 +1815,62 @@ describe('saving', () => {
     expect(saves()).toHaveLength(1);
   });
 
-  it('a click while a save runs sends no second save', async () => {
+  it('Save is disabled while a save runs, and enabled after it', async () => {
     await editor.open('authors/ana');
     edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
     routeSave({ puts: [saved('r-ana-2')] });
     saveButton().click();
-    saveButton().click();
+    expect(saveButton().disabled).toBe(true);
     await vi.waitFor(() =>
       expect(document.querySelector('#changes-list')!.textContent).toBe(
         'modified: authors/ana',
       ),
     );
-    expect(saves()).toHaveLength(1);
+    expect(saveButton().disabled).toBe(false);
+  });
+
+  it('Save stays enabled while the wait for a rebuild runs', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({ puts: [saved('r-ana-2', { rebuild: true })] });
+    vi.useFakeTimers();
+    try {
+      saveButton().click();
+      for (
+        let tick = 0;
+        tick < 5 &&
+        !editor.status().textContent?.includes('Applies after rebuild');
+        tick++
+      )
+        await vi.advanceTimersByTimeAsync(10);
+      expect(saveButton().disabled).toBe(false);
+      await vi.advanceTimersByTimeAsync(70_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('after a save that deletes a document, the overlay holds null for it', async () => {
+    await editor.open('authors/ana');
+    click(section('authors/ana'), 'delete');
+    routeSave({
+      puts: [Response.json({ revisions: {}, warnings: [], rebuild: false })],
+      changes: Response.json({
+        documents: [],
+        createdRecords: [],
+        fileErrors: [],
+      }),
+    });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(document.querySelector('#changes-list')!.textContent).toBe(
+        'No changes',
+      ),
+    );
+    editor.ready('/blog');
+    expect(editor.lastDraft()).toMatchObject({
+      documents: { 'authors/ana': null },
+    });
   });
 
   it('a save whose status before it could not be read says so, and does not reload for a build it cannot compare', async () => {

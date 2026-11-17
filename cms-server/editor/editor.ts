@@ -590,21 +590,18 @@ export async function startEditor(
       await refreshSaved(view);
     }
     await refreshChanges();
-    if (body.rebuild) await followRebuild(bundleBefore);
+    // Not awaited: the wait for the build runs on while the user saves again.
+    if (body.rebuild) void followRebuild(bundleBefore);
   }
 
   const saveButton = byId<HTMLButtonElement>('save');
-  let saving = false;
 
-  /** Saves the forms one at a time: a click while a save runs does nothing, so two saves never share a base. */
+  /** Saves the forms. Save is disabled while the save's own requests run; a rebuild wait does not hold it (saves go on during a build). */
   async function save() {
-    if (saving) return;
-    saving = true;
     saveButton.disabled = true;
     try {
       await saveForms();
     } finally {
-      saving = false;
       saveButton.disabled = false;
     }
   }
