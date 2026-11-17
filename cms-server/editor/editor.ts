@@ -533,7 +533,10 @@ export async function startEditor(
     } catch {
       same = false;
     }
-    view.state = same ? 'saved' : 'edited';
+    // A view locked during its save (Delete while the save was pending) opens again: the save made the document live.
+    if (view.state === 'gone') setGone(view, false);
+    // A Delete made while the save was pending stays for the next save; any other view takes the comparison.
+    if (view.state !== 'deleted') view.state = same ? 'saved' : 'edited';
     keepInOverlay(view.key, answer.body.value);
   }
 
@@ -549,6 +552,7 @@ export async function startEditor(
     }
     view.revision = answer.body.revision;
     view.saved = savedTextOf(answer.body);
+    if (view.state === 'gone') setGone(view, false);
     view.state = 'saved';
     writeForm(view);
     keepInOverlay(view.key, answer.body.value);
@@ -563,8 +567,14 @@ export async function startEditor(
     const gone = view.conflict.revision === null;
     view.revision = view.conflict.revision;
     setConflict(view, undefined);
-    // A saved view is not sent by a save, so the kept text becomes an edit and the next save sends it.
-    if (view.state === 'saved') view.state = 'edited';
+    if (!gone && view.state === 'gone') {
+      // Locked during its save, and the conflict shows the document live: the kept text opens and is sent.
+      setGone(view, false);
+      view.state = 'edited';
+    } else if (view.state === 'saved') {
+      // A saved view is not sent by a save, so the kept text becomes an edit and the next save sends it.
+      view.state = 'edited';
+    }
     if (gone && view.state === 'deleted') {
       // Someone else already deleted it: the draft delete has nothing to delete, so the form locks as after a saved delete.
       view.removed = true;
