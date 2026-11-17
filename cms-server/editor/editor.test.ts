@@ -2418,6 +2418,21 @@ describe('saving', () => {
     });
   });
 
+  it('"Keep mine" on a live conflict after a Reset of a restored form sends the kept text to the preview', async () => {
+    await deleteAndSave();
+    click(section('authors/ana'), 'restore');
+    routeSave({ puts: [conflict('r-ana-other')] });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(conflictOf('authors/ana').hidden).toBe(false),
+    );
+    click(section('authors/ana'), 'reset');
+    click(section('authors/ana'), 'keep');
+    expect(editor.lastDraft().documents).toEqual({
+      'authors/ana': { name: 'Ana', links: [] },
+    });
+  });
+
   it('a Delete made while the save of an edited document ran stays for the next save', async () => {
     await editor.open('authors/ana');
     edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');

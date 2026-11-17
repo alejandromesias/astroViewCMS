@@ -586,6 +586,8 @@ export async function startEditor(
     } else if (view.state === 'saved') {
       // A saved view is not sent by a save, so the kept text becomes an edit and the next save sends it.
       view.state = 'edited';
+      // The overlay may hold null for it (a saved delete), so the preview gets the kept text now.
+      sendDraft();
     }
     if (gone && view.state === 'deleted') {
       // Someone else already deleted it: the draft delete has nothing to delete, so the form locks as after a saved delete.
