@@ -27,14 +27,22 @@ export async function validateChanges(
   } catch (error) {
     return previewUnavailableStop(error, ctx.log);
   }
-  ctx.refinements = [
+  ctx.refinements = refinementKeysOf(errors);
+  return invalidStop(errors);
+}
+
+/**
+ * The keys whose check threw a refinement, once each, in the order of the answer. A refinement that threw does not block
+ * a save or a publish (5.1 item 9). The build check (2.10k) reads these keys from the same answer.
+ */
+export function refinementKeysOf(errors: readonly FieldError[]): string[] {
+  return [
     ...new Set(
       errors
         .filter((error) => error.kind === 'refinement-threw')
         .map((error) => error.key),
     ),
   ];
-  return invalidStop(errors);
 }
 
 /**
