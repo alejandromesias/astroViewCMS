@@ -43,7 +43,7 @@ export const renamedDocumentSchema = z.object({
   to: z.string(),
 });
 
-/** The metadata of an image that is not in the site's bundle (MediaInfo, preview-protocol). */
+/** The metadata of an image that is not in the site's bundle (the editor's MediaInfo). */
 export const mediaInfoSchema = z.object({
   url: z.string(),
   width: z.number(),

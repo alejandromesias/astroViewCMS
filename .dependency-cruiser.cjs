@@ -53,14 +53,13 @@ module.exports = {
       },
     },
     {
-      // Until 2.11c, editor.ts takes RenderRequest from preview-contract; that file is the only exception.
       name: 'editor-imports-only-the-contract',
       comment:
         'The test editor imports cms-contract (the API shapes) and preview-protocol (the postMessage protocol), and no other CMS or preview module.',
       severity: 'error',
       from: {
         path: '^cms-server/editor/',
-        pathNot: [TESTS, '^cms-server/editor/editor[.]ts$'],
+        pathNot: TESTS,
       },
       to: {
         path: [
