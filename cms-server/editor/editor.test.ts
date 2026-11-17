@@ -1905,6 +1905,78 @@ describe('saving', () => {
     });
   });
 
+  const lockedControls = (key: string) =>
+    ['reset', 'delete'].map(
+      (action) =>
+        section(key).querySelector<HTMLButtonElement>(
+          `[data-action="${action}"]`,
+        )!.disabled,
+    );
+
+  it.each(['reset', 'delete'])(
+    'after a restore, "%s" locks the form again, since the document is not in the working copy',
+    async (action) => {
+      await deleteAndSave();
+      click(section('authors/ana'), 'restore');
+      expect(restoreOf('authors/ana').hidden).toBe(true);
+      click(section('authors/ana'), action);
+      expect(editor.value('authors/ana').disabled).toBe(true);
+      expect(restoreOf('authors/ana').hidden).toBe(false);
+      saveButton().click();
+      await vi.waitFor(() =>
+        expect(editor.status().textContent).toBe('Nothing to save'),
+      );
+      expect(saves()).toHaveLength(1);
+    },
+  );
+
+  it('the form of a saved delete stays shown when the next render does not list the document', async () => {
+    await deleteAndSave();
+    editor.rendered(['blog/blog-1'], [], '/blog');
+    expect(section('authors/ana').hidden).toBe(false);
+  });
+
+  it('a save that deletes nothing leaves the form enabled and Restore hidden', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({ puts: [saved('r-ana-2')] });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(document.querySelector('#changes-list')!.textContent).toBe(
+        'modified: authors/ana',
+      ),
+    );
+    expect(editor.value('authors/ana').disabled).toBe(false);
+    expect(lockedControls('authors/ana')).toEqual([false, false]);
+    expect(restoreOf('authors/ana').hidden).toBe(true);
+  });
+
+  it('a save that deletes one document locks only that one', async () => {
+    await editor.open('authors/ana', 'blog/blog-1');
+    click(section('authors/ana'), 'delete');
+    edit(editor.value('blog/blog-1'), '{"title":"Two"}');
+    routeSave({
+      puts: [
+        Response.json({
+          revisions: { 'blog/blog-1': 'r-blog-2' },
+          warnings: [],
+          rebuild: false,
+        }),
+      ],
+    });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(document.querySelector('#changes-list')!.textContent).toBe(
+        'modified: authors/ana',
+      ),
+    );
+    expect(editor.value('authors/ana').disabled).toBe(true);
+    expect(restoreOf('authors/ana').hidden).toBe(false);
+    expect(editor.value('blog/blog-1').disabled).toBe(false);
+    expect(restoreOf('blog/blog-1').hidden).toBe(true);
+    expect(lockedControls('blog/blog-1')).toEqual([false, false]);
+  });
+
   it('after a save that deletes a document, the overlay holds null for it', async () => {
     await editor.open('authors/ana');
     click(section('authors/ana'), 'delete');

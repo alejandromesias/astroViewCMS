@@ -111,6 +111,8 @@ interface DocumentView {
   conflictControls: HTMLElement;
   /** The "Deleted" note and the restore button, shown once a delete is saved. */
   restoreControls: HTMLElement;
+  /** True from a saved delete until a save answers a revision for the document: it is not in the working copy. */
+  removed: boolean;
   /** Set by a `409 conflict`: the revision the saved document has now. "Keep mine" takes it as the base. */
   conflict: { revision: string | null } | undefined;
 }
@@ -240,6 +242,7 @@ export async function startEditor(
       saveError: slot('save-error'),
       conflictControls: slot('conflict'),
       restoreControls: slot('restore'),
+      removed: false,
       conflict: undefined,
     };
 
@@ -287,15 +290,19 @@ export async function startEditor(
       section
         .querySelector('[data-action="reset"]')!
         .addEventListener('click', () => {
-          view.state = 'saved';
           writeForm(view);
+          // A document whose delete was saved goes back to its locked state, not to a form the working copy lacks.
+          if (view.removed) lockGone(view);
+          else view.state = 'saved';
           sendDraft();
         });
       // biome-ignore lint/style/noNonNullAssertion: the template and the markup guarantee this element
       section
         .querySelector('[data-action="delete"]')!
         .addEventListener('click', () => {
-          view.state = 'deleted';
+          // Nothing to delete in a working copy that already lost it.
+          if (view.removed) lockGone(view);
+          else view.state = 'deleted';
           sendDraft();
         });
       // biome-ignore lint/style/noNonNullAssertion: the template and the markup guarantee this element
@@ -328,6 +335,11 @@ export async function startEditor(
     >('textarea, [data-action="reset"], [data-action="delete"]'))
       control.disabled = gone;
     view.restoreControls.hidden = !gone;
+  }
+
+  function lockGone(view: DocumentView) {
+    view.state = 'gone';
+    setGone(view, true);
   }
 
   /** "Restore": the document is created again from the form's text, by the next save (it has no revision). */
@@ -388,8 +400,9 @@ export async function startEditor(
    *  hidden with their edits, which keep going out. */
   function showDocuments(keys: string[]) {
     read = new Set(keys);
+    // A deleted document may not be read by the page any more: its form stays, so "Restore" is there.
     for (const view of views.values())
-      view.section.hidden = !read.has(view.key);
+      view.section.hidden = !read.has(view.key) && view.state !== 'gone';
     for (const key of keys) if (!requested.has(key)) void loadDocument(key);
   }
 
@@ -428,13 +441,15 @@ export async function startEditor(
   function changesOf(): SaveRequest['changes'] | undefined {
     const changes: SaveRequest['changes'][number][] = [];
     for (const view of views.values()) {
-      if (view.state === 'deleted')
-        changes.push({
-          document: view.key,
-          baseRevision: view.revision,
-          deleted: true,
-        });
-      else if (view.state === 'edited') {
+      if (view.state === 'deleted') {
+        // A document with no revision is not in the working copy: there is nothing to delete, and the server would refuse it.
+        if (view.revision !== null)
+          changes.push({
+            document: view.key,
+            baseRevision: view.revision,
+            deleted: true,
+          });
+      } else if (view.state === 'edited') {
         try {
           changes.push({
             document: view.key,
@@ -608,15 +623,16 @@ export async function startEditor(
     // A deleted document is not in the answer's revisions: it is gone, so its view leaves the deleted state and holds no revision.
     for (const view of views.values()) {
       if (view.state !== 'deleted') continue;
-      view.state = 'gone';
+      view.removed = true;
       view.revision = null;
       keepInOverlay(view.key, null);
-      setGone(view, true);
+      lockGone(view);
     }
     for (const [key, revision] of Object.entries(body.revisions)) {
       const view = views.get(key);
       if (view === undefined) continue;
       view.revision = revision;
+      view.removed = false;
       await refreshSaved(view);
     }
     await refreshChanges();
