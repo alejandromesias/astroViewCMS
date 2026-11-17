@@ -1949,7 +1949,7 @@ describe('saving', () => {
   });
 
   it('"Keep mine" on a draft delete whose document someone else already deleted locks the form and says so', async () => {
-    await editor.open('authors/ana');
+    await editor.open('authors/ana', 'blog/blog-1');
     click(section('authors/ana'), 'delete');
     routeSave({
       puts: [
@@ -1966,17 +1966,25 @@ describe('saving', () => {
     await vi.waitFor(() =>
       expect(conflictOf('authors/ana').hidden).toBe(false),
     );
+    expect(
+      section('authors/ana').querySelector<HTMLElement>(
+        '[data-action="reload"]',
+      )!.hidden,
+    ).toBe(true);
     click(section('authors/ana'), 'keep');
     expect(editor.value('authors/ana').disabled).toBe(true);
     expect(restoreOf('authors/ana').hidden).toBe(false);
     expect(saveErrorOf('authors/ana').textContent).toBe(
       'The document is already gone from the working copy. Restore it to create it again.',
     );
-    saveButton().click();
-    await vi.waitFor(() =>
-      expect(editor.status().textContent).toBe('Nothing to save'),
-    );
-    expect(saves()).toHaveLength(1);
+    // The preview must not keep the document after the next draft either.
+    expect(editor.lastDraft()).toMatchObject({
+      documents: { 'authors/ana': null },
+    });
+    edit(editor.value('blog/blog-1'), '{"title":"x"}');
+    expect(editor.lastDraft()).toMatchObject({
+      documents: { 'authors/ana': null },
+    });
   });
 
   it('after a Restore and a save that creates the document, "Reset" leaves the form enabled', async () => {

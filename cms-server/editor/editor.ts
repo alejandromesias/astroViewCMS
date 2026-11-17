@@ -490,6 +490,11 @@ export async function startEditor(
   ) {
     view.conflict = conflict;
     view.conflictControls.hidden = conflict === undefined;
+    // A document missing from the working copy cannot be reloaded: only "Keep mine" (create) makes sense.
+    const reload = view.section.querySelector<HTMLButtonElement>(
+      '[data-action="reload"]',
+    );
+    if (reload) reload.hidden = conflict?.revision === null;
   }
 
   /** The overlay keeps a document's saved value, so a page that reloads shows what the save wrote. */
@@ -562,6 +567,8 @@ export async function startEditor(
       // Someone else already deleted it: the draft delete has nothing to delete, so the form locks as after a saved delete.
       view.removed = true;
       lockGone(view);
+      keepInOverlay(view.key, null);
+      sendDraft();
       view.saveError.textContent =
         'The document is already gone from the working copy. Restore it to create it again.';
       return;
