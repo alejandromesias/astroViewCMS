@@ -71,8 +71,8 @@ build in CI; see [CI-PIPELINE.md](CI-PIPELINE.md)). "Report" means the output ne
 - **Unit tests and coverage floors.** One Vitest run (`npm run coverage`, from
   the root `vitest.config.ts`) runs the unit tests of all four packages. Their
   projects come from `vitest.projects.ts`, which Stryker shares. The coverage
-  report covers each package's `src/`. Each
-  package has its own floor (one glob each), so a weak package cannot hide
+  report covers each package's `src/`. Each package has its own floor (one glob
+  each), so a weak package cannot hide
   behind strong ones. **Decision (user, 2026-11-02):** every package's floors are
   Lines 80, Functions 90, Branches 80, Statements 80. This overrides all earlier
   per-package floors (the renderer's ratchet at 97, the 98 and 86 of the other
@@ -416,11 +416,10 @@ computed styles, and the editor-origin check.
 - **Gate:** the `browser` step of `npm run check -- --e2e`, after e2e and the
   budgets.
 - **Out of the coverage floors and Stryker on purpose.** The root
-  `vitest.config.ts` includes only each package's `src/`, so the coverage run never reaches
-  `test/browser/`. Stryker
-  mutates only `src/` and runs through `vitest.mutation.config.ts`, and a
-  browser test cannot map a mutant to its line. Its floors are unchanged by the
-  browser suite.
+  `vitest.config.ts` includes only each package's `src/`, so the coverage run
+  never reaches `test/browser/`. Stryker mutates only `src/` and runs through
+  `vitest.mutation.config.ts`, and a browser test cannot map a mutant to its
+  line. Its floors are unchanged by the browser suite.
 - **Not in dependency-cruiser's scope.** It scans `src/` only, so the suite is
   not checked by it. Production code still may not import `test/`
   (`no-test-in-production`).
