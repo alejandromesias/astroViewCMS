@@ -359,6 +359,24 @@ describe('decideBuild under auto: each reason', () => {
     ).toStrictEqual({ build: true, reason: 'unknown' });
   });
 
+  it('builds as unknown, not build-time-field, for an unreadable document whose record lists a build-time field', () => {
+    expect(
+      decide({
+        ...contentOnly(),
+        bundled: new Map([[SITE, recordOf(SITE, 'json', ['site.base_url'])]]),
+        before: new Map([[SITE, { site: { base_url: 'old' } }]]),
+        changeset: changeset([
+          {
+            key: SITE,
+            status: 'modified',
+            baseRevision: 'base',
+            error: { code: 'parse', message: 'unexpected token' },
+          },
+        ]),
+      }),
+    ).toStrictEqual({ build: true, reason: 'unknown' });
+  });
+
   it('builds as unknown when a deleted document has no record to read its fields from', () => {
     expect(
       decide({ changeset: changeset([changed('authors/gone', 'deleted')]) }),
