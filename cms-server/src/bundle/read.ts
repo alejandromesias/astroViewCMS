@@ -6,7 +6,6 @@ import { join } from 'node:path';
 import {
   type BuildTimeFields,
   type BundleJson,
-  buildTimeFieldsSchema,
   type CollectionSchemaJson,
   documentRecordSchema,
   type ImageRecord,
@@ -16,6 +15,9 @@ import {
   schemaJsonSchema,
 } from 'preview-contract';
 import { z } from 'zod';
+
+/** build-time.json: every key the site configures, whether or not the bundle holds its document (WORKPLAN 2.10k). */
+const buildTimeFieldsSchema = z.record(z.string(), z.array(z.string()));
 
 /** One document record as the schema parses it. Its optional keys may hold `undefined`, which the
  *  DocumentRecord interface does not allow under exactOptionalPropertyTypes. */
