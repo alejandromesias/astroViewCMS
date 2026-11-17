@@ -13,6 +13,7 @@
       <header>
         <h1>Preview editor</h1>
         <p id="status" role="status">Waiting for the page…</p>
+        <button id="save" type="button">Save</button>
       </header>
 
       <ul id="limits" hidden></ul>
@@ -27,6 +28,11 @@
           <button id="upload-copy" type="button">Copy</button>
         </p>
         <p class="hint">Put this URL in a document's image field; the editor sends the image's size with every draft.</p>
+      </section>
+
+      <section class="changes">
+        <h2>Changes</h2>
+        <ul id="changes-list"></ul>
       </section>
 
       <details>
@@ -55,8 +61,13 @@
             <button type="button" data-action="reset">Reset</button>
             <button type="button" data-action="delete">Delete in draft</button>
           </div>
+          <div class="actions" data-slot="conflict" hidden>
+            <button type="button" data-action="reload">Reload</button>
+            <button type="button" data-action="keep">Keep mine</button>
+          </div>
         </div>
         <span class="error" data-slot="error" role="alert"></span>
+        <span class="error" data-slot="save-error" role="alert"></span>
       </section>
     </template>
   </body>

@@ -1261,3 +1261,495 @@ describe('the status line', () => {
     );
   });
 });
+
+describe('saving', () => {
+  const section = (key: string) => editor.section(key);
+  const value = (key: string) => editor.value(key);
+  const bundle = (bundleId: string) =>
+    Response.json({ bundle: { bundleId, siteCommit: null } });
+  const saveButton = () => document.getElementById('save') as HTMLButtonElement;
+  const saves = () =>
+    editor.fetch.mock.calls.filter(
+      ([url, init]) => url === '/api/changes' && init?.method === 'PUT',
+    );
+  const previewRequests = () =>
+    editor.fetch.mock.calls.filter(([url]) =>
+      String(url).startsWith('/api/preview-url'),
+    ).length;
+  const saveErrorOf = (key: string) =>
+    section(key).querySelector<HTMLElement>('[data-slot="save-error"]')!;
+  const conflictOf = (key: string) =>
+    section(key).querySelector<HTMLElement>('[data-slot="conflict"]')!;
+
+  /** Answers the save's requests: the PUTs and the status requests in turn, a re-read of a document, and the list. Other calls go to the setup's fake API. */
+  function routeSave(options: {
+    puts: Response[];
+    statuses?: Response[];
+    reread?: (key: string) => Response;
+    changes?: Response;
+  }) {
+    const base = editor.fetch.getMockImplementation();
+    const puts = [...options.puts];
+    const statuses = [...(options.statuses ?? [])];
+    editor.fetch.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === '/api/changes' && init?.method === 'PUT')
+        return puts.shift() ?? new Response(null, { status: 500 });
+      if (url === '/api/status') return statuses.shift() ?? bundle('b1');
+      if (url === '/api/changes')
+        return (
+          options.changes ??
+          Response.json({
+            documents: [
+              { key: 'authors/ana', status: 'modified', baseRevision: 'r-ana' },
+            ],
+            createdRecords: [],
+            fileErrors: [],
+          })
+        );
+      if (url.startsWith('/api/documents?key=') && options.reread)
+        return options.reread(
+          decodeURIComponent(url.slice('/api/documents?key='.length)),
+        );
+      return base!(input, init);
+    });
+  }
+
+  const saved = (revision: string, extra: object = {}) =>
+    Response.json({
+      revisions: { 'authors/ana': revision },
+      warnings: [],
+      rebuild: false,
+      ...extra,
+    });
+  const conflict = (revision: string) =>
+    Response.json(
+      {
+        error: 'conflict',
+        documents: [
+          { key: 'authors/ana', revision, value: { name: 'Ana (theirs)' } },
+        ],
+      },
+      { status: 409 },
+    );
+
+  it('"Save" sends each edited document with the revision it was read at', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({ puts: [saved('r-ana-2')] });
+    saveButton().click();
+    await vi.waitFor(() => expect(saves()).toHaveLength(1));
+    expect(JSON.parse(String(saves()[0]?.[1]?.body))).toEqual({
+      changes: [
+        {
+          document: 'authors/ana',
+          baseRevision: 'r-ana',
+          data: { name: 'Ana M', links: [] },
+        },
+      ],
+    });
+    await vi.waitFor(() =>
+      expect(document.querySelector('#changes-list')!.textContent).toBe(
+        'modified: authors/ana',
+      ),
+    );
+    expect(editor.status().textContent).toBe('Saved.');
+  });
+
+  it('"Save" sends a deleted document as deleted', async () => {
+    await editor.open('authors/ana');
+    click(section('authors/ana'), 'delete');
+    routeSave({
+      puts: [
+        Response.json(
+          { error: 'save-failed', message: 'git refused' },
+          { status: 500 },
+        ),
+      ],
+    });
+    saveButton().click();
+    await vi.waitFor(() => expect(saves()).toHaveLength(1));
+    expect(JSON.parse(String(saves()[0]?.[1]?.body))).toEqual({
+      changes: [
+        { document: 'authors/ana', baseRevision: 'r-ana', deleted: true },
+      ],
+    });
+    await vi.waitFor(() =>
+      expect(editor.status().textContent).toBe(
+        'The save failed, and nothing was kept. Try again.',
+      ),
+    );
+  });
+
+  it('"Save" sends nothing when no form differs from its saved text', async () => {
+    await editor.open('authors/ana');
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(editor.status().textContent).toBe('Nothing to save'),
+    );
+    expect(saves()).toHaveLength(0);
+  });
+
+  it('"Save" sends nothing while a form holds invalid JSON', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":');
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(editor.status().textContent).toBe(
+        'Fix the invalid JSON before you save',
+      ),
+    );
+    expect(saves()).toHaveLength(0);
+  });
+
+  it('a 409 conflict shows the document\'s controls, and "Reload" takes the saved version', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({
+      puts: [conflict('r-ana-3')],
+      reread: () =>
+        Response.json({
+          key: 'authors/ana',
+          format: 'json',
+          editable: true,
+          buildTime: false,
+          revision: 'r-ana-3',
+          value: { name: 'Ana (theirs)' },
+        }),
+    });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(conflictOf('authors/ana').hidden).toBe(false),
+    );
+    expect(saveErrorOf('authors/ana').textContent).toBe(
+      'Changed since you opened it. Reload to take the saved version, or keep yours.',
+    );
+    click(section('authors/ana'), 'reload');
+    await vi.waitFor(() =>
+      expect(value('authors/ana').value).toBe(
+        JSON.stringify({ name: 'Ana (theirs)' }, null, 2),
+      ),
+    );
+    expect(conflictOf('authors/ana').hidden).toBe(true);
+    expect(saveErrorOf('authors/ana').textContent).toBe('');
+  });
+
+  it('"Reload" says so when the document cannot be read again', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({
+      puts: [conflict('r-ana-3')],
+      reread: () => new Response('busy', { status: 503 }),
+    });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(conflictOf('authors/ana').hidden).toBe(false),
+    );
+    click(section('authors/ana'), 'reload');
+    await vi.waitFor(() =>
+      expect(saveErrorOf('authors/ana').textContent).toBe(
+        'Could not reload (503): busy',
+      ),
+    );
+  });
+
+  it('"Keep mine" makes the next save based on the newer revision', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({ puts: [conflict('r-ana-3'), saved('r-ana-4')] });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(conflictOf('authors/ana').hidden).toBe(false),
+    );
+    click(section('authors/ana'), 'keep');
+    expect(conflictOf('authors/ana').hidden).toBe(true);
+    expect(saveErrorOf('authors/ana').textContent).toBe(
+      'Your version is kept. Save again to overwrite the newer one.',
+    );
+    saveButton().click();
+    await vi.waitFor(() => expect(saves()).toHaveLength(2));
+    expect(JSON.parse(String(saves()[1]?.[1]?.body))).toEqual({
+      changes: [
+        {
+          document: 'authors/ana',
+          baseRevision: 'r-ana-3',
+          data: { name: 'Ana M', links: [] },
+        },
+      ],
+    });
+  });
+
+  it('"Keep mine" changes nothing when there is no conflict', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({ puts: [] });
+    click(section('authors/ana'), 'keep');
+    expect(saveErrorOf('authors/ana').textContent).toBe('');
+    saveButton().click();
+    await vi.waitFor(() => expect(saves()).toHaveLength(1));
+    expect(
+      JSON.parse(String(saves()[0]?.[1]?.body)).changes[0].baseRevision,
+    ).toBe('r-ana');
+  });
+
+  it('a 422 shows next to its document, with the path of the field', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({
+      puts: [
+        Response.json(
+          {
+            error: 'invalid',
+            errors: [
+              { key: 'authors/ana', path: ['name'], message: 'Required' },
+            ],
+          },
+          { status: 422 },
+        ),
+      ],
+    });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(saveErrorOf('authors/ana').textContent).toBe('name: Required'),
+    );
+    expect(
+      section('authors/ana').querySelector<HTMLElement>('[data-slot="error"]')!
+        .textContent,
+    ).toBe('');
+  });
+
+  it('a warning shows next to its document, and the save is still made', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({
+      puts: [
+        saved('r-ana-2', {
+          warnings: [
+            {
+              key: 'authors/ana',
+              path: ['photo'],
+              code: 'public-image-missing',
+            },
+          ],
+        }),
+      ],
+    });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(saveErrorOf('authors/ana').textContent).toBe(
+        'photo: An image this document uses is not in the public folder',
+      ),
+    );
+    expect(editor.status().textContent).toBe('Saved.');
+  });
+
+  it('after a save, a staged image of the form takes the path the save wrote', async () => {
+    const input = document.getElementById('upload') as HTMLInputElement;
+    editor.fetch.mockResolvedValueOnce(
+      Response.json(
+        {
+          id: 'm1',
+          url: '/media/staging/m1.png',
+          width: 2,
+          height: 3,
+          format: 'png',
+        },
+        { status: 201 },
+      ),
+    );
+    Object.defineProperty(input, 'files', {
+      value: [new File([new Uint8Array([1])], 'm1.png', { type: 'image/png' })],
+      configurable: true,
+    });
+    input.dispatchEvent(new Event('change'));
+    await vi.waitFor(() =>
+      expect(editor.status().textContent).toBe('Uploaded m1.png'),
+    );
+
+    await editor.open('authors/ana');
+    edit(
+      editor.value('authors/ana'),
+      '{"name":"Ana","links":[],"photo":"/media/staging/m1.png"}',
+    );
+    routeSave({
+      puts: [saved('r-ana-2')],
+      reread: () =>
+        Response.json({
+          key: 'authors/ana',
+          format: 'json',
+          editable: true,
+          buildTime: false,
+          revision: 'r-ana-2',
+          value: { name: 'Ana', links: [], photo: '/images/m1.png' },
+        }),
+    });
+    saveButton().click();
+    // The typed text keeps its layout; only the staging URL is replaced.
+    await vi.waitFor(() =>
+      expect(value('authors/ana').value).toBe(
+        '{"name":"Ana","links":[],"photo":"/images/m1.png"}',
+      ),
+    );
+  });
+
+  it('a save with a rebuild waits for the bundle to change, then loads the preview again', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({
+      puts: [saved('r-ana-2', { rebuild: true })],
+      statuses: [bundle('b1'), bundle('b1'), bundle('b2')],
+    });
+    vi.useFakeTimers();
+    try {
+      saveButton().click();
+      for (let tick = 0; tick < 5 && previewRequests() < 2; tick++)
+        await vi.advanceTimersByTimeAsync(1000);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(previewRequests()).toBe(2);
+    expect(editor.status().textContent).toBe('Saved. Applies after rebuild.');
+  });
+
+  it('after a save, a page that reloads is primed with the saved value', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({
+      puts: [saved('r-ana-2')],
+      reread: () =>
+        Response.json({
+          key: 'authors/ana',
+          format: 'json',
+          editable: true,
+          buildTime: false,
+          revision: 'r-ana-2',
+          value: { name: 'Ana M', links: [] },
+        }),
+    });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(document.querySelector('#changes-list')!.textContent).toBe(
+        'modified: authors/ana',
+      ),
+    );
+    editor.ready('/blog');
+    expect(editor.lastDraft()).toMatchObject({
+      documents: { 'authors/ana': { name: 'Ana M', links: [] } },
+    });
+  });
+
+  it('a Markdown document is saved as its frontmatter and its body', async () => {
+    await editor.open('blog/blog-1');
+    edit(editor.body('blog/blog-1'), 'Hello *there*');
+    routeSave({ puts: [saved('r-blog-2')] });
+    saveButton().click();
+    await vi.waitFor(() => expect(saves()).toHaveLength(1));
+    expect(JSON.parse(String(saves()[0]?.[1]?.body))).toEqual({
+      changes: [
+        {
+          document: 'blog/blog-1',
+          baseRevision: 'r-blog',
+          data: {
+            data: { title: 'One', draft: false },
+            body: 'Hello *there*',
+          },
+        },
+      ],
+    });
+  });
+
+  it('a failed save is shown in the error state of the status line', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({
+      puts: [
+        Response.json(
+          { error: 'busy', message: 'Another save' },
+          { status: 503 },
+        ),
+      ],
+    });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(editor.status().textContent).toBe(
+        'The save did not happen. Try again.',
+      ),
+    );
+    expect(editor.status().dataset.state).toBe('error');
+  });
+
+  it('says so when the saved document cannot be read again, and keeps the draft text', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({
+      puts: [saved('r-ana-2')],
+      reread: () =>
+        Response.json({ error: 'busy', message: 'Busy' }, { status: 503 }),
+    });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(saveErrorOf('authors/ana').textContent).toBe(
+        'Saved, but it could not be read again (503): Busy',
+      ),
+    );
+    expect(value('authors/ana').value).toBe('{"name":"Ana M","links":[]}');
+  });
+
+  it('shows why the changes list could not be loaded', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({
+      puts: [saved('r-ana-2')],
+      changes: new Response('no list', { status: 500 }),
+    });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(document.querySelector('#changes-list')!.textContent).toBe(
+        'Could not load the changes (500): no list',
+      ),
+    );
+  });
+
+  it('says "No changes" when the list is empty', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({
+      puts: [saved('r-ana-2')],
+      changes: Response.json({
+        documents: [],
+        createdRecords: [],
+        fileErrors: [],
+      }),
+    });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(document.querySelector('#changes-list')!.textContent).toBe(
+        'No changes',
+      ),
+    );
+  });
+
+  it('a rebuild that is not done after 60 polls says so, and does not load the preview again', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({
+      puts: [saved('r-ana-2', { rebuild: true })],
+    });
+    vi.useFakeTimers();
+    try {
+      saveButton().click();
+      for (
+        let tick = 0;
+        tick < 70 && !editor.status().textContent?.includes('not ready');
+        tick++
+      )
+        await vi.advanceTimersByTimeAsync(1000);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(editor.status().textContent).toBe(
+      'The new build is not ready yet. Reload the editor later.',
+    );
+    expect(previewRequests()).toBe(1);
+  });
+});
