@@ -255,6 +255,8 @@ export default function previewRenderServer(
             site.root,
           );
           writeManifest(site, 'documents.json', documents);
+          // Every configured key, so the build check (2.10k) knows the fields of a document the bundle does not hold yet.
+          writeManifest(site, 'build-time.json', site.buildTimeFields ?? {});
           writeManifest(site, LANGUAGES_FILE, {
             languages: collectLanguages(site.root, store, site.extraLanguages),
           });

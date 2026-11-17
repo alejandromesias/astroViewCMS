@@ -14,6 +14,7 @@ export type {
   RouteRecord,
 } from './manifest.ts';
 export {
+  buildTimeFieldsSchema,
   documentRecordSchema,
   imageRecordSchema,
   imagesJsonSchema,

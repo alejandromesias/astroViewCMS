@@ -164,3 +164,18 @@ describe('readBundle', () => {
     });
   });
 });
+
+describe('readBundle: build-time.json', () => {
+  it('reads the configured build-time fields when the bundle has the file', async () => {
+    const dir = await bundleFolder({
+      'build-time.json': '{"site/main":["site.base_url"]}',
+    });
+    const bundle = await readBundle(dir, identityOf());
+    expect(bundle.buildTimeFields).toEqual({ 'site/main': ['site.base_url'] });
+  });
+
+  it('leaves the fields out of a bundle built before the file existed', async () => {
+    const bundle = await readBundle(FIXTURE_BUNDLE, identityOf());
+    expect(bundle.buildTimeFields).toBeUndefined();
+  });
+});

@@ -2,6 +2,7 @@
 // pushed. Under `auto` the preview cannot vouch for a changeset in four cases, and each one is a reason to build; a changeset
 // the check cannot tell about builds too. Pure: the caller reads the changeset, the validate answer, the values at the merge
 // base and what sync reported. Nothing here takes a lock, uses a worktree, runs git or does I/O.
+import type { BuildTimeFields } from 'preview-contract';
 import type { FieldError } from 'preview-protocol';
 import type { DocumentEntry } from '../bundle/read.ts';
 import type { CmsConfig } from '../config/schema.ts';
@@ -42,6 +43,8 @@ export interface BuildCheckInput {
   readonly validate: readonly FieldError[];
   /** What the sync before the publish reported. */
   readonly sync: SyncOutcome;
+  /** The site's configured build-time fields by key (the bundle's build-time.json). They apply to a created document, whose record has none. */
+  readonly configured?: BuildTimeFields;
 }
 
 /**
@@ -57,6 +60,20 @@ export function decideBuild(input: BuildCheckInput): BuildDecision {
   return reason === undefined ? { build: false } : { build: true, reason };
 }
 
+// A created document's record has no build-time fields: the site's configured list for its key applies to it.
+function withConfigured(
+  record: DocumentEntry,
+  configured: BuildTimeFields | undefined,
+): DocumentEntry {
+  const fields =
+    configured !== undefined && Object.hasOwn(configured, record.key)
+      ? configured[record.key]
+      : undefined;
+  return fields === undefined
+    ? record
+    : { ...record, buildTime: true, buildTimeFields: fields };
+}
+
 // The reason of an `auto` build, or undefined when the changeset needs none.
 function autoReason({
   changeset,
@@ -64,10 +81,11 @@ function autoReason({
   before,
   validate,
   sync,
+  configured,
 }: BuildCheckInput): BuildReason | undefined {
   const entries = new Map(bundled);
   for (const record of changeset.createdRecords)
-    entries.set(record.key, record);
+    entries.set(record.key, withConfigured(record, configured));
   let unknown = sync.kind === 'failed' || changeset.fileErrors.length > 0;
   const changes: {
     readonly change: Pick<SaveChange, 'document' | 'deleted' | 'data'>;

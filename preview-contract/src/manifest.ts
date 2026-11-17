@@ -54,6 +54,9 @@ export interface RouteRecord {
 /** Build-time fields per document key (SiteConfig.buildTimeFields). */
 export type BuildTimeFields = Record<string, string[]>;
 
+/** build-time.json: every key the site configures, whether or not the bundle holds its document (WORKPLAN 2.10k). */
+export const buildTimeFieldsSchema = z.record(z.string(), z.array(z.string()));
+
 /** Schema of one DocumentRecord. `editable`, when present, must be `false`.
  *  Not checked with `satisfies DocumentRecord`: Zod's optional keys carry
  *  `| undefined`, which `exactOptionalPropertyTypes` refuses. The test file

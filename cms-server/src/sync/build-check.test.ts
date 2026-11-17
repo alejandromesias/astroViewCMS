@@ -451,3 +451,41 @@ describe('decideBuild under auto: which reason is reported', () => {
     ).toStrictEqual({ build: true, reason: 'upstream-code' });
   });
 });
+
+describe('decideBuild: a created document the site configures', () => {
+  it('builds as build-time-field when a configured field of a created document is in the changeset', () => {
+    expect(
+      decide({
+        changeset: changeset(
+          [changed(SITE, 'created', { site: { base_url: 'x' } })],
+          [recordOf(SITE, 'json')],
+        ),
+        configured: { [SITE]: ['site.base_url'] },
+      }),
+    ).toStrictEqual({ build: true, reason: 'build-time-field' });
+  });
+
+  it('does not build for a created document whose configured field is absent', () => {
+    expect(
+      decide({
+        changeset: changeset(
+          [changed(SITE, 'created', { site: {} })],
+          [recordOf(SITE, 'json')],
+        ),
+        configured: { [SITE]: ['site.base_url'] },
+      }),
+    ).toStrictEqual({ build: false });
+  });
+
+  it('does not treat a created document as configured when its key is only a prototype key', () => {
+    expect(
+      decide({
+        changeset: changeset(
+          [changed('constructor', 'created', { site: {} })],
+          [recordOf('constructor', 'json')],
+        ),
+        configured: {},
+      }),
+    ).toStrictEqual({ build: false });
+  });
+});
