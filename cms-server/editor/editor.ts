@@ -547,14 +547,19 @@ export async function startEditor(
     );
   }
 
-  /** A save with `rebuild` applies after the next build: waits for the bundle to change, then loads the preview again. */
-  async function followRebuild(bundleBefore: string | null | undefined) {
+  /** A save with `rebuild` applies after the next build: waits for the bundle to change, then loads the preview again. Its status line is written only while `attempt` is the latest save. */
+  async function followRebuild(
+    bundleBefore: string | null | undefined,
+    attempt: number,
+  ) {
+    const isLatest = () => attempt === latestSave;
     // Without a status from before the save there is nothing to compare the build with: the wait would end at once.
     if (bundleBefore === undefined) {
-      setStatus(
-        'Saved, but the new build could not be checked. Reload the editor later.',
-        'error',
-      );
+      if (isLatest())
+        setStatus(
+          'Saved, but the new build could not be checked. Reload the editor later.',
+          'error',
+        );
       return;
     }
     const changed = await waitForNewBundle(
@@ -563,7 +568,7 @@ export async function startEditor(
       REBUILD_POLL_ATTEMPTS,
     );
     if (changed) await openPreview();
-    else
+    else if (isLatest())
       setStatus(
         'The new build is not ready yet. Reload the editor later.',
         'error',
@@ -574,6 +579,7 @@ export async function startEditor(
   async function applySaved(
     body: SaveBody,
     bundleBefore: string | null | undefined,
+    attempt: number,
   ) {
     showMessages(saveMessages(body));
     // A deleted document is not in the answer's revisions: it is gone, so its view leaves the deleted state and holds no revision.
@@ -591,10 +597,12 @@ export async function startEditor(
     }
     await refreshChanges();
     // Not awaited: the wait for the build runs on while the user saves again.
-    if (body.rebuild) void followRebuild(bundleBefore);
+    if (body.rebuild) void followRebuild(bundleBefore, attempt);
   }
 
   const saveButton = byId<HTMLButtonElement>('save');
+  // Counts the saves started; a rebuild wait of an older save does not write the status line.
+  let latestSave = 0;
 
   /** Saves the forms. Save is disabled while the save's own requests run; a rebuild wait does not hold it (saves go on during a build). */
   async function save() {
@@ -608,6 +616,7 @@ export async function startEditor(
 
   /** Saves every form that differs from its saved text (PUT /api/changes). The bundle before the save is the one a rebuild replaces. */
   async function saveForms() {
+    const attempt = ++latestSave;
     for (const view of views.values()) view.saveError.textContent = '';
     const changes = changesOf();
     if (changes === undefined) {
@@ -632,7 +641,7 @@ export async function startEditor(
       showMessages(failureMessages(answer.failure));
       return;
     }
-    await applySaved(answer.body, bundleBefore);
+    await applySaved(answer.body, bundleBefore, attempt);
   }
 
   // ---- messages from the bridge: only from the iframe, from the preview origin, well-formed

@@ -1919,6 +1919,42 @@ describe('saving', () => {
     ).toBeNull();
   });
 
+  it('a rebuild wait of an older save does not overwrite the status of a newer save', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({
+      puts: [saved('r-ana-2', { rebuild: true }), saved('r-ana-3')],
+    });
+    vi.useFakeTimers();
+    try {
+      saveButton().click();
+      for (
+        let tick = 0;
+        tick < 5 &&
+        !editor.status().textContent?.includes('Applies after rebuild');
+        tick++
+      )
+        await vi.advanceTimersByTimeAsync(10);
+      type(editor.value('authors/ana'), '{"name":"Ana N","links":[]}');
+      saveButton().click();
+      for (let tick = 0; tick < 5 && saves().length < 2; tick++)
+        await vi.advanceTimersByTimeAsync(10);
+      for (
+        let tick = 0;
+        tick < 5 && editor.status().textContent !== 'Saved.';
+        tick++
+      )
+        await vi.advanceTimersByTimeAsync(10);
+      expect(editor.status().textContent).toBe('Saved.');
+      // The first save's wait runs out after 60 polls, and must not write its message now.
+      for (let tick = 0; tick < 70; tick++)
+        await vi.advanceTimersByTimeAsync(1000);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(editor.status().textContent).toBe('Saved.');
+  });
+
   it('a rebuild that is not done after 60 polls says so, and does not load the preview again', async () => {
     await editor.open('authors/ana');
     edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
