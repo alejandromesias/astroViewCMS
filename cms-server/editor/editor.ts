@@ -548,8 +548,6 @@ export async function startEditor(
       return;
     }
     view.revision = answer.body.revision;
-    // The reloaded document exists, so the flag of a saved delete no longer holds.
-    view.removed = false;
     view.saved = savedTextOf(answer.body);
     view.state = 'saved';
     writeForm(view);
@@ -564,8 +562,6 @@ export async function startEditor(
     if (view.conflict === undefined) return;
     const gone = view.conflict.revision === null;
     view.revision = view.conflict.revision;
-    // A live revision means the document exists again, so the flag of a saved delete no longer holds.
-    if (!gone) view.removed = false;
     setConflict(view, undefined);
     if (gone && view.state === 'deleted') {
       // Someone else already deleted it: the draft delete has nothing to delete, so the form locks as after a saved delete.
@@ -640,14 +636,17 @@ export async function startEditor(
     deleting: ReadonlySet<string>,
   ) {
     showMessages(saveMessages(body));
-    // A document the save deleted is not in the answer's revisions: it is gone, so its view leaves the deleted state and holds no revision.
+    // A document the save deleted is not in the answer's revisions: it is gone, so its view leaves the deleted state and holds no revision. Its form keeps what was typed during the save, and Restore sends it again.
+    let deletedHere = false;
     for (const view of views.values()) {
-      if (view.state !== 'deleted' || !deleting.has(view.key)) continue;
+      if (!deleting.has(view.key)) continue;
       view.removed = true;
       view.revision = null;
       keepInOverlay(view.key, null);
       lockGone(view);
+      deletedHere = true;
     }
+    if (deletedHere) sendDraft();
     for (const [key, revision] of Object.entries(body.revisions)) {
       const view = views.get(key);
       if (view === undefined) continue;
@@ -695,7 +694,7 @@ export async function startEditor(
     // The documents this save deletes: one marked deleted while the save is pending is not among them.
     const deleting = new Set(
       changes.flatMap((change) =>
-        'deleted' in change ? [change.document] : [],
+        change.deleted === true ? [change.document] : [],
       ),
     );
     const answer = await saveChanges(fetchImpl, { changes });
@@ -703,7 +702,11 @@ export async function startEditor(
       if (answer.failure.code === 'conflict')
         for (const doc of answer.failure.body.documents) {
           const view = views.get(doc.key);
-          if (view) setConflict(view, { revision: doc.revision });
+          if (view) {
+            setConflict(view, { revision: doc.revision });
+            // A live revision: the document exists on the server, so the flag of a saved delete no longer holds.
+            if (doc.revision !== null) view.removed = false;
+          }
         }
       // A failure with only field messages writes nothing to the status line, which would keep an older save's text.
       setStatus(

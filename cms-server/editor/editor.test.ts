@@ -2070,6 +2070,73 @@ describe('saving', () => {
     },
   );
 
+  it.each(['type', 'reset'])(
+    'a document the pending save deletes is locked after the answer when you %s it during the save',
+    async (action) => {
+      await editor.open('authors/ana', 'blog/blog-1');
+      click(section('blog/blog-1'), 'delete');
+      let answerPut: (answer: Response) => void = () => {};
+      const base = editor.fetch.getMockImplementation()!;
+      editor.fetch.mockImplementation((input, init) =>
+        String(input) === '/api/changes' && init?.method === 'PUT'
+          ? new Promise<Response>((resolve) => {
+              answerPut = resolve;
+            })
+          : base(input, init),
+      );
+      saveButton().click();
+      await vi.waitFor(() => expect(saves()).toHaveLength(1));
+      if (action === 'type') type(editor.value('blog/blog-1'), '{"title":"x"}');
+      else click(section('blog/blog-1'), 'reset');
+      answerPut(Response.json({ revisions: {}, warnings: [], rebuild: false }));
+      await vi.waitFor(() => expect(saveButton().disabled).toBe(false));
+      expect(editor.value('blog/blog-1').disabled).toBe(true);
+      expect(restoreOf('blog/blog-1').hidden).toBe(false);
+      expect(editor.lastDraft()).toMatchObject({
+        documents: { 'blog/blog-1': null },
+      });
+      saveButton().click();
+      await vi.waitFor(() =>
+        expect(editor.status().textContent).toBe('Nothing to save'),
+      );
+      expect(saves()).toHaveLength(1);
+    },
+  );
+
+  it('after a conflict on a live document, "Delete" deletes it and "Keep mine" keeps that delete', async () => {
+    await deleteAndSave();
+    click(section('authors/ana'), 'restore');
+    routeSave({
+      puts: [
+        Response.json(
+          {
+            error: 'conflict',
+            documents: [{ key: 'authors/ana', revision: 'r-ana-other' }],
+          },
+          { status: 409 },
+        ),
+      ],
+    });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(conflictOf('authors/ana').hidden).toBe(false),
+    );
+    click(section('authors/ana'), 'delete');
+    expect(editor.value('authors/ana').disabled).toBe(false);
+    expect(restoreOf('authors/ana').hidden).toBe(true);
+    click(section('authors/ana'), 'keep');
+    routeSave({
+      puts: [Response.json({ revisions: {}, warnings: [], rebuild: false })],
+    });
+    saveButton().click();
+    await vi.waitFor(() => expect(saves()).toHaveLength(3));
+    expect(JSON.parse(String(saves()[2]?.[1]?.body))).toEqual({
+      changes: [
+        { document: 'authors/ana', baseRevision: 'r-ana-other', deleted: true },
+      ],
+    });
+  });
+
   it('the form of a saved delete stays shown when the next render does not list the document', async () => {
     await deleteAndSave();
     editor.rendered(['blog/blog-1'], [], '/blog');
