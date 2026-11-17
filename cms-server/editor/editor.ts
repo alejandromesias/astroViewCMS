@@ -548,6 +548,8 @@ export async function startEditor(
       return;
     }
     view.revision = answer.body.revision;
+    // The reloaded document exists, so the flag of a saved delete no longer holds.
+    view.removed = false;
     view.saved = savedTextOf(answer.body);
     view.state = 'saved';
     writeForm(view);
@@ -562,6 +564,8 @@ export async function startEditor(
     if (view.conflict === undefined) return;
     const gone = view.conflict.revision === null;
     view.revision = view.conflict.revision;
+    // A live revision means the document exists again, so the flag of a saved delete no longer holds.
+    if (!gone) view.removed = false;
     setConflict(view, undefined);
     if (gone && view.state === 'deleted') {
       // Someone else already deleted it: the draft delete has nothing to delete, so the form locks as after a saved delete.
@@ -633,11 +637,12 @@ export async function startEditor(
     body: SaveBody,
     bundleBefore: string | null | undefined,
     attempt: number,
+    deleting: ReadonlySet<string>,
   ) {
     showMessages(saveMessages(body));
-    // A deleted document is not in the answer's revisions: it is gone, so its view leaves the deleted state and holds no revision.
+    // A document the save deleted is not in the answer's revisions: it is gone, so its view leaves the deleted state and holds no revision.
     for (const view of views.values()) {
-      if (view.state !== 'deleted') continue;
+      if (view.state !== 'deleted' || !deleting.has(view.key)) continue;
       view.removed = true;
       view.revision = null;
       keepInOverlay(view.key, null);
@@ -687,6 +692,12 @@ export async function startEditor(
       : undefined;
     // Only a PUT counts as a newer save, whatever its answer: its message replaces the older wait's status.
     const attempt = ++latestSave;
+    // The documents this save deletes: one marked deleted while the save is pending is not among them.
+    const deleting = new Set(
+      changes.flatMap((change) =>
+        'deleted' in change ? [change.document] : [],
+      ),
+    );
     const answer = await saveChanges(fetchImpl, { changes });
     if (!answer.ok) {
       if (answer.failure.code === 'conflict')
@@ -702,7 +713,7 @@ export async function startEditor(
       showMessages(failureMessages(answer.failure));
       return;
     }
-    await applySaved(answer.body, bundleBefore, attempt);
+    await applySaved(answer.body, bundleBefore, attempt, deleting);
   }
 
   // ---- messages from the bridge: only from the iframe, from the preview origin, well-formed
