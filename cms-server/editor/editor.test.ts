@@ -1977,10 +1977,16 @@ describe('saving', () => {
     expect(saveErrorOf('authors/ana').textContent).toBe(
       'The document is already gone from the working copy. Restore it to create it again.',
     );
-    // The preview must not keep the document after the next draft either.
     expect(editor.lastDraft()).toMatchObject({
       documents: { 'authors/ana': null },
     });
+    // A locked view sends nothing: Save says so, and only the one PUT of the first answer was sent.
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(editor.status().textContent).toBe('Nothing to save'),
+    );
+    expect(saves()).toHaveLength(1);
+    // The preview must not keep the document after the next draft either.
     edit(editor.value('blog/blog-1'), '{"title":"x"}');
     expect(editor.lastDraft()).toMatchObject({
       documents: { 'authors/ana': null },
