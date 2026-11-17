@@ -130,8 +130,8 @@ export default function previewRenderServer(
         const srcDir = path.join(site.root, 'src');
         updateConfig({
           vite: {
-            // Astro's own clean-up would also delete the uploads in outDir, so it
-            // is switched off and clearBundle (build:start) does the clean-up.
+            // Astro's own clean-up is switched off: clearBundle (build:start)
+            // empties outDir instead, so one place owns the clean-up.
             build: { emptyOutDir: false },
             plugins: [
               siteModule(
@@ -372,10 +372,9 @@ export function regionWrappers(wrappers: Map<string, string>): Plugin {
 /** Vite plugin that generates the `virtual:preview-site` module (typed in
  *  virtual.d.ts): the region components with their image folder, every
  *  image under the site's `src/` (so draft paths can become ImageMetadata),
- *  and the folders for uploads and manifests. Those two folders are found at
- *  run time, relative to the bundle (bundle-folder.ts), so the bundle still
- *  works after it is copied. The routes import it; it exists only during a
- *  build. */
+ *  and the manifest folder. That folder is found at run time, relative to
+ *  the bundle (bundle-folder.ts), so the bundle still works after it is
+ *  copied. The routes import it; it exists only during a build. */
 export function siteModule(
   { root }: Pick<ResolvedSiteConfig, 'root'>,
   contentConfig?: string,

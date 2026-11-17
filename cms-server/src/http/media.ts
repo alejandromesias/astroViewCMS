@@ -8,7 +8,7 @@ import { readStaged, stagedFormat, stageImage } from '../media/staging.ts';
 import { BodyTooLargeError, readBody } from './body.ts';
 import { rejectUnlessContentType } from './guard.ts';
 
-/** Largest upload, in bytes: 10 MB, as the stopgap route. */
+/** Largest upload, in bytes: 10 MB, the limit the removed stopgap route used. */
 export const MAX_BYTES = 10 * 1024 * 1024;
 
 export interface MediaRouteDeps {

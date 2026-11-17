@@ -17,7 +17,7 @@ export interface SiteOverrides {
 
 // Loads a site config file and resolves its paths. The build output goes to
 // .build/<site folder name>, so the site's own dist/ is never touched. The
-// manifests and the upload folder live inside that output (the bundle is
+// manifests live inside that output (the bundle is
 // self-contained, and the server finds them relative to itself); the region
 // wrappers are build-time files and live next to it. PREVIEW_BUILD_DIR moves
 // all of it elsewhere (the end-to-end tests build into a temporary folder).
@@ -44,7 +44,7 @@ export async function loadSiteConfig(
 
 /** Makes a config's paths absolute: the site root against the config's folder,
  *  and the output folder under `buildDir`, named after the site folder. The
- *  manifests and the upload folder are inside the output folder (2.0d). The
+ *  manifests are inside the output folder (2.0d). The
  *  region wrapper folder sits next to it, named after it, so two outputs never
  *  share one. An override replaces `root` or `outDir` (its path is resolved
  *  against the current folder). Pure (no file access), so it's the part tests

@@ -1,7 +1,7 @@
 {
   "$schema": "https://unpkg.com/knip@6.43.0/schema.json",
   "ignoreWorkspaces": ["sample-site"],
-  "ignoreBinaries": ["osv-scanner", "tsc", "vitest"],
+  "ignoreBinaries": ["osv-scanner", "vitest"],
   "workspaces": {
     ".": {
       "entry": [
