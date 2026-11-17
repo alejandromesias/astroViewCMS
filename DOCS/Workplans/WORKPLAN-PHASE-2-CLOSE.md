@@ -259,7 +259,8 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 - **Result:** PR #53, merge `001301d`. Closed. Mutation-diff 92.91. Reviewed by Reviewer-11.16 over five rounds and re-checks, and by Codex.
   - **Built:** `cms-server/editor/` with `api.ts`, `messages.ts`, `media.ts` and `editor.ts` (DOM only). Decisions: a saved delete locks the form and Restore creates the document with no revision (yours); `shapes.ts` is outside the mutation scope (option a, yours).
   - **Rules in `editor.ts`:** states are `saved | edited | deleted | gone`, and `removed` means the server lacks the document. `lockedByDelete` separates a Delete lock from a Reset lock. `applySaved` runs its steps in a fixed order (locks, sent-text baseline, unlock, then the draft). Changing that order needs the state tests in `editor.test.ts`.
-  - **Open:** after a failed re-read, staged image URLs can stay in the form and the overlay until the next save.
+  - **Confirmed behaviour (yours):** Reset during a save cancels a Delete made before it, and typing in a live form marked for deletion turns it into an edit. Tests cover both; do not report them as bugs.
+  - **Open:** after a failed re-read, staged image URLs can stay in the form and the overlay until the next save (low; a known gap, not fixed).
   - **Implication:** 2.11d builds on this file and must keep the `saved` baseline and the `removed` semantics. Full detail in PR #53, including the review rounds and Codex comments.
 
 #### 2.12a Remove the stopgaps — after 2.11b · `[build]`
