@@ -2331,6 +2331,87 @@ describe('saving', () => {
     expect(restoreOf('authors/ana').hidden).toBe(true);
   });
 
+  it('a Reset made while the restoring save ran leaves the form saved: the next save sends nothing, not a delete', async () => {
+    await deleteAndSave();
+    click(section('authors/ana'), 'restore');
+    const answer = holdNextPut();
+    saveButton().click();
+    await vi.waitFor(() => expect(saves()).toHaveLength(2));
+    click(section('authors/ana'), 'reset');
+    expect(editor.value('authors/ana').disabled).toBe(true);
+    answer(saved('r-ana-new'));
+    await vi.waitFor(() => expect(saveButton().disabled).toBe(false));
+    expect(editor.value('authors/ana').disabled).toBe(false);
+    expect(restoreOf('authors/ana').hidden).toBe(true);
+    saveButton().click();
+    expect(editor.status().textContent).toBe('Nothing to save');
+    expect(saves()).toHaveLength(2);
+  });
+
+  it('a failed re-read after a restoring save keeps the sent text for "Reset", and the preview keeps the document', async () => {
+    await deleteAndSave();
+    click(section('authors/ana'), 'restore');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({
+      puts: [saved('r-ana-new')],
+      reread: () => new Response(null, { status: 500 }),
+    });
+    saveButton().click();
+    await vi.waitFor(() => expect(saves()).toHaveLength(2));
+    await vi.waitFor(() => expect(saveButton().disabled).toBe(false));
+    click(section('authors/ana'), 'reset');
+    expect(editor.value('authors/ana').value).toBe(
+      JSON.stringify({ name: 'Ana M', links: [] }, null, 2),
+    );
+    expect(editor.lastDraft().documents).toEqual({
+      'authors/ana': { name: 'Ana M', links: [] },
+    });
+    saveButton().click();
+    expect(editor.status().textContent).toBe('Nothing to save');
+  });
+
+  it('"Keep mine" on a live conflict after a Reset made while the restoring save ran keeps the text, not a delete', async () => {
+    await deleteAndSave();
+    click(section('authors/ana'), 'restore');
+    const answer = holdNextPut();
+    saveButton().click();
+    await vi.waitFor(() => expect(saves()).toHaveLength(2));
+    click(section('authors/ana'), 'reset');
+    answer(
+      Response.json(
+        {
+          error: 'conflict',
+          documents: [{ key: 'authors/ana', revision: 'r-ana-other' }],
+        },
+        { status: 409 },
+      ),
+    );
+    await vi.waitFor(() =>
+      expect(conflictOf('authors/ana').hidden).toBe(false),
+    );
+    expect(editor.value('authors/ana').disabled).toBe(true);
+    click(section('authors/ana'), 'keep');
+    expect(editor.value('authors/ana').disabled).toBe(false);
+    expect(restoreOf('authors/ana').hidden).toBe(true);
+    expect(saveErrorOf('authors/ana').textContent).toBe(
+      'Your version is kept. Save again to overwrite the newer one.',
+    );
+    routeSave({
+      puts: [Response.json({ revisions: {}, warnings: [], rebuild: false })],
+    });
+    saveButton().click();
+    await vi.waitFor(() => expect(saves()).toHaveLength(3));
+    expect(JSON.parse(String(saves()[2]?.[1]?.body))).toEqual({
+      changes: [
+        {
+          document: 'authors/ana',
+          baseRevision: 'r-ana-other',
+          data: { name: 'Ana', links: [] },
+        },
+      ],
+    });
+  });
+
   it('a Delete made while the save of an edited document ran stays for the next save', async () => {
     await editor.open('authors/ana');
     edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');

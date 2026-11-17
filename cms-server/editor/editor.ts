@@ -43,15 +43,22 @@ export const RENDER_DELAY_MS = 120;
 /** How many times a save with `rebuild` polls `GET /api/status`, one second apart, before it stops waiting. */
 const REBUILD_POLL_ATTEMPTS = 60;
 
-/** The text a form shows for a document: the JSON of its value, and for a Markdown document the JSON of its frontmatter and its body. */
-function savedTextOf(info: DocumentBody): { value: string; body: string } {
-  if (info.format !== 'md' && info.format !== 'mdx')
-    return { value: JSON.stringify(info.value, null, 2), body: '' };
-  const raw = info.value as { data?: unknown; body?: string };
+/** The text a form shows for a document's value: the JSON of the value, and for a Markdown document the JSON of its frontmatter and its body. */
+function textOfValue(
+  value: unknown,
+  markdown: boolean,
+): { value: string; body: string } {
+  if (!markdown) return { value: JSON.stringify(value, null, 2), body: '' };
+  const raw = value as { data?: unknown; body?: string };
   return {
     value: JSON.stringify(raw.data ?? {}, null, 2),
     body: raw.body ?? '',
   };
+}
+
+/** The text a form shows for a document as the bundle has it. */
+function savedTextOf(info: DocumentBody): { value: string; body: string } {
+  return textOfValue(info.value, info.format === 'md' || info.format === 'mdx');
 }
 
 /** A value as JSON text with each object's keys sorted, so two layouts of one value give the same text. */
@@ -113,6 +120,8 @@ interface DocumentView {
   restoreControls: HTMLElement;
   /** True from a saved delete until a save answers a revision for the document: it is not in the working copy. */
   removed: boolean;
+  /** True when the Delete button locked the view (lockGone): the answer of a save made meanwhile keeps that Delete. A Reset's lock does not. */
+  lockedByDelete: boolean;
   /** Set by a `409 conflict`: the revision the saved document has now. "Keep mine" takes it as the base. */
   conflict: { revision: string | null } | undefined;
 }
@@ -243,6 +252,7 @@ export async function startEditor(
       conflictControls: slot('conflict'),
       restoreControls: slot('restore'),
       removed: false,
+      lockedByDelete: false,
       conflict: undefined,
     };
 
@@ -301,7 +311,7 @@ export async function startEditor(
         .querySelector('[data-action="delete"]')!
         .addEventListener('click', () => {
           // Nothing to delete in a working copy that already lost it.
-          if (view.removed) lockGone(view);
+          if (view.removed) lockGone(view, true);
           else view.state = 'deleted';
           sendDraft();
         });
@@ -337,8 +347,10 @@ export async function startEditor(
     view.restoreControls.hidden = !gone;
   }
 
-  function lockGone(view: DocumentView) {
+  /** Locks a removed view's form. `byDelete` marks a lock from the Delete button, which the answer of a save made meanwhile keeps (applySaved). */
+  function lockGone(view: DocumentView, byDelete = false) {
     view.state = 'gone';
+    view.lockedByDelete = byDelete;
     // A render that dropped the key hid the section; a locked form must stay reachable so "Restore" is there.
     view.section.hidden = false;
     setGone(view, true);
@@ -566,9 +578,9 @@ export async function startEditor(
     view.revision = view.conflict.revision;
     setConflict(view, undefined);
     if (view.state === 'gone') {
-      // Locked during its save: a live document keeps the Delete made meanwhile, and a missing one is created from the kept text.
+      // Locked during its save: a live document keeps a Delete made meanwhile (a Reset's lock keeps the text), and a missing one is created from the kept text.
       setGone(view, false);
-      view.state = gone ? 'edited' : 'deleted';
+      view.state = !gone && view.lockedByDelete ? 'deleted' : 'edited';
     } else if (view.state === 'saved') {
       // A saved view is not sent by a save, so the kept text becomes an edit and the next save sends it.
       view.state = 'edited';
@@ -648,9 +660,19 @@ export async function startEditor(
     body: SaveBody,
     bundleBefore: string | null | undefined,
     attempt: number,
-    deleting: ReadonlySet<string>,
+    changes: SaveRequest['changes'],
   ) {
     showMessages(saveMessages(body));
+    // The documents this save deletes. One marked deleted while the save is pending is not among them.
+    const deleting = new Set(
+      changes.flatMap((change) =>
+        change.deleted === true ? [change.document] : [],
+      ),
+    );
+    // What each document held when the save sent it: the baseline of its form until the re-read answers.
+    const sent = new Map<string, unknown>(
+      changes.map((change) => [change.document, change.data] as const),
+    );
     // A document the save deleted is not in the answer's revisions: it is gone, so its view leaves the deleted state and holds no revision. Its form keeps what was typed during the save, and Restore sends it again.
     let deletedHere = false;
     for (const view of views.values()) {
@@ -667,10 +689,16 @@ export async function startEditor(
       if (view === undefined) continue;
       view.revision = revision;
       view.removed = false;
-      // A view locked during its save opens: the save made the document live, and the Delete made meanwhile stays for the next save.
+      // A view locked during its save opens: the save made the document live. A Delete made meanwhile stays for the next save; a Reset's lock takes the comparison in refreshSaved.
       if (view.state === 'gone') {
         setGone(view, false);
-        view.state = 'deleted';
+        view.state = view.lockedByDelete ? 'deleted' : 'edited';
+      }
+      // The text the save sent is the baseline until the re-read answers, so a failed re-read keeps Reset and the overlay on what was saved.
+      const data = sent.get(key);
+      if (data !== undefined) {
+        view.saved = textOfValue(data, view.body !== undefined);
+        keepInOverlay(key, data);
       }
       await refreshSaved(view);
     }
@@ -711,12 +739,6 @@ export async function startEditor(
       : undefined;
     // Only a PUT counts as a newer save, whatever its answer: its message replaces the older wait's status.
     const attempt = ++latestSave;
-    // The documents this save deletes: one marked deleted while the save is pending is not among them.
-    const deleting = new Set(
-      changes.flatMap((change) =>
-        change.deleted === true ? [change.document] : [],
-      ),
-    );
     const answer = await saveChanges(fetchImpl, { changes });
     if (!answer.ok) {
       if (answer.failure.code === 'conflict')
@@ -736,7 +758,7 @@ export async function startEditor(
       showMessages(failureMessages(answer.failure));
       return;
     }
-    await applySaved(answer.body, bundleBefore, attempt, deleting);
+    await applySaved(answer.body, bundleBefore, attempt, changes);
   }
 
   // ---- messages from the bridge: only from the iframe, from the preview origin, well-formed
