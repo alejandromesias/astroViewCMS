@@ -581,6 +581,8 @@ export async function startEditor(
       // Locked during its save: a live document keeps a Delete made meanwhile (a Reset's lock keeps the text), and a missing one is created from the kept text.
       setGone(view, false);
       view.state = !gone && view.lockedByDelete ? 'deleted' : 'edited';
+      // The lock sent null for the document; the kept text or the Delete goes out now.
+      sendDraft();
     } else if (view.state === 'saved') {
       // A saved view is not sent by a save, so the kept text becomes an edit and the next save sends it.
       view.state = 'edited';
@@ -684,6 +686,7 @@ export async function startEditor(
       deletedHere = true;
     }
     if (deletedHere) sendDraft();
+    let unlocked = false;
     for (const [key, revision] of Object.entries(body.revisions)) {
       const view = views.get(key);
       if (view === undefined) continue;
@@ -693,6 +696,7 @@ export async function startEditor(
       if (view.state === 'gone') {
         setGone(view, false);
         view.state = view.lockedByDelete ? 'deleted' : 'edited';
+        unlocked = true;
       }
       // The text the save sent is the baseline until the re-read answers, so a failed re-read keeps Reset and the overlay on what was saved.
       const data = sent.get(key);
@@ -702,6 +706,8 @@ export async function startEditor(
       }
       await refreshSaved(view);
     }
+    // The lock sent null for an unlocked document; the overlay now holds what the save made live.
+    if (unlocked) sendDraft();
     await refreshChanges();
     // Not awaited: the wait for the build runs on while the user saves again.
     if (body.rebuild) void followRebuild(bundleBefore, attempt);

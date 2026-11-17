@@ -2343,6 +2343,9 @@ describe('saving', () => {
     await vi.waitFor(() => expect(saveButton().disabled).toBe(false));
     expect(editor.value('authors/ana').disabled).toBe(false);
     expect(restoreOf('authors/ana').hidden).toBe(true);
+    expect(editor.lastDraft().documents).toEqual({
+      'authors/ana': { name: 'Ana', links: [] },
+    });
     saveButton().click();
     expect(editor.status().textContent).toBe('Nothing to save');
     expect(saves()).toHaveLength(2);
@@ -2396,6 +2399,9 @@ describe('saving', () => {
     expect(saveErrorOf('authors/ana').textContent).toBe(
       'Your version is kept. Save again to overwrite the newer one.',
     );
+    expect(editor.lastDraft().documents).toEqual({
+      'authors/ana': { name: 'Ana', links: [] },
+    });
     routeSave({
       puts: [Response.json({ revisions: {}, warnings: [], rebuild: false })],
     });
