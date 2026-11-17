@@ -1955,6 +1955,51 @@ describe('saving', () => {
     expect(editor.status().textContent).toBe('Saved.');
   });
 
+  it('a click that saves nothing is not a newer save: the wait for the rebuild still says so', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({
+      puts: [saved('r-ana-2', { rebuild: true })],
+      reread: () =>
+        Response.json({
+          key: 'authors/ana',
+          format: 'json',
+          editable: true,
+          buildTime: false,
+          revision: 'r-ana-2',
+          value: { name: 'Ana M', links: [] },
+        }),
+    });
+    vi.useFakeTimers();
+    try {
+      saveButton().click();
+      for (
+        let tick = 0;
+        tick < 5 &&
+        !editor.status().textContent?.includes('Applies after rebuild');
+        tick++
+      )
+        await vi.advanceTimersByTimeAsync(10);
+      for (
+        let tick = 0;
+        tick < 5 &&
+        document.querySelector('#changes-list')!.textContent !==
+          'modified: authors/ana';
+        tick++
+      )
+        await vi.advanceTimersByTimeAsync(10);
+      saveButton().click();
+      expect(editor.status().textContent).toBe('Nothing to save');
+      for (let tick = 0; tick < 70; tick++)
+        await vi.advanceTimersByTimeAsync(1000);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(editor.status().textContent).toBe(
+      'The new build is not ready yet. Reload the editor later.',
+    );
+  });
+
   it('a rebuild that is not done after 60 polls says so, and does not load the preview again', async () => {
     await editor.open('authors/ana');
     edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');

@@ -601,7 +601,7 @@ export async function startEditor(
   }
 
   const saveButton = byId<HTMLButtonElement>('save');
-  // Counts the saves started; a rebuild wait of an older save does not write the status line.
+  // Counts the PUTs sent; a rebuild wait of an older save does not write the status line.
   let latestSave = 0;
 
   /** Saves the forms. Save is disabled while the save's own requests run; a rebuild wait does not hold it (saves go on during a build). */
@@ -616,7 +616,6 @@ export async function startEditor(
 
   /** Saves every form that differs from its saved text (PUT /api/changes). The bundle before the save is the one a rebuild replaces. */
   async function saveForms() {
-    const attempt = ++latestSave;
     for (const view of views.values()) view.saveError.textContent = '';
     const changes = changesOf();
     if (changes === undefined) {
@@ -631,6 +630,8 @@ export async function startEditor(
     const bundleBefore = before.ok
       ? (before.body.bundle?.bundleId ?? null)
       : undefined;
+    // Only a PUT counts as a newer save, whatever its answer: its message replaces the older wait's status.
+    const attempt = ++latestSave;
     const answer = await saveChanges(fetchImpl, { changes });
     if (!answer.ok) {
       if (answer.failure.code === 'conflict')
