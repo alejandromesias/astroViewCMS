@@ -533,9 +533,7 @@ export async function startEditor(
     } catch {
       same = false;
     }
-    // A view locked during its save (Delete while the save was pending) opens again: the save made the document live.
-    if (view.state === 'gone') setGone(view, false);
-    // A Delete made while the save was pending stays for the next save; any other view takes the comparison.
+    // A Delete made while the save was pending stays for the next save (applySaved sets it on a view it unlocks); any other view takes the comparison.
     if (view.state !== 'deleted') view.state = same ? 'saved' : 'edited';
     keepInOverlay(view.key, answer.body.value);
   }
@@ -567,10 +565,10 @@ export async function startEditor(
     const gone = view.conflict.revision === null;
     view.revision = view.conflict.revision;
     setConflict(view, undefined);
-    if (!gone && view.state === 'gone') {
-      // Locked during its save, and the conflict shows the document live: the kept text opens and is sent.
+    if (view.state === 'gone') {
+      // Locked during its save: a live document keeps the Delete made meanwhile, and a missing one is created from the kept text.
       setGone(view, false);
-      view.state = 'edited';
+      view.state = gone ? 'edited' : 'deleted';
     } else if (view.state === 'saved') {
       // A saved view is not sent by a save, so the kept text becomes an edit and the next save sends it.
       view.state = 'edited';
@@ -669,6 +667,11 @@ export async function startEditor(
       if (view === undefined) continue;
       view.revision = revision;
       view.removed = false;
+      // A view locked during its save opens: the save made the document live, and the Delete made meanwhile stays for the next save.
+      if (view.state === 'gone') {
+        setGone(view, false);
+        view.state = 'deleted';
+      }
       await refreshSaved(view);
     }
     await refreshChanges();

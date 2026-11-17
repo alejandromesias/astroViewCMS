@@ -2221,7 +2221,7 @@ describe('saving', () => {
     });
   });
 
-  it('a Delete made while the save that restores a document ran opens the form once the save creates it', async () => {
+  it('a Delete made while the restoring save ran stays: the save creates the document and the next save deletes it', async () => {
     await deleteAndSave();
     click(section('authors/ana'), 'restore');
     const answer = holdNextPut();
@@ -2233,12 +2233,21 @@ describe('saving', () => {
     await vi.waitFor(() => expect(saveButton().disabled).toBe(false));
     expect(editor.value('authors/ana').disabled).toBe(false);
     expect(restoreOf('authors/ana').hidden).toBe(true);
+    routeSave({
+      puts: [Response.json({ revisions: {}, warnings: [], rebuild: false })],
+    });
+    saveButton().click();
+    await vi.waitFor(() => expect(saves()).toHaveLength(3));
+    expect(JSON.parse(String(saves()[2]?.[1]?.body)).changes).toContainEqual({
+      document: 'authors/ana',
+      baseRevision: 'r-ana-new',
+      deleted: true,
+    });
   });
 
-  it('a Delete made while the restoring save ran, then a live conflict: "Keep mine" opens the form and sends the restored text', async () => {
+  it('"Keep mine" on a live conflict keeps the Delete made while the restoring save ran', async () => {
     await deleteAndSave();
     click(section('authors/ana'), 'restore');
-    const text = editor.value('authors/ana').value;
     const answer = holdNextPut();
     saveButton().click();
     await vi.waitFor(() => expect(saves()).toHaveLength(2));
@@ -2259,8 +2268,11 @@ describe('saving', () => {
     click(section('authors/ana'), 'keep');
     expect(editor.value('authors/ana').disabled).toBe(false);
     expect(restoreOf('authors/ana').hidden).toBe(true);
+    expect(saveErrorOf('authors/ana').textContent).toBe(
+      'Your delete is kept. Save again to delete the newer version.',
+    );
     routeSave({
-      puts: [saved('r-ana-3')],
+      puts: [Response.json({ revisions: {}, warnings: [], rebuild: false })],
     });
     saveButton().click();
     await vi.waitFor(() => expect(saves()).toHaveLength(3));
@@ -2269,14 +2281,15 @@ describe('saving', () => {
         {
           document: 'authors/ana',
           baseRevision: 'r-ana-other',
-          data: JSON.parse(text),
+          deleted: true,
         },
       ],
     });
   });
 
-  it('a Delete made while the restoring save ran, then a live conflict: "Reload" opens the form', async () => {
+  it('a Delete made while the restoring save ran, then a live conflict: "Reload" opens the form with the saved text', async () => {
     await deleteAndSave();
+    const original = editor.value('authors/ana').value;
     click(section('authors/ana'), 'restore');
     const answer = holdNextPut();
     saveButton().click();
@@ -2296,6 +2309,24 @@ describe('saving', () => {
     );
     click(section('authors/ana'), 'reload');
     await vi.waitFor(() => expect(conflictOf('authors/ana').hidden).toBe(true));
+    expect(editor.value('authors/ana').disabled).toBe(false);
+    expect(restoreOf('authors/ana').hidden).toBe(true);
+    expect(editor.value('authors/ana').value).toBe(original);
+  });
+
+  it('a Delete made while the restoring save ran opens the form when the created document cannot be read again', async () => {
+    await deleteAndSave();
+    click(section('authors/ana'), 'restore');
+    routeSave({
+      puts: [],
+      reread: () => new Response(null, { status: 500 }),
+    });
+    const answer = holdNextPut();
+    saveButton().click();
+    await vi.waitFor(() => expect(saves()).toHaveLength(2));
+    click(section('authors/ana'), 'delete');
+    answer(saved('r-ana-new'));
+    await vi.waitFor(() => expect(saveButton().disabled).toBe(false));
     expect(editor.value('authors/ana').disabled).toBe(false);
     expect(restoreOf('authors/ana').hidden).toBe(true);
   });
