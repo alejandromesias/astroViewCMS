@@ -44,7 +44,7 @@ export interface BuildCheckInput {
   /** What the sync before the publish reported. */
   readonly sync: SyncOutcome;
   /** The site's configured build-time fields by key (the bundle's build-time.json). They apply to a created document, whose record has none. */
-  readonly configured?: BuildTimeFields;
+  readonly configured?: BuildTimeFields | undefined;
 }
 
 /**
@@ -86,7 +86,11 @@ function autoReason({
   const entries = new Map(bundled);
   for (const record of changeset.createdRecords)
     entries.set(record.key, withConfigured(record, configured));
-  let unknown = sync.kind === 'failed' || changeset.fileErrors.length > 0;
+  // Without build-time.json (a bundle from before it) the fields of a created document are not known: the check cannot tell.
+  let unknown =
+    sync.kind === 'failed' ||
+    changeset.fileErrors.length > 0 ||
+    (configured === undefined && changeset.createdRecords.length > 0);
   const changes: {
     readonly change: Pick<SaveChange, 'document' | 'deleted' | 'data'>;
     readonly entry: DocumentEntry;

@@ -1,6 +1,6 @@
 // The rebuild flag of a save (WORKPLAN 2.5c item 7, PHASE-2-DESIGN 5.3, D1). A save asks for a rebuild when the value
 // at a build-time field of a document changed (canonical JSON, so key order does not count), or when a document that
-// has build-time fields is deleted. A create never asks for one: its record has `buildTime: false`.
+// has build-time fields is deleted. A create never asks the save for a rebuild: its record has `buildTime: false`. The build check (2.10k) reads the configured fields of a created document itself.
 import { canonicalEntryText } from 'preview-contract';
 import type { DocumentEntry } from '../bundle/read.ts';
 import type { SaveChange } from './body.ts';

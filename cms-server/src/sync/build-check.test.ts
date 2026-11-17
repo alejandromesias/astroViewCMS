@@ -188,7 +188,19 @@ describe('decideBuild under auto: changes that must not build', () => {
     ).toStrictEqual({ build: false });
   });
 
-  it('skips the build for a created document with no build-time fields', () => {
+  it('skips the build for a created document with no configured build-time fields', () => {
+    expect(
+      decide({
+        changeset: changeset(
+          [changed(AUTHOR, 'created', { name: 'Ana' })],
+          [recordOf(AUTHOR, 'json')],
+        ),
+        configured: {},
+      }),
+    ).toStrictEqual({ build: false });
+  });
+
+  it('builds as unknown for a created document when the bundle has no build-time.json', () => {
     expect(
       decide({
         changeset: changeset(
@@ -196,7 +208,7 @@ describe('decideBuild under auto: changes that must not build', () => {
           [recordOf(AUTHOR, 'json')],
         ),
       }),
-    ).toStrictEqual({ build: false });
+    ).toStrictEqual({ build: true, reason: 'unknown' });
   });
 
   it('skips the build for a deleted document with no build-time fields', () => {
