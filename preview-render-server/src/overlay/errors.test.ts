@@ -3,24 +3,29 @@ import type { FieldIssue } from './errors.ts';
 import { DraftError } from './errors.ts';
 
 describe('DraftError', () => {
-  const issues: FieldIssue[] = [
+  // A new list per test. A constructor call at describe level runs outside
+  // any test, so Stryker cannot link the mutants it covers to a test.
+  const sampleIssues = (): FieldIssue[] => [
     { path: ['blocks', 2, 'title'], message: 'Required', kind: 'invalid' },
     { path: ['date'], message: 'Invalid date', kind: 'invalid' },
   ];
-  const error = new DraftError('posts/hello', issues);
 
   it('is an Error with its own name', () => {
+    const error = new DraftError('posts/hello', sampleIssues());
     expect(error).toBeInstanceOf(Error);
     expect(error).toBeInstanceOf(DraftError);
     expect(error.name).toBe('DraftError');
   });
 
   it('keeps the key and the same issues', () => {
+    const issues = sampleIssues();
+    const error = new DraftError('posts/hello', issues);
     expect(error.key).toBe('posts/hello');
     expect(error.issues).toBe(issues);
   });
 
   it('says which draft failed and lists each field as dotted path and message', () => {
+    const error = new DraftError('posts/hello', sampleIssues());
     expect(error.message).toBe(
       'Draft posts/hello does not match its schema: blocks.2.title: Required; date: Invalid date',
     );
