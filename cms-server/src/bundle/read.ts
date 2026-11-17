@@ -4,6 +4,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
+  type BuildTimeFields,
   type BundleJson,
   type CollectionSchemaJson,
   documentRecordSchema,
@@ -15,6 +16,9 @@ import {
 } from 'preview-contract';
 import { z } from 'zod';
 
+/** build-time.json: every key the site configures, whether or not the bundle holds its document (WORKPLAN 2.10k). */
+const buildTimeFieldsSchema = z.record(z.string(), z.array(z.string()));
+
 /** One document record as the schema parses it. Its optional keys may hold `undefined`, which the
  *  DocumentRecord interface does not allow under exactOptionalPropertyTypes. */
 export type DocumentEntry = z.infer<typeof documentRecordSchema>;
@@ -25,7 +29,8 @@ export type BundleFile =
   | 'documents.json'
   | 'schema.json'
   | 'routes.json'
-  | 'images.json';
+  | 'images.json'
+  | 'build-time.json';
 
 /** One bundle, all five files parsed. Documents are keyed by document key in a Map, since keys come from content. */
 export interface Bundle {
@@ -34,6 +39,8 @@ export interface Bundle {
   readonly collections: ReadonlyMap<string, CollectionSchemaJson>;
   readonly routes: readonly RouteRecord[];
   readonly images: readonly ImageRecord[];
+  /** The site's configured build-time fields, when the bundle has build-time.json (a bundle built before it does not). */
+  readonly buildTimeFields?: BuildTimeFields;
 }
 
 /** A bundle file that is missing, unreadable or invalid. The message names the file and, when there is one, the field. */
@@ -68,7 +75,7 @@ async function readRequiredFile<T>(
   return parseText(file, schema, text);
 }
 
-/** Reads the four files that follow bundle.json. Each one is parsed in turn, so the first failure names its file. */
+/** Reads the four files that follow bundle.json, then build-time.json when there is one. Each file is parsed in turn, so the first failure names its file. */
 export async function readBundle(
   dir: string,
   identity: BundleJson,
@@ -89,12 +96,18 @@ export async function readBundle(
     z.array(routeRecordSchema),
   );
   const images = await readRequiredFile(dir, 'images.json', imagesJsonSchema);
+  const buildTimeFields = await readOptionalFile(
+    dir,
+    'build-time.json',
+    buildTimeFieldsSchema,
+  );
   return {
     identity,
     documents: documentsByKey(documents),
     collections: new Map(Object.entries(collections)),
     routes,
     images,
+    ...(buildTimeFields === null ? {} : { buildTimeFields }),
   };
 }
 

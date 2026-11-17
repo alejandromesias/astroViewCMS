@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DocumentEntry } from '../bundle/read.ts';
 import type { SaveChange } from './body.ts';
-import { needsRebuild } from './rebuild.ts';
+import { needsRebuild, touches } from './rebuild.ts';
 
 // A build-time document of the bundle, with the given fields (absent for none).
 const buildTime = (fields?: string[]): DocumentEntry => ({
@@ -181,6 +181,72 @@ describe('needsRebuild', () => {
         [update(DOC, JSON.parse('{"__proto__": {}}'))],
         new Map([[DOC, buildTime(['__proto__'])]]),
         new Map([[DOC, {}]]),
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('touches', () => {
+  it('is true for a deletion when there are fields to check', () => {
+    expect(
+      touches({ document: DOC, deleted: true }, ['site.base_url'], new Map()),
+    ).toBe(true);
+  });
+
+  it('is false for a deletion when there are no fields, or none is given', () => {
+    expect(touches({ document: DOC, deleted: true }, [], new Map())).toBe(
+      false,
+    );
+    expect(
+      touches({ document: DOC, deleted: true }, undefined, new Map()),
+    ).toBe(false);
+  });
+
+  it('is false for any update when no fields are given, even one that changed the value', () => {
+    const stored = new Map([[DOC, 'a']]);
+    const change = { document: DOC, deleted: false, data: 'b' };
+    expect(touches(change, undefined, stored)).toBe(false);
+    expect(touches(change, [], stored)).toBe(false);
+  });
+
+  it('checks the fields it is given, not the ones a document declares', () => {
+    const stored = new Map([[DOC, { data: { title: 'a' }, body: 'x' }]]);
+    const change = {
+      document: DOC,
+      deleted: false,
+      data: { data: { title: 'a' }, body: 'y' },
+    };
+    expect(touches(change, ['body'], stored)).toBe(true);
+    expect(touches(change, ['data.title'], stored)).toBe(false);
+  });
+
+  it('is true when a field gains a value that the stored value lacks, and false when both lack it', () => {
+    expect(
+      touches(
+        { document: DOC, deleted: false, data: { body: 'x' } },
+        ['body'],
+        new Map(),
+      ),
+    ).toBe(true);
+    expect(
+      touches({ document: DOC, deleted: false, data: {} }, ['body'], new Map()),
+    ).toBe(false);
+  });
+
+  it('compares the whole value for `*`, and the canonical text of an object', () => {
+    const stored = new Map([[DOC, { b: 1, a: 2 }]]);
+    expect(
+      touches(
+        { document: DOC, deleted: false, data: { a: 2, b: 1 } },
+        ['*'],
+        stored,
+      ),
+    ).toBe(false);
+    expect(
+      touches(
+        { document: DOC, deleted: false, data: { a: 2, b: 3 } },
+        ['*'],
+        stored,
       ),
     ).toBe(true);
   });

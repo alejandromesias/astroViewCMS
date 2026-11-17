@@ -13,7 +13,7 @@ import {
 } from '../../test/helpers/working-copy.ts';
 import { PreviewUnavailableError } from '../preview/client.ts';
 import type { SaveChange } from './body.ts';
-import { mediaMapOf, validateChanges } from './validate.ts';
+import { mediaMapOf, refinementKeysOf, validateChanges } from './validate.ts';
 
 const UPDATE: SaveChange = {
   document: 'authors/ana',
@@ -247,5 +247,56 @@ describe('mediaMapOf', () => {
       `${MEDIA.cmsOrigin}/media/staging/${'b'.repeat(64)}.webp`,
       `${FOLDER}/${'b'.repeat(16)}.webp`,
     ]);
+  });
+});
+
+describe('refinementKeysOf', () => {
+  it('keeps the key of each refinement that threw once, in the order of the answer', () => {
+    expect(
+      refinementKeysOf([
+        {
+          key: 'authors/bo',
+          path: ['name'],
+          message: 'm',
+          kind: 'refinement-threw',
+        },
+        { key: 'pages/about', path: ['title'], message: 'm', kind: 'invalid' },
+        {
+          key: 'authors/bo',
+          path: ['bio'],
+          message: 'm',
+          kind: 'refinement-threw',
+        },
+        {
+          key: 'authors/ana',
+          path: ['name'],
+          message: 'm',
+          kind: 'refinement-threw',
+        },
+      ]),
+    ).toStrictEqual(['authors/bo', 'authors/ana']);
+  });
+
+  it('does not count an error with no kind, since a missing kind is an invalid one', () => {
+    expect(
+      refinementKeysOf([{ key: 'authors/ana', path: ['name'], message: 'm' }]),
+    ).toStrictEqual([]);
+  });
+
+  it('keeps a key that is a prototype member as a plain key', () => {
+    expect(
+      refinementKeysOf([
+        {
+          key: 'constructor',
+          path: [],
+          message: 'm',
+          kind: 'refinement-threw',
+        },
+      ]),
+    ).toStrictEqual(['constructor']);
+  });
+
+  it('is empty when the answer has no errors', () => {
+    expect(refinementKeysOf([])).toStrictEqual([]);
   });
 });

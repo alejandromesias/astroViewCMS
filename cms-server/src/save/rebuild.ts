@@ -1,8 +1,8 @@
 // The rebuild flag of a save (WORKPLAN 2.5c item 7, PHASE-2-DESIGN 5.3, D1). A save asks for a rebuild when the value
 // at a build-time field of a document changed (canonical JSON, so key order does not count), or when a document that
-// has build-time fields is deleted. A create never asks for one: its record has `buildTime: false`.
-import type { DocumentEntry } from '../bundle/read.ts';
+// has build-time fields is deleted. A create never asks the save for a rebuild: its record has `buildTime: false`. The build check (2.10k) reads the configured fields of a created document itself.
 import { canonicalEntryText } from 'preview-contract';
+import type { DocumentEntry } from '../bundle/read.ts';
 import type { SaveChange } from './body.ts';
 
 /**
@@ -14,13 +14,25 @@ export function needsRebuild(
   documents: ReadonlyMap<string, DocumentEntry>,
   stored: ReadonlyMap<string, unknown>,
 ): boolean {
-  return changes.some((change) => {
-    const fields = documents.get(change.document)?.buildTimeFields;
-    if (fields === undefined || fields.length === 0) return false;
-    if (change.deleted) return true;
-    const before = stored.get(change.document);
-    return fields.some((path) => differs(before, change.data, path));
-  });
+  return changes.some((change) =>
+    touches(change, documents.get(change.document)?.buildTimeFields, stored),
+  );
+}
+
+/**
+ * True when a change touches one of `fields`: a deletion does when there are fields, and an update does when the value at
+ * one of them differs from its stored value. The build check (2.10k) runs it with a document's build-time fields, and with
+ * `body` for an MDX document, over the changeset.
+ */
+export function touches(
+  change: Pick<SaveChange, 'document' | 'deleted' | 'data'>,
+  fields: readonly string[] | undefined,
+  stored: ReadonlyMap<string, unknown>,
+): boolean {
+  if (fields === undefined || fields.length === 0) return false;
+  if (change.deleted) return true;
+  const before = stored.get(change.document);
+  return fields.some((path) => differs(before, change.data, path));
 }
 
 // True when the value at `path` differs between the two values. A missing value only equals another missing value.
