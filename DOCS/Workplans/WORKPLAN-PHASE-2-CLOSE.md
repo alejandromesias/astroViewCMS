@@ -1,6 +1,6 @@
 # Work plan for closing phase 2
 
-Written 2026-11-16, with waves 1 to 10 closed and `main` at `7dd6bff`. Status: **approved by the user, 2026-11-16 (U0), with U1 answered yes (slim 2.10f).** It is the live plan for the rest of phase 2. Three documents are folded into it:
+Written 2026-11-16, with waves 1 to 10 closed and `main` at `7dd6bff`. Wave 11 in progress (2026-11-17): 2.14m, 2.14d, 2.10k and 2.11c are merged, and `main` is at `001301d`. Status: **approved by the user, 2026-11-16 (U0), with U1 answered yes (slim 2.10f).** It is the live plan for the rest of phase 2. Three documents are folded into it:
 
 - the open tasks of [WORKPLAN-PHASE-2.md](WORKPLAN-PHASE-2.md) (2.10e onwards);
 - [WAVES-11-14-REWRITE.md](Proposals/WAVES-11-14-REWRITE.md);
@@ -10,7 +10,7 @@ WORKPLAN-PHASE-2.md then becomes the log. Its finished task bodies, Results and 
 
 Background: [SYSTEM-DESIGN-AUDIT.md](../Designs/SYSTEM-DESIGN-AUDIT.md) (findings A1 to A19). Authority: [SYSTEM-DESIGN.md](../Designs/SYSTEM-DESIGN.md), then [PHASE-2-DESIGN.md](../Designs/PHASE-2-DESIGN.md). If this plan and the design disagree, fix this plan.
 
-Rule for this file: a task entry holds its goal, its inputs and its "done when". When a task closes, it gets one Result line here (PR, merge commit, score). The detail goes in the PR, not in this file.
+Rule for this file: a task entry holds its goal, its inputs and its "done when". When a task closes, its Result line gives the PR, the merge commit, the score and a short summary: what was built, the decisions taken and by whom, the findings that changed the design, what is still open, and the implications for later tasks. Keep each item to a line or two. The full review rounds, commit-level detail and test notes stay in the PR, and the Result names it so it can be found.
 
 ## 1. Where phase 2 stands
 
@@ -40,6 +40,7 @@ Phase 2 builds `cms-server` for one site: read, save, preview from the saved sta
 | Git flow | 2.10a to 2.10d, 2.10g to 2.10j | Sync, per-document re-apply, guard recheck after sync, rename warnings. Publish (squash, push, retry). Poll loop |
 | Editor | 2.11a, 2.11b, 2.11e | The test editor served on the CMS origin, its data sources, and its mutation scope (`editor.ts` 97.21%) |
 | CI and process | 2.1k to 2.1t | Fast gates, e2e, `mutation-diff`, sharded `mutation-full`, nightly, weekly Windows, security scans, ruleset, worktree tooling, docs straight to `main` |
+| Wave 11 (so far) | 2.14m, 2.14d, 2.10k, 2.11c | osv audit off docs-only pushes. `cms-contract` wire schemas and error codes. The pure `auto` build-check function. Save, conflicts, the changes list and the editor's API client |
 
 ### 1.3 Decisions to carry
 
@@ -186,6 +187,8 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 
 ### Wave 11
 
+**Status (2026-11-17):** 2.14m, 2.14d, 2.10k and 2.11c are merged (#50 to #53). 2.13d, 2.12a and 2.13e are open.
+
 **Start order and decisions (2026-11-16, for Lead-11.16's questions).**
 - The close plan is authoritative; the 2026-11-13 handoff's wave 11 (with 2.10e) is stale.
 - Start together (unit-only, no shared files): 2.14m, 2.13d, 2.10k, 2.14d. 2.10k works in `sync/` and touches `preview-contract/src` only if the validate answer crosses the node boundary. 2.13d lands first on `schema.ts`; later `preview-contract` edits rebase on it.
@@ -200,6 +203,9 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 
 - The job that failed on `5079b9c` is `fast gates` in `ci.yml` (it installs osv-scanner and runs `npm run audit`), not `security.yml`. Add `paths-ignore: ['DOCS/**']` to the `push: main` trigger of `ci.yml`, and the same to the `push` trigger of `security.yml`. Leave `pull_request` untouched, so required checks still run on docs PRs. Check that a scheduled run (nightly or `security.yml`) still runs `npm run audit`, so a new advisory shows there; add it if not.
 - **Done when:** a docs-only push to `main` starts no `fast gates` run and no osv step, and the schedule and PR triggers still run the audit.
+- **Result:** PR #50, merge `35f5e13`. Closed. No mutation score (workflow-only).
+  - **Built:** the `DOCS/**` filter on the `push` trigger of `ci.yml` and `security.yml`, so a docs-only push runs no osv step. The audit failure on PR #50 was accepted at the time; H3 tracks the ignore.
+  - **Implication:** keep the filter off `pull_request`, or docs PRs stop being audited. Full detail in PR #50.
 
 #### 2.14d `cms-contract`: API schemas and error codes — first code task (A6)
 
@@ -208,6 +214,10 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 - Recommended placement: a new leaf package `cms-contract`. The editor imports only it and `preview-protocol`, which a dependency-cruiser rule enforces. The builder may use an entry point of `preview-contract` instead if the new-package checklist costs too much; say which in the PR.
 - `cms-server`'s routes parse requests and build answers with these schemas, and the local response types go. The route and error tables of `CMS-SERVER.md` (2.13b) are generated from the package.
 - **Done when:** no route in `cms-server/src/http/` defines a response type of its own; a test fails if a route answers a code that is not in the union; changed files meet the mutation floor.
+- **Result:** PR #51, merge `79a0429`. Closed. Mutation-diff 88.46 (changed files).
+  - **Built:** the `cms-contract` leaf package (request and answer schemas, one error-code union with HTTP statuses), chosen over an entry point of `preview-contract`.
+  - **Open:** `PublishAnswer` is still defined in `cms-server/src/sync/publish.ts`, so the move the plan describes is not done.
+  - **Implication:** a route answers only codes in this union, so a new code is added here first. 2.13b will generate the route tables from it. Full detail in PR #51.
 
 #### 2.10k The `auto` triggers — after 2.10d (was 2.10e-A)
 
@@ -217,6 +227,11 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 - `publish.buildCheck` is read here. `always` and `never` skip the function.
 - No lock, no worktree and no git.
 - **Done when:** a unit test for each reason and for each combination that must not build; this function is the only place that decides.
+- **Result:** PR #52, merge `41fb26f`. Closed. Mutation-diff 87.22. Reviewed by Reviewer-11.6.
+  - **Built:** `decideBuild` in `sync/build-check.ts`, the only decider. Reasons: `mdx-body`, `build-time-field`, `refinement-threw`, `upstream-code`, and `unknown` (which builds). Option (i), chosen by you: the renderer writes `build-time.json`, and a created document with no record there builds as `unknown`.
+  - **Finding:** a static schema in `preview-contract` made Stryker mutate nothing, so the schema now lives in `cms-server`.
+  - **Open:** the optional test for an invalid `build-time.json` in `read.test.ts`.
+  - **Implication:** `build-time.json` describes the last build, not the working copy. Keep mutation-scored schemas inside the package under test. Full detail in PR #52.
 
 #### 2.11c Save and the changeset list — after 2.14d, 2.11b, 2.5c
 
@@ -241,6 +256,11 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
   - `editor.ts`: the DOM glue only.
   The first three import no DOM type.
 - **Done when:** the per-answer tests are on `messages.ts` and `api.ts`; `editor.ts` gets one wiring test per new button; drafts hide and restore as before.
+- **Result:** PR #53, merge `001301d`. Closed. Mutation-diff 92.91. Reviewed by Reviewer-11.16 over five rounds and re-checks, and by Codex.
+  - **Built:** `cms-server/editor/` with `api.ts`, `messages.ts`, `media.ts` and `editor.ts` (DOM only). Decisions: a saved delete locks the form and Restore creates the document with no revision (yours); `shapes.ts` is outside the mutation scope (option a, yours).
+  - **Rules in `editor.ts`:** states are `saved | edited | deleted | gone`, and `removed` means the server lacks the document. `lockedByDelete` separates a Delete lock from a Reset lock. `applySaved` runs its steps in a fixed order (locks, sent-text baseline, unlock, then the draft). Changing that order needs the state tests in `editor.test.ts`.
+  - **Open:** after a failed re-read, staged image URLs can stay in the form and the overlay until the next save.
+  - **Implication:** 2.11d builds on this file and must keep the `saved` baseline and the `removed` semantics. Full detail in PR #53, including the review rounds and Codex comments.
 
 #### 2.12a Remove the stopgaps — after 2.11b · `[build]`
 
