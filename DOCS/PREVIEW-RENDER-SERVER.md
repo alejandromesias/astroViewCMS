@@ -74,8 +74,8 @@ iframe. We skip all of that.
               │ + @astrojs/node adapter (standalone)               │
               │ + preview integration (src/integration.ts):        │
               │     · routes /__preview/render, /__preview/validate│
-              │       /__preview/warm, /__preview-media/[file],    │
-              │       /__editor                                    │
+              │       /__preview/warm, /__preview/config           │
+              │       /__preview/anchor                            │
               │     · rewrites `astro:content` imports to the      │
               │       overlay shim (site source untouched)         │
               │     · wraps region components in                   │
@@ -91,8 +91,7 @@ iframe. We skip all of that.
                                    ▼
               preview-render-server/.build/
               ├─ sample-site/            client/ + server/entry.mjs
-              │    ├─ manifest/          schema.json, routes.json, documents.json
-              │    └─ media/             uploaded draft images (stopgap)
+              │    └─ manifest/          schema.json, routes.json, documents.json
               ├─ sample-site-regions/    generated wrappers
               └─ e2e-*, browser-*/       temporary, during the test suites
 
@@ -107,22 +106,18 @@ iframe. We skip all of that.
               │   POST /__preview/render?path=   render with overlay│
               │   POST /__preview/validate       check the overlay  │
               │   POST /__preview/warm           load Markdown + Shiki
-              │   POST /__preview-media/new      upload draft image │
-              │   GET  /__preview-media/<f>      serve draft image  │
-              │   GET  /__editor                 test editor        │
-              │   GET  /__dev/documents?key=     (--dev builds only)│
               └─────────────────────────────────────────────────────┘
               no Vite · no compiler · no watcher
 ```
 
-The preview node never writes to the site and keeps no drafts (D4). Only the
-media upload route writes (to `.build/<site>/media/`), a stopgap until the CMS
-app stages media in phase 2.
+The preview node never writes to the site and keeps no drafts (D4). The media
+upload route, the only run-time writer, was removed in 2.12a; the CMS app
+stages media in phase 2.
 
 ## The live preview loop
 
 ```text
- EDITOR (/__editor, or any editor)   PAGE IN IFRAME             PREVIEW NODE
+ EDITOR (any editor)                 PAGE IN IFRAME             PREVIEW NODE
  parent window                       site HTML + bridge
  ────────────────────────────        ───────────────────        ──────────────────
  sets iframe.src = path ───────────▶ page loads, bridge starts
@@ -203,16 +198,14 @@ draft). `media` holds the metadata of images that aren't in the bundle (D12).
   EDITOR TAB (browser memory)     PREVIEW NODE (stateless for content)   SITE FILES
   ───────────────────────────     ────────────────────────────────────   ──────────
   the overlay (all drafts) ─────▶ renders the page with it, keeps nothing  (never
-  lost on tab close/reload        .build/<site>/media/                      written)
-                                  └─ uploaded images (kept, stopgap)
+  lost on tab close/reload        nothing is written at run time            written)
 ```
 
 - **Drafts exist only in the editor tab.** The node renders what it is sent and
   forgets it, so another tab shows the saved site.
 - **Saved content comes from elsewhere.** The node has no route that returns
-  saved content. In phase 2 the CMS app serves and saves documents; the test
-  editor reads them from `GET /__dev/documents?key=`, a stopgap that exists
-  only in a build made with `PREVIEW_DEV=1` (`npm run build:sample` sets it).
+  saved content. In phase 2 the CMS app serves and saves documents. The test
+  editor's read route (`GET /__dev/documents`) was removed in 2.12a.
 - **Content saved since the last build** travels in the overlay too, so the
   editor sends every document that differs from the bundle.
 
@@ -286,12 +279,6 @@ what the CMS app will call before saving.
 - **`POST /__preview/validate`**: the same body, no render. `200` or `422`.
 - **`POST /__preview/warm`**: loads the Markdown pipeline and the code
   languages ahead of the first draft render (about 700 ms, +100 MB).
-- **`POST /__preview-media/new`**: the image bytes, `Content-Type`
-  `image/png|jpeg|webp|avif|gif`, up to 10 MB. `201` with
-  `{ url, width, height, format }` (the editor puts it in `media`); `415` for
-  other types (no SVG, it can carry scripts) or bytes that aren't a readable
-  image; `413` if empty or too big.
-- **`GET /__preview-media/<file>`**: only names that match `<16 hex>.<ext>`.
 - **Any other method** gets `405`. There are no routes that write the site or
   return saved content.
 - **Why cross-site requests can't get in:** another origin can't send a JSON or
@@ -317,7 +304,6 @@ preview-render-server/
 │  ├─ render-route.ts      POST /__preview/render
 │  ├─ validate-route.ts    POST /__preview/validate
 │  ├─ warmup-route.ts      POST /__preview/warm
-│  ├─ media-route.ts       draft image upload and serving (stopgap)
 │  ├─ request-guard.ts     content-type, cross-site and method checks
 │  ├─ languages.ts         the code languages Shiki loads
 │  ├─ render/              route matching, getStaticPaths and paginate,
@@ -329,13 +315,11 @@ preview-render-server/
 │  │                       documents.json, languages
 │  ├─ schema/              the CMS schema pass: the site's content config compiled
 │  │                       with stubs (flavor 1 → schema.json, flavor 2 → bundle)
-│  ├─ dev/                 --dev builds only: /__dev/documents, /__dev/memory
+│  ├─ dev/                 --dev builds only: /__dev/memory
 │  └─ client/              bridge.ts and patch.ts, which run in the previewed page
-├─ test-editor/            /__editor: a form per document the page reads next to
-│                          the site in an iframe. A dev tool, not the product editor
 ├─ test/                   fixtures, helpers, e2e/ (HTTP, budgets) and browser/
 │                          (Vitest browser mode, the real iframe and protocol)
-└─ .build/                 gitignored: bundle, manifests, uploads, test builds
+└─ .build/                 gitignored: bundle, manifests, test builds
 preview-protocol/          message types, runtime checks, PROTOCOL_VERSION
 scripts/                   check.ts (all quality gates), graph.ts, measure-*.mjs
 ```
@@ -379,8 +363,8 @@ lists no regions: the morph handles everything it needs.
   holds the document (D5), looked up in that list and turned into
   `ImageMetadata`; `<Image>` then outputs `/_image?href=…` and the server
   resizes with `sharp`.
-- **Images that aren't in the bundle** (uploads, and images saved since the
-  build): the editor sends their `{ url, width, height, format }` in
+- **Images that aren't in the bundle** (images saved since the build; the
+  upload route is gone): the editor sends their `{ url, width, height, format }` in
   `media` (D12), and the render uses the URL as is, not resized.
 - **Unknown paths:** a path in neither place fails the render with
   "image not found" (500), and the editor shows it.
@@ -549,7 +533,7 @@ Logged with the follow-ups in WORKPLAN-PHASE-0-1.md, task 1.8a (loose ends table
 cd astroViewCMS && npm install      # once: workspace install
 cd preview-render-server
 npm run build:sample                # preview build of sample-site (--dev: editor data route)
-npm run start:sample                # http://localhost:4401, editor at /__editor
+npm run start:sample                # http://localhost:4401
 npm test                            # unit tests
 npm run test:e2e                    # build + real server + HTTP checks
 npm run test:browser                # Chromium browser tests

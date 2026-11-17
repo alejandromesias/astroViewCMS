@@ -181,7 +181,7 @@ only.
 cd astroViewCMS && npm install      # once: workspace install
 cd preview-render-server
 npm run build:sample   # preview build of sample-site, with the editor's data route (~10 s warm)
-npm run start:sample   # http://localhost:4401, test editor at /__editor
+npm run start:sample   # http://localhost:4401
 npm run typecheck
 npm test               # unit tests (1039 on 2026-10-31)
 npm run coverage       # unit tests + coverage report, with floors

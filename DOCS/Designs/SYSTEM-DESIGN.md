@@ -1413,7 +1413,7 @@ so the earlier ones stay unedited.
 - **D12, stopgap media route.** The tests of `media-route.ts`, including the
   near-miss file names that must answer `404`, belong to the phase 1 stopgap.
   In phase 2 they move with the route to `POST /api/media` instead of being
-  deleted. **Ended 2026-11-17:** 2.12a removed `media-route.ts` and its tests.
+  deleted. **Ended 2026-11-17:** 2.12a removed `media-route.ts`; cms-server `media.test.ts` replaces its tests.
 - **TBD (the user confirms after phase 1), D3, collections without a
   loader.** Today such a collection gets a `schema.json` entry and contributes
   no documents (no `glob` or `file` to read). That is tested for the schema

@@ -8,7 +8,7 @@ Content keys, JSON keys, specifiers, language codes and media refs all come from
 
 - To look up a key that came from a user, use a `Map`, `Object.hasOwn(table, key)` or a table made with `Object.create(null)`. Never use `table[key] ?? fallback` on a plain object literal.
 - To build an object from user keys, use `Object.fromEntries(...)`, not `obj[key] = value`. Assigning to `__proto__` replaces the prototype, and the entry does not appear in the object.
-- Cases already fixed: `languages.ts` aliases, `dev/documents.ts` `entryOf`, `content-api.ts` `resolveImage`, `render/envelope.ts` media map, `render/islands.ts` entry modules.
+- Cases already fixed: `languages.ts` aliases, `dev/documents.ts` `entryOf` (file removed in 2.12a), `content-api.ts` `resolveImage`, `render/envelope.ts` media map, `render/islands.ts` entry modules.
 
 ## 2. Validate the shape of anything you read
 
