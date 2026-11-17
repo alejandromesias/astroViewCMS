@@ -101,14 +101,16 @@ interface DocumentView {
   body?: HTMLTextAreaElement;
   /** The text the form showed when loaded, which "Reset" restores. */
   saved: { value: string; body: string };
-  /** `saved`: not in the overlay. `edited`: sent as the form says. `deleted`: sent as null. */
-  state: 'saved' | 'edited' | 'deleted';
+  /** `saved`: not in the overlay. `edited`: sent as the form says. `deleted`: sent as null. `gone`: the delete was saved; the form is read-only until "Restore". */
+  state: 'saved' | 'edited' | 'deleted' | 'gone';
   /** The revision the next save is based on: the one the document was read at, or the one a save answered. */
   revision: string | null;
   /** What a save answered for this document: its 422 and warning messages. */
   saveError: HTMLElement;
   /** The reload and keep buttons, shown after a `409 conflict`. */
   conflictControls: HTMLElement;
+  /** The "Deleted" note and the restore button, shown once a delete is saved. */
+  restoreControls: HTMLElement;
   /** Set by a `409 conflict`: the revision the saved document has now. "Keep mine" takes it as the base. */
   conflict: { revision: string | null } | undefined;
 }
@@ -237,6 +239,7 @@ export async function startEditor(
       revision: info?.revision ?? null,
       saveError: slot('save-error'),
       conflictControls: slot('conflict'),
+      restoreControls: slot('restore'),
       conflict: undefined,
     };
 
@@ -303,6 +306,10 @@ export async function startEditor(
       section
         .querySelector('[data-action="keep"]')!
         .addEventListener('click', () => keepMine(view));
+      // biome-ignore lint/style/noNonNullAssertion: the template and the markup guarantee this element
+      section
+        .querySelector('[data-action="restore"]')!
+        .addEventListener('click', () => restoreDocument(view));
     } else {
       slot('fields').hidden = true;
     }
@@ -312,6 +319,22 @@ export async function startEditor(
     views.set(key, view);
     documentsList.append(section);
     return view;
+  }
+
+  /** A saved delete locks the form (the text, Reset and Delete) and shows "Restore"; restoring unlocks it. */
+  function setGone(view: DocumentView, gone: boolean) {
+    for (const control of view.section.querySelectorAll<
+      HTMLTextAreaElement | HTMLButtonElement
+    >('textarea, [data-action="reset"], [data-action="delete"]'))
+      control.disabled = gone;
+    view.restoreControls.hidden = !gone;
+  }
+
+  /** "Restore": the document is created again from the form's text, by the next save (it has no revision). */
+  function restoreDocument(view: DocumentView) {
+    setGone(view, false);
+    view.state = 'edited';
+    sendDraft();
   }
 
   /** Puts the saved text back into the form. */
@@ -585,9 +608,10 @@ export async function startEditor(
     // A deleted document is not in the answer's revisions: it is gone, so its view leaves the deleted state and holds no revision.
     for (const view of views.values()) {
       if (view.state !== 'deleted') continue;
-      view.state = 'saved';
+      view.state = 'gone';
       view.revision = null;
       keepInOverlay(view.key, null);
+      setGone(view, true);
     }
     for (const [key, revision] of Object.entries(body.revisions)) {
       const view = views.get(key);

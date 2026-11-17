@@ -1850,6 +1850,61 @@ describe('saving', () => {
     }
   });
 
+  /** Deletes authors/ana in the draft and saves it; resolves once the save is applied. */
+  async function deleteAndSave(second?: Response) {
+    await editor.open('authors/ana');
+    click(section('authors/ana'), 'delete');
+    routeSave({
+      puts: [
+        Response.json({ revisions: {}, warnings: [], rebuild: false }),
+        ...(second ? [second] : []),
+      ],
+      changes: Response.json({
+        documents: [],
+        createdRecords: [],
+        fileErrors: [],
+      }),
+    });
+    saveButton().click();
+    await vi.waitFor(() =>
+      expect(document.querySelector('#changes-list')!.textContent).toBe(
+        'No changes',
+      ),
+    );
+  }
+  const restoreOf = (key: string) =>
+    section(key).querySelector<HTMLElement>('[data-slot="restore"]')!;
+
+  it('after a saved delete, the form is read-only with a "Deleted" note and a Restore button', async () => {
+    await deleteAndSave();
+    expect(editor.value('authors/ana').disabled).toBe(true);
+    for (const action of ['reset', 'delete'])
+      expect(
+        section('authors/ana').querySelector<HTMLButtonElement>(
+          `[data-action="${action}"]`,
+        )!.disabled,
+      ).toBe(true);
+    expect(restoreOf('authors/ana').hidden).toBe(false);
+    expect(restoreOf('authors/ana').textContent).toContain('Deleted');
+  });
+
+  it('"Restore" unlocks the form, and the next save creates the document without a revision', async () => {
+    await deleteAndSave(saved('r-ana-new'));
+    click(section('authors/ana'), 'restore');
+    expect(editor.value('authors/ana').disabled).toBe(false);
+    expect(restoreOf('authors/ana').hidden).toBe(true);
+    expect(editor.lastDraft()).toMatchObject({
+      documents: { 'authors/ana': { name: 'Ana' } },
+    });
+    saveButton().click();
+    await vi.waitFor(() => expect(saves()).toHaveLength(2));
+    expect(JSON.parse(String(saves()[1]?.[1]?.body)).changes[0]).toMatchObject({
+      document: 'authors/ana',
+      baseRevision: null,
+      data: { name: 'Ana' },
+    });
+  });
+
   it('after a save that deletes a document, the overlay holds null for it', async () => {
     await editor.open('authors/ana');
     click(section('authors/ana'), 'delete');
