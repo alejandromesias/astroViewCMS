@@ -639,6 +639,11 @@ export async function startEditor(
           const view = views.get(doc.key);
           if (view) setConflict(view, { revision: doc.revision });
         }
+      // A failure with only field messages writes nothing to the status line, which would keep an older save's text.
+      setStatus(
+        'The save did not happen. See the messages next to the forms.',
+        'error',
+      );
       showMessages(failureMessages(answer.failure));
       return;
     }

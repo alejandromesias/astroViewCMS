@@ -1955,6 +1955,54 @@ describe('saving', () => {
     expect(editor.status().textContent).toBe('Saved.');
   });
 
+  it('a save that fails on a field leaves no older "Saved. Applies after rebuild." in the status line', async () => {
+    await editor.open('authors/ana');
+    edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
+    routeSave({
+      puts: [saved('r-ana-2', { rebuild: true }), conflict('r-ana-3')],
+      reread: () =>
+        Response.json({
+          key: 'authors/ana',
+          format: 'json',
+          editable: true,
+          buildTime: false,
+          revision: 'r-ana-2',
+          value: { name: 'Ana M', links: [] },
+        }),
+    });
+    vi.useFakeTimers();
+    try {
+      saveButton().click();
+      for (
+        let tick = 0;
+        tick < 5 &&
+        !editor.status().textContent?.includes('Applies after rebuild');
+        tick++
+      )
+        await vi.advanceTimersByTimeAsync(10);
+      for (
+        let tick = 0;
+        tick < 5 &&
+        document.querySelector('#changes-list')!.textContent !==
+          'modified: authors/ana';
+        tick++
+      )
+        await vi.advanceTimersByTimeAsync(10);
+      type(editor.value('authors/ana'), '{"name":"Ana N","links":[]}');
+      saveButton().click();
+      for (let tick = 0; tick < 5 && conflictOf('authors/ana').hidden; tick++)
+        await vi.advanceTimersByTimeAsync(10);
+      expect(conflictOf('authors/ana').hidden).toBe(false);
+      for (let tick = 0; tick < 70; tick++)
+        await vi.advanceTimersByTimeAsync(1000);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(editor.status().textContent).toBe(
+      'The save did not happen. See the messages next to the forms.',
+    );
+  });
+
   it('a click that saves nothing is not a newer save: the wait for the rebuild still says so', async () => {
     await editor.open('authors/ana');
     edit(editor.value('authors/ana'), '{"name":"Ana M","links":[]}');
