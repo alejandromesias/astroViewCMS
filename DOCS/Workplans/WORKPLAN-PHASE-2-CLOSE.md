@@ -1,6 +1,6 @@
 # Work plan for closing phase 2
 
-Written 2026-11-16, with waves 1 to 10 closed and `main` at `7dd6bff`. Wave 11 in progress (2026-11-17): 2.14m, 2.14d, 2.10k and 2.11c are merged, and `main` is at `001301d`. Status: **approved by the user, 2026-11-16 (U0), with U1 answered yes (slim 2.10f).** It is the live plan for the rest of phase 2. Three documents are folded into it:
+Written 2026-11-16, with waves 1 to 10 closed and `main` at `7dd6bff`. Wave 11 in progress (2026-11-17): 2.14m, 2.14d, 2.10k, 2.11c, 2.13d and 2.12a are merged, and `main` is at `18e1831`. Status: **approved by the user, 2026-11-16 (U0), with U1 answered yes (slim 2.10f).** It is the live plan for the rest of phase 2. Three documents are folded into it:
 
 - the open tasks of [WORKPLAN-PHASE-2.md](WORKPLAN-PHASE-2.md) (2.10e onwards);
 - [WAVES-11-14-REWRITE.md](Proposals/WAVES-11-14-REWRITE.md);
@@ -40,7 +40,7 @@ Phase 2 builds `cms-server` for one site: read, save, preview from the saved sta
 | Git flow | 2.10a to 2.10d, 2.10g to 2.10j | Sync, per-document re-apply, guard recheck after sync, rename warnings. Publish (squash, push, retry). Poll loop |
 | Editor | 2.11a, 2.11b, 2.11e | The test editor served on the CMS origin, its data sources, and its mutation scope (`editor.ts` 97.21%) |
 | CI and process | 2.1k to 2.1t | Fast gates, e2e, `mutation-diff`, sharded `mutation-full`, nightly, weekly Windows, security scans, ruleset, worktree tooling, docs straight to `main` |
-| Wave 11 (so far) | 2.14m, 2.14d, 2.10k, 2.11c | osv audit off docs-only pushes. `cms-contract` wire schemas and error codes. The pure `auto` build-check function. Save, conflicts, the changes list and the editor's API client |
+| Wave 11 (so far) | 2.14m, 2.14d, 2.10k, 2.11c, 2.12a, 2.13d | osv audit off docs-only pushes. `cms-contract` wire schemas and error codes. The pure `auto` build-check function. Save, conflicts, the changes list and the editor's API client. The test editor's stopgap routes removed (2.12a). The three files under 80 (2.13d) |
 
 ### 1.3 Decisions to carry
 
@@ -67,7 +67,7 @@ These are the rules builders keep needing. Each is in the log under the task nam
 ### 1.4 Quality state
 
 - Wave 10 `mutation-full` (run `43491378803`, `da5388b`): **94.15%** overall.
-- Still under 80 and unchanged since wave 6: `preview-contract/src/schema.ts` 57.14, `preview-render-server/src/bundle.ts` 45.00, `preview-render-server/src/overlay/errors.ts` 57.14 (owned by 2.13d).
+- Were under 80 since wave 6: `preview-contract/src/schema.ts` 57.14, `preview-render-server/src/bundle.ts` 45.00, `preview-render-server/src/overlay/errors.ts` 57.14. 2.13d (#54) cleared them: local Stryker on `bundle.ts` now kills 40 of 40 (its two survivors are killed by a pinned git call, not waived). `schema.ts` and `errors.ts` measured 100 locally before the fix. The wave `mutation-full` figure is not in yet.
 - CI and security are green on `7dd6bff`. Nightly runs are green on nine scheduled runs in a row (2026-11-08 to 2026-11-16).
 
 ### 1.5 Accepted limits (carried, not tasks)
@@ -86,7 +86,7 @@ These are the rules builders keep needing. Each is in the log under the task nam
 | H1 | **2.1p verification:** nine green scheduled nightly runs (2026-11-08 to 2026-11-16). Confirm that the artifacts are there, then mark 2.1p verified. The T3 reminder can go after 2026-12-01 | now |
 | H2 | **2.1t Result:** record both git shard times from run `43491378803` and mark 2.1t done (merged as `20dc360`; its Result is still empty) | now |
 | H3 | **osv-scanner ignore** `GHSA-g3hv-75wg-m249` expires 2026-12-15. An expired entry fails `npm run audit` | revisit 2026-12-01 |
-| H3b | **osv-scanner ignore** `GHSA-fc5q-39xc-vjpf` (picomatch) expires 2026-12-17. Check first whether a patched picomatch exists. An expired entry fails `npm run audit` | revisit 2026-12-01 |
+| H3b | **osv-scanner ignore** `GHSA-fc5q-39xc-vjpf` (picomatch) expires 2026-12-17. Check first whether a patched picomatch exists. An expired entry fails `npm run audit`. Waiver merged in #56 (`fca9160`) | revisit 2026-12-01 |
 | H4 | **Codex thread `discussion_r4559166100`** (2.10g), on hold until the Ph2 reviewer re-checks. Close it or drop it | before wave 11 closes |
 | H5 | **`run.test.ts` first-start flake:** one unexplained failure, then green after an explicit 5 s timeout. If it fails again, it becomes a task | watch |
 
@@ -188,7 +188,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 
 ### Wave 11
 
-**Status (2026-11-17):** 2.14m, 2.14d, 2.10k and 2.11c are merged (#50 to #53). 2.13d, 2.12a and 2.13e are open.
+**Status (2026-11-17):** 2.14m, 2.14d, 2.10k and 2.11c are merged (#50 to #53). 2.12a is merged (#55, `cd008ee`) and 2.13d is merged (#54, `18e1831`). 2.13e is open and is the last wave 11 task.
 
 **Start order and decisions (2026-11-16, for Lead-11.16's questions).**
 - The close plan is authoritative; the 2026-11-13 handoff's wave 11 (with 2.10e) is stale.
@@ -276,11 +276,13 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 - Rewrite or delete the e2e tests that used them. Update Knip, Stryker and depcruise. Add the end date to D12 and D13.
 - Clear the six Biome `organizeImports` failures if they still exist; check before starting.
 - **Done when:** `npm run check -- --e2e` passes with none of those routes in the preview build, and Biome reports nothing.
+- **Result:** PR #55, merge `cd008ee`. Closed. Removed: `/__dev/documents`, `/__editor` and `test-editor/`, `media-route.ts` and `/__preview-media/*`, the media folder setting, and `siteRoot`; `clearBundle` now takes only `outDir`. Kept by decision: `/__dev/memory` and `editorOrigins` (the bridge still reads it; removing it is a contract change). Biome `organizeImports`: 9 failures on main when measured on 2026-11-17, not the six this spec named. Codex: no major issues on `42ac7f3`. CI green on `42ac7f3`. `npm run check -- --e2e` was not run locally (knip crashes here); CI `e2e and browser` is the check. Left by decision: five `/__preview-media/` unit-test fixtures and the `/__editor` fixture (test strings, not routes).
 
 #### 2.13d The three files under 80 (A16)
 
 - `preview-contract/src/schema.ts`, `preview-render-server/src/bundle.ts` and `preview-render-server/src/overlay/errors.ts`: kill or classify their survivors.
 - **Done when:** the wave 11 `mutation-full` lists no file under 80.
+- **Result:** PR #54, merge `18e1831`. Closed. Survivors killed by tests, none accepted: the git call's stdio is pinned in `bundle.test.ts`, and an `afterEach` restores the leaked spy in `schema.test.ts`. No `.mutation-waivers.json` entry and no accept-as-equivalent, so no approval was needed. Local Stryker on `bundle.ts`: 40 of 40 killed. Review on `c4c6e6c`: no blocking findings. CI green on `c4c6e6c`, including `mutation on changed files`. The wave `mutation-full` figure is not in yet.
 
 #### 2.13e `cms-server` memory, early — after 2.12a · `[build]` (was 2.13a-1)
 
