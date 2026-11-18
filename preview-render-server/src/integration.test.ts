@@ -53,7 +53,6 @@ const site: ResolvedSiteConfig = {
   port: 4400,
   outDir: path.join(tmp, '.build/site'),
   regionsDir: path.join(tmp, '.build/site-regions'),
-  mediaDir: path.join(tmp, '.build/site-media'),
   manifestDir: path.join(tmp, '.build/site-manifest'),
   regions: {
     blocks: { component: 'src/components/BlockList.astro' },
@@ -67,7 +66,7 @@ describe('devRoutes', () => {
   it('adds /__dev/* only to a build made with PREVIEW_DEV=1', () => {
     expect(
       devRoutes({ PREVIEW_DEV: '1' }).map((route) => route.pattern),
-    ).toEqual(['/__dev/documents', '/__dev/memory']);
+    ).toEqual(['/__dev/memory']);
     expect(devRoutes({})).toEqual([]);
     expect(devRoutes({ PREVIEW_DEV: '0' })).toEqual([]);
     expect(devRoutes({ PREVIEW_DEV: 'true' })).toEqual([]);
@@ -169,13 +168,6 @@ describe('siteModule (virtual:preview-site)', () => {
     expect(source).not.toContain('notes.txt');
   });
 
-  it('exports the media folder, found relative to the bundle (no build-machine path)', () => {
-    expect(source).toContain(
-      "export const mediaDir = bundleFolder('media', import.meta.url);",
-    );
-    expect(source).not.toContain(posix(site.mediaDir));
-  });
-
   it('exports the manifest folder, found relative to the bundle', () => {
     expect(source).toContain(
       "export const manifestDir = bundleFolder('manifest', import.meta.url);",
@@ -273,10 +265,8 @@ describe('previewRenderServer', () => {
       ['/__preview/anchor', false],
       ['/__preview/render', false],
       ['/__preview/validate', false],
-      ['/__preview-media/[file]', false],
       ['/__preview/warm', false],
       ['/__preview/config', false],
-      ['/__editor', undefined],
     ]);
     expect(injectScript).toHaveBeenCalledExactlyOnceWith(
       'page',
@@ -441,31 +431,18 @@ describe('previewRenderServer hooks', () => {
 });
 
 describe('clearBundle', () => {
-  it('removes everything in the folder except the kept entries', () => {
+  it('removes everything in the folder, nested folders included', () => {
     const dir = path.join(tmp, `clear-${extraCount++}`);
     fs.mkdirSync(path.join(dir, 'server', 'chunks'), { recursive: true });
-    fs.mkdirSync(path.join(dir, 'media'), { recursive: true });
     fs.writeFileSync(path.join(dir, 'server', 'chunks', 'a.mjs'), 'a');
-    fs.writeFileSync(path.join(dir, 'media', 'pic.png'), 'bytes');
     fs.writeFileSync(path.join(dir, 'old.txt'), 'old');
-    clearBundle(dir, ['media']);
-    expect(fs.readdirSync(dir)).toEqual(['media']);
-    expect(fs.readFileSync(path.join(dir, 'media', 'pic.png'), 'utf8')).toBe(
-      'bytes',
-    );
-  });
-
-  it('empties the folder when nothing is kept', () => {
-    const dir = path.join(tmp, `clear-${extraCount++}`);
-    fs.mkdirSync(path.join(dir, 'client'), { recursive: true });
-    fs.writeFileSync(path.join(dir, 'client', 'index.html'), '');
-    clearBundle(dir, []);
+    clearBundle(dir);
     expect(fs.readdirSync(dir)).toEqual([]);
   });
 
   it('leaves a missing folder alone', () => {
     const dir = path.join(tmp, `clear-${extraCount++}`);
-    clearBundle(dir, []);
+    clearBundle(dir);
     expect(fs.existsSync(dir)).toBe(false);
   });
 });
@@ -478,13 +455,12 @@ let extraCount = 0;
 /** A fresh output folder set, so one test's manifests never reach another's. */
 function outputs(): Pick<
   ResolvedSiteConfig,
-  'outDir' | 'regionsDir' | 'mediaDir' | 'manifestDir'
+  'outDir' | 'regionsDir' | 'manifestDir'
 > {
   const base = path.join(tmp, `out${extraCount++}`);
   return {
     outDir: path.join(base, 'site'),
     regionsDir: path.join(base, 'regions'),
-    mediaDir: path.join(base, 'media'),
     manifestDir: path.join(base, 'manifest'),
   };
 }
@@ -731,8 +707,6 @@ describe('siteModule details', () => {
       hook(siteModule(mini, ...args), 'load').call({}, RESOLVED_ID) as string
     ).split('\n');
   const common = [
-    "export const mediaDir = bundleFolder('media', import.meta.url);",
-    `export const siteRoot = ${quoted(miniRoot)};`,
     "export const manifestDir = bundleFolder('manifest', import.meta.url);",
     "export const pages = import.meta.glob('/src/pages/**/*.{astro,md,mdx,html}');",
     'export const urlRules = {"base":"/","trailingSlash":"ignore"};',
@@ -830,10 +804,8 @@ describe('previewRenderServer setup', () => {
       ['/__preview/anchor', 'render/renderers-anchor.astro'],
       ['/__preview/render', 'render-route.ts'],
       ['/__preview/validate', 'validate-route.ts'],
-      ['/__preview-media/[file]', 'media-route.ts'],
       ['/__preview/warm', 'warmup-route.ts'],
       ['/__preview/config', 'preview-config-route.ts'],
-      ['/__editor', '../test-editor/editor.astro'],
     ]);
     for (const route of routes)
       expect(fs.existsSync(fileURLToPath(route.entrypoint))).toBe(true);
@@ -843,8 +815,6 @@ describe('previewRenderServer setup', () => {
       false,
       false,
       false,
-      false,
-      undefined,
     ]);
   });
 
@@ -860,17 +830,14 @@ describe('previewRenderServer setup', () => {
         '/__preview/anchor',
         '/__preview/render',
         '/__preview/validate',
-        '/__preview-media/[file]',
         '/__preview/warm',
         '/__preview/config',
-        '/__dev/documents',
         '/__dev/memory',
-        '/__editor',
       ]);
-      const dev = routes[6];
+      const dev = routes[5];
       expect(dev!.prerender).toBe(false);
       expect(posix(path.relative(here, fileURLToPath(dev!.entrypoint)))).toBe(
-        'dev/documents-route.ts',
+        'dev/memory-route.ts',
       );
       expect(fs.existsSync(fileURLToPath(dev!.entrypoint))).toBe(true);
     } finally {
@@ -1076,26 +1043,19 @@ describe('previewRenderServer build hooks', () => {
     ).toContain('\n  {\n    "');
   });
 
-  it('clears the previous build at build:start and keeps the uploads inside outDir', async () => {
+  it('clears the previous build at build:start', async () => {
     const base = path.join(tmp, `clear-hook-${extraCount++}`);
     const outDir = path.join(base, 'site');
-    const mediaDir = path.join(outDir, 'media');
     const { hooks } = await runSetup({
       ...site,
       outDir,
       regionsDir: path.join(base, 'regions'),
-      mediaDir,
       manifestDir: path.join(outDir, 'manifest'),
     });
     fs.mkdirSync(path.join(outDir, 'server'), { recursive: true });
     fs.writeFileSync(path.join(outDir, 'server', 'old.mjs'), 'old');
-    fs.mkdirSync(mediaDir, { recursive: true });
-    fs.writeFileSync(path.join(mediaDir, 'kept.png'), 'bytes');
     hooks['astro:build:start']!({});
-    expect(fs.readdirSync(outDir)).toEqual(['media']);
-    expect(fs.readFileSync(path.join(mediaDir, 'kept.png'), 'utf8')).toBe(
-      'bytes',
-    );
+    expect(fs.readdirSync(outDir)).toEqual([]);
   });
 
   it('writes the languages from extraLanguages, and says why a manifest was not written', async () => {

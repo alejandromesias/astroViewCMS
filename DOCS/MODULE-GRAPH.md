@@ -6,6 +6,10 @@ removed in task 1.8b). The checks below are rules in `.dependency-cruiser.cjs`
 (step 9), run by `npm run depcruise`. Type-only imports count as edges
 (`tsPreCompilationDeps`), so a cycle made of types alone fails the rule.
 
+The snapshot below predates the 2.12a stopgap removal (2026-11-17). Its rows for
+`media-route.ts`, `dev/documents-route.ts`, `dev/documents.ts` and `test-editor/`
+are history; the rules in `.dependency-cruiser.cjs` are current.
+
 ## Result
 
 Run 2026-10-31 over `preview-render-server/src` and `preview-protocol/src`.

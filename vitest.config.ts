@@ -53,7 +53,6 @@ export default defineConfig({
       },
       include: [
         'preview-render-server/src/**',
-        'preview-render-server/test-editor/**',
         'preview-protocol/src/**',
         'preview-contract/src/**',
         'cms-contract/src/**',
@@ -71,14 +70,12 @@ export default defineConfig({
         // Mutation excludes the same files (stryker.config.json).
         'cms-server/src/main.ts',
         'preview-render-server/src/dev/memory-route.ts',
-        'preview-render-server/test-editor/editor.astro',
         // Import virtual modules only a real build can load (or are bound
         // to them in a line or two): covered by the end-to-end suite.
         'preview-render-server/src/render-route.ts',
         'preview-render-server/src/validate-route.ts',
         'preview-render-server/src/warmup-route.ts',
         'preview-render-server/src/preview-config-route.ts',
-        'preview-render-server/src/dev/documents-route.ts',
         'preview-render-server/src/render/runtime.ts',
         'preview-render-server/src/overlay/content-shim.ts',
         'preview-render-server/src/overlay/markdown-instance.ts',

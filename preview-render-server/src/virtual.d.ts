@@ -4,11 +4,6 @@ declare module 'virtual:preview-site' {
 
   /** Every image under the site's src/, keyed by its project-relative path. */
   export const images: Record<string, ImageMetadata>;
-  /** Absolute folder of the site (used by the dev-only document route). */
-  export const siteRoot: string;
-  /** Folder for uploaded draft images, inside the bundle (found at run time,
-   *  so a copied bundle still works). */
-  export const mediaDir: string;
   /** Folder of the build manifests (documents.json, routes.json, schema.json),
    *  inside the bundle. The build writes them when it is done; routes read them
    *  at run time. */

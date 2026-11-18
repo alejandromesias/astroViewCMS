@@ -111,10 +111,10 @@ async function renderOnce(baseUrl, pathname) {
   return { render: body.renderMs, paths };
 }
 
-// The copy and the build output sit in preview-render-server/.build (gitignored), not in /tmp: the
-// sample's `/__editor` route points at preview-render-server/test-editor, and a copy outside the repo
-// breaks that path on Linux (WORKPLAN 2.1p). The copy has no node_modules of its own. A junction at the
-// work folder's root serves both: Node looks up parent folders (no admin rights needed on Windows).
+// The copy and the build output sit in preview-render-server/.build (gitignored), not in /tmp: a bundle
+// resolves packages from the workspace's node_modules (WORKPLAN 2.0d), so a copy outside the repo would
+// not find them. The copy has no node_modules of its own. A junction at the work folder's root serves
+// both: Node looks up parent folders (no admin rights needed on Windows).
 const buildRoot = path.join(SERVER_DIR, '.build');
 fs.mkdirSync(buildRoot, { recursive: true });
 const workDir = fs.mkdtempSync(path.join(buildRoot, 'listing-'));

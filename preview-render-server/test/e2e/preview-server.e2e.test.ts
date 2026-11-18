@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, inject, it } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 import {
   BASE,
   CLIENT,
@@ -34,12 +35,27 @@ const builtPage = (urlPath: string) =>
     'utf8',
   );
 
+// A sample Markdown document as a draft holds it: `data` from the front matter,
+// `body` after it. Read from the site's source, since the dev document route is gone.
+const samplePost = (key: string) => {
+  const text = fs.readFileSync(
+    path.join(SITE, 'src/content', `${key}.md`),
+    'utf8',
+  );
+  const [, front = '', body = ''] =
+    /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(text) ?? [];
+  return { data: parseYaml(front) as Record<string, unknown>, body };
+};
+
 describe('the built site', () => {
-  it('serves prerendered pages and the test editor', async () => {
+  it('serves prerendered pages, and none of the removed stopgap routes', async () => {
     expect((await fetch(`${BASE}/`)).status).toBe(200);
-    const editor = await fetch(`${BASE}/__editor`);
-    expect(editor.status).toBe(200);
-    expect(await editor.text()).toMatch(/<iframe id="preview"/);
+    for (const url of [
+      '/__editor',
+      '/__preview-media/new',
+      '/__dev/documents?key=blog%2Fblog-1',
+    ])
+      expect((await fetch(BASE + url)).status).toBe(404);
   });
 
   it('writes the manifests inside the bundle', () => {
@@ -171,27 +187,13 @@ describe('POST /__preview/render with drafts', () => {
     );
   });
 
-  it('shows an uploaded draft image through the media map (D12)', async () => {
-    const png = fs.readFileSync(
-      path.join(SITE, 'src/assets/authors/ana-torres.png'),
-    );
-    const upload = await fetch(`${BASE}/__preview-media/new`, {
-      method: 'POST',
-      headers: { 'content-type': 'image/png' },
-      body: png,
-    });
-    expect(upload.status).toBe(201);
-    const entry = (await upload.json()) as {
-      url: string;
-      width: number;
-      height: number;
-      format: string;
+  it('shows an image from the media map through its url (D12)', async () => {
+    const entry = {
+      url: '/uploads/new-avatar.png',
+      width: 320,
+      height: 240,
+      format: 'png',
     };
-    expect(entry.url).toMatch(/^\/__preview-media\/[0-9a-f]{16}\.png$/);
-    const served = await fetch(BASE + entry.url);
-    expect(served.status).toBe(200);
-    expect(Buffer.from(await served.arrayBuffer()).length).toBe(png.length);
-
     const author = readJson('src/content/authors/ana-torres.json');
     author.avatar = 'uploads/new-avatar.png';
     const { status, json } = await render(
@@ -274,21 +276,6 @@ describe('errors', () => {
     expect((await fetch(`${BASE}/__preview/render?path=/`)).status).toBe(405);
     expect((await fetch(`${BASE}/__preview/validate`)).status).toBe(405);
   });
-
-  it('refuses bad uploads and paths outside the media folder', async () => {
-    const upload = (type: string, body: string) =>
-      fetch(`${BASE}/__preview-media/new`, {
-        method: 'POST',
-        headers: { 'content-type': type },
-        body,
-      });
-    expect((await upload('image/svg+xml', '<svg/>')).status).toBe(415);
-    expect((await upload('image/png', 'not an image')).status).toBe(415);
-    expect((await upload('text/plain', 'x')).status).toBe(404);
-    expect(
-      (await fetch(`${BASE}/__preview-media/..%2Fsecret.png`)).status,
-    ).toBe(404);
-  });
 });
 
 describe('POST /__preview/validate', () => {
@@ -335,123 +322,9 @@ describe('warm-up', () => {
   });
 });
 
-describe('GET /__dev/documents (built with PREVIEW_DEV=1)', () => {
-  const get = async (key: string) => {
-    const response = await fetch(
-      `${BASE}/__dev/documents?key=${encodeURIComponent(key)}`,
-    );
-    const text = await response.text();
-    return {
-      status: response.status,
-      text,
-      json: response.ok ? JSON.parse(text) : undefined,
-    };
-  };
-
-  it('answers a JSON document with its raw value', async () => {
-    const { status, json } = await get('landing/home-v2');
-    expect(status).toBe(200);
-    expect(json).toMatchObject({
-      key: 'landing/home-v2',
-      format: 'json',
-      buildTime: false,
-    });
-    expect(json.value).toEqual(readJson('src/content/landing/home-v2.json'));
-  });
-
-  it('answers a YAML document', async () => {
-    const { json } = await get('authors/noor-haddad');
-    expect(json).toMatchObject({
-      format: 'yaml',
-      value: { name: expect.any(String) },
-    });
-  });
-
-  it('answers a Markdown document as { data, body }', async () => {
-    const { json } = await get('blog/blog-1');
-    expect(json.format).toBe('md');
-    expect(json.value.data).toMatchObject({
-      title: 'What you need to know about Photography',
-      tags: ['photography', 'design'],
-    });
-    expect(json.value.body).toContain('## Creative Design');
-  });
-
-  it('answers an MDX document', async () => {
-    const { json } = await get('pages/elements');
-    expect(json.format).toBe('mdx');
-    expect(typeof json.value.body).toBe('string');
-  });
-
-  it('answers one entry of a file() entry', async () => {
-    const { json } = await get('testimonials/t-ana');
-    expect(json.value).toEqual(
-      readJson('src/content/testimonials.json').find(
-        (t: { id: string }) => t.id === 't-ana',
-      ),
-    );
-  });
-
-  it('answers a data module with its build-time flags', async () => {
-    const { json } = await get('data:src/config/config.json');
-    expect(json).toMatchObject({
-      buildTime: true,
-      buildTimeFields: [
-        'site.base_url',
-        'site.base_path',
-        'site.trailing_slash',
-      ],
-    });
-    expect(json.value).toEqual(readJson('src/config/config.json'));
-    expect((await get('data:src/config/menu.json')).json.buildTime).toBe(false);
-  });
-
-  it('flags config.json and theme.json as build-time and menu.json as not (D1)', async () => {
-    const flags = async (file: string) => {
-      const { json } = await get(`data:src/config/${file}`);
-      return {
-        buildTime: json.buildTime,
-        buildTimeFields: json.buildTimeFields,
-      };
-    };
-    expect(await flags('config.json')).toEqual({
-      buildTime: true,
-      buildTimeFields: [
-        'site.base_url',
-        'site.base_path',
-        'site.trailing_slash',
-      ],
-    });
-    // A flagged file without a field list counts as all build-time.
-    expect(await flags('theme.json')).toEqual({
-      buildTime: true,
-      buildTimeFields: ['*'],
-    });
-    expect(await flags('menu.json')).toEqual({
-      buildTime: false,
-      buildTimeFields: undefined,
-    });
-  });
-
-  it('answers 404 for an unknown key and 400 without one', async () => {
-    expect((await get('blog/not-there')).status).toBe(404);
-    expect((await fetch(`${BASE}/__dev/documents`)).status).toBe(400);
-  });
-});
-
 describe('Markdown drafts (D2)', () => {
-  const blogOne = async () => {
-    const response = await fetch(
-      `${BASE}/__dev/documents?key=${encodeURIComponent('blog/blog-1')}`,
-    );
-    return (await response.json()).value as {
-      data: Record<string, unknown>;
-      body: string;
-    };
-  };
-
   it('a draft body changes the rendered post and the blog summary', async () => {
-    const post = await blogOne();
+    const post = samplePost('blog/blog-1');
     const marker = 'Zebra-quartz marker sentence for the draft body.';
     const draft = {
       // The newest date puts the post first, where /blog prints a summary.
@@ -507,11 +380,8 @@ describe('drafts that break a schema (D3)', () => {
   });
 
   it('a deleted author answers 422 on a drafted post that references it', async () => {
-    const post = await (
-      await fetch(`${BASE}/__dev/documents?key=blog%2Fblog-1`)
-    ).json();
     const { status, json } = await render('/blog/blog-1', {
-      'blog/blog-1': post.value,
+      'blog/blog-1': samplePost('blog/blog-1'),
       'authors/ana-torres': null,
     });
     expect(status).toBe(422);

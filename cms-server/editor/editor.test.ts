@@ -851,7 +851,7 @@ describe('draft image upload', () => {
   /** What POST /api/media answers (PHASE-2-DESIGN 5.9). */
   const entry = {
     id: '0123456789abcdef',
-    url: '/__preview-media/0123456789abcdef.png',
+    url: '/media/staging/0123456789abcdef.png',
     width: 10,
     height: 20,
     format: 'png',
@@ -1068,10 +1068,9 @@ describe('draft image upload', () => {
       value: { writeText },
       configurable: true,
     });
-    document.getElementById('upload-url')!.textContent =
-      '/__preview-media/x.png';
+    document.getElementById('upload-url')!.textContent = '/media/staging/x.png';
     document.getElementById('upload-copy')!.click();
-    expect(writeText).toHaveBeenCalledWith('/__preview-media/x.png');
+    expect(writeText).toHaveBeenCalledWith('/media/staging/x.png');
   });
 });
 

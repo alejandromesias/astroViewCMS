@@ -42,11 +42,9 @@ const IMAGE_EXTENSIONS = new Set([
 
 // Added only to the preview build. It:
 // - injects the render routes /__preview/render, /__preview/validate and
-//   /__preview/warm, the editor origins route /__preview/config, the draft image route /__preview-media/[file] (a stopgap
-//   until the CMS app stages media, phase 2) and the test editor page
-//   /__editor (and, with PREVIEW_DEV=1, /__dev/documents, the editor's
-//   stopgap data source), plus an on-demand page that keeps the site's renderers in the
-//   server bundle;
+//   /__preview/warm, the editor origins route /__preview/config (and, with
+//   PREVIEW_DEV=1, /__dev/memory), plus an on-demand page that keeps the site's
+//   renderers in the server bundle;
 // - wraps each region component in <div data-preview-region> on the site's
 //   pages, by redirecting the pages' imports to a generated wrapper (the site's
 //   source stays untouched);
@@ -55,7 +53,7 @@ const IMAGE_EXTENSIONS = new Set([
 //   documents.json with a revision per document, images.json) to
 //   site.manifestDir;
 // - generates a virtual module that hands the routes the site's pages, every
-//   image under src/, where to keep uploads and the site's CMS schemas.
+//   image under src/ and the site's CMS schemas.
 // `bundleId` goes into bundle.json; build.ts passes one (--bundle-id or fresh).
 export default function previewRenderServer(
   site: ResolvedSiteConfig,
@@ -104,11 +102,6 @@ export default function previewRenderServer(
           prerender: false,
         });
         injectRoute({
-          pattern: '/__preview-media/[file]',
-          entrypoint: new URL('./media-route.ts', import.meta.url),
-          prerender: false,
-        });
-        injectRoute({
           pattern: '/__preview/warm',
           entrypoint: new URL('./warmup-route.ts', import.meta.url),
           prerender: false,
@@ -120,11 +113,6 @@ export default function previewRenderServer(
         });
         for (const route of devRoutes())
           injectRoute({ ...route, prerender: false });
-        // The test editor is a plain prerendered page.
-        injectRoute({
-          pattern: '/__editor',
-          entrypoint: new URL('../test-editor/editor.astro', import.meta.url),
-        });
         // The bridge: a script added to every page; it does nothing unless the
         // page is inside an iframe.
         const bridge = fileURLToPath(
@@ -142,8 +130,8 @@ export default function previewRenderServer(
         const srcDir = path.join(site.root, 'src');
         updateConfig({
           vite: {
-            // Astro's own clean-up would also delete the uploads in outDir, so it
-            // is switched off and clearBundle (build:start) does the clean-up.
+            // Astro's own clean-up is switched off: clearBundle (build:start)
+            // empties outDir instead, so one place owns the clean-up.
             build: { emptyOutDir: false },
             plugins: [
               siteModule(
@@ -203,9 +191,9 @@ export default function previewRenderServer(
           schemaManifest = shapeSchemas(collections, site.readOnlyCollections);
         }
       },
-      // Clears the output of the previous build, but keeps the uploads.
+      // Clears the output of the previous build.
       'astro:build:start': () => {
-        clearBundle(site.outDir, [path.relative(site.outDir, site.mediaDir)]);
+        clearBundle(site.outDir);
       },
       'astro:config:done': ({ config }) => {
         cacheDir = fileURLToPath(config.cacheDir);
@@ -274,17 +262,13 @@ export default function previewRenderServer(
   };
 }
 
-/** Routes added only to a build made with PREVIEW_DEV=1: the editor's stopgap
- *  for the CMS app's GET /api/documents (phase 2). A normal build has none. */
+/** Routes added only to a build made with PREVIEW_DEV=1: /__dev/memory, which
+ *  measure:memory reads. A normal build has none. */
 export function devRoutes(
   env: NodeJS.ProcessEnv = process.env,
 ): Array<{ pattern: string; entrypoint: URL }> {
   if (env.PREVIEW_DEV !== '1') return [];
   return [
-    {
-      pattern: '/__dev/documents',
-      entrypoint: new URL('./dev/documents-route.ts', import.meta.url),
-    },
     {
       pattern: '/__dev/memory',
       entrypoint: new URL('./dev/memory-route.ts', import.meta.url),
@@ -298,13 +282,11 @@ export function bridgeScript(bridgeFile: string): string {
   return `import { startBridge } from ${JSON.stringify(bridgeFile)}; startBridge(window, window.fetch.bind(window));`;
 }
 
-/** Removes everything directly inside `outDir` except the names in `keep`, so
- *  a new build starts from an empty bundle that still holds the uploads. A
- *  missing `outDir` is left alone. */
-export function clearBundle(outDir: string, keep: readonly string[]): void {
+/** Removes everything directly inside `outDir`, so a new build starts from an
+ *  empty bundle. A missing `outDir` is left alone. */
+export function clearBundle(outDir: string): void {
   if (!fs.existsSync(outDir)) return;
   for (const name of fs.readdirSync(outDir)) {
-    if (keep.includes(name)) continue;
     fs.rmSync(path.join(outDir, name), { recursive: true, force: true });
   }
 }
@@ -390,10 +372,9 @@ export function regionWrappers(wrappers: Map<string, string>): Plugin {
 /** Vite plugin that generates the `virtual:preview-site` module (typed in
  *  virtual.d.ts): the region components with their image folder, every
  *  image under the site's `src/` (so draft paths can become ImageMetadata),
- *  and the folders for uploads and manifests. Those two folders are found at
- *  run time, relative to the bundle (bundle-folder.ts), so the bundle still
- *  works after it is copied. The routes import it; it exists only during a
- *  build. */
+ *  and the manifest folder. That folder is found at run time, relative to
+ *  the bundle (bundle-folder.ts), so the bundle still works after it is
+ *  copied. The routes import it; it exists only during a build. */
 export function siteModule(
   { root }: Pick<ResolvedSiteConfig, 'root'>,
   contentConfig?: string,
@@ -432,8 +413,6 @@ export function siteModule(
         ...lines,
         `export const images = { ${imageEntries.join(', ')} };`,
         // Relative to the bundle, not absolute paths from the build machine.
-        "export const mediaDir = bundleFolder('media', import.meta.url);",
-        `export const siteRoot = ${JSON.stringify(toPosix(root))};`,
         "export const manifestDir = bundleFolder('manifest', import.meta.url);",
         // The site's pages, loaded on demand by the render route.
         "export const pages = import.meta.glob('/src/pages/**/*.{astro,md,mdx,html}');",

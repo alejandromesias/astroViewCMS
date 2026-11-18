@@ -39,8 +39,6 @@ editor ──postMessage draft──▶ bridge (in the iframe) ──POST /__pre
   renders a page with a content overlay, `POST /__preview/validate` checks the
   overlay against the schemas. The logic is in `src/render/` (route matching,
   getStaticPaths and `paginate`, document discovery, handlers).
-- `src/media-route.ts`: draft image upload (`POST /__preview-media/new`) and
-  serving.
 - `src/warmup-route.ts`: `POST /__preview/warm` loads the Markdown renderer and
   the code languages ahead of the first draft render.
 - `src/client/bridge.ts`: `startBridge()`, which runs in the previewed page
@@ -52,19 +50,13 @@ editor ──postMessage draft──▶ bridge (in the iframe) ──POST /__pre
   of its own, D14).
 - `src/types.ts` and `src/virtual.d.ts`: site config types and the generated
   virtual module's types.
-- `test-editor/`: a test editor at `/__editor`, with a form per document the
-  page reads (JSON textbox, plus a body textarea for Markdown and MDX) next to
-  the site in an iframe (`editor.astro` markup, `editor.ts` logic). It loads
-  document values from `src/dev/`, the stopgap route `GET /__dev/documents?key=`,
-  which exists only in a build made with `PREVIEW_DEV=1` (`npm run build:sample`
-  does that).
 - `src/start.ts`: runs `.build/<site>/server/entry.mjs`.
 - `src/cli-options.ts`: the flags of `build.ts` and `start.ts`. `--root <dir>`
   replaces the site config's `root` (resolved against the current folder),
   `--out <dir>` replaces the output folder, `--port <n>` (start only) replaces
   the port ahead of `PORT`. Two builds with different `--out` folders never share
   a wrapper folder, and two nodes need different ports.
-- `src/bundle-folder.ts`: finds the manifest and upload folders from the
+- `src/bundle-folder.ts`: finds the manifest folder from the
   server's own location, so a bundle copied elsewhere in the workspace still
   works.
 - `test/`: test fixtures and helpers for the unit tests, and the end-to-end
@@ -86,8 +78,8 @@ the site.
 of `astro`. Run `npm install` there first.
 
 ```sh
-npm run build:sample   # preview build of sample-site (--dev: adds the editor's data route)
-npm run start:sample   # http://localhost:4401, editor at /__editor
+npm run build:sample   # preview build of sample-site (--dev: adds /__dev/memory)
+npm run start:sample   # http://localhost:4401
 npm run typecheck      # tsc, no emit
 npm test               # unit tests (Vitest); npm run test:watch while developing
 npm run coverage       # unit tests + coverage report in coverage/
@@ -111,7 +103,7 @@ unset (see the environment notes in ../DOCS/README.md).
 
 ## Known limits
 
-- Drafts aren't saved or persisted; uploads pile up in `.build/<site>/media/`.
+- Drafts aren't saved or persisted.
 - Component `<script>`s aren't re-sent with fragments. The page ran them once
   on load, so they don't run on swapped-in HTML.
 - `experimental_AstroContainer` can change in any Astro release.

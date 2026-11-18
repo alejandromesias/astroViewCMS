@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  type MutantCounts,
   countsByFile,
   judge,
+  type MutantCounts,
   parseWaivers,
 } from './stryker-score.ts';
 

@@ -450,6 +450,7 @@ written properly in `src/overlay/`:
   width, height and format with `sharp` and answers
   `{ url, width, height, format }`. It stores the file only, no metadata.
   The request carries the metadata back in its media map.
+  **Ended 2026-11-17:** 2.12a removed the stopgap route (`media-route.ts`).
 - **Bodies, `render(entry)`:**
   - Markdown (D2): render the draft body at runtime with
     `@astrojs/markdown-remark`, using the site's `markdown` config (remark
@@ -760,6 +761,7 @@ and 1.6a found.
   - It's a stopgap for the CMS app's `GET /api/documents` (phase 2); mark it
     so in code and docs. It is a stated exception to D13's "the preview node
     never parses file text"; it goes away with the stopgap.
+    **Ended 2026-11-17:** 2.12a removed the route (`dev/documents-route.ts`).
 - **Order of events.** On `preview:ready`: check `protocolMismatch` (1.6a;
   on a mismatch show it in the status line and send no drafts), then send the
   overlay, even an empty one (priming), and call `POST /__preview/warm`, in

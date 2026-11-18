@@ -27,7 +27,6 @@ export interface SiteConfig {
 export interface ResolvedSiteConfig extends SiteConfig {
   outDir: string;
   regionsDir: string;
-  mediaDir: string;
   /** Where the build manifests go (documents.json, routes.json, schema.json). */
   manifestDir: string;
 }

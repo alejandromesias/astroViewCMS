@@ -5,12 +5,12 @@
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
-  REPORT_ROOT,
-  WAIVERS_FILE,
   judgeRun,
   publish,
+  REPORT_ROOT,
   readPlan,
   readWaivers,
+  WAIVERS_FILE,
 } from './lib/stryker-reports.ts';
 
 export function main(args: readonly string[]): number {

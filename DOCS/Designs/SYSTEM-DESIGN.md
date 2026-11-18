@@ -1280,7 +1280,8 @@ file by extension (checked 2026-10-26):
   `GET /__dev/documents` (WORKPLAN-PHASE-0-1.md task 1.7, only with `PREVIEW_DEV=1`) parses
   the site's files, because the data store holds schema-parsed values, not the
   raw ones the overlay needs. It goes away with the CMS app's
-  `GET /api/documents` (phase 2), where the codecs live.
+  `GET /api/documents` (phase 2), where the codecs live. **Ended 2026-11-17:**
+  2.12a removed the route (`dev/documents-route.ts`).
 - **Formats can mix,** within a collection and entry by entry. Editing keeps
   each document's own format, and **a save never converts formats.**
 - **New entries** use the collection's `newEntryFormat` from the site config
@@ -1412,7 +1413,7 @@ so the earlier ones stay unedited.
 - **D12, stopgap media route.** The tests of `media-route.ts`, including the
   near-miss file names that must answer `404`, belong to the phase 1 stopgap.
   In phase 2 they move with the route to `POST /api/media` instead of being
-  deleted.
+  deleted. **Ended 2026-11-17:** 2.12a removed `media-route.ts`; cms-server `media.test.ts` replaces its tests.
 - **TBD (the user confirms after phase 1), D3, collections without a
   loader.** Today such a collection gets a `schema.json` entry and contributes
   no documents (no `glob` or `file` to read). That is tested for the schema

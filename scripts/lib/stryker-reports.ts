@@ -4,23 +4,23 @@ import {
   appendFileSync,
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { GROUP_NAMES, type Plan, groupOf } from './stryker-plan.ts';
+import { GROUP_NAMES, groupOf, type Plan } from './stryker-plan.ts';
 import {
+  countsByFile,
   FILE_FLOOR,
+  judge,
   type Mode,
   type MutantCounts,
   OVERALL_FLOOR,
+  parseWaivers,
   type Verdict,
   type Waiver,
-  countsByFile,
-  judge,
-  parseWaivers,
 } from './stryker-score.ts';
 
 export const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
