@@ -13,6 +13,12 @@ vi.mock('node:module', async (importOriginal) => {
   return { ...actual, createRequire: vi.fn(actual.createRequire) };
 });
 
+// execFileSync is wrapped too: the default still runs the real git, and a test can read the arguments it gets.
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return { ...actual, execFileSync: vi.fn(actual.execFileSync) };
+});
+
 const HASH = 'a'.repeat(40);
 
 describe('newBundleId', () => {
@@ -62,6 +68,20 @@ describe('readSiteCommit', () => {
       'init',
     );
     expect(readSiteCommit(folder)).toBe(git('rev-parse', 'HEAD'));
+  });
+
+  it('runs git rev-parse HEAD in the folder, with stdin closed and stderr dropped', () => {
+    const folder = tempFolder();
+    readSiteCommit(folder);
+    expect(vi.mocked(execFileSync)).toHaveBeenLastCalledWith(
+      'git',
+      ['rev-parse', 'HEAD'],
+      expect.objectContaining({
+        cwd: folder,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }),
+    );
   });
 
   it('gives the commit git prints, trimmed, for the folder it runs in', () => {

@@ -1,9 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   collectionSchemaJson,
   loaderInfoSchema,
   schemaJsonSchema,
 } from './schema.ts';
+
+// A spy one test sets up is restored before the next test runs.
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 /** The code and message of each issue a refused schema.json gives; an accepted
  *  one gives none, so a test compares the whole list. */
