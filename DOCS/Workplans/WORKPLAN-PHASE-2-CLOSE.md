@@ -1,6 +1,6 @@
 # Work plan for closing phase 2
 
-Written 2026-11-16, with waves 1 to 10 closed and `main` at `7dd6bff`. Wave 11 in progress (2026-11-17): 2.14m, 2.14d, 2.10k, 2.11c, 2.13d and 2.12a are merged, and `main` is at `18e1831`. Status: **approved by the user, 2026-11-16 (U0), with U1 answered yes (slim 2.10f).** It is the live plan for the rest of phase 2. Three documents are folded into it:
+Written 2026-11-16, with waves 1 to 10 closed and `main` at `7dd6bff`. Wave 11 closed (2026-11-18): 2.14m, 2.14d, 2.10k, 2.11c, 2.13d and 2.12a are merged, and `main` is at `18e1831`. Status: **approved by the user, 2026-11-16 (U0), with U1 answered yes (slim 2.10f).** It is the live plan for the rest of phase 2. Three documents are folded into it:
 
 - the open tasks of [WORKPLAN-PHASE-2.md](WORKPLAN-PHASE-2.md) (2.10e onwards);
 - [WAVES-11-14-REWRITE.md](Proposals/WAVES-11-14-REWRITE.md);
@@ -68,7 +68,7 @@ These are the rules builders keep needing. Each is in the log under the task nam
 
 - Wave 10 `mutation-full` (run `43491378803`, `da5388b`): **94.15%** overall.
 - Were under 80 since wave 6: `preview-contract/src/schema.ts` 57.14, `preview-render-server/src/bundle.ts` 45.00, `preview-render-server/src/overlay/errors.ts` 57.14. 2.13d (#54) cleared them: local Stryker on `bundle.ts` now kills 40 of 40 (its two survivors are killed by a pinned git call, not waived). `schema.ts` and `errors.ts` measured 100 locally before the fix. Wave 11 `mutation-full` (run `44241325913`, on `5a75e14`): overall 94.15% (floor 75); `schema.ts` 100 (14 of 14), `bundle.ts` 100 (40 of 40), `errors.ts` 100 (7 of 7). No file is under 80.
-- CI and security are green on `7dd6bff`. Nightly runs are green on nine scheduled runs in a row (2026-11-08 to 2026-11-16).
+- CI and security are green on `7dd6bff`. Nightly runs are green on ten scheduled runs in a row (2026-11-09 to 2026-11-18); see H1.
 
 ### 1.5 Accepted limits (carried, not tasks)
 
@@ -83,8 +83,8 @@ These are the rules builders keep needing. Each is in the log under the task nam
 
 | # | Item | When |
 |---|---|---|
-| H1 | **2.1p verification:** nine green scheduled nightly runs (2026-11-08 to 2026-11-16). Confirm that the artifacts are there, then mark 2.1p verified. The T3 reminder can go after 2026-12-01 | now |
-| H2 | **2.1t Result:** record both git shard times from run `43491378803` and mark 2.1t done (merged as `20dc360`; its Result is still empty) | now |
+| H1 | **2.1p verification:** done 2026-11-18. Ten green scheduled nightly runs (2026-11-09 to 2026-11-18); each has a live `nightly-measurements` artifact. 2.1p is marked verified. The T3 reminder can go after 2026-12-01 | done |
+| H2 | **2.1t Result:** done 2026-11-18. Run `43491378803`: `cms-git-ops` 7 min 18 s, `cms-git` 20 min 10 s. 2.1t is DONE (merged as `20dc360`) | done |
 | H3 | **osv-scanner ignore** `GHSA-g3hv-75wg-m249` expires 2026-12-15. An expired entry fails `npm run audit` | revisit 2026-12-01 |
 | H3b | **osv-scanner ignore** `GHSA-fc5q-39xc-vjpf` (picomatch) expires 2026-12-17. Check first whether a patched picomatch exists. An expired entry fails `npm run audit`. Waiver merged in #56 (`fca9160`) | revisit 2026-12-01 |
 | H5 | **`run.test.ts` first-start flake:** one unexplained failure, then green after an explicit 5 s timeout. If it fails again, it becomes a task | watch |
@@ -276,6 +276,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 - Clear the six Biome `organizeImports` failures if they still exist; check before starting.
 - **Done when:** `npm run check -- --e2e` passes with none of those routes in the preview build, and Biome reports nothing.
 - **Result:** PR #55, merge `cd008ee`. Closed. Removed: `/__dev/documents`, `/__editor` and `test-editor/`, `media-route.ts` and `/__preview-media/*`, the media folder setting, and `siteRoot`; `clearBundle` now takes only `outDir`. Kept by decision: `/__dev/memory` and `editorOrigins` (the bridge still reads it; removing it is a contract change). Biome `organizeImports`: 9 failures on main when measured on 2026-11-17, not the six this spec named. Codex: no major issues on `42ac7f3`. CI green on `42ac7f3`. `npm run check -- --e2e` was not run locally (knip crashes here); CI `e2e and browser` is the check. Left by decision: five `/__preview-media/` unit-test fixtures and the `/__editor` fixture (test strings, not routes).
+- **Not run locally:** `npm run check -- --e2e` was not run on this machine. The CI job `e2e and browser` was the check.
 
 #### 2.13d The three files under 80 (A16)
 
@@ -292,6 +293,9 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 ### Wave 12
 
 #### 2.10e Build check and snapshot publish — after 2.10k, 2.14d, 2.9a · `[build]`
+
+- **Carried in:** move `PublishAnswer` into `cms-contract` (left open by 2.14d).
+- **Optional, no owner:** the test for an invalid `build-time.json` in `read.test.ts` (open from 2.10k). Do it in the next task that touches `sync/build-check.ts`.
 
 1. **The state table, before any code (U2).**
    - The states: `idle`, `syncing`, `validating`, `squashing`, `building`, `pushing`, `reconciling`, `failed`.
@@ -333,6 +337,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 
 #### 2.11d Publish — after 2.11c, 2.10d
 
+- **Carried in:** decide whether to fix or accept again: staged image URLs staying in the form and overlay after a failed re-read (open from 2.11c).
 - **Behaviour:** a Publish button and a message for each answer of `POST /api/publish`:
   - `200 { commit, overwritten, renamed }`: `commit: null` shows "nothing to publish", and a non-empty `renamed` is a warning;
   - `409 referenced-by`, `422`, `424` and `502`;
@@ -351,6 +356,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 1. `cms.config.example.ts` uses `http://cms.localhost:4400` and `http://preview.localhost:4401` (PHASE-2-DESIGN 5.7).
 2. Start-up logs a warning when `origins.cms` and `origins.preview` share a host.
 3. Write routes also refuse a request whose `Origin` header is present and is not `origins.cms`.
+- **Carried in:** confirm whether the bridge still needs `editorOrigins` (kept by 2.12a).
 - **Done when:** items 1 to 3 are merged with tests. The spike is item 4, in wave 13.
 
 #### 2.12d First manual run — after 2.11d · `[user]` (was 2.12c-1)
