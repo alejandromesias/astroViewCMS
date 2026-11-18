@@ -2849,4 +2849,29 @@ describe('publishing', () => {
     expect(publishButton().disabled).toBe(false);
     expect(saveControl().disabled).toBe(false);
   });
+
+  it('clears the failed state from the status line when a publish succeeds', async () => {
+    editor = await setup({
+      statuses: [
+        Response.json({
+          bundle: null,
+          publish: { state: 'failed', error: 'The remote refused the push' },
+        }),
+        Response.json({
+          bundle: null,
+          publish: { state: 'idle', error: null },
+        }),
+      ],
+    });
+    await vi.waitFor(() => expect(publishStatus().hidden).toBe(false));
+    editor.fetch.mockResolvedValueOnce(
+      Response.json({ commit: 'c0ffee1234', overwritten: [], renamed: [] }),
+    );
+    publishButton().click();
+    await vi.waitFor(() =>
+      expect(publishResult().textContent).toBe('Published c0ffee1.'),
+    );
+    await vi.waitFor(() => expect(publishStatus().hidden).toBe(true));
+    expect(publishStatus().textContent).toBe('');
+  });
 });

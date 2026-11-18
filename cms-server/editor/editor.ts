@@ -42,7 +42,11 @@ import {
   saveMessages,
   statusMessages,
 } from './messages.ts';
-import { type PublishStatus, startStatusPolling } from './status.ts';
+import {
+  type PublishStatus,
+  publishStatusOf,
+  startStatusPolling,
+} from './status.ts';
 
 export const RENDER_DELAY_MS = 120;
 
@@ -824,6 +828,9 @@ export async function startEditor(
         showLines(publishResult, publishMessages(answer.body));
         await refreshChanges();
       } else showLines(publishResult, publishFailureMessages(answer.failure));
+      // The publish may have cleared a failed state or an upstream build error: read the status now, not at the next reload.
+      const status = await getStatus(fetchImpl);
+      if (status.ok) onPublishStatus(publishStatusOf(status.body));
     } finally {
       publishing = false;
       refreshButtons();
