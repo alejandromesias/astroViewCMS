@@ -288,7 +288,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 
 - `cms-server` rss at rest and after a session of saves, measured by a script next to `measure:memory`. Record it in section 8 with the date and the method.
 - **Done when:** the row has a value. Its publish part comes in 2.13a.
-- **Result:** `scripts/measure-cms-memory.mjs`, run as `npm run measure:cms-memory`, on `task/2.13e-cms-memory` (PR open; not merged). One run on 2026-11-17: rss 127.9 MB at rest and 156.5 MB after 50 saves; private 73.6 MB and 101.8 MB. Section 8 has the row. The +28 MB after the saves is one run, not a trend: repeat it before a conclusion.
+- **Result:** `scripts/measure-cms-memory.mjs`, run as `npm run measure:cms-memory`, on `task/2.13e-cms-memory` (PR open; not merged). Three runs on 2026-11-17, mean and range: rss 128.0 MB (127.4 to 128.8) at rest and 157.1 MB (156.5 to 157.9) after 50 saves; private 73.7 MB (73.2 to 74.4) and 102.4 MB (101.8 to 103.1). Each run adds 28.6 to 29.6 MB of rss over its 50 saves, so the rise is consistent across runs. Only 50 saves were run, so it is not known whether the rise levels off or keeps growing. Section 8 has the row.
 
 ### Wave 12
 
@@ -473,7 +473,7 @@ Phase 2 is closed when all of these hold:
 
 | | Value | Date, method |
 |---|---|---|
-| `cms-server` rss at rest, and after a session of saves (2.13e) | rss 127.9 MB at rest, 156.5 MB after 50 saves (private 73.6 and 101.8 MB) | 2026-11-17, `npm run measure:cms-memory`: sample-site bundle with `--bundle`, a local bare repo, one run. Rss is the working set, private is the OS private working set |
+| `cms-server` rss at rest, and after a session of saves (2.13e) | rss 128.0 MB at rest (127.4 to 128.8), 157.1 MB after 50 saves (156.5 to 157.9); private 73.7 MB and 102.4 MB | 2026-11-17, `npm run measure:cms-memory`: sample-site bundle with `--bundle`, a local bare repo, three runs, mean and range. Rss is the working set, private is the OS private working set |
 | `cms-server` rss after a publish (2.13a) | | |
 | Publish latency: `buildCheck` `never`, `auto` without a trigger, `always` | | |
 | Re-apply time, 200-post sample | | |
