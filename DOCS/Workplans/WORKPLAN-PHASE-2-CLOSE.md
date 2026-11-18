@@ -188,7 +188,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 
 ### Wave 11
 
-**Status (2026-11-17):** 2.14m, 2.14d, 2.10k and 2.11c are merged (#50 to #53). 2.12a is merged (#55, `cd008ee`) and 2.13d is merged (#54, `18e1831`). 2.13e is open and is the last wave 11 task.
+**Status (2026-11-17):** 2.14m, 2.14d, 2.10k and 2.11c are merged (#50 to #53). 2.12a is merged (#55, `cd008ee`) and 2.13d is merged (#54, `18e1831`). 2.13e is measured on `task/2.13e-cms-memory` (PR open). It is the last wave 11 task and closes when its PR merges.
 
 **Start order and decisions (2026-11-16, for Lead-11.16's questions).**
 - The close plan is authoritative; the 2026-11-13 handoff's wave 11 (with 2.10e) is stale.
@@ -288,6 +288,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 
 - `cms-server` rss at rest and after a session of saves, measured by a script next to `measure:memory`. Record it in section 8 with the date and the method.
 - **Done when:** the row has a value. Its publish part comes in 2.13a.
+- **Result:** `scripts/measure-cms-memory.mjs`, run as `npm run measure:cms-memory`, on `task/2.13e-cms-memory` (PR open; not merged). One run on 2026-11-17: rss 127.9 MB at rest and 156.5 MB after 50 saves; private 73.6 MB and 101.8 MB. Section 8 has the row. The +28 MB after the saves is one run, not a trend: repeat it before a conclusion.
 
 ### Wave 12
 
@@ -472,7 +473,7 @@ Phase 2 is closed when all of these hold:
 
 | | Value | Date, method |
 |---|---|---|
-| `cms-server` rss at rest, and after a session of saves (2.13e) | | |
+| `cms-server` rss at rest, and after a session of saves (2.13e) | rss 127.9 MB at rest, 156.5 MB after 50 saves (private 73.6 and 101.8 MB) | 2026-11-17, `npm run measure:cms-memory`: sample-site bundle with `--bundle`, a local bare repo, one run. Rss is the working set, private is the OS private working set |
 | `cms-server` rss after a publish (2.13a) | | |
 | Publish latency: `buildCheck` `never`, `auto` without a trigger, `always` | | |
 | Re-apply time, 200-post sample | | |
