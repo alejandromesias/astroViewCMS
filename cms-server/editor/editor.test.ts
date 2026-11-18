@@ -3070,4 +3070,46 @@ describe('publishing', () => {
     );
     expect(publishResult().dataset.state).toBe('error');
   });
+
+  it("shows a later publish's failure when a poll sees that publish run after this page's failure", async () => {
+    vi.useFakeTimers();
+    try {
+      let answer: (response: Response) => void = () => {};
+      const pending = new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+      // Publish is clicked while the page loads: the page's first read sees it running, so a poll runs.
+      editor = await setup({
+        publish: pending,
+        onOverlay: () => publishButton().click(),
+        statuses: [
+          statusResponse('publishing'),
+          // This page's status read after its failed answer.
+          statusResponse('failed', 'The remote refused the push'),
+          // A poll: another tab's publish runs, unchanged from the first read.
+          statusResponse('publishing'),
+          // A poll: that publish failed.
+          statusResponse('failed', 'The remote refused the push again'),
+        ],
+      });
+      answer(
+        Response.json(
+          { error: 'push-failed', message: 'The remote refused the push' },
+          { status: 502 },
+        ),
+      );
+      await vi.waitFor(() =>
+        expect(publishResult().textContent).toBe('The remote refused the push'),
+      );
+      await vi.advanceTimersByTimeAsync(1000); // the poll reads publishing
+      await vi.advanceTimersByTimeAsync(1000); // the poll reads failed
+      await vi.waitFor(() =>
+        expect(publishStatus().textContent).toBe(
+          'The last publish failed: The remote refused the push again',
+        ),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

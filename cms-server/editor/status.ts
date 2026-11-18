@@ -51,6 +51,8 @@ export interface StatusPollOptions {
   readonly schedule?: (run: () => void, ms: number) => () => void;
   /** Called when a read reports no publish running, so the poll has ended and no further read is scheduled. */
   readonly onEnd?: () => void;
+  /** Called with every answered read, changed or not (`onChange` is not, for an unchanged answer). */
+  readonly onRead?: (status: PublishStatus) => void;
 }
 
 /** The real timer: `setTimeout`, cancelled with `clearTimeout`. */
@@ -70,6 +72,7 @@ export function startStatusPolling(options: StatusPollOptions): () => void {
     intervalMs = STATUS_POLL_MS,
     schedule = scheduleTimeout,
     onEnd,
+    onRead,
   } = options;
   let stopped = false;
   let running = false;
@@ -86,6 +89,7 @@ export function startStatusPolling(options: StatusPollOptions): () => void {
       const status = publishStatusOf(answer.body);
       const text = JSON.stringify(status);
       running = status.state === 'publishing';
+      onRead?.(status);
       if (text !== reported) {
         reported = text;
         onChange(status);

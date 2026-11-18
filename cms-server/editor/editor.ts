@@ -822,6 +822,10 @@ export async function startEditor(
     stopPoll = startStatusPolling({
       fetchImpl,
       onChange: onPublishStatus,
+      // A poll read that reports a publish running is a later publish: its failure is shown, even when the read is unchanged.
+      onRead: (status) => {
+        if (status.state === 'publishing') lastPublishFailed = false;
+      },
       onEnd: () => {
         stopPoll = undefined;
       },
@@ -830,6 +834,8 @@ export async function startEditor(
 
   /** Shows the publish state the status reports and sets the buttons. Called each time the reported state changes. */
   function onPublishStatus(status: PublishStatus) {
+    // A publish that runs now (another tab's, or one this page's refused answer reveals) is a later publish: its failure is shown.
+    if (status.state === 'publishing') lastPublishFailed = false;
     const shown = lastPublishFailed ? withoutFailedPublish(status) : status;
     publishRunning = shown.state === 'publishing';
     refreshButtons();
