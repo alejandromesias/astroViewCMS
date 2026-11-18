@@ -188,7 +188,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 
 ### Wave 11
 
-**Status (2026-11-17):** 2.14m, 2.14d, 2.10k and 2.11c are merged (#50 to #53). 2.12a is merged (#55, `cd008ee`) and 2.13d is merged (#54, `18e1831`). 2.13e is measured on `task/2.13e-cms-memory` (PR #57, checks green). It is the last wave 11 task. Wave 11 closes when #57 merges, a `mutation-full` run on `main` is green (`gh workflow run mutation-full.yml`, which also settles the 2.13d figure), and the tag `wave-11-closed` is set.
+**Status (2026-11-17):** 2.14m, 2.14d, 2.10k and 2.11c are merged (#50 to #53). 2.12a is merged (#55, `cd008ee`) and 2.13d is merged (#54, `18e1831`). 2.13e is merged (#57, `5a75e14`). It was the last wave 11 task. Wave 11 closes when the `mutation-full` run started on `main` on 2026-11-18 (run `44241325913`) is green, and the tag `wave-11-closed` is set. That run also settles the 2.13d figure.
 
 **Start order and decisions (2026-11-16, for Lead-11.16's questions).**
 - The close plan is authoritative; the 2026-11-13 handoff's wave 11 (with 2.10e) is stale.
@@ -288,7 +288,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 
 - `cms-server` rss at rest and after a session of saves, measured by a script next to `measure:memory`. Record it in section 8 with the date and the method.
 - **Done when:** the row has a value. Its publish part comes in 2.13a.
-- **Result:** `scripts/measure-cms-memory.mjs`, run as `npm run measure:cms-memory`, on `task/2.13e-cms-memory` (PR open; not merged). Three runs on 2026-11-17, mean and range: rss 128.0 MB (127.4 to 128.8) at rest and 157.1 MB (156.5 to 157.9) after 50 saves; private 73.7 MB (73.2 to 74.4) and 102.4 MB (101.8 to 103.1). Each run adds 28.6 to 29.6 MB of rss over its 50 saves, so the rise is consistent across runs. Only 50 saves were run, so it is not known whether the rise levels off or keeps growing. Section 8 has the row.
+- **Result:** `scripts/measure-cms-memory.mjs`, run as `npm run measure:cms-memory`, merged as #57 (`5a75e14`) on 2026-11-18. Three runs on 2026-11-17, mean and range: rss 128.0 MB (127.4 to 128.8) at rest and 157.1 MB (156.5 to 157.9) after 50 saves; private 73.7 MB (73.2 to 74.4) and 102.4 MB (101.8 to 103.1). Each run adds 28.6 to 29.6 MB of rss over its 50 saves, so the rise is consistent across runs. Only 50 saves were run, so it is not known whether the rise levels off or keeps growing. Section 8 has the row.
 
 ### Wave 12
 
