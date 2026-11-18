@@ -2,8 +2,9 @@
 // postMessage protocol (preview-protocol, v2) and reads the CMS API
 // (PHASE-2-DESIGN 5.9): GET /api/preview-url for the iframe, GET /api/overlay
 // for the starting overlay, GET /api/documents?key= for each document the page
-// reads, POST /api/media for uploads and PUT /api/changes for Save (the calls
-// are in api.ts, their messages in messages.ts). A form per document: a JSON
+// reads, POST /api/media for uploads, PUT /api/changes for Save and POST
+// /api/publish for Publish (the calls are in api.ts, their messages in
+// messages.ts; GET /api/status is polled by status.ts). A form per document: a JSON
 // textbox, plus a body textarea for Markdown and MDX.
 
 import type {
@@ -26,6 +27,7 @@ import {
   getOverlay,
   getPreviewUrl,
   getStatus,
+  publishChanges,
   saveChanges,
   uploadMedia,
   waitForNewBundle,
@@ -35,8 +37,12 @@ import {
   failureMessages,
   failureText,
   type Message,
+  publishFailureMessages,
+  publishMessages,
   saveMessages,
+  statusMessages,
 } from './messages.ts';
+import { type PublishStatus, startStatusPolling } from './status.ts';
 
 export const RENDER_DELAY_MS = 120;
 
@@ -716,16 +722,45 @@ export async function startEditor(
   }
 
   const saveButton = byId<HTMLButtonElement>('save');
+  const publishButton = byId<HTMLButtonElement>('publish');
+  const publishStatus = byId<HTMLElement>('publish-status');
+  const publishResult = byId<HTMLElement>('publish-result');
   // Counts the PUTs sent; a rebuild wait of an older save does not write the status line.
   let latestSave = 0;
+  /** True while a save's own requests run. */
+  let saving = false;
+  /** True while this page's Publish request runs. */
+  let publishing = false;
+  /** True while GET /api/status reports a publish running. */
+  let publishRunning = false;
 
-  /** Saves the forms. Save is disabled while the save's own requests run; a rebuild wait does not hold it (saves go on during a build). */
+  /** Sets Save and Publish. Both are off while a publish runs (the drafts stay as they are), and Save is off during its own requests. */
+  function refreshButtons() {
+    const busy = publishing || publishRunning;
+    saveButton.disabled = busy || saving;
+    publishButton.disabled = busy;
+  }
+
+  /** Writes messages into a status element: their texts joined, and its state the worst level among them. It is hidden when there are none. */
+  function showLines(element: HTMLElement, messages: Message[]) {
+    let state = 'ok';
+    if (messages.some((message) => message.level === 'warning'))
+      state = 'warning';
+    if (messages.some((message) => message.level === 'error')) state = 'error';
+    element.textContent = messages.map((message) => message.text).join('; ');
+    element.dataset.state = state;
+    element.hidden = messages.length === 0;
+  }
+
+  /** Saves the forms. Save is off while the save's own requests run; a rebuild wait does not hold it (saves go on during a build). */
   async function save() {
-    saveButton.disabled = true;
+    saving = true;
+    refreshButtons();
     try {
       await saveForms();
     } finally {
-      saveButton.disabled = false;
+      saving = false;
+      refreshButtons();
     }
   }
 
@@ -767,6 +802,32 @@ export async function startEditor(
       return;
     }
     await applySaved(answer.body, bundleBefore, attempt, changes);
+  }
+
+  // ---- publishing: POST /api/publish, and the publish state from GET /api/status
+
+  /** Shows the publish state the status reports and sets the buttons. Called each time the reported state changes. */
+  function onPublishStatus(status: PublishStatus) {
+    publishRunning = status.state === 'publishing';
+    refreshButtons();
+    showLines(publishStatus, statusMessages(status));
+  }
+
+  /** Publishes the saved changes. Publish is off while it runs. Its answer is shown next to the button; after a commit the changes list is read again. */
+  async function publish() {
+    publishing = true;
+    refreshButtons();
+    showLines(publishResult, []);
+    try {
+      const answer = await publishChanges(fetchImpl);
+      if (answer.ok) {
+        showLines(publishResult, publishMessages(answer.body));
+        await refreshChanges();
+      } else showLines(publishResult, publishFailureMessages(answer.failure));
+    } finally {
+      publishing = false;
+      refreshButtons();
+    }
   }
 
   // ---- messages from the bridge: only from the iframe, from the preview origin, well-formed
@@ -849,11 +910,15 @@ export async function startEditor(
   });
 
   saveButton.addEventListener('click', () => void save());
+  publishButton.addEventListener('click', () => void publish());
 
   // The overlay first, so the page's first "ready" finds it in place. The
   // listener above is registered before any load, so no message is missed.
   await loadOverlay();
   await openPreview();
+  // Reads the publish state now (a page reloaded during a publish keeps the buttons off, and a failed publish keeps its error),
+  // then again each second while a publish runs (status.ts).
+  startStatusPolling({ fetchImpl, onChange: onPublishStatus });
 }
 
 // The page's script starts the editor once its markup is in place. Tests import

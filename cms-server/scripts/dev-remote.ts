@@ -2,7 +2,7 @@
 // <repo>/.dev/remote.git from sample-site (once: an existing remote is left alone, because the CMS's clone
 // may already hold saves), and writes <repo>/cms.config.ts from cms.config.example.ts with that remote.
 // Both are gitignored. Run `npm run dev:remote -w cms-server`, then
-// `npm start -w cms-server -- ../cms.config.ts`.
+// `npm start -w cms-server` (the start script already passes ../cms.config.ts).
 import { execFileSync } from 'node:child_process';
 import {
   cpSync,
@@ -95,7 +95,7 @@ function main(): void {
     'utf8',
   );
   process.stdout.write(
-    `Remote ${remote}\nConfig ${CONFIG}\nRun: npm start -w cms-server -- ../cms.config.ts\n`,
+    `Remote ${remote}\nConfig ${CONFIG}\nRun: npm start -w cms-server\n`,
   );
 }
 

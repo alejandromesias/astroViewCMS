@@ -135,10 +135,17 @@ interface SetupOptions {
   preview?: Response | Error;
   /** The answer of `GET /api/overlay`, in place of an empty overlay. */
   overlay?: Response;
+  /** The answers of `GET /api/status`, one per read in order; a read after them gets a 404. */
+  statuses?: Response[];
 }
 
 /** Starts the editor on a fake CMS API; resolves once its startup has run. */
-async function setup({ search = '', preview, overlay }: SetupOptions = {}) {
+async function setup({
+  search = '',
+  preview,
+  overlay,
+  statuses = [],
+}: SetupOptions = {}) {
   window.history.replaceState(null, '', `/${search}`);
   document.body.innerHTML = BODY;
   const iframe = document.getElementById(
@@ -153,6 +160,8 @@ async function setup({ search = '', preview, overlay }: SetupOptions = {}) {
     const url = String(input);
     if (url === '/api/overlay')
       return overlay ?? Response.json({ documents: {}, media: {} });
+    if (url === '/api/status')
+      return statuses.shift() ?? new Response(null, { status: 404 });
     if (url.startsWith('/api/preview-url?path=')) {
       if (preview instanceof Error) throw preview;
       if (preview) return preview;
@@ -363,10 +372,16 @@ describe('on preview:ready', () => {
       PREVIEW_ORIGIN,
     );
     // The server warms the renderer when it answers the preview URL, so the
-    // browser calls nothing else.
+    // browser calls nothing else after ready. Its only other call is the read
+    // of the publish state at start (status.ts), which is made before ready.
+    const calls = () => editor.fetch.mock.calls.length;
+    const before = calls();
+    editor.ready();
+    expect(calls()).toBe(before);
     expect(editor.fetch.mock.calls.map(([url]) => String(url))).toEqual([
       '/api/overlay',
       '/api/preview-url?path=%2F',
+      '/api/status',
     ]);
   });
 
@@ -2726,5 +2741,112 @@ describe('saving', () => {
     expect(previewRequests()).toBe(1);
     // One status before the save, then one poll per attempt.
     expect(statusCalls() - statusesBefore).toBe(61);
+  });
+});
+
+describe('publishing', () => {
+  /** The Publish button of the page. */
+  const publishButton = () =>
+    document.getElementById('publish') as HTMLButtonElement;
+  /** The Save button of the page. */
+  const saveControl = () =>
+    document.getElementById('save') as HTMLButtonElement;
+  /** The line under the buttons that shows the publish state. */
+  const publishStatus = () => document.getElementById('publish-status')!;
+  /** The line under the buttons that shows the answer of the last Publish. */
+  const publishResult = () => document.getElementById('publish-result')!;
+
+  it('publishes with POST /api/publish and shows the commit next to the button', async () => {
+    editor.fetch.mockResolvedValueOnce(
+      Response.json({ commit: 'c0ffee1234', overwritten: [], renamed: [] }),
+    );
+    publishButton().click();
+    await vi.waitFor(() =>
+      expect(publishResult().textContent).toBe('Published c0ffee1.'),
+    );
+    expect(editor.fetch).toHaveBeenCalledWith('/api/publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    expect(publishResult().dataset.state).toBe('ok');
+    expect(publishResult().hidden).toBe(false);
+  });
+
+  it('turns Save and Publish off while the request runs, and shows a refused publish', async () => {
+    let answer: (response: Response) => void = () => {};
+    editor.fetch.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    publishButton().click();
+    expect(publishButton().disabled).toBe(true);
+    expect(saveControl().disabled).toBe(true);
+    answer(
+      Response.json(
+        { error: 'remote-moved', message: 'Moved' },
+        { status: 409 },
+      ),
+    );
+    await vi.waitFor(() => expect(publishButton().disabled).toBe(false));
+    expect(saveControl().disabled).toBe(false);
+    expect(publishResult().textContent).toBe(
+      'The remote moved while the publish ran, so nothing was published. Your saves are kept. Publish again.',
+    );
+    expect(publishResult().dataset.state).toBe('error');
+  });
+
+  it('keeps Save and Publish off while the status reports a publish, and on again when it ends', async () => {
+    vi.useFakeTimers();
+    try {
+      await setup({
+        statuses: [
+          Response.json({
+            bundle: null,
+            publish: { state: 'publishing', error: null },
+          }),
+          Response.json({
+            bundle: null,
+            publish: { state: 'idle', error: null },
+          }),
+        ],
+      });
+      await vi.waitFor(() =>
+        expect(publishStatus().textContent).toBe(
+          'A publish is running. Save and Publish are off until it ends.',
+        ),
+      );
+      expect(saveControl().disabled).toBe(true);
+      expect(publishButton().disabled).toBe(true);
+      // The next read, a second later, finds no publish running and stops.
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(saveControl().disabled).toBe(false);
+      expect(publishButton().disabled).toBe(false);
+      expect(publishStatus().hidden).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows the error of a failed publish after a reload, and leaves the buttons on', async () => {
+    await setup({
+      statuses: [
+        Response.json({
+          bundle: null,
+          publish: { state: 'failed', error: 'The remote refused the push' },
+        }),
+      ],
+    });
+    await vi.waitFor(() =>
+      expect(publishStatus().textContent).toBe(
+        'The last publish failed: The remote refused the push',
+      ),
+    );
+    expect(publishStatus().dataset.state).toBe('error');
+    expect(publishStatus().hidden).toBe(false);
+    expect(publishButton().disabled).toBe(false);
+    expect(saveControl().disabled).toBe(false);
   });
 });
