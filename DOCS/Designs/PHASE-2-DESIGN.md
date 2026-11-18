@@ -638,7 +638,11 @@ end of phase 2, with their tests moved or rewritten against the new routes.
   `Map` or `Object.hasOwn` (D15).
 - Write routes need `Content-Type: application/json` (or multipart for
   media: a raw image body with `image/*`, which forces a CORS preflight) and
-  refuse `Sec-Fetch-Site: cross-site`, as the preview routes do.
+  refuse `Sec-Fetch-Site: cross-site`, as the preview routes do. They also
+  refuse a request whose `Origin` header is present and is not exactly
+  `origins.cms`: `403 { error: 'cross-origin', message }` (2.14e). A request
+  with no `Origin` passes. A page served on `127.0.0.1` therefore cannot write
+  when `origins.cms` names another host.
 - Every request must carry a `Host` the CMS accepts: `localhost`, `127.0.0.1`
   or `[::1]` on the CMS port, or the host of `origins.cms`. Anything else
   gets `421 { error: 'misdirected', message }` (2.9f). A DNS-rebinding page is

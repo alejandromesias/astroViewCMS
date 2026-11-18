@@ -14,6 +14,8 @@ const noFields = z.object({});
 
 export const errorTable = {
   misdirected: { status: 421, fields: messageFields },
+  // A write whose Origin header is not the CMS's origin (2.14e; http/guard.ts).
+  'cross-origin': { status: 403, fields: messageFields },
   not_found: { status: 404, fields: noFields },
   'missing-query': { status: 400, fields: messageFields },
   'unknown-collection': { status: 404, fields: messageFields },

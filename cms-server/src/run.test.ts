@@ -56,6 +56,10 @@ const SECRETS: Secrets = {
   previewInternalSecret: 'b'.repeat(64),
 };
 
+/** The start-up warning for origins that share a host (run.ts). */
+const SHARED_HOST_WARNING =
+  'origins.cms and origins.preview share a host, so cookies cannot tell the CMS from the preview: use two host names, such as cms.localhost and preview.localhost';
+
 /** The config the schema accepts, with the origins of the test ports. */
 function configOf(): CmsConfig {
   return parseConfig({
@@ -330,6 +334,51 @@ describe('run', () => {
         previewState: 'ready',
         recovered: false,
       });
+    } finally {
+      await running.stop();
+    }
+  });
+
+  it('warns at start-up when origins.cms and origins.preview share a host, and starts anyway', async () => {
+    const origins = {
+      cms: 'http://localhost:4400',
+      preview: 'http://localhost:4401',
+    };
+    const h = harness({
+      config: parseConfig({
+        site: 'sample-site',
+        remote: 'C:/remotes/sample-site.git',
+        previewSiteConfig: 'preview-render-server/sites/sample-site.config.ts',
+        origins,
+      }),
+    });
+    const running = await run([resolve('site', 'cms.config.ts')], {}, h.deps);
+    try {
+      expect(h.log.warn).toHaveBeenCalledWith(SHARED_HOST_WARNING, origins);
+      expect(h.deps.startServer).toHaveBeenCalledTimes(1);
+    } finally {
+      await running.stop();
+    }
+  });
+
+  it('does not warn when the origins name different hosts', async () => {
+    const h = harness({
+      config: parseConfig({
+        site: 'sample-site',
+        remote: 'C:/remotes/sample-site.git',
+        previewSiteConfig: 'preview-render-server/sites/sample-site.config.ts',
+        origins: {
+          cms: 'http://cms.localhost:4400',
+          preview: 'http://preview.localhost:4401',
+        },
+      }),
+    });
+    const running = await run([resolve('site', 'cms.config.ts')], {}, h.deps);
+    try {
+      expect(h.log.warn).not.toHaveBeenCalledWith(
+        SHARED_HOST_WARNING,
+        expect.anything(),
+      );
     } finally {
       await running.stop();
     }

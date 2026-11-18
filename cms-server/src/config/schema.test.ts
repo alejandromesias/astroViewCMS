@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ZodError } from 'zod';
-import { parseConfig } from './schema.ts';
+import { originsShareHost, parseConfig } from './schema.ts';
 
 // A config with only the required keys. Each test changes one thing.
 function minimal(): Record<string, unknown> {
@@ -427,5 +427,19 @@ describe('parseConfig rejections', () => {
         message: 'Too small: expected string to have >=1 characters',
       },
     ]);
+  });
+});
+
+describe('originsShareHost', () => {
+  it.each([
+    ['http://localhost:4400', 'http://localhost:4401', true],
+    ['http://127.0.0.1:4400', 'http://127.0.0.1:4401', true],
+    ['http://[::1]:4400', 'http://[::1]:4401', true],
+    ['https://a.example', 'http://a.example:8080', true],
+    ['http://cms.localhost:4400', 'http://preview.localhost:4401', false],
+    ['http://localhost:4400', 'http://127.0.0.1:4401', false],
+    ['http://a.localhost:4400', 'http://aa.localhost:4401', false],
+  ])('says whether %s and %s share a host: %s', (cms, preview, shares) => {
+    expect(originsShareHost({ cms, preview })).toBe(shares);
   });
 });

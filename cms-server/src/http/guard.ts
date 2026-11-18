@@ -33,6 +33,23 @@ export function rejectUnlessHostAllowed(
   );
 }
 
+/** 403 for a write (any method but GET and HEAD) whose `Origin` header is present and is not `cmsOrigin`
+ *  (origins.cms, already normalised by the config), else null. A request with no Origin passes: curl and same-origin
+ *  GET navigations send none. A page of another origin sends its own Origin, so its write is refused here (2.14e). */
+export function rejectForeignOrigin(
+  request: Request,
+  cmsOrigin: string,
+): Response | null {
+  if (request.method === 'GET' || request.method === 'HEAD') return null;
+  const origin = request.headers.get('origin');
+  if (origin === null || origin === cmsOrigin) return null;
+  return errorResponse(
+    apiError('cross-origin', {
+      message: 'The Origin header is not the origin of this CMS.',
+    }),
+  );
+}
+
 /** The content type of a JSON body, with or without parameters (a save, a publish). */
 export const JSON_CONTENT_TYPE = /^application\/json\s*(;|$)/i;
 

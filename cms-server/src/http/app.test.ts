@@ -223,6 +223,47 @@ describe('createApp: the Host check', () => {
   });
 });
 
+// The Origin check (2.14e): a write from another origin gets 403 before its route runs, so it changes nothing; a read passes.
+const CROSS_ORIGIN = {
+  error: 'cross-origin',
+  message: 'The Origin header is not the origin of this CMS.',
+};
+
+describe('createApp: the Origin check', () => {
+  const app = () =>
+    createTestApp({
+      ...fakeAppDeps(),
+      bundle: noBundle,
+      workingCopy: WORKING_COPY,
+      repo,
+    });
+
+  it.each([
+    ['PUT', '/api/changes'],
+    ['POST', '/api/media'],
+    ['POST', '/api/publish'],
+  ])('refuses %s %s from another origin with 403', async (method, path) => {
+    const response = await app().request(path, {
+      method,
+      headers: {
+        origin: 'http://evil.test',
+        'content-type': 'application/json',
+      },
+      body: '{}',
+    });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toStrictEqual(CROSS_ORIGIN);
+  });
+
+  it('lets a GET from another origin reach its route', async () => {
+    const response = await app().request('/api/schema', {
+      headers: { origin: 'http://evil.test' },
+    });
+    expect(response.status).toBe(503);
+    expect(await response.json()).toStrictEqual({ error: 'no-bundle' });
+  });
+});
+
 // Each save here runs real git calls, so one test takes a few seconds under load.
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
 
@@ -288,6 +329,43 @@ describe('PUT /api/changes from a rebinding Host', () => {
     const response = await app.request('/api/changes', {
       method: 'PUT',
       headers: { 'content-type': 'application/json', host: 'localhost' },
+      body: anaSave(before),
+    });
+    expect(response.status).toBe(200);
+    expect(await readFile(join(siteFolder, ANA), 'utf8')).toContain(
+      'Ana Rebound',
+    );
+  });
+
+  // The Origin check (2.14e): a save from another origin is refused with 403 and changes no file; the CMS's own origin saves.
+  it('refuses the save from another origin with 403 and changes no file', async () => {
+    const { app, siteFolder, repoDir } = await saveApp();
+    const before = await readFile(join(siteFolder, ANA), 'utf8');
+    const response = await app.request('/api/changes', {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        host: 'localhost',
+        origin: 'http://evil.test',
+      },
+      body: anaSave(before),
+    });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toStrictEqual(CROSS_ORIGIN);
+    expect(await readFile(join(siteFolder, ANA), 'utf8')).toBe(before);
+    expect(await git(repoDir, ['status', '--porcelain'])).toBe('');
+  });
+
+  it('saves the same body sent from the CMS origin', async () => {
+    const { app, siteFolder } = await saveApp();
+    const before = await readFile(join(siteFolder, ANA), 'utf8');
+    const response = await app.request('/api/changes', {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        host: 'localhost',
+        origin: 'http://cms.localhost:4400',
+      },
       body: anaSave(before),
     });
     expect(response.status).toBe(200);
