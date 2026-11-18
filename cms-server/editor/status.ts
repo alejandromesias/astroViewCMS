@@ -30,6 +30,16 @@ export function publishStatusOf(body: StatusAnswerBody): PublishStatus {
   };
 }
 
+/** The status after a failed publish: its failed state is shown as idle, so the status line does not repeat the error that
+ *  the publish's own answer shows. The upstream build error stays (2.11d). */
+export function withoutFailedPublish(status: PublishStatus): PublishStatus {
+  return {
+    ...status,
+    state: status.state === 'failed' ? 'idle' : status.state,
+    error: null,
+  };
+}
+
 /** The options of `startStatusPolling`. Only `fetchImpl` and `onChange` are needed; the rest have the real defaults. */
 export interface StatusPollOptions {
   readonly fetchImpl: FetchLike;

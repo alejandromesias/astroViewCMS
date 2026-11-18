@@ -46,6 +46,7 @@ import {
   type PublishStatus,
   publishStatusOf,
   startStatusPolling,
+  withoutFailedPublish,
 } from './status.ts';
 
 export const RENDER_DELAY_MS = 120;
@@ -830,7 +831,11 @@ export async function startEditor(
       } else showLines(publishResult, publishFailureMessages(answer.failure));
       // The publish may have cleared a failed state or an upstream build error: read the status now, not at the next reload.
       const status = await getStatus(fetchImpl);
-      if (status.ok) onPublishStatus(publishStatusOf(status.body));
+      // A failed publish's error is already in publish-result, so the status line drops it; an upstream build error stays.
+      if (status.ok) {
+        const current = publishStatusOf(status.body);
+        onPublishStatus(answer.ok ? current : withoutFailedPublish(current));
+      }
     } finally {
       publishing = false;
       refreshButtons();

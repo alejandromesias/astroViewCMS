@@ -2874,4 +2874,41 @@ describe('publishing', () => {
     await vi.waitFor(() => expect(publishStatus().hidden).toBe(true));
     expect(publishStatus().textContent).toBe('');
   });
+
+  it('leaves only the upstream warning in the status line after a failed publish', async () => {
+    const errors = { protocolMismatch: null, swap: null };
+    editor = await setup({
+      statuses: [
+        Response.json({
+          bundle: null,
+          publish: { state: 'idle', error: null },
+          errors: { ...errors, upstreamBuildFailed: null },
+        }),
+        Response.json({
+          bundle: null,
+          publish: { state: 'failed', error: 'The remote refused the push' },
+          errors: {
+            ...errors,
+            upstreamBuildFailed: 'Build failed in src/x.tsx',
+          },
+        }),
+      ],
+    });
+    editor.fetch.mockResolvedValueOnce(
+      Response.json(
+        { error: 'push-failed', message: 'The remote refused the push' },
+        { status: 502 },
+      ),
+    );
+    publishButton().click();
+    await vi.waitFor(() =>
+      expect(publishResult().textContent).toBe('The remote refused the push'),
+    );
+    await vi.waitFor(() =>
+      expect(publishStatus().textContent).toBe(
+        'The upstream code does not build: Build failed in src/x.tsx',
+      ),
+    );
+    expect(publishResult().dataset.state).toBe('error');
+  });
 });
