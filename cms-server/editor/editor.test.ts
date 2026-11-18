@@ -3011,4 +3011,63 @@ describe('publishing', () => {
       vi.useRealTimers();
     }
   });
+
+  it('starts one poll when a publish is reported as running, and the buttons come back when it ends', async () => {
+    vi.useFakeTimers();
+    try {
+      editor = await setup({
+        publish: Promise.resolve(
+          Response.json(
+            { error: 'publish-in-progress', message: 'A publish is running' },
+            { status: 409 },
+          ),
+        ),
+        statuses: [
+          statusResponse('idle'), // page start: no publish runs, so no poll
+          statusResponse('publishing'), // the page's status read after the 409
+          statusResponse('publishing', null, 'Build failed in src/x.tsx'), // the poll's first read
+          statusResponse('idle'), // a later poll read
+        ],
+      });
+      publishButton().click();
+      await vi.waitFor(() =>
+        expect(publishStatus().textContent).toContain(
+          'The upstream code does not build: Build failed in src/x.tsx',
+        ),
+      );
+      expect(publishButton().disabled).toBe(true);
+      const statusCalls = () =>
+        editor.fetch.mock.calls.filter(([url]) => url === '/api/status').length;
+      const before = statusCalls();
+      await vi.advanceTimersByTimeAsync(1000);
+      await vi.waitFor(() => expect(publishButton().disabled).toBe(false));
+      expect(saveControl().disabled).toBe(false);
+      // One poll runs: one read in the second that follows.
+      expect(statusCalls() - before).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the failed text in the status line when the publish was refused at the gate', async () => {
+    editor = await setup({
+      publish: Promise.resolve(
+        Response.json(
+          { error: 'busy', message: 'The repository is busy' },
+          { status: 503 },
+        ),
+      ),
+      statuses: [
+        statusResponse('idle'),
+        statusResponse('failed', 'The remote refused the push'),
+      ],
+    });
+    publishButton().click();
+    await vi.waitFor(() =>
+      expect(publishStatus().textContent).toBe(
+        'The last publish failed: The remote refused the push',
+      ),
+    );
+    expect(publishResult().dataset.state).toBe('error');
+  });
 });

@@ -813,6 +813,20 @@ export async function startEditor(
 
   /** True from a failed publish of this page until its next publish starts. The status line then leaves out the failed text, which that publish's answer shows (polls included). */
   let lastPublishFailed = false;
+  /** The stop of the status poll while one runs, or undefined. At most one poll runs. */
+  let stopPoll: (() => void) | undefined;
+
+  /** Starts the poll of GET /api/status, unless one runs. The poll ends itself once a read reports no publish running. */
+  function startPoll() {
+    if (stopPoll !== undefined) return;
+    stopPoll = startStatusPolling({
+      fetchImpl,
+      onChange: onPublishStatus,
+      onEnd: () => {
+        stopPoll = undefined;
+      },
+    });
+  }
 
   /** Shows the publish state the status reports and sets the buttons. Called each time the reported state changes. */
   function onPublishStatus(status: PublishStatus) {
@@ -820,6 +834,8 @@ export async function startEditor(
     publishRunning = shown.state === 'publishing';
     refreshButtons();
     showLines(publishStatus, statusMessages(shown));
+    // A publish that runs (this page's, or another tab's) is polled until it ends.
+    if (publishRunning) startPoll();
   }
 
   /** Publishes the saved changes. Publish is off while it runs. Its answer is shown next to the button; after a commit the changes list is read again. */
@@ -834,7 +850,10 @@ export async function startEditor(
         showLines(publishResult, publishMessages(answer.body));
         await refreshChanges();
       } else {
-        lastPublishFailed = true;
+        // A refusal at the gate did not run this publish, so a failed state in the status comes from an earlier one: it stays shown.
+        lastPublishFailed =
+          answer.failure.code !== 'publish-in-progress' &&
+          answer.failure.code !== 'busy';
         showLines(publishResult, publishFailureMessages(answer.failure));
       }
       // The publish may have cleared a failed state or an upstream build error: read the status now, not at the next reload.
@@ -934,7 +953,7 @@ export async function startEditor(
   await openPreview();
   // Reads the publish state now (a page reloaded during a publish keeps the buttons off, and a failed publish keeps its error),
   // then again each second while a publish runs (status.ts).
-  startStatusPolling({ fetchImpl, onChange: onPublishStatus });
+  startPoll();
 }
 
 // The page's script starts the editor once its markup is in place. Tests import

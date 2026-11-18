@@ -49,6 +49,8 @@ export interface StatusPollOptions {
   readonly intervalMs?: number;
   /** Runs `run` after `ms` and returns a function that cancels it. The default is `setTimeout`. */
   readonly schedule?: (run: () => void, ms: number) => () => void;
+  /** Called when a read reports no publish running, so the poll has ended and no further read is scheduled. */
+  readonly onEnd?: () => void;
 }
 
 /** The real timer: `setTimeout`, cancelled with `clearTimeout`. */
@@ -67,6 +69,7 @@ export function startStatusPolling(options: StatusPollOptions): () => void {
     onChange,
     intervalMs = STATUS_POLL_MS,
     schedule = scheduleTimeout,
+    onEnd,
   } = options;
   let stopped = false;
   let running = false;
@@ -89,6 +92,7 @@ export function startStatusPolling(options: StatusPollOptions): () => void {
       }
     }
     if (running) cancelNext = schedule(() => void poll(), intervalMs);
+    else onEnd?.();
   }
 
   void poll();
