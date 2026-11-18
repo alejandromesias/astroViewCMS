@@ -1,6 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
-import { type ApiFailure, type FetchLike, saveChanges } from './api.ts';
-import { failureMessages, failureText, saveMessages } from './messages.ts';
+import {
+  type ApiFailure,
+  type FetchLike,
+  publishChanges,
+  saveChanges,
+} from './api.ts';
+import {
+  failureMessages,
+  failureText,
+  publishFailureMessages,
+  publishMessages,
+  saveMessages,
+  statusMessages,
+} from './messages.ts';
 
 const CHANGES = {
   changes: [{ document: 'blog/a', baseRevision: 'r1', data: {} }],
@@ -332,5 +344,390 @@ describe('failureText', () => {
         text: 'the answer has the wrong shape',
       }),
     ).toBe('Upload failed: the answer has the wrong shape');
+  });
+});
+
+/** The failure of a publish answered with this status and JSON body, as the API reads it. */
+async function publishRefusedWith(
+  status: number,
+  body: unknown,
+): Promise<ApiFailure> {
+  const result = await publishChanges(
+    vi.fn<FetchLike>(async () => Response.json(body, { status })),
+  );
+  if (result.ok) throw new Error('the answer was not a failure');
+  return result.failure;
+}
+
+describe('publishMessages', () => {
+  it('says nothing was published when the commit is null', () => {
+    expect(
+      publishMessages({ commit: null, overwritten: [], renamed: [] }),
+    ).toEqual([
+      {
+        level: 'ok',
+        text: 'Nothing to publish. Nothing differs from upstream.',
+      },
+    ]);
+  });
+
+  it('says the commit, with its short id', () => {
+    expect(
+      publishMessages({ commit: 'c0ffee1234', overwritten: [], renamed: [] }),
+    ).toEqual([{ level: 'ok', text: 'Published c0ffee1.' }]);
+  });
+
+  it('warns about each renamed document, so it is checked before the next publish', () => {
+    expect(
+      publishMessages({
+        commit: 'c0ffee1234',
+        overwritten: [],
+        renamed: [{ key: 'blog/b', from: 'blog/b.md', to: 'blog/b-2.md' }],
+      }),
+    ).toEqual([
+      { level: 'ok', text: 'Published c0ffee1.' },
+      {
+        level: 'warning',
+        text: 'blog/b was renamed from blog/b.md to blog/b-2.md. Check it before you publish again: a rename duplicate would be pushed.',
+      },
+    ]);
+  });
+
+  it('warns about a renamed document even when the commit is null', () => {
+    expect(
+      publishMessages({
+        commit: null,
+        overwritten: [],
+        renamed: [{ key: 'blog/b', from: 'blog/b.md', to: 'blog/b-2.md' }],
+      }).map((message) => message.level),
+    ).toEqual(['ok', 'warning']);
+  });
+
+  it('warns about each overwritten document, with the commit it replaced', () => {
+    expect(
+      publishMessages({
+        commit: 'c0ffee1234',
+        overwritten: [{ key: 'blog/a', commit: 'abc123456' }],
+        renamed: [],
+      }),
+    ).toEqual([
+      { level: 'ok', text: 'Published c0ffee1.' },
+      {
+        level: 'warning',
+        text: 'Overwrote the upstream change to blog/a (from abc1234).',
+      },
+    ]);
+  });
+
+  it('warns when the build check was skipped because the upstream code does not build', () => {
+    expect(
+      publishMessages({
+        commit: 'c0ffee1234',
+        overwritten: [],
+        renamed: [],
+        buildCheckSkipped: 'upstream-broken',
+      }),
+    ).toEqual([
+      { level: 'ok', text: 'Published c0ffee1.' },
+      {
+        level: 'warning',
+        text: 'The upstream code does not build, so the build check was skipped.',
+      },
+    ]);
+  });
+});
+
+describe('publishFailureMessages', () => {
+  it.each([
+    [
+      503,
+      { error: 'busy', message: 'Busy' },
+      'The repository is busy, so nothing was published. Try again.',
+    ],
+    [
+      503,
+      { error: 'build-in-progress', message: 'Rebuilding' },
+      'The preview is still being rebuilt, so nothing was published. Try again once the build is done.',
+    ],
+    [
+      503,
+      { error: 'upstream-changed', message: 'New code' },
+      'The upstream code changed while the publish ran, so nothing was published. Your saves are kept. Try again.',
+    ],
+    [
+      503,
+      { error: 'no-bundle' },
+      'The site is not built yet, so nothing was published.',
+    ],
+    [
+      409,
+      { error: 'publish-in-progress', message: 'Running' },
+      'Another publish is running, so nothing was published. Try again when it ends.',
+    ],
+    [
+      409,
+      { error: 'remote-moved', message: 'Moved' },
+      'The remote moved while the publish ran, so nothing was published. Your saves are kept. Publish again.',
+    ],
+    [502, { error: 'push-failed', message: 'Refused' }, 'Refused'],
+    [502, { error: 'push-rejected', message: 'Moved on' }, 'Moved on'],
+    [502, { error: 'sync-failed', message: 'No remote' }, 'No remote'],
+    [500, { error: 'publish-failed', message: 'Failed' }, 'Failed'],
+  ])(
+    'shows the text of a %i answer with the code in its body',
+    async (status, body, text) => {
+      expect(
+        publishFailureMessages(await publishRefusedWith(status, body)),
+      ).toEqual([{ level: 'error', text }]);
+    },
+  );
+
+  it('shows the first error of a 424 build-failed after the message', async () => {
+    expect(
+      publishFailureMessages(
+        await publishRefusedWith(424, {
+          error: 'build-failed',
+          message: 'The site does not build.',
+          firstError: 'Unexpected token',
+        }),
+      ),
+    ).toEqual([
+      {
+        level: 'error',
+        text: 'The site does not build. First error: Unexpected token',
+      },
+    ]);
+  });
+
+  it('shows the message of a 424 build-failed alone when it has no first error', async () => {
+    expect(
+      publishFailureMessages(
+        await publishRefusedWith(424, {
+          error: 'build-failed',
+          message: 'The site does not build.',
+          firstError: '',
+        }),
+      ),
+    ).toEqual([{ level: 'error', text: 'The site does not build.' }]);
+  });
+
+  it('names each invalid document with its path, and the known image codes in full', async () => {
+    expect(
+      publishFailureMessages(
+        await publishRefusedWith(422, {
+          error: 'invalid',
+          errors: [
+            { key: 'blog/a', path: ['links', 0, 'url'], message: 'Bad url' },
+            {
+              key: 'blog/a',
+              path: ['image'],
+              message: 'x',
+              code: 'media-collision',
+            },
+          ],
+        }),
+      ),
+    ).toEqual([
+      { level: 'error', text: 'blog/a: links.0.url: Bad url' },
+      {
+        level: 'error',
+        text: 'blog/a: image: Another image already has this name. Pick another image.',
+      },
+    ]);
+  });
+
+  it('says a document is invalid when a 422 names no field', async () => {
+    expect(
+      publishFailureMessages(
+        await publishRefusedWith(422, { error: 'invalid', errors: [] }),
+      ),
+    ).toEqual([
+      {
+        level: 'error',
+        text: 'The publish did not happen: a document is invalid.',
+      },
+    ]);
+  });
+
+  it('says a developer must change the referrers when needsDeveloper is set', async () => {
+    expect(
+      publishFailureMessages(
+        await publishRefusedWith(409, {
+          error: 'referenced-by',
+          document: 'data:src/config/menu.json',
+          referrers: ['blog/a'],
+          needsDeveloper: true,
+        }),
+      ),
+    ).toEqual([
+      {
+        level: 'error',
+        text: 'data:src/config/menu.json is used by blog/a. A developer has to change those first.',
+      },
+    ]);
+  });
+
+  it('says to remove the references, then publish again, when a developer is not needed', async () => {
+    expect(
+      publishFailureMessages(
+        await publishRefusedWith(409, {
+          error: 'referenced-by',
+          document: 'data:src/config/menu.json',
+          referrers: ['blog/a', 'blog/b'],
+        }),
+      ),
+    ).toEqual([
+      {
+        level: 'error',
+        text: 'data:src/config/menu.json is used by blog/a, blog/b. Remove those references, then publish again.',
+      },
+    ]);
+  });
+
+  it('shows a code the publish does not name with its status and text', async () => {
+    expect(
+      publishFailureMessages(
+        await publishRefusedWith(500, { error: 'internal_error' }),
+      ),
+    ).toEqual([
+      {
+        level: 'error',
+        text: 'The publish did not happen (500): {"error":"internal_error"}',
+      },
+    ]);
+  });
+
+  it('shows a plain answer with its status and text', async () => {
+    const failure = await publishChanges(
+      vi.fn<FetchLike>(
+        async () => new Response('gateway down', { status: 500 }),
+      ),
+    );
+    if (failure.ok) throw new Error('the answer was not a failure');
+    expect(publishFailureMessages(failure.failure)).toEqual([
+      {
+        level: 'error',
+        text: 'The publish did not happen (500): gateway down',
+      },
+    ]);
+  });
+
+  it('says a request that got no answer must be reloaded before the next publish', async () => {
+    const failure = await publishChanges(
+      vi.fn<FetchLike>(async () => {
+        throw new TypeError('Failed to fetch');
+      }),
+    );
+    if (failure.ok) throw new Error('the answer was not a failure');
+    expect(publishFailureMessages(failure.failure)).toEqual([
+      {
+        level: 'error',
+        text: 'Could not reach the server (Failed to fetch). Reload before you publish again.',
+      },
+    ]);
+  });
+
+  it('says the answer was not understood when it has the wrong shape', async () => {
+    const failure = await publishChanges(
+      vi.fn<FetchLike>(async () => Response.json({ commit: 'x' })),
+    );
+    if (failure.ok) throw new Error('the answer was not a failure');
+    expect(publishFailureMessages(failure.failure)).toEqual([
+      {
+        level: 'error',
+        text: "The server's answer was not understood. Reload before you publish again.",
+      },
+    ]);
+  });
+});
+
+describe('a save made during a publish', () => {
+  it('says a publish is running, and to save again when it ends', async () => {
+    expect(
+      failureMessages(
+        await refusedWith(409, {
+          error: 'publish-in-progress',
+          message: 'Running',
+        }),
+      ),
+    ).toEqual([
+      {
+        level: 'error',
+        text: 'A publish is running. Save again when it ends.',
+      },
+    ]);
+  });
+});
+
+describe('statusMessages', () => {
+  it('shows nothing while idle with no upstream error', () => {
+    expect(
+      statusMessages({ state: 'idle', error: null, upstreamBuildFailed: null }),
+    ).toEqual([]);
+  });
+
+  it('shows nothing when the status has no publish part', () => {
+    expect(
+      statusMessages({
+        state: undefined,
+        error: null,
+        upstreamBuildFailed: null,
+      }),
+    ).toEqual([]);
+  });
+
+  it('warns that a publish is running, and that Save and Publish are off', () => {
+    expect(
+      statusMessages({
+        state: 'publishing',
+        error: null,
+        upstreamBuildFailed: null,
+      }),
+    ).toEqual([
+      {
+        level: 'warning',
+        text: 'A publish is running. Save and Publish are off until it ends.',
+      },
+    ]);
+  });
+
+  it('shows the error of the last publish that failed', () => {
+    expect(
+      statusMessages({
+        state: 'failed',
+        error: 'The remote refused the push',
+        upstreamBuildFailed: null,
+      }),
+    ).toEqual([
+      {
+        level: 'error',
+        text: 'The last publish failed: The remote refused the push',
+      },
+    ]);
+  });
+
+  it('says the last publish failed when no error is kept', () => {
+    expect(
+      statusMessages({
+        state: 'failed',
+        error: null,
+        upstreamBuildFailed: null,
+      }),
+    ).toEqual([{ level: 'error', text: 'The last publish failed.' }]);
+  });
+
+  it('warns about an upstream build error', () => {
+    expect(
+      statusMessages({
+        state: 'idle',
+        error: null,
+        upstreamBuildFailed: 'Unexpected token',
+      }),
+    ).toEqual([
+      {
+        level: 'warning',
+        text: 'The upstream code does not build: Unexpected token',
+      },
+    ]);
   });
 });

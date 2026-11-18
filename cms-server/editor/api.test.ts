@@ -6,6 +6,7 @@ import {
   getOverlay,
   getPreviewUrl,
   getStatus,
+  publishChanges,
   saveChanges,
   uploadMedia,
   waitForNewBundle,
@@ -530,6 +531,178 @@ describe('saveChanges', () => {
       changes,
     );
     expect(answer).toEqual({ ok: false, failure: SHAPE });
+  });
+});
+
+describe('publishChanges', () => {
+  it('sends a POST with a JSON content type to /api/publish', async () => {
+    const fetchImpl = fetchAnswering(
+      Response.json({ commit: null, overwritten: [], renamed: [] }),
+    );
+    await publishChanges(fetchImpl);
+    expect(fetchImpl).toHaveBeenCalledWith('/api/publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+  });
+
+  it('reads the commit, the overwritten documents and the renamed documents of a 200', async () => {
+    const body = {
+      commit: 'c0ffee1',
+      overwritten: [{ key: 'blog/a', commit: 'abc1234' }],
+      renamed: [{ key: 'blog/b', from: 'blog/b.md', to: 'blog/b-2.md' }],
+    };
+    const answer = await publishChanges(fetchAnswering(Response.json(body)));
+    expect(answer).toEqual({ ok: true, body });
+  });
+
+  it('reads a 200 with commit null: nothing to publish', async () => {
+    const body = { commit: null, overwritten: [], renamed: [] };
+    const answer = await publishChanges(fetchAnswering(Response.json(body)));
+    expect(answer).toEqual({ ok: true, body });
+  });
+
+  it('reads the build check that was skipped on a 200', async () => {
+    const body = {
+      commit: 'c0ffee1',
+      overwritten: [],
+      renamed: [],
+      buildCheckSkipped: 'upstream-broken',
+    };
+    const answer = await publishChanges(fetchAnswering(Response.json(body)));
+    expect(answer).toEqual({ ok: true, body });
+  });
+
+  it('treats a 200 whose body is not the contract as a shape failure', async () => {
+    const answer = await publishChanges(
+      fetchAnswering(Response.json({ commit: 'c0ffee1' })),
+    );
+    expect(answer).toEqual({ ok: false, failure: { ...SHAPE, status: 200 } });
+  });
+
+  // Each code of the publish stage keeps its status, its message and its fields (WORKPLAN 2.11d).
+  it.each([
+    [503, 'busy', { error: 'busy', message: 'Busy' }, 'Busy'],
+    [
+      503,
+      'build-in-progress',
+      { error: 'build-in-progress', message: 'Rebuilding' },
+      'Rebuilding',
+    ],
+    [
+      503,
+      'upstream-changed',
+      { error: 'upstream-changed', message: 'New code' },
+      'New code',
+    ],
+    [
+      409,
+      'publish-in-progress',
+      { error: 'publish-in-progress', message: 'Running' },
+      'Running',
+    ],
+    [409, 'remote-moved', { error: 'remote-moved', message: 'Moved' }, 'Moved'],
+    [
+      409,
+      'referenced-by',
+      {
+        error: 'referenced-by',
+        document: 'data:src/config/menu.json',
+        referrers: ['blog/a'],
+        needsDeveloper: true,
+      },
+      '{"error":"referenced-by","document":"data:src/config/menu.json","referrers":["blog/a"],"needsDeveloper":true}',
+    ],
+    [
+      422,
+      'invalid',
+      {
+        error: 'invalid',
+        errors: [{ key: 'blog/a', path: ['links', 0, 'url'], message: 'Bad' }],
+      },
+      '{"error":"invalid","errors":[{"key":"blog/a","path":["links",0,"url"],"message":"Bad"}]}',
+    ],
+    [
+      424,
+      'build-failed',
+      {
+        error: 'build-failed',
+        message: 'The site does not build',
+        firstError: 'Unexpected token',
+      },
+      'The site does not build',
+    ],
+    [
+      502,
+      'push-failed',
+      { error: 'push-failed', message: 'Refused' },
+      'Refused',
+    ],
+    [
+      502,
+      'push-rejected',
+      { error: 'push-rejected', message: 'Moved on' },
+      'Moved on',
+    ],
+    [
+      502,
+      'sync-failed',
+      { error: 'sync-failed', message: 'No remote' },
+      'No remote',
+    ],
+    [
+      500,
+      'publish-failed',
+      { error: 'publish-failed', message: 'Failed' },
+      'Failed',
+    ],
+  ] as const)(
+    'keeps the code, the fields and the message of a %i %s answer',
+    async (status, code, body, text) => {
+      const answer = await publishChanges(
+        fetchAnswering(Response.json(body, { status })),
+      );
+      expect(answer).toEqual({
+        ok: false,
+        failure: { kind: 'http', status, text, code, body },
+      });
+    },
+  );
+
+  it('keeps the first error of a 424 build-failed', async () => {
+    const answer = await publishChanges(
+      fetchAnswering(
+        Response.json(
+          { error: 'build-failed', message: 'Build', firstError: 'Boom' },
+          { status: 424 },
+        ),
+      ),
+    );
+    expect(answer).toMatchObject({
+      ok: false,
+      failure: { code: 'build-failed', body: { firstError: 'Boom' } },
+    });
+  });
+
+  it('reports a code the table does not have as its status and text', async () => {
+    const answer = await publishChanges(
+      fetchAnswering(new Response('gateway down', { status: 502 })),
+    );
+    expect(answer).toEqual({
+      ok: false,
+      failure: { kind: 'http', status: 502, text: 'gateway down' },
+    });
+  });
+
+  it('reports a request that got no answer as a network failure', async () => {
+    const answer = await publishChanges(
+      fetchAnswering(new TypeError('Failed to fetch')),
+    );
+    expect(answer).toEqual({
+      ok: false,
+      failure: { kind: 'network', status: 0, text: 'Failed to fetch' },
+    });
   });
 });
 

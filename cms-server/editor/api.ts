@@ -14,7 +14,9 @@ import {
   type OverlayBody,
   overlayAnswerSchema,
   type PreviewUrlBody,
+  type PublishBody,
   previewUrlAnswerSchema,
+  publishAnswerSchema,
   type SaveBody,
   type SaveRequest,
   type StatusAnswerBody,
@@ -220,6 +222,17 @@ export function saveChanges(
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(changes),
+  });
+}
+
+/** `POST /api/publish`: publishes the saved changes as one commit. The route reads no body, but it needs a JSON content type. */
+export function publishChanges(
+  fetchImpl: FetchLike,
+): Promise<ApiResult<PublishBody>> {
+  return request(fetchImpl, '/api/publish', publishAnswerSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
   });
 }
 

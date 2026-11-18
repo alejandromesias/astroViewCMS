@@ -135,10 +135,23 @@ interface SetupOptions {
   preview?: Response | Error;
   /** The answer of `GET /api/overlay`, in place of an empty overlay. */
   overlay?: Response;
+  /** The answers of `GET /api/status`, one per read in order; a read after them gets a 404. */
+  statuses?: Response[];
+  /** The answer of `POST /api/publish`, when it is not answered at once. */
+  publish?: Promise<Response>;
+  /** Runs when `GET /api/overlay` is asked, so a test can act while the page is still loading. */
+  onOverlay?: () => void;
 }
 
 /** Starts the editor on a fake CMS API; resolves once its startup has run. */
-async function setup({ search = '', preview, overlay }: SetupOptions = {}) {
+async function setup({
+  search = '',
+  preview,
+  overlay,
+  statuses = [],
+  publish,
+  onOverlay,
+}: SetupOptions = {}) {
   window.history.replaceState(null, '', `/${search}`);
   document.body.innerHTML = BODY;
   const iframe = document.getElementById(
@@ -151,8 +164,13 @@ async function setup({ search = '', preview, overlay }: SetupOptions = {}) {
   });
   const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
     const url = String(input);
-    if (url === '/api/overlay')
+    if (url === '/api/overlay') {
+      onOverlay?.();
       return overlay ?? Response.json({ documents: {}, media: {} });
+    }
+    if (url === '/api/status')
+      return statuses.shift() ?? new Response(null, { status: 404 });
+    if (url === '/api/publish' && publish) return publish;
     if (url.startsWith('/api/preview-url?path=')) {
       if (preview instanceof Error) throw preview;
       if (preview) return preview;
@@ -363,10 +381,16 @@ describe('on preview:ready', () => {
       PREVIEW_ORIGIN,
     );
     // The server warms the renderer when it answers the preview URL, so the
-    // browser calls nothing else.
+    // browser calls nothing else after ready. Its only other call is the read
+    // of the publish state at start (status.ts), which is made before ready.
+    const calls = () => editor.fetch.mock.calls.length;
+    const before = calls();
+    editor.ready();
+    expect(calls()).toBe(before);
     expect(editor.fetch.mock.calls.map(([url]) => String(url))).toEqual([
       '/api/overlay',
       '/api/preview-url?path=%2F',
+      '/api/status',
     ]);
   });
 
@@ -2726,5 +2750,366 @@ describe('saving', () => {
     expect(previewRequests()).toBe(1);
     // One status before the save, then one poll per attempt.
     expect(statusCalls() - statusesBefore).toBe(61);
+  });
+});
+
+describe('publishing', () => {
+  /** The Publish button of the page. */
+  const publishButton = () =>
+    document.getElementById('publish') as HTMLButtonElement;
+  /** The Save button of the page. */
+  const saveControl = () =>
+    document.getElementById('save') as HTMLButtonElement;
+  /** The line under the buttons that shows the publish state. */
+  const publishStatus = () => document.getElementById('publish-status')!;
+  /** The line under the buttons that shows the answer of the last Publish. */
+  const publishResult = () => document.getElementById('publish-result')!;
+
+  it('publishes with POST /api/publish and shows the commit next to the button', async () => {
+    editor.fetch.mockResolvedValueOnce(
+      Response.json({ commit: 'c0ffee1234', overwritten: [], renamed: [] }),
+    );
+    publishButton().click();
+    await vi.waitFor(() =>
+      expect(publishResult().textContent).toBe('Published c0ffee1.'),
+    );
+    expect(editor.fetch).toHaveBeenCalledWith('/api/publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    expect(publishResult().dataset.state).toBe('ok');
+    expect(publishResult().hidden).toBe(false);
+  });
+
+  it('turns Save and Publish off while the request runs, and shows a refused publish', async () => {
+    let answer: (response: Response) => void = () => {};
+    editor.fetch.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    publishButton().click();
+    expect(publishButton().disabled).toBe(true);
+    expect(saveControl().disabled).toBe(true);
+    answer(
+      Response.json(
+        { error: 'remote-moved', message: 'Moved' },
+        { status: 409 },
+      ),
+    );
+    await vi.waitFor(() => expect(publishButton().disabled).toBe(false));
+    expect(saveControl().disabled).toBe(false);
+    expect(publishResult().textContent).toBe(
+      'The remote moved while the publish ran, so nothing was published. Your saves are kept. Publish again.',
+    );
+    expect(publishResult().dataset.state).toBe('error');
+  });
+
+  it('keeps Save and Publish off while the status reports a publish, and on again when it ends', async () => {
+    vi.useFakeTimers();
+    try {
+      await setup({
+        statuses: [
+          Response.json({
+            bundle: null,
+            publish: { state: 'publishing', error: null },
+          }),
+          Response.json({
+            bundle: null,
+            publish: { state: 'idle', error: null },
+          }),
+        ],
+      });
+      await vi.waitFor(() =>
+        expect(publishStatus().textContent).toBe(
+          'A publish is running. Save and Publish are off until it ends.',
+        ),
+      );
+      expect(saveControl().disabled).toBe(true);
+      expect(publishButton().disabled).toBe(true);
+      // The next read, a second later, finds no publish running and stops.
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(saveControl().disabled).toBe(false);
+      expect(publishButton().disabled).toBe(false);
+      expect(publishStatus().hidden).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows the error of a failed publish after a reload, and leaves the buttons on', async () => {
+    await setup({
+      statuses: [
+        Response.json({
+          bundle: null,
+          publish: { state: 'failed', error: 'The remote refused the push' },
+        }),
+      ],
+    });
+    await vi.waitFor(() =>
+      expect(publishStatus().textContent).toBe(
+        'The last publish failed: The remote refused the push',
+      ),
+    );
+    expect(publishStatus().dataset.state).toBe('error');
+    expect(publishStatus().hidden).toBe(false);
+    expect(publishButton().disabled).toBe(false);
+    expect(saveControl().disabled).toBe(false);
+  });
+
+  it('clears the failed state from the status line when a publish succeeds', async () => {
+    editor = await setup({
+      statuses: [
+        Response.json({
+          bundle: null,
+          publish: { state: 'failed', error: 'The remote refused the push' },
+        }),
+        Response.json({
+          bundle: null,
+          publish: { state: 'idle', error: null },
+        }),
+      ],
+    });
+    await vi.waitFor(() => expect(publishStatus().hidden).toBe(false));
+    editor.fetch.mockResolvedValueOnce(
+      Response.json({ commit: 'c0ffee1234', overwritten: [], renamed: [] }),
+    );
+    publishButton().click();
+    await vi.waitFor(() =>
+      expect(publishResult().textContent).toBe('Published c0ffee1.'),
+    );
+    await vi.waitFor(() => expect(publishStatus().hidden).toBe(true));
+    expect(publishStatus().textContent).toBe('');
+  });
+
+  it('leaves only the upstream warning in the status line after a failed publish', async () => {
+    const errors = { protocolMismatch: null, swap: null };
+    editor = await setup({
+      statuses: [
+        Response.json({
+          bundle: null,
+          publish: { state: 'idle', error: null },
+          errors: { ...errors, upstreamBuildFailed: null },
+        }),
+        Response.json({
+          bundle: null,
+          publish: { state: 'failed', error: 'The remote refused the push' },
+          errors: {
+            ...errors,
+            upstreamBuildFailed: 'Build failed in src/x.tsx',
+          },
+        }),
+      ],
+    });
+    editor.fetch.mockResolvedValueOnce(
+      Response.json(
+        { error: 'push-failed', message: 'The remote refused the push' },
+        { status: 502 },
+      ),
+    );
+    publishButton().click();
+    await vi.waitFor(() =>
+      expect(publishResult().textContent).toBe('The remote refused the push'),
+    );
+    await vi.waitFor(() =>
+      expect(publishStatus().textContent).toBe(
+        'The upstream code does not build: Build failed in src/x.tsx',
+      ),
+    );
+    expect(publishResult().dataset.state).toBe('error');
+  });
+
+  /** A `GET /api/status` answer with the publish state, its error, and the upstream build error (or none). */
+  const statusResponse = (
+    state: 'idle' | 'publishing' | 'failed',
+    error: string | null = null,
+    upstreamBuildFailed: string | null = null,
+  ) =>
+    Response.json({
+      bundle: null,
+      publish: { state, error },
+      errors: { protocolMismatch: null, swap: null, upstreamBuildFailed },
+    });
+
+  it("keeps the failed text out of the status line when a later poll reads failed after this page's publish", async () => {
+    vi.useFakeTimers();
+    try {
+      let answer: (response: Response) => void = () => {};
+      const pending = new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+      // Publish is clicked while the page loads, so the page's first status read already sees the publish running.
+      await setup({
+        publish: pending,
+        onOverlay: () => publishButton().click(),
+        statuses: [
+          statusResponse('publishing'),
+          statusResponse('publishing'),
+          statusResponse(
+            'failed',
+            'The remote refused the push',
+            'Build failed in src/x.tsx',
+          ),
+          statusResponse(
+            'failed',
+            'The remote refused the push',
+            'Build failed in src/y.tsx',
+          ),
+        ],
+      });
+      await vi.advanceTimersByTimeAsync(1000); // a poll during the publish: still publishing
+      answer(
+        Response.json(
+          { error: 'push-failed', message: 'The remote refused the push' },
+          { status: 502 },
+        ),
+      );
+      await vi.waitFor(() =>
+        expect(publishStatus().textContent).toBe(
+          'The upstream code does not build: Build failed in src/x.tsx',
+        ),
+      );
+      await vi.advanceTimersByTimeAsync(1000); // a later poll reads failed, with a newer upstream error
+      await vi.waitFor(() =>
+        expect(publishStatus().textContent).toBe(
+          'The upstream code does not build: Build failed in src/y.tsx',
+        ),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps polling when a status read cannot be read, so Save and Publish come back', async () => {
+    vi.useFakeTimers();
+    try {
+      const unreadable = new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(new Error('connection reset'));
+          },
+        }),
+        { status: 500 },
+      );
+      await setup({
+        statuses: [
+          statusResponse('publishing'),
+          unreadable,
+          statusResponse('idle'),
+        ],
+      });
+      await vi.waitFor(() => expect(publishButton().disabled).toBe(true));
+      // The read that could not be read leaves the state as it was; the next read still comes.
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(publishButton().disabled).toBe(true);
+      await vi.advanceTimersByTimeAsync(1000);
+      await vi.waitFor(() => expect(publishButton().disabled).toBe(false));
+      expect(saveControl().disabled).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('starts one poll when a publish is reported as running, and the buttons come back when it ends', async () => {
+    vi.useFakeTimers();
+    try {
+      editor = await setup({
+        publish: Promise.resolve(
+          Response.json(
+            { error: 'publish-in-progress', message: 'A publish is running' },
+            { status: 409 },
+          ),
+        ),
+        statuses: [
+          statusResponse('idle'), // page start: no publish runs, so no poll
+          statusResponse('publishing'), // the page's status read after the 409
+          statusResponse('publishing', null, 'Build failed in src/x.tsx'), // the poll's first read
+          statusResponse('idle'), // a later poll read
+        ],
+      });
+      publishButton().click();
+      await vi.waitFor(() =>
+        expect(publishStatus().textContent).toContain(
+          'The upstream code does not build: Build failed in src/x.tsx',
+        ),
+      );
+      expect(publishButton().disabled).toBe(true);
+      const statusCalls = () =>
+        editor.fetch.mock.calls.filter(([url]) => url === '/api/status').length;
+      const before = statusCalls();
+      await vi.advanceTimersByTimeAsync(1000);
+      await vi.waitFor(() => expect(publishButton().disabled).toBe(false));
+      expect(saveControl().disabled).toBe(false);
+      // One poll runs: one read in the second that follows.
+      expect(statusCalls() - before).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the failed text in the status line when the publish was refused at the gate', async () => {
+    editor = await setup({
+      publish: Promise.resolve(
+        Response.json(
+          { error: 'busy', message: 'The repository is busy' },
+          { status: 503 },
+        ),
+      ),
+      statuses: [
+        statusResponse('idle'),
+        statusResponse('failed', 'The remote refused the push'),
+      ],
+    });
+    publishButton().click();
+    await vi.waitFor(() =>
+      expect(publishStatus().textContent).toBe(
+        'The last publish failed: The remote refused the push',
+      ),
+    );
+    expect(publishResult().dataset.state).toBe('error');
+  });
+
+  it("shows a later publish's failure when a poll sees that publish run after this page's failure", async () => {
+    vi.useFakeTimers();
+    try {
+      let answer: (response: Response) => void = () => {};
+      const pending = new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+      // Publish is clicked while the page loads: the page's first read sees it running, so a poll runs.
+      editor = await setup({
+        publish: pending,
+        onOverlay: () => publishButton().click(),
+        statuses: [
+          statusResponse('publishing'),
+          // This page's status read after its failed answer.
+          statusResponse('failed', 'The remote refused the push'),
+          // A poll: another tab's publish runs, unchanged from the first read.
+          statusResponse('publishing'),
+          // A poll: that publish failed.
+          statusResponse('failed', 'The remote refused the push again'),
+        ],
+      });
+      answer(
+        Response.json(
+          { error: 'push-failed', message: 'The remote refused the push' },
+          { status: 502 },
+        ),
+      );
+      await vi.waitFor(() =>
+        expect(publishResult().textContent).toBe('The remote refused the push'),
+      );
+      await vi.advanceTimersByTimeAsync(1000); // the poll reads publishing
+      await vi.advanceTimersByTimeAsync(1000); // the poll reads failed
+      await vi.waitFor(() =>
+        expect(publishStatus().textContent).toBe(
+          'The last publish failed: The remote refused the push again',
+        ),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

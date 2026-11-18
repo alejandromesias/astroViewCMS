@@ -41,6 +41,19 @@ h2 {
 #status[data-state="error"] {
   color: #b42318;
 }
+#publish-status,
+#publish-result {
+  margin: 4px 0 0;
+  color: #4b5563;
+}
+#publish-status[data-state="warning"],
+#publish-result[data-state="warning"] {
+  color: #92400e;
+}
+#publish-status[data-state="error"],
+#publish-result[data-state="error"] {
+  color: #b42318;
+}
 .document {
   margin-bottom: 16px;
 }
