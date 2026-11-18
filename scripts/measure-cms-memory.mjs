@@ -213,6 +213,9 @@ async function measure(stage, pid) {
   return { stage, rss: rssBytes(pid), private: privateBytes(pid) };
 }
 
+// The run writes this file and deletes it afterwards, so it must not already exist: a file of that name is someone's.
+if (fs.existsSync(CONFIG_FILE))
+  throw new Error(`${CONFIG_FILE} exists; move it before the run`);
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'cms-memory-'));
 // The bundle sits under preview-render-server/.build, as in measure-memory.mjs: its modules resolve packages from there.
 const bundleRoot = path.join(PREVIEW_DIR, '.build');
@@ -253,6 +256,8 @@ try {
     ],
     {
       cwd: SERVER_DIR,
+      // The preview node is a child of cms-server and inherits this: it serves without the gate and without
+      // secrets. That is for this local measurement only (as local-insecure.env says for npm run start:sample).
       env: { ...env, PREVIEW_INSECURE: '1' },
       stdio: ['pipe', 'pipe', 'pipe'], // the node exits when its stdin closes (2.1i): keep the pipe open
     },
