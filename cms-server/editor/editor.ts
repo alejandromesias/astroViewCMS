@@ -811,16 +811,21 @@ export async function startEditor(
 
   // ---- publishing: POST /api/publish, and the publish state from GET /api/status
 
+  /** True from a failed publish of this page until its next publish starts. The status line then leaves out the failed text, which that publish's answer shows (polls included). */
+  let lastPublishFailed = false;
+
   /** Shows the publish state the status reports and sets the buttons. Called each time the reported state changes. */
   function onPublishStatus(status: PublishStatus) {
-    publishRunning = status.state === 'publishing';
+    const shown = lastPublishFailed ? withoutFailedPublish(status) : status;
+    publishRunning = shown.state === 'publishing';
     refreshButtons();
-    showLines(publishStatus, statusMessages(status));
+    showLines(publishStatus, statusMessages(shown));
   }
 
   /** Publishes the saved changes. Publish is off while it runs. Its answer is shown next to the button; after a commit the changes list is read again. */
   async function publish() {
     publishing = true;
+    lastPublishFailed = false;
     refreshButtons();
     showLines(publishResult, []);
     try {
@@ -828,14 +833,13 @@ export async function startEditor(
       if (answer.ok) {
         showLines(publishResult, publishMessages(answer.body));
         await refreshChanges();
-      } else showLines(publishResult, publishFailureMessages(answer.failure));
+      } else {
+        lastPublishFailed = true;
+        showLines(publishResult, publishFailureMessages(answer.failure));
+      }
       // The publish may have cleared a failed state or an upstream build error: read the status now, not at the next reload.
       const status = await getStatus(fetchImpl);
-      // A failed publish's error is already in publish-result, so the status line drops it; an upstream build error stays.
-      if (status.ok) {
-        const current = publishStatusOf(status.body);
-        onPublishStatus(answer.ok ? current : withoutFailedPublish(current));
-      }
+      if (status.ok) onPublishStatus(publishStatusOf(status.body));
     } finally {
       publishing = false;
       refreshButtons();

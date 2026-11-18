@@ -76,9 +76,10 @@ export function startStatusPolling(options: StatusPollOptions): () => void {
 
   /** Reads the status, reports it when it changed, and schedules the next read while a publish runs. */
   async function poll(): Promise<void> {
-    const answer = await getStatus(fetchImpl);
+    // A read that rejects (its body could not be read) is a failed read: the last state stands and the next read is still scheduled.
+    const answer = await getStatus(fetchImpl).catch(() => undefined);
     if (stopped) return;
-    if (answer.ok) {
+    if (answer?.ok) {
       const status = publishStatusOf(answer.body);
       const text = JSON.stringify(status);
       running = status.state === 'publishing';
