@@ -87,7 +87,6 @@ These are the rules builders keep needing. Each is in the log under the task nam
 | H2 | **2.1t Result:** record both git shard times from run `43491378803` and mark 2.1t done (merged as `20dc360`; its Result is still empty) | now |
 | H3 | **osv-scanner ignore** `GHSA-g3hv-75wg-m249` expires 2026-12-15. An expired entry fails `npm run audit` | revisit 2026-12-01 |
 | H3b | **osv-scanner ignore** `GHSA-fc5q-39xc-vjpf` (picomatch) expires 2026-12-17. Check first whether a patched picomatch exists. An expired entry fails `npm run audit`. Waiver merged in #56 (`fca9160`) | revisit 2026-12-01 |
-| H4 | **Codex thread `discussion_r4559166100`** (PR #47, 2.10g): the P2 finding (a sync interval of 300 s or more skipped polling) is fixed in `f3b70a3`, which caps the interval at 299. The thread is still open on GitHub, so resolve it there and then drop this row | before wave 11 closes (open) |
 | H5 | **`run.test.ts` first-start flake:** one unexplained failure, then green after an explicit 5 s timeout. If it fails again, it becomes a task | watch |
 
 ## 2. Working rules (short form)
@@ -188,7 +187,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 
 ### Wave 11
 
-**Status (2026-11-17):** 2.14m, 2.14d, 2.10k and 2.11c are merged (#50 to #53). 2.12a is merged (#55, `cd008ee`) and 2.13d is merged (#54, `18e1831`). 2.13e is merged (#57, `5a75e14`). It was the last wave 11 task. **Closed (2026-11-18).** The `mutation-full` run on `main` (run `44241325913`, on `5a75e14`) is green, and the tag `wave-11-closed` is set on `5a75e14`. It settles the 2.13d figure (section 2.13d). One item from the close plan is still open: H4 (the PR #47 thread must be resolved on GitHub).
+**Status (2026-11-17):** 2.14m, 2.14d, 2.10k and 2.11c are merged (#50 to #53). 2.12a is merged (#55, `cd008ee`) and 2.13d is merged (#54, `18e1831`). 2.13e is merged (#57, `5a75e14`). It was the last wave 11 task. **Closed (2026-11-18).** The `mutation-full` run on `main` (run `44241325913`, on `5a75e14`) is green, and the tag `wave-11-closed` is set on `5a75e14`. It settles the 2.13d figure (section 2.13d). The H4 thread on PR #47 (Codex, 2.10g) is resolved; its fix is `f3b70a3`.
 
 **Start order and decisions (2026-11-16, for Lead-11.16's questions).**
 - The close plan is authoritative; the 2026-11-13 handoff's wave 11 (with 2.10e) is stale.
