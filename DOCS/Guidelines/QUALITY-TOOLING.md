@@ -50,6 +50,7 @@ tests for it; the full unit suite is for a person running the checks.
 | Budget tests | bridge size, render latency, memory growth | tests | gate | local `--e2e`, CI `e2e` |
 | Browser tests | the preview in a real Chromium: hydration, morphing, styles, editor origins | `preview-render-server/vitest.browser.config.ts` | gate | local `--e2e`, CI `e2e` |
 | Memory metric | rss and private memory of one preview process, idle, after warm-up, after renders | `scripts/measure-memory.mjs` | neither (a number to record) | local |
+| Memory of cms-server | rss and private memory of the cms-server process, at rest and after 50 saves | `scripts/measure-cms-memory.mjs` | neither (a number to record) | local |
 | Stryker | whether the tests catch changes to the code | `stryker.config.json`, `stryker.<group>.config.mjs`, `.mutation-waivers.json` | gate (75 changed set, 80 per changed file) | CI `mutation-diff` (in parallel with `fast` and `e2e`), CI `mutation-full` (13 shards, skipped on a quiet night), CI `mutation-branch` (by hand); local only as an exception |
 
 "Gate" means a failure should stop a change from landing (and fails the
@@ -151,6 +152,7 @@ build in CI; see [CI-PIPELINE.md](CI-PIPELINE.md)). "Report" means the output ne
 | e2e and budgets | `cd preview-render-server && ../node_modules/.bin/vitest run --config vitest.e2e.config.ts` | ~46 s (94 tests, 14 files; measured 2026-11-02: 46.0 to 46.7 s; the budget file runs last, alone, see *Render latency* under [How each tool is applied here](#how-each-tool-is-applied-here)) |
 | Browser tests | `npm run test:browser -w preview-render-server` (one file: append `-- <file>`) | ~32 s (10 files, 25 tests; measured 2026-11-02: 31.0 to 33.4 s) |
 | Memory of one preview process (manual) | `npm run measure:memory` (see [Memory metric](#memory-metric)) | ~21 s |
+| Memory of cms-server (manual) | `npm run measure:cms-memory` (see [Memory metric](#memory-metric)) | ~2.5 min |
 | Audit | `npm run audit` (needs `osv-scanner`, see below) | ~3 s |
 | Knip | `npm run knip` | ~2 s |
 | dependency-cruiser | `npm run depcruise` (rules: [Annex](#annex-dependency-cruiser-rules)) | ~3 s |
