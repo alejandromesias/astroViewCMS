@@ -409,6 +409,35 @@ pulls, checks the build and pushes.
   build check before push is optional for single-tenant setups and mandatory
   when the platform builds the public site.
 
+### Publish and saves (decided 2026-11-18)
+
+- **Phase 2 (design 3):** while a publish runs, a save answers `409
+  publish-in-progress` and writes nothing, and the poll tick is skipped, so
+  `cms/work` stays where it was from the squash to the push. The build check
+  builds the squash commit `C` in a worktree with no lock held. The commit
+  pushed is the commit that was built, and the bundle swaps only after the
+  push. A push race after a build answers `409 remote-moved` and pushes
+  nothing. The editor disables Save while the status says `publishing` and
+  keeps the drafts. States, events and the answer of each pair:
+  [2.10e-STATE-TABLE.md](../Workplans/Proposals/2.10e-STATE-TABLE.md), later
+  `CMS-SERVER.md`.
+- **Later (design 1, phase 4 or 5): saves continue during the build.** A save
+  made while `C` builds is accepted. After the push, the later saves are
+  re-applied onto `C` and become the next changeset, with no false
+  "overwritten" report. A race with later saves answers `409 remote-moved`.
+  It matters when several editors work on one site or a build takes minutes,
+  because a frozen editor then costs more than the code.
+- **Why it can be added without a rewrite.** `sync/publish-gate.ts` is the
+  only place that answers whether a save or a poll tick may run, and the only
+  place that handles saves made since the snapshot (`afterPush`). Phase 2
+  closes the gate and asserts that `cms/work` is still at the snapshot's
+  base. Design 1 opens the gate and re-applies. The snapshot `{ C, S }` is a
+  value that the publish passes between its steps, and the event-order test
+  has the event "save during the build". Design 1 changes that one expected
+  answer, drops invariant 6 of the state table, and adds the re-apply cells.
+  Routes and the poll loop must never read `status.publish.state` to decide
+  this.
+
 ### CMS app API (single tenant first; multi-tenant adds `/sites/:site`)
 
 | Route | Does |
@@ -1547,6 +1576,10 @@ plan, and a one-line pointer stays here.
 
 ### Phase 4: hosting and auth
 
+- **Saves during a publish build (decided 2026-11-18).** Phase 2 refuses saves
+  while a publish runs. Design 1 (accept them, re-apply after the push) is
+  planned for phase 4 or 5. See section 4, "Publish and saves", for the seam
+  and the state-table cells that change.
 - **Show the delete-guard recheck after a sync (decided 2026-11-10).** Phase 2
   runs the recheck only at publish (WORKPLAN-PHASE-2 2.10c, item 9). Phase 4
   surfaces a sync-time `referenced-by` in the status, once the editor can show

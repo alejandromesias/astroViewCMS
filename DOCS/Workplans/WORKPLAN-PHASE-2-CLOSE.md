@@ -57,7 +57,7 @@ These are the rules builders keep needing. Each is in the log under the task nam
 - **Poll (2.10g).** It runs only while an `/api` call came in the last 5 minutes, with the interval capped at 299 s. Back-off goes up to 10 minutes. While no node serves, a content-only change asks for a `sync-code` build.
 - **Build check (2.10e, decided 2026-11-13).**
   - The `auto` triggers are recomputed at publish time and nothing is stored. Anything the check cannot tell counts as "build".
-  - The candidate is built on a snapshot while saves keep working (see 2.10e below).
+  - The candidate is built on a snapshot; saves are refused until the publish ends (design 3, decided 2026-11-18). Saves that continue during the build (design 1) are deferred to phase 4 or 5 (see 2.10e below).
 - **Quality gates.**
   - Coverage floors are 80 lines, 90 functions, 80 branches and 80 statements per package (2026-11-02).
   - The Stryker thresholds are `high` 90, `low` 80, `break` 75 (2026-11-03). Never change `break`.
@@ -141,7 +141,7 @@ The proposals miss five things, and this plan adds them:
 |---|---|---|---|
 | U0 | Approve this plan | **approved 2026-11-16** | — |
 | U1 | **Slim 2.10f:** while `upstreamBuildFailed` is set, skip the build check and say so (`buildCheckSkipped: 'upstream-broken'`), instead of comparing error text | before 2.14d is written (it adds the field) | **Yes, decided 2026-11-16** |
-| U2 | **2.10e state table:** review it before 2.10e's code starts | wave 12 | — |
+| U2 | **2.10e state table:** review it before 2.10e's code starts. Drafted 2026-11-18 ([Proposals/2.10e-STATE-TABLE.md](Proposals/2.10e-STATE-TABLE.md)); design 3 decided (saves refused during a publish; design 1 deferred to phase 4 or 5). Approved 2026-11-18, D-a to D-f as recommended | wave 12 | — |
 | U3 | **How a site gets its dependencies** (2.14b): A, workspace only; B, the integration is a package installed into the site; C, hybrid | after 2.14a, wave 14 | A for the MVP and B as the target, stated in the quick start |
 | U4 | **Gates for UI code** (2.14i): logic modules under the mutation gate; views get type check, lint, coverage and browser tests | before phase 3 | Yes |
 | U5 | **Backup ref for saves** (`refs/cms/work`, pushed after a save and restored at start-up) | before phase 3; built in phase 4 | Yes, recorded in SYSTEM-DESIGN section 12 |
@@ -307,32 +307,34 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
      3. The bundle that serves is never ahead of what was pushed.
      4. At most one publish runs.
      5. No document is published twice as a change.
-   - The user reviews the table in the PR's first push. It moves into `CMS-SERVER.md` in 2.13b.
-2. **The flow (settled 2026-11-13):**
-   1. Publish syncs and validates. Under the lock it squashes the candidate `C` and notes `cms/work` HEAD as `S`, then releases the lock.
-   2. `C` builds in a worktree with no lock held. Saves, syncs and the poll continue. `status.publish.state` is `publishing`, and a second publish answers `409 publish-in-progress`.
-   3. On a pass, publish takes the lock and pushes `C`. If `cms/work` is still at `S`, it resets to `C`. Otherwise it re-applies `cms/work` onto `C`, so the later saves stay as the next changeset.
-   4. Publish is allowed again after the push.
-   - **(a)** The re-apply treats `C` as the base, so a document saved before and during the build is not reported as overwriting the user's own publish.
-   - **(b)** A push race with `cms/work` still at `S` retries as 2.10d does. With later saves, it answers `409 remote-moved` and pushes nothing.
-   - **(c)** The candidate's bundle becomes current only after a successful push, and the 2.10d post-push rebuild is skipped. A save's own queued rebuild runs after the swap.
-   - A failed build answers `424 build-failed` with `firstError`. Nothing is pushed, `cms/work` is untouched, and the log goes to `.cms/<site>/logs/`.
+     6. From the squash to the push, `cms/work` HEAD is `S` (phase 2 only; design 1 drops it).
+   - **The architect drafted the table (2026-11-18): [Proposals/2.10e-STATE-TABLE.md](Proposals/2.10e-STATE-TABLE.md).** The user approved it with D-a to D-f as recommended (U2, 2026-11-18). The builder checks it against the code and flags any cell that does not hold. It moves into `CMS-SERVER.md` in 2.13b.
+2. **The flow (design 3, decided 2026-11-18; the full table is in [Proposals/2.10e-STATE-TABLE.md](Proposals/2.10e-STATE-TABLE.md)):**
+   1. The publish click closes the **publish gate**: from now until the answer, a save answers `409 publish-in-progress` and a poll tick is skipped. `cms/work` cannot move.
+   2. Publish syncs, waits for a running rebuild, validates and decides whether to build (`always`, `never`, or `decideBuild` for `auto`, recomputed now). Under the lock it squashes the candidate `C` and notes `cms/work` HEAD as `S`, then releases the lock.
+   3. `C` builds in a worktree with no lock held, in the preview builder's one build slot (D-f). `status.publish.state` is `publishing`, and a second publish answers `409 publish-in-progress`.
+   4. On a pass, publish takes the lock, checks that `cms/work` is still at `S`, and pushes `C`, never forced. Then `cms/work` resets to `C`, the candidate bundle becomes current, and the gate opens.
+   - **(a)** A push race after a build answers `409 remote-moved` and pushes nothing. A race with no build keeps the 2.10d retry (D-c).
+   - **(b)** The candidate's bundle becomes current only after a successful push, and the 2.10d post-push rebuild is skipped for it.
+   - **(c)** A failed build answers `424 build-failed` with `firstError`. Nothing is pushed, `cms/work` is untouched, the log goes to `.cms/<site>/logs/`, and the status is `failed` (D-e).
+   - **Extension seam (for design 1, phase 4 or 5):** `sync/publish-gate.ts` is the only place that decides whether a save or a tick may run, and the only place that handles saves made since `S` (`afterPush`: phase 2 asserts `cms/work` is at `S`; design 1 re-applies them onto `C`). Routes and the poll loop call the gate and never read the publish state for this. The snapshot `{ C, S }` is a value passed between the steps. See SYSTEM-DESIGN.md section 4, "Publish and saves".
+   - **Also in this task:** move `PublishAnswer` into `cms-contract` (left open by 2.14d); a test that a restart after the push and before `finishing` leaves a changeset with nothing in it; the start-up sweep removes a stale candidate worktree.
 3. **The event-order test.**
    - Git, the build and the clock are injected.
-   - Run a few hundred seeded random event orders against the real functions, and check the five invariants after each step.
+   - Run the curated scenarios of the state table (section 5: the common and the critical ones), then a few hundred seeded random orders of 8 to 12 events, against the real functions, and check the invariants after each step.
    - The generator lives in the repo and adds no dependency.
    - CI uses fixed seeds and prints the seed on a failure. The test stays under about 10 s.
 - **Done when (R6):**
   - Build check:
     - a broken MDX body is not pushed under `always` or `auto`, and is pushed under `never`;
     - a content-only change under `auto` skips the build.
-  - During a candidate build:
-    - a save is accepted;
+  - During a publish:
+    - a save answers `409 publish-in-progress` and writes nothing;
+    - a poll tick is skipped;
     - a second publish answers `409 publish-in-progress`;
-    - the later saves are the next changeset, and the next publish sends them alone;
-    - no false "overwritten" is reported;
-    - a race with later saves answers `409 remote-moved`;
-    - a failed push leaves the bundle unchanged.
+    - a push race after a build answers `409 remote-moved` and pushes nothing;
+    - a failed push or build leaves the bundle and `cms/work` unchanged;
+    - the gate opens again after every answer.
   - The table is reviewed and the event-order test is green. `[build]`
 
 #### 2.11d Publish — after 2.11c, 2.10d
@@ -343,7 +345,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
   - `409 referenced-by`, `422`, `424` and `502`;
   - `503 busy` and `503 build-in-progress` as "try again";
   - `503 upstream-changed`;
-  - `409 publish-in-progress`: the button is disabled while `status.publish.state` is `publishing`, with a warning that saves made now go in the next publish, and enabled again on `idle`;
+  - `409 publish-in-progress`: the button is disabled while `status.publish.state` is `publishing`, and the Save button is disabled with it (drafts are kept), both enabled again on `idle`. The same `409 publish-in-progress` is also the answer to a save made during a publish (2.10e design 3), so `messages.ts` maps it for `PUT /api/changes` too ("A publish is running. Save again when it ends");
   - `409 remote-moved`;
   - `upstreamBuildFailed`, and `buildCheckSkipped` if U1 is yes.
   - The status `publish { state, error }` keeps showing `failed` after a reload. The answer codes come from 2.14d, so this task does not wait for 2.10e.
@@ -494,4 +496,5 @@ Phase 2 is closed when all of these hold:
 | Origin-tip build at the first start-up (2.10f optional, from 2.9c-B) | Phase 4 list, SYSTEM-DESIGN section 12 |
 | Preview fidelity: priming and script widgets (A4, D6) | Phase 3 step 3.2 |
 | Document identity across upstream renames (A18) | Phase 3 backlog |
+| Saves accepted during a publish build, re-applied onto the candidate after the push (2.10e design 1) | Phase 4 or 5, with several editors or server drafts. The seam is `sync/publish-gate.ts`; SYSTEM-DESIGN section 4, "Publish and saves" |
 | D2's plugin setting, and the restricted MDX renderer | Phase 3 proposal, decision 1 |
