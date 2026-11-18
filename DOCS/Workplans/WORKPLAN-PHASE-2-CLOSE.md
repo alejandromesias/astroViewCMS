@@ -27,7 +27,7 @@ Phase 2 builds `cms-server` for one site: read, save, preview from the saved sta
 | R5. Deleting a referenced document is refused unless the same save fixes it | 2.6b | done |
 | R6. With the build check on, a changeset that breaks the build is not pushed | 2.10e | open |
 | R7. The test editor on the CMS origin drives the preview on its own origin | 2.8e; 2.12b | spike done; browser test open |
-| R8. `cms-server` memory measured | 2.13e, 2.13a | open |
+| R8. `cms-server` memory measured | 2.13e, 2.13a | 2.13e measured (PR #57); the publish part is open in 2.13a |
 
 ### 1.2 What is built (waves 1 to 10)
 
@@ -188,7 +188,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 
 ### Wave 11
 
-**Status (2026-11-17):** 2.14m, 2.14d, 2.10k and 2.11c are merged (#50 to #53). 2.12a is merged (#55, `cd008ee`) and 2.13d is merged (#54, `18e1831`). 2.13e is measured on `task/2.13e-cms-memory` (PR open). It is the last wave 11 task and closes when its PR merges.
+**Status (2026-11-17):** 2.14m, 2.14d, 2.10k and 2.11c are merged (#50 to #53). 2.12a is merged (#55, `cd008ee`) and 2.13d is merged (#54, `18e1831`). 2.13e is measured on `task/2.13e-cms-memory` (PR #57, checks green). It is the last wave 11 task. Wave 11 closes when #57 merges, a `mutation-full` run on `main` is green (`gh workflow run mutation-full.yml`, which also settles the 2.13d figure), and the tag `wave-11-closed` is set.
 
 **Start order and decisions (2026-11-16, for Lead-11.16's questions).**
 - The close plan is authoritative; the 2026-11-13 handoff's wave 11 (with 2.10e) is stale.
