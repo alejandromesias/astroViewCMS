@@ -158,26 +158,26 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 | Wave | Tasks, in start order | `[build]` order |
 |---|---|---|
 | 11 | 2.14m `[ci]`, then 2.14d, then 2.11c (after 2.14d). Beside them: 2.10k, 2.13d, 2.12a `[build]`, then 2.13e `[build]` | 2.12a, 2.13e |
-| 12 | 2.10e `[build]` (table first, U2), 2.11d, 2.14e (code), then 2.12d `[user]` as soon as 2.11d merges | 2.10e |
+| 12 | 2.14e (code) first, then 2.11d. 2.10e is split into 2.10l `[build]` and then 2.10m `[build]` (2.10e stays as their umbrella; the table was approved, U2). 2.12d `[user]` as soon as 2.11d merges | 2.10l, 2.10m |
 | 13 | 2.10f `[build]`, 2.12b `[build]`, 2.14a `[build]`. Beside them: 2.14e spike `[user]`, 2.14f `[ci]`, 2.14g `[ci]`, 2.14j, and any fixes from 2.12d | 2.10f, 2.12b, 2.14a |
 | 14 (close) | 2.14c `[build]` first, then 2.12c `[user]`, 2.13a `[build]`, 2.13b, decisions U3 to U7, then the phase close (section 7) | 2.14c, 2.13a |
 
 ```text
  wave 11  2.14m   2.14d ──▶ 2.11c ─────────┐     2.10k ─────┐    2.13d    2.12a ─▶ 2.13e
- wave 12          2.14e (code)       2.11d ◀┘──▶ 2.12d [user]   2.10e [build] ◀┘
+ wave 12          2.14e (code)       2.11d ◀┘──▶ 2.12d [user]   2.10l ─▶ 2.10m [build] ◀┘ (umbrella: 2.10e)
  wave 13  2.10f ──▶ 2.12b      2.14a ─▶ (U3)     2.14e spike   2.14f  2.14g  2.14j
  wave 14  2.14c ──▶ 2.12c [user]   2.13a   2.13b   U3..U7   ──▶ phase close
 ```
 
-**Critical path:** 2.10k → 2.10e → 2.10f → 2.12b → 2.12c → phase close. A second chain, 2.14d → 2.11c → 2.11d → 2.12d, gets the product in front of the user by the end of wave 12.
+**Critical path:** 2.10k → 2.10l → 2.10m → 2.10f → 2.12b → 2.12c → phase close. A second chain, 2.14d → 2.11c → 2.11d → 2.12d, gets the product in front of the user by the end of wave 12.
 
 ### 5.2 Shared files (serialize these)
 
 | Files | Tasks, in order |
 |---|---|
-| `cms-server/src/http/*` | 2.14d, then 2.14e and 2.10e |
-| `cms-server/src/sync/publish.ts`, `preview/bundle-lifecycle.ts` | 2.10e, then 2.10f |
-| `preview/status.ts` | 2.10e, then 2.10f (the `upstreamBuildFailed` type change) |
+| `cms-server/src/http/*` | 2.14d, then 2.14e (the `Origin` check, small), then 2.10l and 2.10m (they rebase on 2.14e) |
+| `cms-server/src/sync/publish.ts`, `preview/bundle-lifecycle.ts` | 2.10l, then 2.10m, then 2.10f |
+| `preview/status.ts` | 2.10l, then 2.10m, then 2.10f (the `upstreamBuildFailed` type change) |
 | `preview-contract/src/` | 2.10k (the validate answer), 2.13d (`schema.ts`), 2.14c. A task that changes `schema.ts` before 2.13d merges must bring it to 80 |
 | `cms-server/editor/` | 2.11c, then 2.11d |
 | `preview-render-server/src/` | 2.12a and 2.13d (`bundle.ts`): 2.13d waits for 2.12a's merge if 2.12a touches `bundle.ts`. 2.14c is last (`integration.ts`, the schema pass) |
@@ -292,9 +292,32 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 
 ### Wave 12
 
-#### 2.10e Build check and snapshot publish — after 2.10k, 2.14d, 2.9a · `[build]`
+#### 2.10e Build check and snapshot publish — after 2.10k, 2.14d, 2.9a · umbrella of 2.10l and 2.10m
 
-- **Carried in:** move `PublishAnswer` into `cms-contract` (left open by 2.14d).
+**Split (2026-11-18, architect, for the wave 12 prep).** 2.10e keeps its id, its row R6, its done-when and the link to the state table, and gets no code of its own. It is done when 2.10l and 2.10m have both merged. 2.10l merges before 2.10m starts. Both start after 2.14e merges, because 2.14e edits every write route in `http/` (section 5.2).
+
+- **2.10l: the gate and the refusals** `[build]`.
+  - `sync/publish-gate.ts`: the only place that decides whether a save or a poll tick may run, and the only place that handles saves made since `S` (`afterPush`).
+  - The publish click closes the gate synchronously, before it waits for the repo lock. A save or a poll tick checks the gate **after** it gets the lock and before it writes or syncs. A save that waited on the lock while the click arrived therefore sees a closed gate and cannot move `cms/work` off `S`.
+  - `pushing` asserts `cms/work === S` before the push, and `afterPush` asserts it again.
+  - **The snapshot is per attempt.** A retry with no build syncs, reads `S` again and squashes a new `C`, so the assertion always compares against the current attempt's `S`. That move is legitimate: the gate is closed, so only the publish moves `cms/work`.
+  - Design 3 refusals on the 2.10d flow, with no candidate build: a save answers `409 publish-in-progress` and writes nothing, a poll tick is skipped, a second publish answers `409 publish-in-progress`. A sticky `failed` status clears on the next save or publish, and a save is allowed while it is `failed` (the gate is open).
+  - Move `PublishAnswer` into `cms-contract` (left open by 2.14d). Add `409 publish-in-progress` to the generated per-route table of `PUT /api/changes` and to PHASE-2-DESIGN 5.9 (done in that file, 2026-11-18).
+  - The event-order harness: injected git, build and clock, the curated scenarios of the state table that need no candidate build, and the seeded random runs.
+  - **Done when:** the refusals above hold on the 2.10d flow, the gate reopens after every answer, the harness is green, and `PublishAnswer` lives in `cms-contract`.
+- **2.10m: the candidate build** `[build]`.
+  - The snapshot `{ C, S }` and the candidate build in a worktree under `.cms/<site>/` with a name pattern the start-up sweep can match.
+  - `preview/bundle-lifecycle.ts` owns the candidate, and publish never calls the build-runner directly. It gains `buildCandidate(commit)` (takes the one build slot, waits for a running build; the builder's triggers merge into one rebuild after release, skipped if `adopt` already covers that commit), `adopt(candidate)` (runs in `finishing` under the lock, through the normal swap path) and `discard(candidate)` (also removes the worktree).
+  - **`S` stays fixed once a build has run.** A push race after a build answers `409 remote-moved` and never retries.
+  - `decideBuild` is wired in (`always`, `never`, `auto` recomputed at publish time). Publish's `validate()` returns the keys that hit `refinement-threw` to `decideBuild`. This is internal to `cms-server`: no `cms-contract` change (decided 2026-11-18). Showing the editor why a publish builds would be a later feature with its own contract field.
+  - Under `auto`, `upstream-code` builds the candidate even if the sync's rebuild just passed on the same tree. The extra build is accepted in phase 2; "skip it when the trees are equal" is a later optimisation.
+  - Tests that this task owns: a restart after the push and before `finishing` leaves a changeset with nothing in it (invariant 5); a lock timeout at the push after a build answers `503 busy` and discards the candidate (scenario 8); the start-up sweep removes a stale candidate worktree.
+  - **Done when:** the R6 items below hold, and the full event-order test is green.
+- **Smoke for 2.12c:** a save during a publish and a failed build, with `buildCheck: always`. 2.12d runs as planned, with `buildCheck: never`, which does not exercise the candidate build.
+
+The scope below is the whole of 2.10e, to be split between the two tasks as above.
+
+- **Carried in:** move `PublishAnswer` into `cms-contract` (left open by 2.14d). Goes to 2.10l.
 - **Optional, no owner:** the test for an invalid `build-time.json` in `read.test.ts` (open from 2.10k). Do it in the next task that touches `sync/build-check.ts`.
 
 1. **The state table, before any code (U2).**
@@ -350,6 +373,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
   - `upstreamBuildFailed`, and `buildCheckSkipped` if U1 is yes.
   - The status `publish { state, error }` keeps showing `failed` after a reload. The answer codes come from 2.14d, so this task does not wait for 2.10e.
 - **Structure:** as in 2.11c. The publish call goes in `api.ts` and its messages in `messages.ts`. Status polling goes in a DOM-free `status.ts` (start, stop, on change).
+- **Gaps found while writing the guide:** record them, and fix them as wave 13 tasks, unless a fix is one line (2026-11-18).
 - **Run guide (for 2.12d):** a short `DOCS/Guidelines/RUN-CMS-SERVER.md`. It says how to point `cms-server` at a GitHub repo (`cms.config.ts`, the site config, credentials), the start command, `buildCheck`, and where logs and `.cms/<site>/` live. 2.13b grows it into the quick start.
 - **Done when:** per-answer tests on `messages.ts`, `api.ts` and `status.ts`, including `commit: null`, a non-empty `renamed` and each `503` and `409`; the run guide exists.
 
@@ -358,13 +382,14 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 1. `cms.config.example.ts` uses `http://cms.localhost:4400` and `http://preview.localhost:4401` (PHASE-2-DESIGN 5.7).
 2. Start-up logs a warning when `origins.cms` and `origins.preview` share a host.
 3. Write routes also refuse a request whose `Origin` header is present and is not `origins.cms`.
-- **Carried in:** confirm whether the bridge still needs `editorOrigins` (kept by 2.12a).
+- **Carried in:** confirm whether the bridge still needs `editorOrigins` (kept by 2.12a). **Answered (2026-11-18): yes, keep it.** `preview-render-server/src/client/bridge.ts:160-165` reads it from `/__preview/config` to build the allowed parent origins, and `preview-config.ts` still serves it. Say so in the PR.
+- **Order:** 2.14e goes first in wave 12 (small, unit-only). 2.10l and 2.10m rebase on it, because it edits every write route in `http/`.
 - **Done when:** items 1 to 3 are merged with tests. The spike is item 4, in wave 13.
 
 #### 2.12d First manual run — after 2.11d · `[user]` (was 2.12c-1)
 
 - Against a throwaway GitHub repo with no deploy attached, following the run guide, with `buildCheck: never`.
-- One save, one publish, and one conflict made on purpose: push a change to a saved document from another clone, then publish. If 2.10e has merged, also save during a publish.
+- One save, one publish, and one conflict made on purpose: push a change to a saved document from another clone, then publish. If 2.10l has merged, also save during a publish. It runs as soon as 2.11d merges and does not wait for 2.10l or 2.10m; the candidate build and the failed-build case are covered in 2.12c.
 - Known limits, not to log again: script widgets after the first render (D6), and JSON text areas instead of forms.
 - Each note becomes a fix task in wave 13 or an entry in the phase 3 proposal.
 - **Done when:** the user confirms the run and the notes are sorted.
@@ -438,6 +463,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 #### 2.12c Final acceptance — after 2.12b, 2.14c · `[user]`
 
 - Against a throwaway GitHub repo with no deploy attached, with `buildCheck: auto`: one save and one publish, plus a publish that triggers a build.
+- Also, from the 2.10e split (2026-11-18): with `buildCheck: always`, a save during a publish (`409 publish-in-progress`) and a build that fails (`424`, nothing pushed).
 - **Done when:** the user confirms it, and anything surprising is a task or a phase 3 entry.
 
 #### 2.13a Measurements — after 2.12b · `[build]`

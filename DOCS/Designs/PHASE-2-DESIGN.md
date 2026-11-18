@@ -625,7 +625,7 @@ end of phase 2, with their tests moved or rewritten against the new routes.
 | `GET /api/documents?collection=` | list: key, file, revision, format, editable, title if the data has one |
 | `GET /api/documents?key=` | 5.3 |
 | `POST /api/media` | 5.5 |
-| `PUT /api/changes` | 5.3: `200` (with `warnings`, e.g. a missing `public/` image, 5.5), `400`, `409 conflict`, `409 referenced-by`, `409 exists`, `409 file-missing`, `422`, `503 preview-unavailable` |
+| `PUT /api/changes` | 5.3: `200` (with `warnings`, e.g. a missing `public/` image, 5.5), `400`, `409 conflict`, `409 referenced-by`, `409 exists`, `409 file-missing`, `409 publish-in-progress` (a publish is running; nothing is written; 2.10e), `422`, `503 preview-unavailable` |
 | `GET /api/changes` | 5.3 |
 | `POST /api/publish` | 4.2: `200 { commit, overwritten: [...], renamed: [...] }` (`commit: null` and empty lists when nothing differs from upstream), `409 referenced-by`, `422` validation, `424 build-failed`, `502` push failed after retries, `503 build-in-progress` (a rebuild past 120 s), `503 busy` (the repo lock timed out; any write route can answer it), `503 upstream-changed` (a push-race retry found new upstream code while no builder runs with `--bundle`; nothing published, the saves kept; 2.10d review) |
 | `GET /api/overlay` | `{ documents, media }`, the `RenderRequest` type of `preview-contract`: working copy against the current bundle (by revision), plus images the bundle lacks. Media keys: the staging URL and `<media.folder>/<id16>.<format>` |
