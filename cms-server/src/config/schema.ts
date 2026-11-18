@@ -149,3 +149,9 @@ export type CmsConfig = z.output<typeof CmsConfigSchema>;
 export function parseConfig(raw: unknown): CmsConfig {
   return CmsConfigSchema.parse(raw);
 }
+
+/** True when origins.cms and origins.preview name the same host, whatever their ports. Cookies ignore the port
+ *  (PHASE-2-DESIGN 5.7), so such a pair shares its cookies. Start-up logs a warning for it; it is not an error. */
+export function originsShareHost(origins: CmsConfig['origins']): boolean {
+  return new URL(origins.cms).hostname === new URL(origins.preview).hostname;
+}

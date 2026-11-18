@@ -11,6 +11,7 @@ import {
 // table without a line here does not compile.
 const EXPECTED_STATUS: Record<ErrorCode, number> = {
   misdirected: 421,
+  'cross-origin': 403,
   not_found: 404,
   'missing-query': 400,
   'unknown-collection': 404,
@@ -53,6 +54,7 @@ const EXPECTED_STATUS: Record<ErrorCode, number> = {
 // One valid body per code, typed over every code: the fields a route passes to apiError.
 const SAMPLE_FIELDS: { readonly [C in ErrorCode]: ErrorFields<C> } = {
   misdirected: { message: 'Host' },
+  'cross-origin': { message: 'Origin' },
   not_found: {},
   'missing-query': { message: 'Give a collection or a key.' },
   'unknown-collection': { message: 'no collection' },

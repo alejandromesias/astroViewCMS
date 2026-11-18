@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   rejectCrossSite,
+  rejectForeignOrigin,
   rejectUnlessContentType,
   rejectUnlessHostAllowed,
 } from './guard.ts';
@@ -30,6 +31,61 @@ describe('rejectCrossSite', () => {
 
   it('lets a request without the header through', () => {
     expect(rejectCrossSite(request())).toBeNull();
+  });
+});
+
+describe('rejectForeignOrigin', () => {
+  const CMS = 'http://cms.localhost:4400';
+  const CROSS_ORIGIN = {
+    error: 'cross-origin',
+    message: 'The Origin header is not the origin of this CMS.',
+  };
+  const withOrigin = (method: string, origin?: string) =>
+    new Request('http://cms.localhost:4400/api/changes', {
+      method,
+      headers: origin === undefined ? {} : { origin },
+    });
+
+  it.each(['POST', 'PUT', 'PATCH', 'DELETE'])(
+    'refuses a %s from another origin with 403 and the cross-origin body',
+    async (method) => {
+      const response = rejectForeignOrigin(
+        withOrigin(method, 'http://evil.test'),
+        CMS,
+      );
+      expect(response?.status).toBe(403);
+      expect(await response?.json()).toStrictEqual(CROSS_ORIGIN);
+    },
+  );
+
+  it.each([
+    ['http://cms.localhost:4401'],
+    ['http://cms.localhost'],
+    ['https://cms.localhost:4400'],
+    ['http://localhost:4400'],
+    ['http://preview.localhost:4401'],
+    ['null'],
+  ])('refuses a write whose Origin is %s', (origin) => {
+    expect(rejectForeignOrigin(withOrigin('PUT', origin), CMS)?.status).toBe(
+      403,
+    );
+  });
+
+  it.each([['GET'], ['HEAD']])(
+    'lets a %s from another origin through, as a read',
+    (method) => {
+      expect(
+        rejectForeignOrigin(withOrigin(method, 'http://evil.test'), CMS),
+      ).toBeNull();
+    },
+  );
+
+  it('lets a write from the CMS origin through', () => {
+    expect(rejectForeignOrigin(withOrigin('PUT', CMS), CMS)).toBeNull();
+  });
+
+  it('lets a write with no Origin header through (curl)', () => {
+    expect(rejectForeignOrigin(withOrigin('POST'), CMS)).toBeNull();
   });
 });
 

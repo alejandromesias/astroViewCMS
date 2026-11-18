@@ -6,7 +6,7 @@ export default {
   remote: 'https://github.com/OWNER/REPO.git',
   previewSiteConfig: 'preview-render-server/sites/sample-site.config.ts',
   origins: {
-    cms: 'http://127.0.0.1:4400',
-    preview: 'http://127.0.0.1:4401',
+    cms: 'http://cms.localhost:4400',
+    preview: 'http://preview.localhost:4401',
   },
 };

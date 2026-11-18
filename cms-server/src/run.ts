@@ -11,7 +11,7 @@ import {
 } from './bundle/source.ts';
 import { createBundleStore } from './bundle/store.ts';
 import { loadConfig } from './config/load.ts';
-import type { CmsConfig } from './config/schema.ts';
+import { type CmsConfig, originsShareHost } from './config/schema.ts';
 import { type Env, loadSecrets, type Secrets } from './config/secrets.ts';
 import { type EditorPage, loadEditorPage } from './editor/page.ts';
 import { openRepo, type Repo } from './git/ops.ts';
@@ -171,6 +171,12 @@ export async function run(
   const config = await deps.loadConfig(args.configPath);
   const cmsPort = portOf('origins.cms', config.origins.cms);
   const previewPort = portOf('origins.preview', config.origins.preview);
+  // Cookies ignore the port, so origins on one host share their cookies (PHASE-2-DESIGN 5.7). The start goes on.
+  if (originsShareHost(config.origins))
+    deps.logger.warn(
+      'origins.cms and origins.preview share a host, so cookies cannot tell the CMS from the preview: use two host names, such as cms.localhost and preview.localhost',
+      { cms: config.origins.cms, preview: config.origins.preview },
+    );
   // The config's folder holds `.cms/`, and the paths in the config are relative to it.
   const configDir = dirname(args.configPath);
   const cmsDir = join(configDir, '.cms');

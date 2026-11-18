@@ -8,7 +8,7 @@ import { registerBundleRoutes } from './bundle-routes.ts';
 import { registerChangeRoutes, type SaveRouteDeps } from './changes-routes.ts';
 import { type EditorRouteDeps, editorRoutes } from './editor-routes.ts';
 import { errorJson } from './errors.ts';
-import { rejectUnlessHostAllowed } from './guard.ts';
+import { rejectForeignOrigin, rejectUnlessHostAllowed } from './guard.ts';
 import { type MediaRouteDeps, mediaRoutes } from './media.ts';
 import {
   type OverlayRouteDeps,
@@ -55,6 +55,12 @@ export function createApp(deps: AppDeps): Hono {
   // Before any route, so every route refuses a Host that is not this CMS's (2.9f).
   app.use('*', async (c, next) => {
     const refused = rejectUnlessHostAllowed(c.req.raw, deps.cmsOrigin);
+    if (refused !== null) return refused;
+    await next();
+  });
+  // After the Host check, before any route: a write from another origin is refused on every route (2.14e).
+  app.use('*', async (c, next) => {
+    const refused = rejectForeignOrigin(c.req.raw, deps.cmsOrigin);
     if (refused !== null) return refused;
     await next();
   });
