@@ -6,7 +6,7 @@ import type { StatusAnswerBody } from 'cms-contract';
 import { type FetchLike, getStatus } from './api.ts';
 
 /** The publish state of the server: idle, publishing, or failed (its last publish). */
-export type PublishState = NonNullable<StatusAnswerBody['publish']>['state'];
+type PublishState = NonNullable<StatusAnswerBody['publish']>['state'];
 
 /** The part of the status the publish controls show. */
 export interface PublishStatus {
