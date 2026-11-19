@@ -289,7 +289,7 @@ describe('PUT /api/changes from a rebinding Host', () => {
       save: {
         config,
         preview: previewSays(),
-        gate: { saveStop: () => undefined },
+        gate: { saveStop: () => undefined, clearFailed: () => undefined },
       },
     });
     return { app, siteFolder: state.siteFolder, repoDir: state.repoDir };

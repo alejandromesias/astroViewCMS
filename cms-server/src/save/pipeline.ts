@@ -52,7 +52,7 @@ export interface SaveInput {
   /** The app's delete guard (2.6b): one per app, so that its index is built once per bundle. */
   readonly guard: DeleteGuard;
   /** The publish gate (2.10l): a save that meets it closed answers 409 `publish-in-progress` and writes nothing. */
-  readonly gate: Pick<PublishGate, 'saveStop'>;
+  readonly gate: Pick<PublishGate, 'saveStop' | 'clearFailed'>;
 }
 
 /** The parts of a save that a test replaces: the stages, the file writer and the file copier (the real ones by default). */
@@ -101,6 +101,7 @@ export async function saveChanges(
   return repo.locked('save', async (tx): Promise<SaveAnswer> => {
     const stop = input.gate.saveStop();
     if (stop !== undefined) return stop;
+    input.gate.clearFailed();
     let bundle: Bundle | null;
     try {
       bundle = await input.bundles.current();

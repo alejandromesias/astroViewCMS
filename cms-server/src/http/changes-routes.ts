@@ -38,7 +38,7 @@ export interface SaveRouteDeps {
   readonly log?: Logger;
   readonly guard?: DeleteGuard | undefined;
   /** The publish gate (2.10l): a save that meets it closed answers 409 `publish-in-progress`. */
-  readonly gate: Pick<PublishGate, 'saveStop'>;
+  readonly gate: Pick<PublishGate, 'saveStop' | 'clearFailed'>;
   /**
    * Called for a save that asks for a rebuild (`rebuild: true`), so the preview is built again (2.9c). It runs after the
    * save's commit and still under the repo lock (an after-commit hook), so a publish queued for the lock sees the build

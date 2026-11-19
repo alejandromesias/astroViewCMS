@@ -79,14 +79,24 @@ describe('createPublishGate: the click and the answer', () => {
 });
 
 describe('createPublishGate: a save that may run', () => {
-  it('clears a sticky failed publish status, so the next save starts from idle', async () => {
+  it('clears a sticky failed publish status when it is admitted, so the next save starts from idle', async () => {
+    const status = statusOf();
+    const gate = createPublishGate({ status });
+    status.setPublish('failed', 'The remote refused the push.');
+    gate.clearFailed();
+    expect(await status.snapshot()).toMatchObject({
+      publish: { state: 'idle', error: null },
+    });
+  });
+
+  it('leaves a failed status as it is when the check only looks, so a refused save does not clear it', async () => {
     const status = statusOf();
     const gate = createPublishGate({ status });
     status.setPublish('failed', 'The remote refused the push.');
     expect(gate.saveStop()).toBeUndefined();
     expect((await status.snapshot()).publish).toStrictEqual({
-      state: 'idle',
-      error: null,
+      state: 'failed',
+      error: 'The remote refused the push.',
     });
   });
 });

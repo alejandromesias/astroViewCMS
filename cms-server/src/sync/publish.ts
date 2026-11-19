@@ -217,7 +217,19 @@ export function createPublish({
       if (pushed.ok) {
         await gate.afterPush(tx, base);
         const renamed = status.getRenamed();
-        await tx.resetWork(commit);
+        // The push is accepted, so the publish has landed: a reset that fails after it is logged, and the answer stays 200.
+        // The next sync re-applies the saves on the new upstream, so nothing is published twice (2.10l).
+        try {
+          await tx.resetWork(commit);
+        } catch (error: unknown) {
+          log.error(
+            'the publish landed, but cms/work could not be reset to it',
+            {
+              commit,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          );
+        }
         guard.invalidate();
         trigger('publish');
         status.setRenamed([]);

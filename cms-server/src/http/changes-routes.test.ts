@@ -158,7 +158,10 @@ async function saveApp(
   bundle?: string,
   guard?: DeleteGuard,
   onRebuild?: () => void,
-  gate: Pick<PublishGate, 'saveStop'> = { saveStop: () => undefined },
+  gate: Pick<PublishGate, 'saveStop' | 'clearFailed'> = {
+    saveStop: () => undefined,
+    clearFailed: () => undefined,
+  },
 ): Promise<{ app: Hono; siteFolder: string; repoDir: string }> {
   const root = await makeTestRoot();
   folders.push(root);
@@ -651,7 +654,7 @@ describe('PUT /api/changes', () => {
       save: {
         config: { collections: {}, media: { folder: 'src/assets/uploads' } },
         preview: previewSays(),
-        gate: { saveStop: () => undefined },
+        gate: { saveStop: () => undefined, clearFailed: () => undefined },
       },
     });
     const res = await put(
@@ -698,7 +701,7 @@ describe('PUT /api/changes', () => {
       save: {
         config: { collections: {}, media: { folder: 'src/assets/uploads' } },
         preview: previewSays(),
-        gate: { saveStop: () => undefined },
+        gate: { saveStop: () => undefined, clearFailed: () => undefined },
       },
     });
     const res = await put(

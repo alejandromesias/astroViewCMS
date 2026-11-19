@@ -97,7 +97,7 @@ function inputOf(
     },
     log: silentLog(),
     guard: createDeleteGuard(),
-    gate: { saveStop: () => undefined },
+    gate: { saveStop: () => undefined, clearFailed: () => undefined },
   };
 }
 
@@ -242,7 +242,7 @@ describe('a document upstream added and the bundle lacks (2.10h)', () => {
           },
           log: silentLog(),
           guard: createDeleteGuard(),
-          gate: { saveStop: () => undefined },
+          gate: { saveStop: () => undefined, clearFailed: () => undefined },
         },
         repo,
       );
@@ -391,7 +391,7 @@ describe('saveChanges', () => {
         },
         log: silentLog(),
         guard: createDeleteGuard(),
-        gate: { saveStop: () => undefined },
+        gate: { saveStop: () => undefined, clearFailed: () => undefined },
       },
       repo,
       {
@@ -462,7 +462,7 @@ describe('a save with a staged image', () => {
           },
           log: silentLog(),
           guard: createDeleteGuard(),
-          gate: { saveStop: () => undefined },
+          gate: { saveStop: () => undefined, clearFailed: () => undefined },
         },
         repo,
         deps,
@@ -555,7 +555,10 @@ describe('saveChanges: the publish gate (2.10l)', () => {
     const stage = vi.fn(async () => undefined);
     const saveStop = vi.fn(() => REFUSAL);
     const answer = await saveChanges(
-      { ...inputOf([], current), gate: { saveStop } },
+      {
+        ...inputOf([], current),
+        gate: { saveStop, clearFailed: () => undefined },
+      },
       { locked } as unknown as Repo,
       { stages: [stage] },
     );
@@ -578,7 +581,10 @@ describe('saveChanges: the publish gate (2.10l)', () => {
         work(fakeTx()),
     );
     const answer = await saveChanges(
-      { ...inputOf([], current), gate: { saveStop } },
+      {
+        ...inputOf([], current),
+        gate: { saveStop, clearFailed: () => undefined },
+      },
       { locked } as unknown as Repo,
       { stages: [stage] },
     );

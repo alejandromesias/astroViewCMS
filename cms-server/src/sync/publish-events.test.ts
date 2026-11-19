@@ -27,8 +27,11 @@ import { type Builds, createPublish } from './publish.ts';
 import { createPublishGate, type PublishGate } from './publish-gate.ts';
 import { createSync, type SyncNowOutcome } from './sync.ts';
 
-/** The points where a publish can wait: its sync (A), its validation (A), the build (W) and its push (P). */
-type Point = 'fetch' | 'validate' | 'wait' | 'push';
+/**
+ * The points where a publish can wait: its sync (A), its validation (A), the build (W), the squash (after `S` is read), its
+ * push (P), and the reset after an accepted push (F, the finishing phase).
+ */
+type Point = 'fetch' | 'validate' | 'wait' | 'squashed' | 'push' | 'finish';
 
 const SAVE_REFUSED = {
   status: 409,
@@ -169,6 +172,7 @@ function rig(builderOn = true) {
         keys: documents.map((document) => document.key),
       });
       m.frozenHead = m.workHead;
+      await at('squashed');
       return commit;
     },
     push: async (commit): Promise<PushResult> => {
@@ -192,6 +196,7 @@ function rig(builderOn = true) {
       return { ok: true };
     },
     resetWork: async (commit) => {
+      await at('finish');
       if (m.crashOnReset) {
         m.crashOnReset = false;
         throw new Error('the process stopped before the reset');
@@ -292,6 +297,12 @@ function rig(builderOn = true) {
     clearHolds(): void {
       holds = new Set();
     },
+    // Resumes the paused publish without waiting for its answer, for a case where it then waits on the lock.
+    unpause(): void {
+      const resumed = pause;
+      pause = undefined;
+      resumed?.resume();
+    },
     release(): void {
       const resumed = pause;
       pause = undefined;
@@ -356,6 +367,7 @@ function allowed(answer: PublishAnswer): boolean {
     'build-in-progress',
     'preview-unavailable',
     'push-rejected',
+    'invalid',
   ].includes(answer.body.error);
 }
 
@@ -403,6 +415,7 @@ function driver() {
     paused: r.paused,
     hold: r.hold,
     clearHolds: r.clearHolds,
+    unpause: r.unpause,
     holdLock: r.holdLock,
     expireLockWaits: r.expireLockWaits,
     restart: r.restart,
@@ -533,7 +546,7 @@ describe('publish event order: curated scenarios (2.10l)', () => {
     d.check('after the build');
   });
 
-  it.each<Point>(['fetch', 'validate', 'wait', 'push'])(
+  it.each<Point>(['fetch', 'validate', 'wait', 'squashed', 'push'])(
     'refuses a save while the publish is paused at %s: nothing written, and a save works after the answer',
     async (point) => {
       const d = driver();
@@ -553,7 +566,7 @@ describe('publish event order: curated scenarios (2.10l)', () => {
     },
   );
 
-  it.each<Point>(['fetch', 'validate', 'wait', 'push'])(
+  it.each<Point>(['fetch', 'validate', 'wait', 'squashed', 'push'])(
     'skips a poll tick while the publish is paused at %s, and leaves cms/work and the remote as they were',
     async (point) => {
       const d = driver();
@@ -567,6 +580,24 @@ describe('publish event order: curated scenarios (2.10l)', () => {
       d.check(`a poll paused at ${point}`);
     },
   );
+
+  it('refuses a save, a poll tick and a second click after the push is accepted and before the reset, and answers 200', async () => {
+    const d = driver();
+    await d.save('a', '1');
+    const { answer } = await d.start(['finish']);
+    expect(d.paused()).toBe(true);
+    // The commit is on the remote already; the gate is still closed until the answer (2.10l, finishing phase).
+    expect(await d.save('b', '2')).toStrictEqual(SAVE_REFUSED);
+    expect(await d.poll()).toStrictEqual({ kind: 'skipped' });
+    expect(await d.click()).toStrictEqual(PUBLISH_REFUSED);
+    await d.release();
+    expect(await answer).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    });
+    expect(d.origin()).toStrictEqual({ tip: 'c1', docs: { a: '1' } });
+    d.check('after the accepted push');
+  });
 
   it('refuses a second publish click while one runs, and the first still answers 200', async () => {
     const d = driver();
@@ -692,17 +723,14 @@ describe('publish event order: curated scenarios (2.10l)', () => {
     d.check('after the refusals');
   });
 
-  it('after a crash between the push and the reset, a restart publishes nothing twice', async () => {
+  it('answers 200 when the reset after an accepted push fails, and a restart then publishes nothing twice', async () => {
     const d = driver();
     await d.save('a', '1');
     d.m.crashOnReset = true;
+    // The push was accepted, so the publish landed: the failed reset is logged, and the answer is still 200 (2.10l).
     expect(await d.click()).toStrictEqual({
-      status: 500,
-      body: {
-        error: 'publish-failed',
-        message:
-          'Publishing failed unexpectedly: the process stopped before the reset',
-      },
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
     });
     // The remote has the commit; cms/work still holds the save, and the gate is open again.
     expect(d.origin()).toStrictEqual({ tip: 'c1', docs: { a: '1' } });
@@ -714,6 +742,72 @@ describe('publish event order: curated scenarios (2.10l)', () => {
     });
     expect(d.m.overpushes).toBe(0);
     d.check('after the restart');
+  });
+
+  it('answers 500 and pushes nothing when cms/work moves between the squash and the push, the gate not having stopped it', async () => {
+    const d = driver();
+    await d.save('a', '1');
+    const { answer } = await d.start(['squashed']);
+    // A move that the gate did not stop: the assertion before the push must catch it.
+    d.m.workHead = d.m.name('h');
+    await d.release();
+    expect(await answer).toStrictEqual({
+      status: 500,
+      body: {
+        error: 'publish-failed',
+        message:
+          'Publishing failed unexpectedly: cms/work moved from h1 to h2 before the push, so the publish stops',
+      },
+    });
+    expect(d.origin()).toStrictEqual({ tip: 'o0', docs: {} });
+    expect(d.m.headMoves).toBe(0);
+    d.check('a move before the push');
+  });
+
+  it('answers 500 when cms/work moves during the push, with the commit already on the remote, and keeps the save', async () => {
+    const d = driver();
+    await d.save('a', '1');
+    const { answer } = await d.start(['push']);
+    d.m.workHead = d.m.name('h');
+    await d.release();
+    // The remote accepted the commit, so the publish reached it, but the assertion after the push stops the reset.
+    expect(await answer).toStrictEqual({
+      status: 500,
+      body: {
+        error: 'publish-failed',
+        message:
+          'Publishing failed unexpectedly: cms/work moved from h1 to h2 during the push, so the publish stops',
+      },
+    });
+    expect(d.origin()).toStrictEqual({ tip: 'c1', docs: { a: '1' } });
+    expect(d.m.workHead).toBe('h2');
+    // The move the gate caught is counted here on purpose: invariant 6 is what this test shows was broken.
+    expect(d.m.headMoves).toBe(1);
+  });
+
+  it('answers 503 busy when the publish cannot take the lock after the build wait, and reopens the gate', async () => {
+    const d = driver();
+    await d.save('a', '1');
+    const { answer } = await d.start(['wait']);
+    const unlock = d.holdLock();
+    d.unpause();
+    await d.flush();
+    d.expireLockWaits();
+    expect(await answer).toStrictEqual({
+      status: 503,
+      body: {
+        error: 'busy',
+        message:
+          'The site is busy with another operation (sync). Try again in a moment.',
+      },
+    });
+    expect(d.world().gate.pollMayRun()).toBe(true);
+    unlock();
+    expect(await d.click()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    });
+    d.check('after the second lock timeout');
   });
 
   it('publishes only the save made after the last publish', async () => {
@@ -750,7 +844,14 @@ describe('publish event order: seeded random runs (2.10l)', () => {
   }
 
   const KEYS = ['a', 'b', 'c'] as const;
-  const POINTS: readonly Point[] = ['fetch', 'validate', 'wait', 'push'];
+  const POINTS: readonly Point[] = [
+    'fetch',
+    'validate',
+    'wait',
+    'squashed',
+    'push',
+    'finish',
+  ];
 
   async function runSeed(seed: number): Promise<void> {
     const random = generator(seed);
@@ -784,9 +885,18 @@ describe('publish event order: seeded random runs (2.10l)', () => {
         event = 'remote code';
         d.m.originTip = d.m.name('o');
         d.m.originCode = true;
-      } else {
+      } else if (roll < 0.95) {
         event = 'node toggles';
         d.m.nodeDown = !d.m.nodeDown;
+      } else if (roll < 0.97) {
+        event = 'invalid toggles';
+        d.m.invalid = !d.m.invalid;
+      } else if (d.isInFlight()) {
+        // A restart is only modelled between publishes: the harness cannot stop a publish that is paused in the middle.
+        event = 'restart skipped (a publish runs)';
+      } else {
+        event = 'restart';
+        d.restart();
       }
       trail.push(event);
       d.check(`seed ${seed}, step ${step}: ${trail.join(' | ')}`);

@@ -26,10 +26,15 @@ export interface PublishGate {
   /** Reopens the gate. A publish calls it once its answer is decided, on every path. */
   end(): void;
   /**
-   * Whether a save may run: undefined, or the 409 that refuses it. Called before the save takes the lock and again under it.
-   * A save that may run clears a sticky `failed` publish status, so the next save or publish starts from `idle` (2.10l).
+   * Whether a save may run: undefined, or the 409 that refuses it. A pure check, called before the save takes the lock and
+   * again under it.
    */
   saveStop(): ApiError<'publish-in-progress'> | undefined;
+  /**
+   * Called under the lock by a save that may run: clears a sticky `failed` publish status, so the next save or publish
+   * starts from `idle` (2.10l).
+   */
+  clearFailed(): void;
   /** Whether a poll tick may sync. Called before the tick takes the lock and again under it. */
   pollMayRun(): boolean;
   /** Under the lock, before the push: asserts `cms/work` is still at `base`, the snapshot `S` of this attempt. */
@@ -75,9 +80,10 @@ export function createPublishGate({ status }: PublishGateDeps): PublishGate {
       closed = false;
     },
     saveStop() {
-      if (closed) return refusal();
+      return closed ? refusal() : undefined;
+    },
+    clearFailed() {
       status.setPublish('idle');
-      return undefined;
     },
     pollMayRun() {
       return !closed;
