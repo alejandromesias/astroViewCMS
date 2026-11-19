@@ -21,6 +21,7 @@ import {
   type BuildResult,
   createBuildRunner,
 } from './build-runner.ts';
+import { removeBundle } from './bundles.ts';
 import type { BundleEntry, StateStore } from './state.ts';
 import type { Status } from './status.ts';
 import type { Supervisor } from './supervisor.ts';
@@ -43,6 +44,18 @@ type TriggerOutcome =
       readonly rolledBack: boolean;
     }
   | { readonly kind: 'stopped' };
+
+/** A candidate of a publish (2.10m): the commit built before it is pushed, and the bundle it was built into. */
+export interface Candidate {
+  readonly commit: string;
+  readonly bundleId: string;
+  readonly dir: string;
+}
+
+/** How a candidate build ended. A failed candidate changes no bundle state: the node keeps serving what it served. */
+export type CandidateOutcome =
+  | { readonly kind: 'built'; readonly candidate: Candidate }
+  | { readonly kind: 'failed'; readonly error: string };
 
 /**
  * The part of the repo the lifecycle reads. `cms/work` and origin's branch are read together under the lock, so a
@@ -92,6 +105,20 @@ export interface BundleLifecycle {
    * here, with the repo lock released, for the build that a sync of code asked for.
    */
   waitForIdle(timeoutMs: number): Promise<boolean>;
+  /**
+   * Builds `commit` as a candidate of a publish (2.10m). It takes the build slot after the builds already queued, and runs
+   * the raw builder. A failure is an outcome and changes no bundle state.
+   */
+  buildCandidate(commit: string): Promise<CandidateOutcome>;
+  /**
+   * Under the repo lock, after the candidate's push: swaps the node onto it and writes the state. `tx` reads origin's branch,
+   * since a lock taken here would deadlock. Resolves false when the swap failed. No protocol check runs here (afterAdopt).
+   */
+  adopt(candidate: Candidate, tx: Pick<RepoTx, 'revParse'>): Promise<boolean>;
+  /** After the lock is released: runs the protocol check of an adopted candidate. Does nothing once a newer bundle is served. */
+  afterAdopt(candidate: Candidate): Promise<void>;
+  /** Removes a candidate's bundle folder. The builder has already removed the candidate's worktree. */
+  discard(candidate: Candidate): Promise<void>;
 }
 
 // The error a build gets when it is asked for after stop.
@@ -142,6 +169,9 @@ export function createBundleLifecycle(
   // with a failure is not built again by this lifecycle (2.9c-B recovery).
   let lastFailure: { readonly commit: string; readonly error: string } | null =
     null;
+  // The candidate adopted last, by its commit and bundle: a trigger that reads that commit answers from it (2.10m).
+  let adopted: { readonly commit: string; readonly bundleId: string } | null =
+    null;
   // One build at a time, and the triggers that wait merge into one queued build. After stop, a queued build is refused.
   const runner = createBuildRunner({
     build: async (job) => {
@@ -175,6 +205,8 @@ export function createBundleLifecycle(
       status.setFailedCommit(lastFailure?.commit ?? null);
       return result;
     },
+    // A candidate runs the raw builder: its failure is not a failed request, so it touches none of the bookkeeping above.
+    buildCandidate: build,
     ...(newBundleId === undefined ? {} : { newBundleId }),
   });
 
@@ -258,6 +290,16 @@ export function createBundleLifecycle(
         base: await tx.revParse(upstreamRef),
       }));
       baseOfCommit.set(pair.head, pair.base);
+      // A candidate adopted for this commit, on this base, already serves it: the trigger has nothing to build (2.10m). A
+      // protocol rebuild (`inherited` set) is never answered from it: the adopted bundle is the one that does not match.
+      const current = state.get().current;
+      if (
+        inherited === undefined &&
+        adopted?.commit === pair.head &&
+        current?.bundleId === adopted.bundleId &&
+        current.baseCommit === pair.base
+      )
+        return { kind: 'served', bundleId: adopted.bundleId };
       const result = await runner.request(pair.head);
       if (!result.ok) return buildFailed(buildErrorText(result.firstError));
       lastBuildFailed = false;
@@ -452,7 +494,130 @@ export function createBundleLifecycle(
     });
   }
 
-  return { start, trigger, stop, pendingSwaps, busy, waitForIdle };
+  /** Builds `commit` as a candidate. No bundle state changes; a failure is an outcome. */
+  async function buildCandidate(commit: string): Promise<CandidateOutcome> {
+    if (stopped) return { kind: 'failed', error: STOPPING };
+    log.info('A candidate build was asked for', { commit });
+    try {
+      const result = await runner.candidate(commit);
+      if (!result.ok)
+        return { kind: 'failed', error: buildErrorText(result.firstError) };
+      return {
+        kind: 'built',
+        candidate: { commit, bundleId: result.bundleId, dir: result.dir },
+      };
+    } catch (error: unknown) {
+      return { kind: 'failed', error: messageOf(error) };
+    }
+  }
+
+  /**
+   * Swaps the node onto a pushed candidate, and writes the state (serveBundle's path, without the protocol check). The
+   * entry's base is origin's branch, read with `tx` under the lock the caller holds.
+   */
+  async function adopt(
+    candidate: Candidate,
+    tx: Pick<RepoTx, 'revParse'>,
+  ): Promise<boolean> {
+    // A read that fails before the swap leaves the node on its bundle, so the candidate is refused, not unknown (2.10m).
+    let base: string;
+    try {
+      base = await tx.revParse(upstreamRef);
+    } catch (error: unknown) {
+      log.error('The candidate was not adopted: origin could not be read', {
+        bundleId: candidate.bundleId,
+        error: messageOf(error),
+      });
+      return false;
+    }
+    if (stopped) return false;
+    const entry: BundleEntry = {
+      bundleId: candidate.bundleId,
+      baseCommit: base,
+    };
+    latestSwap += 1;
+    const seq = latestSwap;
+    const swap = await keepWhileSwapping(candidate.bundleId, () =>
+      inOrder(async () =>
+        stopped
+          ? undefined
+          : await supervisor.swap({
+              bundleId: candidate.bundleId,
+              dir: candidate.dir,
+            }),
+      ),
+    );
+    if (swap === undefined) return false;
+    if (!swap.ok) {
+      status.setSwapError(swap.error);
+      if (!swap.rolledBack) {
+        await inOrder(async () => {
+          if (seq === latestSwap) await restartLastGood();
+        });
+      }
+      return false;
+    }
+    // The node serves a candidate that built and swapped, so the errors of earlier builds and swaps no longer apply (as buildAndServe).
+    lastBuildFailed = false;
+    status.setBuildError(null);
+    // The build state is idle when no trigger is under way; with one under way, the trigger sets it when it ends (runBuild).
+    if (inFlight === 0) status.setBuildState('idle');
+    status.setSwapError(null);
+    await state.set({
+      current: entry,
+      lastGood: entry,
+      protocolAttempts: new Map(state.get().protocolAttempts),
+    });
+    adopted = { commit: candidate.commit, bundleId: candidate.bundleId };
+    return true;
+  }
+
+  /**
+   * The protocol check of an adopted candidate. Runs without the lock: a rebuild takes it. It is a trigger under way from the
+   * call on, so `busy` and `waitForIdle` see it before the check awaits anything.
+   */
+  async function afterAdopt(candidate: Candidate): Promise<void> {
+    inFlight += 1;
+    try {
+      const current = state.get().current;
+      if (current === null || current.bundleId !== candidate.bundleId) return;
+      await checkProtocol(current);
+    } finally {
+      // The state is set as runBuild sets it, when this is the last trigger under way.
+      if (inFlight === 1)
+        status.setBuildState(lastBuildFailed ? 'failed' : 'idle');
+      inFlight -= 1;
+      if (inFlight === 0) {
+        for (const waiter of idleWaiters) waiter();
+        idleWaiters.clear();
+      }
+    }
+  }
+
+  /** Removes the folder of a candidate that is not adopted. A failure is logged: the publish that calls this has its answer. */
+  async function discard(candidate: Candidate): Promise<void> {
+    await removeBundle(bundlesDir, candidate.bundleId).catch(
+      (error: unknown) => {
+        log.warn('Could not remove the candidate bundle', {
+          bundleId: candidate.bundleId,
+          error: messageOf(error),
+        });
+      },
+    );
+  }
+
+  return {
+    start,
+    trigger,
+    stop,
+    pendingSwaps,
+    busy,
+    waitForIdle,
+    buildCandidate,
+    adopt,
+    afterAdopt,
+    discard,
+  };
 }
 
 /** The text of a failed build's first error: its message, with the file it names when there is one. */

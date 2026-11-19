@@ -21,6 +21,7 @@ import {
 } from './paths.ts';
 import {
   entriesOf,
+  entryOf,
   type FileRead,
   type FileReads,
   fileRead,
@@ -397,12 +398,49 @@ async function sharedFile(
 
 /** The bytes of `path` at the merge base, read as the format says. Null when the file was not there. */
 async function baseRead(
-  env: Env,
+  env: Pick<Env, 'base' | 'repo'>,
   path: string,
   format: DocumentRecord['format'],
 ): Promise<FileRead | null> {
   const bytes = await env.repo.showAtBytes(env.base, path);
   return bytes === null ? null : fileRead(bytes, format);
+}
+
+/**
+ * The value of each changed document at the merge base, by key (2.10k, 2.10m): what the build check compares the changeset
+ * with. A key the merge base does not hold is left out, so a created document has no entry. A document's file is the
+ * bundle's record of it, or the record the changeset creates for a document the bundle lacks. A `file()` entry's value is
+ * its raw entry, as the changeset reports it.
+ */
+export async function beforeOf({
+  bundle,
+  repo,
+  changeset,
+}: {
+  readonly bundle: Pick<Bundle, 'documents'>;
+  readonly repo: ChangesetRepo;
+  readonly changeset: Changeset;
+}): Promise<Map<string, unknown>> {
+  const base = await repo.mergeBase();
+  const records = new Map<string, DocumentEntry>(bundle.documents);
+  for (const record of changeset.createdRecords) {
+    if (!records.has(record.key)) records.set(record.key, record);
+  }
+  const before = new Map<string, unknown>();
+  for (const { key } of changeset.documents) {
+    const record = records.get(key);
+    const file = record?.file;
+    if (record === undefined || file === undefined) continue;
+    const read = await baseRead({ base, repo }, file, record.format);
+    const outcome = read === null ? null : read.parse();
+    if (outcome === null || 'error' in outcome) continue;
+    const value =
+      record.entryKey === undefined
+        ? outcome.value
+        : entryOf(outcome.value, record.entryKey);
+    if (value !== undefined) before.set(key, value);
+  }
+  return before;
 }
 
 /** The shared file's state on one side. A format with no codec cannot be parsed, so its side is an error. */

@@ -53,8 +53,8 @@ import type { MediaFiles } from './save/context.ts';
 import { createDeleteGuard } from './save/delete-guard.ts';
 import { startServer } from './server.ts';
 import { createPollLoop, type PollLoop } from './sync/poll.ts';
-import { createPublishGate } from './sync/publish-gate.ts';
 import { type Builds, createPublish } from './sync/publish.ts';
+import { createPublishGate } from './sync/publish-gate.ts';
 import { createSync, type SyncNowOutcome } from './sync/sync.ts';
 
 /** The arguments of the start. `bundleDir` is the renderer's build folder (its `manifest/` holds the five files). */
@@ -291,10 +291,19 @@ export async function run(
     mediaFile: join(siteDir, 'media.json'),
     cmsOrigin: config.origins.cms,
   };
-  // Publish (2.10d) waits for the lifecycle's builds; with --bundle there are none. Its `publish` rebuild is logged only then.
+  // Publish (2.10d) waits for the lifecycle's builds, and asks it for a candidate (2.10m). With --bundle there are none: the
+  // publish gets `builderOn: false`, so it never asks for a candidate, and these answers are not read.
   const builds: Builds = lifecycle ?? {
     busy: () => false,
     waitForIdle: () => Promise.resolve(true),
+    buildCandidate: () =>
+      Promise.resolve({
+        kind: 'failed',
+        error: 'The builder is off, so no candidate is built',
+      }),
+    adopt: () => Promise.resolve(false),
+    afterAdopt: () => Promise.resolve(),
+    discard: () => Promise.resolve(),
   };
   const publish = createPublish({
     repo: openedRepo,

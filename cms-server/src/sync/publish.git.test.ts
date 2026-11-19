@@ -3,6 +3,7 @@
 // sync, the changeset, the squash and the push.
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { PublishAnswer } from 'cms-contract';
 import { revisionOf } from 'preview-contract';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createTestApp, fakeAppDeps } from '../../test/helpers/app-deps.ts';
@@ -22,10 +23,13 @@ import { directoryBundleSource } from '../bundle/source.ts';
 import { createBundleStore } from '../bundle/store.ts';
 import { type ExecFn, realExec } from '../git/exec.ts';
 import { openRepo, type Repo } from '../git/ops.ts';
+import type {
+  Candidate,
+  CandidateOutcome,
+} from '../preview/bundle-lifecycle.ts';
 import { createStatus } from '../preview/status.ts';
 import type { PreviewClient } from '../save/context.ts';
 import { createDeleteGuard } from '../save/delete-guard.ts';
-import type { PublishAnswer } from 'cms-contract';
 import { createPublish } from './publish.ts';
 import { createPublishGate } from './publish-gate.ts';
 import { createSync } from './sync.ts';
@@ -67,9 +71,19 @@ interface Rig {
   readonly remoteLog: () => Promise<string[]>;
   /** The rebuilds the saves asked for, in order, and whether each was asked for while its save still held the repo lock. */
   readonly rebuilds: { readonly insideLock: boolean }[];
+  /** The candidates the publish built, adopted and discarded, by commit (2.10m). */
+  readonly candidate: {
+    readonly built: string[];
+    readonly adopted: string[];
+    readonly discarded: string[];
+  };
 }
 
 interface RigOptions {
+  /** The build check of the config. The default is `never`: the tests of the 2.10d path build nothing (2.10k). */
+  readonly buildCheck?: 'always' | 'never' | 'auto';
+  /** The answer of a candidate build, by commit. The default builds it into a bundle named after the commit. */
+  readonly build?: (commit: string) => CandidateOutcome;
   /** Runs before each push of the CMS reaches git (a developer who pushes just then). */
   readonly beforePush?: (attempt: number, rig: () => Rig) => Promise<void>;
   /** A hook the remote runs on each push. */
@@ -145,6 +159,11 @@ async function rigOf(options: RigOptions = {}): Promise<Rig> {
   };
   // A rebuild that a save asks for counts as under way for the publish, as the lifecycle's trigger does (it counts at once).
   const rebuilds: { insideLock: boolean }[] = [];
+  const candidate: {
+    built: string[];
+    adopted: string[];
+    discarded: string[];
+  } = { built: [], adopted: [], discarded: [] };
   const trigger = vi.fn();
   const gate = createPublishGate({ status });
   const sync = createSync({
@@ -167,7 +186,10 @@ async function rigOf(options: RigOptions = {}): Promise<Rig> {
     repo: observed,
     bundles,
     siteFolder: state.siteFolder,
-    config,
+    config: {
+      ...config,
+      publish: { buildCheck: options.buildCheck ?? 'never' },
+    },
     preview,
     media,
     guard,
@@ -178,6 +200,19 @@ async function rigOf(options: RigOptions = {}): Promise<Rig> {
       waitForIdle: async () => {
         await options.onWait?.(repo);
         return true;
+      },
+      buildCandidate: async (commit: string) => {
+        candidate.built.push(commit);
+        return (options.build ?? builtOf)(commit);
+      },
+      // The node is not swapped here: a test of the bundle is not a test of the push.
+      adopt: async (adopted: Candidate) => {
+        candidate.adopted.push(adopted.commit);
+        return true;
+      },
+      afterAdopt: async () => undefined,
+      discard: async (discarded: Candidate) => {
+        candidate.discarded.push(discarded.commit);
       },
     },
     builderOn: true,
@@ -223,6 +258,7 @@ async function rigOf(options: RigOptions = {}): Promise<Rig> {
     guard,
     devClone,
     rebuilds,
+    candidate,
     async dev(files, message) {
       await git(devClone, ['fetch', 'origin']);
       await git(devClone, ['reset', '--hard', 'origin/main']);
@@ -270,6 +306,16 @@ async function anaWithName(
 }
 
 const nameOf = (text: string): unknown => JSON.parse(text).name;
+
+// The candidate of a build that passes: a bundle named after its commit, as the lifecycle names it.
+const builtOf = (commit: string): CandidateOutcome => ({
+  kind: 'built',
+  candidate: {
+    commit,
+    bundleId: `bundle-${commit}`,
+    dir: `/bundles/bundle-${commit}`,
+  },
+});
 
 describe('publish against a bare remote (R3)', () => {
   it('makes one commit on the remote for two saves of two documents, and cms/work moves to it', async () => {
@@ -705,5 +751,103 @@ describe('publish when the remote refuses for another reason', () => {
       { path: ANA, status: 'modified' },
     ]);
     expect((await rig.status.snapshot()).publish.state).toBe('failed');
+  });
+});
+
+describe('publish with a candidate build against a bare remote (2.10m)', () => {
+  it('a candidate that builds is pushed, adopted, and cms/work moves to the pushed commit', async () => {
+    const rig = await rigOf({ buildCheck: 'always' });
+    await saveAna(rig, 'Ana T.');
+    const answer = await rig.publish();
+    const head = await rig.remoteHead();
+    expect(answer).toStrictEqual({
+      status: 200,
+      body: { commit: head, overwritten: [], renamed: [] },
+    });
+    expect(rig.candidate.built).toStrictEqual([head]);
+    expect(rig.candidate.adopted).toStrictEqual([head]);
+    expect(rig.candidate.discarded).toStrictEqual([]);
+    expect(rig.trigger).not.toHaveBeenCalled();
+    expect(nameOf(await rig.remoteText(ANA))).toBe('Ana T.');
+    expect((await git(rig.repoDir, ['rev-parse', 'cms/work'])).trim()).toBe(
+      head,
+    );
+    expect((await rig.status.snapshot()).publish).toStrictEqual({
+      state: 'idle',
+      error: null,
+    });
+  });
+
+  it('a failed build answers 424 with its first error, pushes nothing, and leaves the saves on cms/work', async () => {
+    const rig = await rigOf({
+      buildCheck: 'always',
+      build: () => ({
+        kind: 'failed',
+        error: 'src/pages/a.astro: boom',
+      }),
+    });
+    await saveAna(rig, 'Ana T.');
+    const saved = (await git(rig.repoDir, ['rev-parse', 'cms/work'])).trim();
+    const message =
+      'The candidate did not build, so nothing was published: src/pages/a.astro: boom';
+    expect(await rig.publish()).toStrictEqual({
+      status: 424,
+      body: {
+        error: 'build-failed',
+        message,
+        firstError: 'src/pages/a.astro: boom',
+      },
+    });
+    expect(rig.pushes()).toBe(0);
+    expect(await rig.remoteHead()).toBe(rig.seed);
+    expect((await git(rig.repoDir, ['rev-parse', 'cms/work'])).trim()).toBe(
+      saved,
+    );
+    await expect(rig.repo.changedPaths()).resolves.toStrictEqual([
+      { path: ANA, status: 'modified' },
+    ]);
+    expect(rig.candidate.discarded).toStrictEqual([]);
+    expect((await rig.status.snapshot()).publish).toStrictEqual({
+      state: 'failed',
+      error: message,
+    });
+  });
+
+  it('a push race after the build answers 409 remote-moved, pushes once, and discards the candidate', async () => {
+    const rig = await rigOf({
+      buildCheck: 'always',
+      beforePush: async (attempt, get) => {
+        if (attempt === 1)
+          await get().dev(
+            { [KOFI]: await anaWithName(get(), 'Kofi by a developer', KOFI) },
+            'dev: edit Kofi',
+          );
+      },
+    });
+    await saveAna(rig, 'Ana T.');
+    const saved = (await git(rig.repoDir, ['rev-parse', 'cms/work'])).trim();
+    expect(await rig.publish()).toStrictEqual({
+      status: 409,
+      body: {
+        error: 'remote-moved',
+        message:
+          'The remote branch moved while the candidate was built, so nothing was published. Publish again.',
+      },
+    });
+    expect(rig.pushes()).toBe(1);
+    expect(await rig.remoteLog()).toStrictEqual([
+      'dev: edit Kofi',
+      'seed: site',
+    ]);
+    expect((await git(rig.repoDir, ['rev-parse', 'cms/work'])).trim()).toBe(
+      saved,
+    );
+    expect(rig.candidate.built).toHaveLength(1);
+    expect(rig.candidate.discarded).toStrictEqual(rig.candidate.built);
+    expect(rig.candidate.adopted).toStrictEqual([]);
+    expect((await rig.status.snapshot()).publish).toStrictEqual({
+      state: 'idle',
+      error: null,
+    });
   });
 });

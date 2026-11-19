@@ -19,6 +19,7 @@ import type { Logger } from '../log.ts';
 import type { BuildJob, BuildResult } from './build-runner.ts';
 import {
   type BundleLifecycle,
+  type Candidate,
   createBundleLifecycle,
   type LifecycleOptions,
   type LifecycleRepo,
@@ -1206,5 +1207,448 @@ describe('busy and waitForIdle (2.10d)', () => {
     release(0);
     await pending;
     await expect(Promise.all(waiters)).resolves.toStrictEqual([true, true]);
+  });
+});
+
+describe('the candidate build (2.10m)', () => {
+  // The commit of a candidate: a SHA that is neither cms/work nor origin's branch.
+  const CAND = 'c'.repeat(40);
+  // The base origin's branch has once a candidate is adopted under the lock (read with the transaction, not with origin).
+  const UNDER_LOCK = 'e'.repeat(40);
+  // A transaction whose origin read is `upstream`, as the publish's lock would give.
+  const txReading = (upstream: string): Pick<RepoTx, 'revParse'> => ({
+    revParse: async () => upstream,
+  });
+  const folderOf = (bundleId: string) => path.join(BUNDLES, bundleId);
+
+  /** Builds `commit` as a candidate, and returns it. Fails the test when the build does not pass. */
+  async function builtCandidate(
+    rig: Awaited<ReturnType<typeof rigOf>>,
+    commit = CAND,
+  ): Promise<Candidate> {
+    const outcome = await rig.lifecycle.buildCandidate(commit);
+    if (outcome.kind !== 'built')
+      throw new Error(`the candidate did not build: ${outcome.error}`);
+    return outcome.candidate;
+  }
+
+  it('buildCandidate builds the commit into its own bundle, and changes no bundle state', async () => {
+    const rig = await rigOf({ state: oldState() });
+    expect(await rig.lifecycle.buildCandidate(CAND)).toStrictEqual({
+      kind: 'built',
+      candidate: { commit: CAND, bundleId: 'b-1', dir: folderOf('b-1') },
+    });
+    expect(rig.build.mock.calls).toStrictEqual([
+      [{ commit: CAND, bundleId: 'b-1' }],
+    ]);
+    expect(rig.store.set).not.toHaveBeenCalled();
+    expect(rig.supervisor.swap).not.toHaveBeenCalled();
+    expect((await rig.status.snapshot()).build.state).toBe('idle');
+    expect((await rig.status.snapshot()).build.error).toBe(null);
+  });
+
+  it('a failed candidate is an outcome with its first error, and changes no state', async () => {
+    const rig = await rigOf({
+      state: oldState(),
+      build: failedBuild('Unexpected token', 'src/pages/a.astro'),
+    });
+    expect(await rig.lifecycle.buildCandidate(CAND)).toStrictEqual({
+      kind: 'failed',
+      error: 'src/pages/a.astro: Unexpected token',
+    });
+    expect(rig.store.set).not.toHaveBeenCalled();
+    expect((await rig.status.snapshot()).build.state).toBe('idle');
+    expect((await rig.status.snapshot()).build.error).toBe(null);
+  });
+
+  it('a failed candidate does not mark its commit as failed: a trigger for that commit builds it again', async () => {
+    let calls = 0;
+    const rig = await rigOf({
+      state: oldState(),
+      build: (job) => {
+        calls += 1;
+        return calls === 1 ? failedBuild('boom')(job) : okBuild(job);
+      },
+    });
+    expect(await rig.lifecycle.buildCandidate(HEAD)).toStrictEqual({
+      kind: 'failed',
+      error: 'boom',
+    });
+    expect(await rig.lifecycle.trigger('save-rebuild')).toStrictEqual({
+      kind: 'served',
+      bundleId: 'b-2',
+    });
+    expect(rig.build).toHaveBeenCalledTimes(2);
+  });
+
+  it('a candidate whose build rejects is a failed candidate, with the rejection message', async () => {
+    const rig = await rigOf({
+      state: oldState(),
+      build: () => Promise.reject(new Error('spawn failed')),
+    });
+    expect(await rig.lifecycle.buildCandidate(CAND)).toStrictEqual({
+      kind: 'failed',
+      error: 'spawn failed',
+    });
+  });
+
+  it('a trigger asked during a candidate build is not merged into it: it builds its own bundle after the candidate', async () => {
+    const holds: PromiseWithResolvers<void>[] = [];
+    const rig = await rigOf({
+      state: oldState(),
+      build: (job) => {
+        const hold = Promise.withResolvers<void>();
+        holds.push(hold);
+        return hold.promise.then(() => okBuild(job));
+      },
+    });
+    const candidate = rig.lifecycle.buildCandidate(CAND);
+    await settle();
+    const trigger = rig.lifecycle.trigger('save-rebuild');
+    await settle();
+    expect(rig.build.mock.calls).toStrictEqual([
+      [{ commit: CAND, bundleId: 'b-1' }],
+    ]);
+    holds[0]?.resolve();
+    expect(await candidate).toStrictEqual({
+      kind: 'built',
+      candidate: { commit: CAND, bundleId: 'b-1', dir: folderOf('b-1') },
+    });
+    await settle();
+    expect(rig.build.mock.calls).toStrictEqual([
+      [{ commit: CAND, bundleId: 'b-1' }],
+      [{ commit: HEAD, bundleId: 'b-2' }],
+    ]);
+    holds[1]?.resolve();
+    expect(await trigger).toStrictEqual({ kind: 'served', bundleId: 'b-2' });
+  });
+
+  it('adopt swaps the node onto the candidate, writes the base it reads under the lock, and runs no protocol check', async () => {
+    const rig = await rigOf({
+      state: oldState(),
+      versions: new Map<string, number | null>([['b-1', null]]),
+    });
+    const candidate = await builtCandidate(rig);
+    expect(await rig.lifecycle.adopt(candidate, txReading(UNDER_LOCK))).toBe(
+      true,
+    );
+    expect(rig.supervisor.swap.mock.calls).toStrictEqual([
+      [{ bundleId: 'b-1', dir: folderOf('b-1') }],
+    ]);
+    expect(rig.store.get()).toStrictEqual({
+      ...oldState(),
+      current: { bundleId: 'b-1', baseCommit: UNDER_LOCK },
+      lastGood: { bundleId: 'b-1', baseCommit: UNDER_LOCK },
+    });
+    expect(rig.build).toHaveBeenCalledTimes(1);
+    expect((await rig.status.snapshot()).errors.swap).toBe(null);
+  });
+
+  it('adopt returns false on a failed swap, with its error, and starts the last good bundle when it was not rolled back', async () => {
+    const rig = await rigOf({
+      state: oldState(),
+      swap: () =>
+        Promise.resolve({ ok: false, error: 'no port', rolledBack: false }),
+    });
+    const candidate = await builtCandidate(rig);
+    expect(await rig.lifecycle.adopt(candidate, txReading(BASE))).toBe(false);
+    expect(rig.supervisor.start.mock.calls).toStrictEqual([
+      [{ bundleId: OLD, dir: folderOf(OLD) }],
+    ]);
+    expect(rig.store.set).not.toHaveBeenCalled();
+    expect((await rig.status.snapshot()).errors.swap).toBe('no port');
+  });
+
+  it('adopt returns false on a swap the supervisor rolled back, and starts nothing', async () => {
+    const rig = await rigOf({
+      state: oldState(),
+      swap: () =>
+        Promise.resolve({ ok: false, error: 'node down', rolledBack: true }),
+    });
+    const candidate = await builtCandidate(rig);
+    expect(await rig.lifecycle.adopt(candidate, txReading(BASE))).toBe(false);
+    expect(rig.supervisor.start).not.toHaveBeenCalled();
+    expect(rig.store.set).not.toHaveBeenCalled();
+  });
+
+  it('afterAdopt runs the protocol check of the adopted bundle, and a mismatch rebuilds once', async () => {
+    const rig = await rigOf({
+      state: oldState(),
+      versions: new Map<string, number | null>([['b-1', null]]),
+    });
+    const candidate = await builtCandidate(rig);
+    expect(await rig.lifecycle.adopt(candidate, txReading(BASE))).toBe(true);
+    expect(rig.build).toHaveBeenCalledTimes(1);
+    await rig.lifecycle.afterAdopt(candidate);
+    expect(rig.build.mock.calls[1]).toStrictEqual([
+      { commit: HEAD, bundleId: 'b-2' },
+    ]);
+    expect(rig.store.get().current).toStrictEqual(entry('b-2'));
+  });
+
+  it('afterAdopt does nothing once a newer bundle is served', async () => {
+    const rig = await rigOf({
+      state: oldState(),
+      versions: new Map<string, number | null>([['b-1', null]]),
+    });
+    const candidate = await builtCandidate(rig);
+    expect(await rig.lifecycle.adopt(candidate, txReading(BASE))).toBe(true);
+    expect(await rig.lifecycle.trigger('save-rebuild')).toStrictEqual({
+      kind: 'served',
+      bundleId: 'b-2',
+    });
+    await rig.lifecycle.afterAdopt(candidate);
+    expect(rig.build).toHaveBeenCalledTimes(2);
+    expect(rig.store.get().current).toStrictEqual(entry('b-2'));
+  });
+
+  it('a trigger that reads the adopted commit, on its base, is served from the adopted bundle without a build', async () => {
+    const rig = await rigOf({ state: oldState() });
+    const candidate = await builtCandidate(rig);
+    expect(await rig.lifecycle.adopt(candidate, txReading(BASE))).toBe(true);
+    rig.moveHead(CAND);
+    expect(await rig.lifecycle.trigger('publish')).toStrictEqual({
+      kind: 'served',
+      bundleId: 'b-1',
+    });
+    expect(rig.build).toHaveBeenCalledTimes(1);
+  });
+
+  it('a trigger for the adopted commit builds again when origin moved since the adoption', async () => {
+    const rig = await rigOf({ state: oldState() });
+    const candidate = await builtCandidate(rig);
+    expect(await rig.lifecycle.adopt(candidate, txReading(BASE))).toBe(true);
+    rig.moveHead(CAND);
+    rig.moveUpstream(UNDER_LOCK);
+    expect(await rig.lifecycle.trigger('publish')).toStrictEqual({
+      kind: 'served',
+      bundleId: 'b-2',
+    });
+    expect(rig.build).toHaveBeenCalledTimes(2);
+  });
+
+  it('discard removes the folder of the candidate and its regions folder, and keeps the other bundles', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'candidate-discard-'));
+    try {
+      await mkdir(path.join(dir, 'b-1', 'manifest'), { recursive: true });
+      await mkdir(path.join(dir, 'b-1-regions'));
+      await mkdir(path.join(dir, 'b-2'));
+      const rig = await rigOf({ bundlesDir: dir });
+      await rig.lifecycle.discard({
+        commit: CAND,
+        bundleId: 'b-1',
+        dir: path.join(dir, 'b-1'),
+      });
+      expect((await readdir(dir)).sort()).toStrictEqual(['b-2']);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('after stop, a candidate is refused and no build starts', async () => {
+    const rig = await rigOf({ state: oldState() });
+    await rig.lifecycle.stop();
+    expect(await rig.lifecycle.buildCandidate(CAND)).toStrictEqual({
+      kind: 'failed',
+      error: 'The preview is stopping, so no build starts',
+    });
+    expect(rig.build).not.toHaveBeenCalled();
+  });
+
+  it('adopt clears the build error the failed build left in the status', async () => {
+    let calls = 0;
+    const rig = await rigOf({
+      state: oldState(),
+      build: (job) => {
+        calls += 1;
+        return calls === 1 ? failedBuild('boom')(job) : okBuild(job);
+      },
+    });
+    expect(await rig.lifecycle.trigger('save-rebuild')).toStrictEqual({
+      kind: 'build-failed',
+      error: 'boom',
+    });
+    expect((await rig.status.snapshot()).build.error).toBe('boom');
+    const candidate = await builtCandidate(rig);
+    expect(await rig.lifecycle.adopt(candidate, txReading(BASE))).toBe(true);
+    expect((await rig.status.snapshot()).build.error).toBe(null);
+  });
+
+  it('adopt clears the failed flag, so the next trigger that is served ends idle, not failed', async () => {
+    let calls = 0;
+    const rig = await rigOf({
+      state: oldState(),
+      build: (job) => {
+        calls += 1;
+        return calls === 1 ? failedBuild('boom')(job) : okBuild(job);
+      },
+    });
+    expect(await rig.lifecycle.trigger('save-rebuild')).toStrictEqual({
+      kind: 'build-failed',
+      error: 'boom',
+    });
+    expect((await rig.status.snapshot()).build.state).toBe('failed');
+    const candidate = await builtCandidate(rig);
+    expect(await rig.lifecycle.adopt(candidate, txReading(BASE))).toBe(true);
+    rig.moveHead(CAND);
+    expect(await rig.lifecycle.trigger('publish')).toStrictEqual({
+      kind: 'served',
+      bundleId: 'b-2',
+    });
+    expect((await rig.status.snapshot()).build.state).toBe('idle');
+  });
+
+  it('adopt clears the swap error a failed swap left in the status', async () => {
+    let swaps = 0;
+    const rig = await rigOf({
+      state: oldState(),
+      swap: async (): Promise<SwapAnswer> => {
+        swaps += 1;
+        return swaps === 1
+          ? { ok: false, error: 'node down', rolledBack: true }
+          : { ok: true };
+      },
+    });
+    expect(await rig.lifecycle.trigger('save-rebuild')).toStrictEqual({
+      kind: 'swap-failed',
+      error: 'node down',
+      rolledBack: true,
+    });
+    expect((await rig.status.snapshot()).errors.swap).toBe('node down');
+    const candidate = await builtCandidate(rig);
+    expect(await rig.lifecycle.adopt(candidate, txReading(BASE))).toBe(true);
+    expect((await rig.status.snapshot()).errors.swap).toBe(null);
+  });
+
+  it('after stop, adopt swaps nothing and answers false', async () => {
+    const rig = await rigOf({ state: oldState() });
+    const candidate = await builtCandidate(rig);
+    await rig.lifecycle.stop();
+    expect(await rig.lifecycle.adopt(candidate, txReading(BASE))).toBe(false);
+    expect(rig.supervisor.swap).not.toHaveBeenCalled();
+    expect(rig.store.set).not.toHaveBeenCalled();
+  });
+
+  it('adopt sets the build state to idle when no trigger is under way', async () => {
+    let calls = 0;
+    const rig = await rigOf({
+      state: oldState(),
+      build: (job) => {
+        calls += 1;
+        return calls === 1 ? failedBuild('boom')(job) : okBuild(job);
+      },
+    });
+    expect(await rig.lifecycle.trigger('save-rebuild')).toStrictEqual({
+      kind: 'build-failed',
+      error: 'boom',
+    });
+    expect((await rig.status.snapshot()).build.state).toBe('failed');
+    const candidate = await builtCandidate(rig);
+    expect(await rig.lifecycle.adopt(candidate, txReading(BASE))).toBe(true);
+    expect((await rig.status.snapshot()).build.state).toBe('idle');
+  });
+
+  it('adopt leaves the build state alone while a trigger is under way: the trigger sets it when it ends', async () => {
+    const holds: PromiseWithResolvers<void>[] = [];
+    let calls = 0;
+    const rig = await rigOf({
+      state: oldState(),
+      build: (job) => {
+        calls += 1;
+        if (calls === 1) return okBuild(job);
+        const hold = Promise.withResolvers<void>();
+        holds.push(hold);
+        return hold.promise.then(() => okBuild(job));
+      },
+    });
+    const candidate = await builtCandidate(rig);
+    const pending = rig.lifecycle.trigger('save-rebuild');
+    await settle();
+    expect((await rig.status.snapshot()).build.state).toBe('building');
+    expect(await rig.lifecycle.adopt(candidate, txReading(BASE))).toBe(true);
+    expect((await rig.status.snapshot()).build.state).toBe('building');
+    holds[0]?.resolve();
+    expect(await pending).toStrictEqual({ kind: 'served', bundleId: 'b-2' });
+    expect((await rig.status.snapshot()).build.state).toBe('idle');
+  });
+
+  it('a protocol rebuild of an adopted candidate is built again, though the candidate serves its commit, and records the count', async () => {
+    const rig = await rigOf({
+      state: oldState(),
+      versions: new Map<string, number | null>([['b-1', null]]),
+    });
+    const candidate = await builtCandidate(rig);
+    expect(await rig.lifecycle.adopt(candidate, txReading(BASE))).toBe(true);
+    rig.moveHead(CAND);
+    await rig.lifecycle.afterAdopt(candidate);
+    expect(rig.build.mock.calls).toStrictEqual([
+      [{ commit: CAND, bundleId: 'b-1' }],
+      [{ commit: CAND, bundleId: 'b-2' }],
+    ]);
+    expect(rig.store.get().current).toStrictEqual(entry('b-2'));
+    expect(rig.store.get().protocolAttempts).toStrictEqual(
+      new Map([
+        ['b-1', 1],
+        ['b-2', 1],
+      ]),
+    );
+  });
+
+  it('afterAdopt is a trigger under way from the call on: busy, and waitForIdle waits for its protocol check', async () => {
+    const holds: PromiseWithResolvers<void>[] = [];
+    let calls = 0;
+    const rig = await rigOf({
+      state: oldState(),
+      versions: new Map<string, number | null>([['b-1', null]]),
+      build: (job) => {
+        calls += 1;
+        if (calls === 1) return okBuild(job);
+        const hold = Promise.withResolvers<void>();
+        holds.push(hold);
+        return hold.promise.then(() => okBuild(job));
+      },
+    });
+    const candidate = await builtCandidate(rig);
+    expect(await rig.lifecycle.adopt(candidate, txReading(BASE))).toBe(true);
+    const check = rig.lifecycle.afterAdopt(candidate);
+    expect(rig.lifecycle.busy()).toBe(true);
+    const idle: boolean[] = [];
+    void rig.lifecycle.waitForIdle(60_000).then((value) => idle.push(value));
+    await settle();
+    expect(idle).toStrictEqual([]);
+    holds[0]?.resolve();
+    await check;
+    await settle();
+    expect(idle).toStrictEqual([true]);
+    expect(rig.lifecycle.busy()).toBe(false);
+    expect((await rig.status.snapshot()).build.state).toBe('idle');
+  });
+
+  it('adopt whose state write fails after the swap rejects with that error, and starts nothing', async () => {
+    const rig = await rigOf({ state: oldState() });
+    const candidate = await builtCandidate(rig);
+    const failure = new Error('the state file is locked');
+    rig.store.set.mockRejectedValueOnce(failure);
+    await expect(rig.lifecycle.adopt(candidate, txReading(BASE))).rejects.toBe(
+      failure,
+    );
+    expect(rig.supervisor.swap.mock.calls).toStrictEqual([
+      [{ bundleId: 'b-1', dir: folderOf('b-1') }],
+    ]);
+    expect(rig.supervisor.start).not.toHaveBeenCalled();
+    expect(rig.store.get()).toStrictEqual(oldState());
+  });
+
+  it('adopt that fails reading origin before the swap answers false, and swaps nothing', async () => {
+    const rig = await rigOf({ state: oldState() });
+    const candidate = await builtCandidate(rig);
+    const failure = new Error('origin cannot be read');
+    await expect(
+      rig.lifecycle.adopt(candidate, {
+        revParse: () => Promise.reject(failure),
+      }),
+    ).resolves.toBe(false);
+    expect(rig.supervisor.swap).not.toHaveBeenCalled();
+    expect(rig.store.set).not.toHaveBeenCalled();
   });
 });

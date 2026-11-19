@@ -2,6 +2,7 @@ import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { dirname, join, relative, resolve } from 'node:path';
+import type { PublishAnswer } from 'cms-contract';
 import { type BundleJson, bundleJsonSchema } from 'preview-contract';
 import { describe, expect, it, vi } from 'vitest';
 import { ZodError } from 'zod';
@@ -38,7 +39,6 @@ import {
 } from './run.ts';
 import type { DeleteGuard } from './save/context.ts';
 import { startServer as listen } from './server.ts';
-import type { PublishAnswer } from 'cms-contract';
 
 // The tests on a real clone run several git calls each, so one takes a few seconds under load.
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
@@ -910,6 +910,7 @@ describe('run: sync and publish on a real clone', () => {
     bundleMode: 'flag' | 'state' | 'first' | 'seeded',
     syncIntervalSeconds?: number,
     nodeState?: 'ready' | 'stopped',
+    buildCheck?: 'always' | 'never' | 'auto',
   ): Promise<Real> {
     const root = await makeTestRoot();
     const clone = await saveRepoIn(root);
@@ -930,6 +931,9 @@ describe('run: sync and publish on a real clone', () => {
           cms: CMS_ORIGIN,
           preview: `http://127.0.0.1:${portOfServer(node)}`,
         },
+        ...(buildCheck === undefined
+          ? {}
+          : { publish: { ...clone.config.publish, buildCheck } }),
       },
       repoState: clone.state,
       builder,
@@ -1227,7 +1231,8 @@ describe('run: sync and publish on a real clone', () => {
   });
 
   it('with the builder on, a publish asks for the build of the pushed commit, and does not log that the builder is off', async () => {
-    const real = await started('state');
+    // Under `never` no candidate is built, so the publish takes the 2.10d path and asks for the build after the push (2.10m).
+    const real = await started('state', undefined, undefined, 'never');
     try {
       await saveAna(real);
       const appDeps = vi.mocked(real.h.deps.startServer).mock.calls[0]?.[0];
@@ -1249,6 +1254,27 @@ describe('run: sync and publish on a real clone', () => {
       expect(real.h.log.info).not.toHaveBeenCalledWith(
         'A publish finished, but the builder is off',
       );
+    } finally {
+      await real.stop();
+    }
+  });
+
+  it('with the builder on and the default check, a changeset the check cannot tell about builds the candidate first: its failed build answers 424 and pushes nothing (2.10m)', async () => {
+    const real = await started('state');
+    try {
+      await saveAna(real);
+      const before = await remoteHead(real);
+      const appDeps = vi.mocked(real.h.deps.startServer).mock.calls[0]?.[0];
+      expect(await appDeps?.publish?.publish()).toStrictEqual({
+        status: 424,
+        body: {
+          error: 'build-failed',
+          message:
+            'The candidate did not build, so nothing was published: no build in this test',
+          firstError: 'no build in this test',
+        },
+      });
+      expect(await remoteHead(real)).toBe(before);
     } finally {
       await real.stop();
     }
