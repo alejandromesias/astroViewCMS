@@ -130,8 +130,11 @@ export function judge(input: {
   reported: ReadonlySet<string>;
   counts: ReadonlyMap<string, MutantCounts>;
   waivers: readonly Waiver[];
+  // Changed files whose change touches only types (lib/type-only.ts). A group of only these may have no valid mutant.
+  typeOnly?: ReadonlySet<string>;
 }): Verdict {
   const { mode, expected, reported, counts, waivers } = input;
+  const typeOnly = input.typeOnly ?? new Set<string>();
   const failures: string[] = [];
   const waiverOf = new Map(waivers.map((waiver) => [waiver.file, waiver]));
   const files =
@@ -149,7 +152,10 @@ export function judge(input: {
     const mutated = groupFiles.some(
       (file) => (counts.get(file)?.valid ?? 0) > 0,
     );
-    if (!mutated)
+    // A group whose changes are all types has no code to mutate, so no valid mutant is expected (WORKPLAN 2.1l).
+    const onlyTypes =
+      groupFiles.length > 0 && groupFiles.every((file) => typeOnly.has(file));
+    if (!mutated && !onlyTypes)
       failures.push(
         `Stryker mutated nothing for group ${group}: check its run`,
       );

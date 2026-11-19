@@ -75,6 +75,8 @@ export interface Plan {
   groups: Record<string, string[]>;
   // Changed files that are not mutated: not TypeScript, outside the mutate list, or a test with no source.
   dropped: string[];
+  // Planned files whose change touches only types (lib/type-only.ts). Set by a diff run; absent in a full run.
+  typeOnly?: string[];
 }
 
 export function planFiles(

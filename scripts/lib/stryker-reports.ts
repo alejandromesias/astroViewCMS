@@ -97,6 +97,10 @@ export function readPlan(file: string): Plan {
   ) {
     throw new Error(`${file} is not a mutation plan`);
   }
+  const typeOnly =
+    'typeOnly' in value && Array.isArray(value.typeOnly)
+      ? value.typeOnly.map(String)
+      : [];
   const planned: Record<string, string[]> = {};
   for (const [name, files] of Object.entries(groups)) {
     if (!Array.isArray(files))
@@ -109,7 +113,7 @@ export function readPlan(file: string): Plan {
     }
     planned[name] = list;
   }
-  return { groups: planned, dropped: dropped.map(String) };
+  return { groups: planned, dropped: dropped.map(String), typeOnly };
 }
 
 // Judges a finished run. diff: the planned groups and files must all report. full: every group must report.
@@ -135,6 +139,7 @@ export function judgeRun(options: {
     reported,
     counts,
     waivers: options.waivers,
+    typeOnly: new Set(options.plan?.typeOnly ?? []),
   });
 }
 

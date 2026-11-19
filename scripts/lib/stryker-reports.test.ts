@@ -89,17 +89,29 @@ describe('loadCounts', () => {
 });
 
 describe('readPlan and writePlan', () => {
-  it('reads back the plan that was written', () => {
+  it('reads back the plan that was written, with its type-only files', () => {
     const file = writePlan(root, {
       base: 'origin/main',
       mergeBase: 'abc',
       groups: { protocol: ['preview-protocol/src/index.ts'] },
       dropped: ['DOCS/x.md'],
+      typeOnly: ['preview-protocol/src/index.ts'],
     });
     expect(readPlan(file)).toEqual({
       groups: { protocol: ['preview-protocol/src/index.ts'] },
       dropped: ['DOCS/x.md'],
+      typeOnly: ['preview-protocol/src/index.ts'],
     });
+  });
+
+  it('reads a plan with no type-only list as an empty one', () => {
+    const file = writePlan(root, {
+      base: 'origin/main',
+      mergeBase: undefined,
+      groups: {},
+      dropped: [],
+    });
+    expect(readPlan(file)).toEqual({ groups: {}, dropped: [], typeOnly: [] });
   });
 
   it('throws for a file that is not a plan', () => {

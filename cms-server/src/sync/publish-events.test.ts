@@ -121,6 +121,8 @@ function fetched(m: Model): FetchResult {
 /** Makes the world the events run in: the model, the pauses and the lock. A restart keeps the model and makes new parts. */
 function rig(builderOn = true) {
   const m = new Model();
+  // Every error the publish logs, so a test can check what an unexpected failure says.
+  const logged: { message: string; fields: unknown }[] = [];
   let holds = new Set<Point>();
   let pause: { readonly point: Point; readonly resume: () => void } | undefined;
   const timers: { readonly callback: () => void; readonly handle: object }[] =
@@ -279,7 +281,12 @@ function rig(builderOn = true) {
       gate,
       builderOn,
       trigger: () => {},
-      log: silentLog(),
+      log: {
+        ...silentLog(),
+        error: (message, fields) => {
+          logged.push({ message, fields });
+        },
+      },
       readChangeset: async () => m.changeset(),
     });
     return { gate, sync, publish };
@@ -290,6 +297,7 @@ function rig(builderOn = true) {
   return {
     m,
     world: () => current,
+    logged: () => logged,
     paused: () => pause !== undefined,
     hold(points: readonly Point[]): void {
       holds = new Set(points);
@@ -419,6 +427,7 @@ function driver() {
     holdLock: r.holdLock,
     expireLockWaits: r.expireLockWaits,
     restart: r.restart,
+    logged: r.logged,
     snapshot,
     isInFlight: (): boolean => inFlight,
     origin: () => ({
@@ -735,6 +744,16 @@ describe('publish event order: curated scenarios (2.10l)', () => {
     // The remote has the commit; cms/work still holds the save, and the gate is open again.
     expect(d.origin()).toStrictEqual({ tip: 'c1', docs: { a: '1' } });
     expect(d.world().gate.pollMayRun()).toBe(true);
+    // The failure is logged with the commit that landed, and the publish's own answer does not carry it.
+    expect(d.logged()).toStrictEqual([
+      {
+        message: 'the publish landed, but cms/work could not be reset to it',
+        fields: {
+          commit: 'c1',
+          error: 'the process stopped before the reset',
+        },
+      },
+    ]);
     d.restart();
     expect(await d.click()).toStrictEqual({
       status: 200,
