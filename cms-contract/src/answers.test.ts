@@ -164,4 +164,187 @@ describe('answer schemas refuse what the routes never send', () => {
     const body = { bundle: null, publish: { state: 'queued', error: null } };
     expect(statusAnswerSchema.safeParse(body).success).toBe(false);
   });
+
+  it.each([
+    ['GET /api/schema', schemaAnswerSchema],
+    ['GET /api/documents?collection=', documentListAnswerSchema],
+    ['GET /api/documents?key=', documentAnswerSchema],
+    ['GET /api/status', statusAnswerSchema],
+    ['GET /api/changes', changesAnswerSchema],
+    ['PUT /api/changes, 200', saveAnswerSchema],
+    ['GET /api/overlay', overlayAnswerSchema],
+    ['GET /api/preview-url', previewUrlAnswerSchema],
+    ['POST /api/publish, 200', publishAnswerSchema],
+    ['POST /api/media, 201', mediaAnswerSchema],
+  ])('refuses an empty body for %s', (_route, schema) => {
+    expect(schema.safeParse({}).success).toBe(false);
+  });
+
+  it.each([
+    [
+      'a collection with no name',
+      schemaAnswerSchema,
+      { collections: [{ schema: {} }] },
+    ],
+    [
+      'a loader with no kind',
+      schemaAnswerSchema,
+      { collections: [{ name: 'posts', loader: { pattern: '*' } }] },
+    ],
+    [
+      'a loader of a kind the server never sends',
+      schemaAnswerSchema,
+      {
+        collections: [{ name: 'posts', loader: { kind: 'dir', pattern: '*' } }],
+      },
+    ],
+    [
+      'a list item with no key',
+      documentListAnswerSchema,
+      {
+        documents: [
+          { revision: null, format: 'md', editable: true, buildTime: false },
+        ],
+      },
+    ],
+    [
+      'a changed document with no key',
+      changesAnswerSchema,
+      {
+        documents: [{ status: 'modified', baseRevision: null }],
+        createdRecords: [],
+        fileErrors: [],
+      },
+    ],
+    [
+      'a file error with no path',
+      changesAnswerSchema,
+      {
+        documents: [],
+        createdRecords: [],
+        fileErrors: [{ error: { code: 'parse-error', message: 'bad' } }],
+      },
+    ],
+    [
+      'a save warning with no path',
+      saveAnswerSchema,
+      {
+        revisions: {},
+        warnings: [{ key: 'posts/a', code: 'public-image-missing' }],
+        rebuild: false,
+      },
+    ],
+    [
+      'an overwritten document with no commit',
+      publishAnswerSchema,
+      { commit: null, overwritten: [{ key: 'posts/a' }], renamed: [] },
+    ],
+  ])('refuses %s', (_case, schema, body) => {
+    expect(schema.safeParse(body).success).toBe(false);
+  });
+
+  it.each([
+    ['a build with no state', { build: {} }],
+    ['a node with no bundle id', { node: { state: 'ready', error: null } }],
+    [
+      'a node state the server never sends',
+      { node: { state: 'paused', bundleId: null, error: null } },
+    ],
+    ['errors with no keys', { errors: {} }],
+    ['a bundle with no id', { bundle: { siteCommit: null } }],
+  ])('refuses a status with %s', (_case, part) => {
+    expect(
+      statusAnswerSchema.safeParse({ ...statusBody(), ...part }).success,
+    ).toBe(false);
+  });
+});
+
+// A status body in which every part is valid, so a test that replaces one part shows only that part.
+function statusBody(): Record<string, unknown> {
+  return {
+    bundle: null,
+    builder: 'on',
+    build: { state: 'idle', error: null, failedCommit: null },
+    node: { state: 'ready', bundleId: 'b1', error: null },
+    lastSync: null,
+    syncError: null,
+    renamed: [],
+    changesetSize: null,
+    publish: { state: 'idle', error: null },
+    errors: { protocolMismatch: null, upstreamBuildFailed: null, swap: null },
+  };
+}
+
+// Every value of an enum or literal is accepted, one case each: a mutant that drops or changes one value fails its case.
+describe('answer schemas take every value of their enums and literals', () => {
+  it.each(['glob', 'file'])('takes the loader kind %s', (kind) => {
+    const body = {
+      collections: [{ name: 'posts', loader: { kind, pattern: '*' } }],
+    };
+    expect(schemaAnswerSchema.safeParse(body).success).toBe(true);
+  });
+
+  it('takes a loader with customId set to true', () => {
+    const body = {
+      collections: [
+        {
+          name: 'posts',
+          loader: {
+            kind: 'file',
+            pattern: 'a.json',
+            base: 'src',
+            customId: true,
+          },
+        },
+      ],
+    };
+    expect(schemaAnswerSchema.safeParse(body).success).toBe(true);
+  });
+
+  it.each(['created', 'modified', 'deleted'])(
+    'takes the changed-document status %s',
+    (status) => {
+      const body = {
+        documents: [{ key: 'posts/a', status, baseRevision: null }],
+        createdRecords: [],
+        fileErrors: [],
+      };
+      expect(changesAnswerSchema.safeParse(body).success).toBe(true);
+    },
+  );
+
+  it.each(['on', 'off'])('takes the builder state %s', (builder) => {
+    const body = { ...statusBody(), builder };
+    expect(statusAnswerSchema.safeParse(body).success).toBe(true);
+  });
+
+  it.each(['off', 'idle', 'building', 'failed'])(
+    'takes the build state %s',
+    (state) => {
+      const body = {
+        ...statusBody(),
+        build: { state, error: null, failedCommit: null },
+      };
+      expect(statusAnswerSchema.safeParse(body).success).toBe(true);
+    },
+  );
+
+  it.each(['stopped', 'starting', 'ready', 'restarting', 'failed'])(
+    'takes the node state %s',
+    (state) => {
+      const body = {
+        ...statusBody(),
+        node: { state, bundleId: null, error: null },
+      };
+      expect(statusAnswerSchema.safeParse(body).success).toBe(true);
+    },
+  );
+
+  it.each(['idle', 'publishing', 'failed'])(
+    'takes the publish state %s',
+    (state) => {
+      const body = { ...statusBody(), publish: { state, error: null } };
+      expect(statusAnswerSchema.safeParse(body).success).toBe(true);
+    },
+  );
 });
