@@ -41,6 +41,7 @@ Phase 2 builds `cms-server` for one site: read, save, preview from the saved sta
 | Editor | 2.11a, 2.11b, 2.11e | The test editor served on the CMS origin, its data sources, and its mutation scope (`editor.ts` 97.21%) |
 | CI and process | 2.1k to 2.1t | Fast gates, e2e, `mutation-diff`, sharded `mutation-full`, nightly, weekly Windows, security scans, ruleset, worktree tooling, docs straight to `main` |
 | Wave 11 (so far) | 2.14m, 2.14d, 2.10k, 2.11c, 2.12a, 2.13d | osv audit off docs-only pushes. `cms-contract` wire schemas and error codes. The pure `auto` build-check function. Save, conflicts, the changes list and the editor's API client. The test editor's stopgap routes removed (2.12a). The three files under 80 (2.13d) |
+| Wave 12 (so far) | 2.14e, 2.11d | The `Origin` guard on write routes and the start-up origin warning (2.14e). The editor's Publish button, status polling and the run guide (2.11d) |
 
 ### 1.3 Decisions to carry
 
@@ -292,6 +293,8 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 
 ### Wave 12
 
+**Status (2026-11-18):** 2.14e (PR #58) and 2.11d (PR #59) are merged. 2.12d `[user]` can start now (2.11d is in). 2.10e, split into 2.10l and then 2.10m, is next.
+
 #### 2.10e Build check and snapshot publish — after 2.10k, 2.14d, 2.9a · umbrella of 2.10l and 2.10m
 
 **Split (2026-11-18, architect, for the wave 12 prep).** 2.10e keeps its id, its row R6, its done-when and the link to the state table, and gets no code of its own. It is done when 2.10l and 2.10m have both merged. 2.10l merges before 2.10m starts. Both start after 2.14e merges, because 2.14e edits every write route in `http/` (section 5.2).
@@ -376,6 +379,11 @@ The scope below is the whole of 2.10e, to be split between the two tasks as abov
 - **Gaps found while writing the guide:** record them, and fix them as wave 13 tasks, unless a fix is one line (2026-11-18).
 - **Run guide (for 2.12d):** a short `DOCS/Guidelines/RUN-CMS-SERVER.md`. It says how to point `cms-server` at a GitHub repo (`cms.config.ts`, the site config, credentials), the start command, `buildCheck`, and where logs and `.cms/<site>/` live. 2.13b grows it into the quick start.
 - **Done when:** per-answer tests on `messages.ts`, `api.ts` and `status.ts`, including `commit: null`, a non-empty `renamed` and each `503` and `409`; the run guide exists.
+- **Result:** PR #59, merge `d4d9d46`. Closed. Mutation-diff 92.67 on the changed files (lowest `editor.ts` 89.99; all at or above 80), on head `be783b8`. Reviewed by Reviewer-11.18 over several rounds, and by Codex.
+  - **Built:** a Publish button with a message for each answer; `status.ts` (DOM-free) polls `GET /api/status` while a publish runs, and starts a poll when a publish is reported running; a page's own failed publish hides its error from the status line (the answer shows it), until a later publish is seen; a gate refusal (`409 publish-in-progress`, `503 busy`) does not hide a real status error; `DOCS/Guidelines/RUN-CMS-SERVER.md`.
+  - **Decisions:** status is polled only while a publish runs, not continuously (the page does not see another tab's publish until it reads status again); staged image URLs after a failed re-read are accepted, not fixed (the carried-in item, decided by you).
+  - **Open:** the server does not yet emit `409 publish-in-progress`, `409 remote-moved`, `424 build-failed` or `buildCheckSkipped`. The client handles them, so 2.10l, 2.10m and 2.10f make them real. The run guide is untested until 2.12d.
+  - **Implication:** `status.ts` has an `onRead` hook (every answered read) besides `onChange`; the editor's publish-state logic depends on it. `dev-remote.ts` no longer prints a start command the server refuses (a gap found by the guide).
 
 #### 2.14e Local origins and the `Origin` check — after 2.14d (A7)
 
@@ -385,6 +393,10 @@ The scope below is the whole of 2.10e, to be split between the two tasks as abov
 - **Carried in:** confirm whether the bridge still needs `editorOrigins` (kept by 2.12a). **Answered (2026-11-18): yes, keep it.** `preview-render-server/src/client/bridge.ts:160-165` reads it from `/__preview/config` to build the allowed parent origins, and `preview-config.ts` still serves it. Say so in the PR.
 - **Order:** 2.14e goes first in wave 12 (small, unit-only). 2.10l and 2.10m rebase on it, because it edits every write route in `http/`.
 - **Done when:** items 1 to 3 are merged with tests. The spike is item 4, in wave 13.
+- **Result:** PR #58, merge `7f07298`. Items 1 to 3 closed; item 4 (the spike) is still open, in wave 13. Mutation-diff on the changed files, head `69e7fee`: `cms-server` 93.32 overall (`schema.ts` 100, `guard.ts` 95.45, `run.ts` 91.55, `app.ts` 85.48); `cms-contract` `errors.ts` 100. Every file at or above 80.
+  - **Built:** the example origins on `cms.localhost:4400` and `preview.localhost:4401`; a start-up warning when the two origins share a host (`originsShareHost`; a log, not an error); one `Origin` middleware after the Host check, refusing any write whose `Origin` is present and not `origins.cms` with `403 cross-origin` (a new code).
+  - **Decisions:** a new code, not `misdirected` (421, the Host check); an exact match on `origins.cms`, so a page on `127.0.0.1` cannot write when `origins.cms` names another host; `editorOrigins` stays. PHASE-2-DESIGN 5.9 describes the refusal.
+  - **Implication:** 2.10l and 2.10m rebase on this, and the start condition of the 2.10e umbrella holds. The generated route table (2.13b) must list `cross-origin`.
 
 #### 2.12d First manual run — after 2.11d · `[user]` (was 2.12c-1)
 
