@@ -287,36 +287,6 @@ describe('judge in diff mode', () => {
     ]);
   });
 
-  it('does not fail a group whose changed files only changed in types, when they mutated nothing', () => {
-    const verdict = judge({
-      mode: 'diff',
-      expected: expectedOf({ 'cms-server': ['cms-server/src/a.ts'] }),
-      reported,
-      counts: counts({ 'cms-server/src/a.ts': [0, 0] }),
-      waivers: [],
-      typeOnly: new Set(['cms-server/src/a.ts']),
-    });
-    expect(verdict.failures).toEqual([]);
-    expect(verdict.rows[0]).toMatchObject({
-      file: 'cms-server/src/a.ts',
-      status: 'no-mutants',
-    });
-  });
-
-  it('still fails a group that mutated nothing when one of its files is not type-only', () => {
-    const verdict = judge({
-      mode: 'diff',
-      expected,
-      reported,
-      counts: counts({ 'cms-server/src/a.ts': [0, 0] }),
-      waivers: [],
-      typeOnly: new Set(['cms-server/src/a.ts']),
-    });
-    expect(verdict.failures).toEqual([
-      'Stryker mutated nothing for group cms-server: check its run',
-    ]);
-  });
-
   it('judges nothing when no group is expected', () => {
     const verdict = judge({
       mode: 'diff',

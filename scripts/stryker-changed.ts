@@ -16,7 +16,6 @@ import {
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { GROUP_NAMES, type Plan, planFiles } from './lib/stryker-plan.ts';
-import { isTypeOnlyChange } from './lib/type-only.ts';
 import {
   judgeRun,
   publish,
@@ -68,24 +67,6 @@ export function parseOptions(args: readonly string[]): Options {
     }
   }
   return options;
-}
-
-// The text of a file at a revision, or undefined when that revision has no such file.
-function showAt(revision: string, file: string): string | undefined {
-  const result = spawnSync('git', ['show', `${revision}:${file}`], {
-    cwd: REPO_ROOT,
-    encoding: 'utf8',
-    windowsHide: true,
-  });
-  return result.status === 0 ? result.stdout : undefined;
-}
-
-// The files whose change from `base` to HEAD touches only types (lib/type-only.ts).
-function typeOnlyOf(files: readonly string[], base: string): string[] {
-  return files.filter((file) => {
-    const after = showAt('HEAD', file);
-    return after !== undefined && isTypeOnlyChange(showAt(base, file), after);
-  });
 }
 
 function gitLines(args: string[]): string[] {
@@ -144,14 +125,7 @@ function plan(options: Options): { plan: Plan; mergeBase: string | undefined } {
       'HEAD',
     ]);
   }
-  const planned = planFiles(changed, mutateList());
-  const full: Plan = {
-    ...planned,
-    typeOnly:
-      mergeBase === undefined
-        ? []
-        : typeOnlyOf(Object.values(planned.groups).flat(), mergeBase),
-  };
+  const full = planFiles(changed, mutateList());
   const selected: Plan =
     options.group === undefined
       ? full
@@ -160,7 +134,6 @@ function plan(options: Options): { plan: Plan; mergeBase: string | undefined } {
             ? { [options.group]: full.groups[options.group] }
             : {},
           dropped: full.dropped,
-          typeOnly: full.typeOnly,
         };
   const scope = options.all
     ? 'every source file'
