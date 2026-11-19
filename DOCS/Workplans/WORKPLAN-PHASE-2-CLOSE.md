@@ -41,7 +41,7 @@ Phase 2 builds `cms-server` for one site: read, save, preview from the saved sta
 | Editor | 2.11a, 2.11b, 2.11e | The test editor served on the CMS origin, its data sources, and its mutation scope (`editor.ts` 97.21%) |
 | CI and process | 2.1k to 2.1t | Fast gates, e2e, `mutation-diff`, sharded `mutation-full`, nightly, weekly Windows, security scans, ruleset, worktree tooling, docs straight to `main` |
 | Wave 11 (so far) | 2.14m, 2.14d, 2.10k, 2.11c, 2.12a, 2.13d | osv audit off docs-only pushes. `cms-contract` wire schemas and error codes. The pure `auto` build-check function. Save, conflicts, the changes list and the editor's API client. The test editor's stopgap routes removed (2.12a). The three files under 80 (2.13d) |
-| Wave 12 (so far) | 2.14e, 2.11d | The `Origin` guard on write routes and the start-up origin warning (2.14e). The editor's Publish button, status polling and the run guide (2.11d) |
+| Wave 12 (so far) | 2.14e, 2.11d, 2.10l | The `Origin` guard on write routes and the start-up origin warning (2.14e). The editor's Publish button, status polling and the run guide (2.11d). The publish gate and the design 3 refusals, `PublishAnswer` in `cms-contract` (2.10l) |
 
 ### 1.3 Decisions to carry
 
@@ -293,7 +293,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 
 ### Wave 12
 
-**Status (2026-11-18):** 2.14e (PR #58) and 2.11d (PR #59) are merged. 2.12d `[user]` can start now (2.11d is in). 2.10e, split into 2.10l and then 2.10m, is next.
+**Status (2026-11-19):** 2.14e (PR #58), 2.11d (PR #59) and 2.10l (PR #60) are merged. 2.12d `[user]` can start now (2.11d is in). 2.10m is next; 2.10e closes when it has merged.
 
 #### 2.10e Build check and snapshot publish — after 2.10k, 2.14d, 2.9a · umbrella of 2.10l and 2.10m
 
@@ -309,6 +309,11 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
   - The event-order harness: injected git, build and clock, the curated scenarios of the state table that need no candidate build, and the seeded random runs.
   - **Done when:** the refusals above hold on the 2.10d flow, the gate reopens after every answer, the harness is green, and `PublishAnswer` lives in `cms-contract`.
   - Follow-up (not in 2.10l): preview-contract has 5 files with module-level zod schemas. Stryker's `ignoreStatic: true` marks their static mutants `Ignored`, so the gate never judges them. Fix: set `ignoreStatic: false` for the preview-contract triage, as done for cms-contract in 2.10l, then kill the survivors. Left out of 2.10l so the change does not start judging static mutants in a second CI group in the same PR.
+  - **Result:** PR #60, merge `3810f0b` (head `de5ceb8`). Closed; 2.10m is still open. On `fdea523`, mutation-diff passed (overall 94.75, floor 75) and `cms-contract/src/answers.ts` was 51 of 51 killed. Fast gates and e2e passed. Reviewed by Reviewer-11.18 over four rounds, and by Codex (no findings on `fdea523`).
+    - **Built:** `sync/publish-gate.ts` (`begin`, `end`, `saveStop`, `clearFailed`, `pollMayRun`, `beforePush` and `afterPush`); saves and poll ticks check the gate before and under the repo lock; the publish flow in `sync/publish.ts`; `PublishAnswer` moved to `cms-contract`; the event-order harness in `sync/publish-events.test.ts` (curated scenarios, seeded runs, a restart event).
+    - **Decisions:** a save during a publish answers `409 publish-in-progress` and writes nothing; a poll tick is skipped; a second publish answers `409 publish-in-progress`. A failed reset after an accepted push is logged and the answer stays `200`. A `cms/work` move before the push answers `500 publish-failed` and pushes nothing; a move during the push answers `500`, with the commit on the remote and the save left on `cms/work`. The 2.10d publish test changed from `503` to `409 publish-in-progress` for a save during a publish.
+    - **Open:** the server does not yet emit `409 remote-moved`, `424 build-failed` or `buildCheckSkipped` (2.10m). `preview-contract` has the `ignoreStatic` blind spot (follow-up above). Harness gaps: lock timeouts are not in the seeds, and a restart during a publish is not covered.
+    - **Implication:** 2.10m rebases on this, and `publish.ts` and `status.ts` change there.
 - **2.10m: the candidate build** `[build]`.
   - The snapshot `{ C, S }` and the candidate build in a worktree under `.cms/<site>/` with a name pattern the start-up sweep can match.
   - `preview/bundle-lifecycle.ts` owns the candidate, and publish never calls the build-runner directly. It gains `buildCandidate(commit)` (takes the one build slot, waits for a running build; the builder's triggers merge into one rebuild after release, skipped if `adopt` already covers that commit), `adopt(candidate)` (runs in `finishing` under the lock, through the normal swap path) and `discard(candidate)` (also removes the worktree).
