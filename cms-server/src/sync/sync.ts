@@ -13,6 +13,7 @@ import { WORK_REF } from '../git/repo.ts';
 import type { SyncChange } from '../git/sync.ts';
 import type { Status } from '../preview/status.ts';
 import type { DeleteGuard } from '../save/context.ts';
+import type { PublishGate } from './publish-gate.ts';
 
 /** The calls a sync makes under the lock: the fetch, the re-apply, and the head of `cms/work`. */
 export type SyncTx = Pick<RepoTx, 'fetch' | 'reapply' | 'revParse'>;
@@ -52,6 +53,8 @@ interface SyncDeps {
    * runs once the sync (or the publish that holds the lock) is done.
    */
   readonly trigger: (reason: 'sync-code') => void;
+  /** The publish gate (2.10l): a tick that meets it closed is skipped, before the fetch and again under the lock. */
+  readonly gate: Pick<PublishGate, 'pollMayRun'>;
   /** The clock of `lastSync`. The default is the real one. */
   readonly now?: () => Date;
 }
@@ -80,6 +83,7 @@ export function createSync({
   guard,
   status,
   trigger,
+  gate,
   now = () => new Date(),
 }: SyncDeps): Sync {
   // The origin tip the last successful sync integrated, kept across calls. Until one succeeds, the first call integrates.
@@ -126,6 +130,8 @@ export function createSync({
   }
 
   async function syncNow(): Promise<SyncNowOutcome> {
+    // A publish holds the gate: the tick is skipped before any fetch (2.10l).
+    if (!gate.pollMayRun()) return { kind: 'skipped' };
     // The fetch runs with no lock held, so a slow network does not make saves answer busy (2.10c).
     const probe = await repo.fetchOrigin();
     if (!probe.ok) return failed(probe.syncError.message);
@@ -135,8 +141,13 @@ export function createSync({
       return { kind: 'unchanged' };
     }
     try {
-      const outcome = await repo.locked('sync', (tx) =>
-        syncLocked(tx, { remote: false }),
+      const outcome = await repo.locked(
+        'sync',
+        async (tx): Promise<SyncNowOutcome> => {
+          // Checked again under the lock: a publish may have closed the gate while this tick waited for the lock (2.10l).
+          if (!gate.pollMayRun()) return { kind: 'skipped' };
+          return syncLocked(tx, { remote: false });
+        },
       );
       // The tip the integration read under the lock, which can be newer than the probe's.
       if (outcome.kind === 'synced') known = outcome.upstream;

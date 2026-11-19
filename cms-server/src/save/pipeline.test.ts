@@ -21,6 +21,8 @@ import { directoryBundleSource } from '../bundle/source.ts';
 import { createBundleStore } from '../bundle/store.ts';
 import { writeFileAtomic } from '../fs/atomic.ts';
 import type { Repo, RepoTx } from '../git/ops.ts';
+import { createStatus } from '../preview/status.ts';
+import { createPublishGate } from '../sync/publish-gate.ts';
 import type { SaveChange } from './body.ts';
 import { checkRevisions } from './conflicts.ts';
 import type { DeleteGuard, SaveStage, SaveStop } from './context.ts';
@@ -97,6 +99,7 @@ function inputOf(
     },
     log: silentLog(),
     guard: createDeleteGuard(),
+    gate: { saveStop: () => undefined, clearFailed: () => undefined },
   };
 }
 
@@ -241,6 +244,7 @@ describe('a document upstream added and the bundle lacks (2.10h)', () => {
           },
           log: silentLog(),
           guard: createDeleteGuard(),
+          gate: { saveStop: () => undefined, clearFailed: () => undefined },
         },
         repo,
       );
@@ -389,6 +393,7 @@ describe('saveChanges', () => {
         },
         log: silentLog(),
         guard: createDeleteGuard(),
+        gate: { saveStop: () => undefined, clearFailed: () => undefined },
       },
       repo,
       {
@@ -459,6 +464,7 @@ describe('a save with a staged image', () => {
           },
           log: silentLog(),
           guard: createDeleteGuard(),
+          gate: { saveStop: () => undefined, clearFailed: () => undefined },
         },
         repo,
         deps,
@@ -533,4 +539,110 @@ describe('a save with a staged image', () => {
     );
     expect(await shown('upstream-note.txt')).toBe('upstream\n');
   }, 60_000);
+});
+
+describe('saveChanges: the publish gate (2.10l)', () => {
+  const REFUSAL = {
+    status: 409,
+    body: {
+      error: 'publish-in-progress',
+      message:
+        'A publish is running, so nothing was saved or published by this request. Try again once it is done.',
+    },
+  } as const;
+
+  it('refuses a save before the lock while the gate is closed, and reads and writes nothing', async () => {
+    const current = vi.fn(async () => bundleOf([]));
+    const locked = vi.fn();
+    const stage = vi.fn(async () => undefined);
+    const saveStop = vi.fn(() => REFUSAL);
+    const answer = await saveChanges(
+      {
+        ...inputOf([], current),
+        gate: { saveStop, clearFailed: () => undefined },
+      },
+      { locked } as unknown as Repo,
+      { stages: [stage] },
+    );
+    expect(answer).toStrictEqual(REFUSAL);
+    expect(saveStop).toHaveBeenCalledTimes(1);
+    expect(locked).not.toHaveBeenCalled();
+    expect(current).not.toHaveBeenCalled();
+    expect(stage).not.toHaveBeenCalled();
+  });
+
+  it('clears a failed publish status only for a save the gate admits, and leaves it for a refused one', async () => {
+    const status = createStatus({
+      builder: 'off',
+      node: () => ({
+        state: 'ready',
+        port: 4401,
+        bundleId: null,
+        failures: 0,
+        error: null,
+      }),
+      changedPaths: async () => [],
+    });
+    const gate = createPublishGate({ status });
+    const current = vi.fn(async () => bundleOf([]));
+    const locked = vi.fn(
+      async (_holder: string, work: (tx: RepoTx) => Promise<unknown>) =>
+        work(fakeTx()),
+    );
+    const repo = {
+      locked,
+      changesetReader: async () => ({
+        changedPaths: async () => [],
+        mergeBase: async () => 'base',
+        showAtBytes: async () => null,
+        overwrittenSince: async () => new Map(),
+      }),
+    } as unknown as Repo;
+    const save = () =>
+      saveChanges({ ...inputOf([], current), gate }, repo, {
+        stages: [async () => undefined],
+      });
+
+    status.setPublish('failed', 'The remote refused the push.');
+    expect(await save()).toStrictEqual({
+      status: 200,
+      body: { revisions: {}, warnings: [], rebuild: false },
+    });
+    expect(await status.snapshot()).toMatchObject({
+      publish: { state: 'idle', error: null },
+    });
+
+    status.setPublish('failed', 'The remote refused the push.');
+    expect(gate.begin()).toBeUndefined();
+    expect(await save()).toStrictEqual(REFUSAL);
+    expect(await status.snapshot()).toMatchObject({
+      publish: { state: 'failed', error: 'The remote refused the push.' },
+    });
+  });
+
+  it('refuses a save that queued on the lock before the gate closed, under the lock, before it reads the bundle', async () => {
+    const current = vi.fn(async () => bundleOf([]));
+    const stage = vi.fn(async () => undefined);
+    const saveStop = vi
+      .fn<() => typeof REFUSAL | undefined>()
+      .mockReturnValueOnce(undefined)
+      .mockReturnValueOnce(REFUSAL);
+    const locked = vi.fn(
+      async (_holder: string, work: (tx: RepoTx) => Promise<unknown>) =>
+        work(fakeTx()),
+    );
+    const answer = await saveChanges(
+      {
+        ...inputOf([], current),
+        gate: { saveStop, clearFailed: () => undefined },
+      },
+      { locked } as unknown as Repo,
+      { stages: [stage] },
+    );
+    expect(answer).toStrictEqual(REFUSAL);
+    expect(saveStop).toHaveBeenCalledTimes(2);
+    expect(locked).toHaveBeenCalledWith('save', expect.any(Function));
+    expect(current).not.toHaveBeenCalled();
+    expect(stage).not.toHaveBeenCalled();
+  });
 });

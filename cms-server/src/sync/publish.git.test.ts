@@ -25,7 +25,9 @@ import { openRepo, type Repo } from '../git/ops.ts';
 import { createStatus } from '../preview/status.ts';
 import type { PreviewClient } from '../save/context.ts';
 import { createDeleteGuard } from '../save/delete-guard.ts';
-import { createPublish, type PublishAnswer } from './publish.ts';
+import type { PublishAnswer } from 'cms-contract';
+import { createPublish } from './publish.ts';
+import { createPublishGate } from './publish-gate.ts';
 import { createSync } from './sync.ts';
 
 // Each test makes a remote, a clone and a second clone, and runs a few saves and pushes.
@@ -144,12 +146,14 @@ async function rigOf(options: RigOptions = {}): Promise<Rig> {
   // A rebuild that a save asks for counts as under way for the publish, as the lifecycle's trigger does (it counts at once).
   const rebuilds: { insideLock: boolean }[] = [];
   const trigger = vi.fn();
+  const gate = createPublishGate({ status });
   const sync = createSync({
     repo: observed,
     bundles,
     guard,
     status,
     trigger,
+    gate,
   });
   const media = {
     stagingDir: join(root, 'staging'),
@@ -178,6 +182,7 @@ async function rigOf(options: RigOptions = {}): Promise<Rig> {
     },
     builderOn: true,
     trigger,
+    gate,
     log: silentLog(),
   });
   const app = createTestApp({
@@ -190,6 +195,7 @@ async function rigOf(options: RigOptions = {}): Promise<Rig> {
       config,
       preview,
       guard,
+      gate,
       onRebuild: () => {
         rebuilds.push({ insideLock: underLock > 0 });
       },
@@ -432,6 +438,7 @@ describe('publish after the developer changed a saved document (R4)', () => {
       guard: rig.guard,
       status: rig.status,
       trigger: () => {},
+      gate: createPublishGate({ status: rig.status }),
     });
     await expect(sync.syncNow()).resolves.toMatchObject({ kind: 'synced' });
     const answer = await rig.publish();
@@ -627,33 +634,22 @@ describe('publish queued behind a save that asks for a rebuild', () => {
     return { promise, resolve };
   }
 
-  it('answers 503 build-in-progress and pushes nothing: the rebuild is under way before the save lets go of the lock', async () => {
+  it('refuses a save that arrives while the publish waits for a build: 409 publish-in-progress, nothing written, no rebuild (2.10l)', async () => {
     const reachedWait = deferred();
     const releaseWait = deferred();
-    const validating = deferred();
-    const holdSave = deferred();
-    let gated = false;
     const rig = await rigOf({
       onWait: async () => {
         reachedWait.resolve();
         await releaseWait.promise;
       },
-      validate: async () => {
-        if (gated) {
-          validating.resolve();
-          await holdSave.promise;
-        }
-        return [];
-      },
     });
     await saveAna(rig, 'Ana T.');
-    gated = true;
     const publishing = rig.publish();
-    // The publish has synced, released the lock, and waits for the builds.
+    // The publish has synced, released the lock, and waits for the builds: the gate is closed.
     await reachedWait.promise;
     const before = await readFile(join(rig.siteFolder, CONFIG), 'utf8');
     const config = JSON.parse(before);
-    const saving = rig.put({
+    const saving = await rig.put({
       changes: [
         {
           document: 'data:src/config/config.json',
@@ -665,28 +661,19 @@ describe('publish queued behind a save that asks for a rebuild', () => {
         },
       ],
     });
-    // The save holds the lock while the node checks it. The publish is let go, and queues for its second lock.
-    await validating.promise;
-    releaseWait.resolve();
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    holdSave.resolve();
-    const saved = await saving;
-    expect(saved.status).toBe(200);
-    expect((await saved.json()).rebuild).toBe(true);
-    const answer = await publishing;
-    expect(answer).toMatchObject({
-      status: 503,
-      body: { error: 'build-in-progress' },
+    expect(saving.status).toBe(409);
+    expect(await saving.json()).toStrictEqual({
+      error: 'publish-in-progress',
+      message:
+        'A publish is running, so nothing was saved or published by this request. Try again once it is done.',
     });
-    expect(rig.pushes()).toBe(0);
-    expect(await rig.remoteHead()).toBe(rig.seed);
-    // The save asked for its rebuild once, and while it still held the lock.
-    expect(rig.rebuilds).toStrictEqual([{ insideLock: true }]);
-    // Both saves are kept on cms/work, and the publish status is idle.
-    await expect(rig.repo.changedPaths()).resolves.toStrictEqual([
-      { path: CONFIG, status: 'modified' },
-      { path: ANA, status: 'modified' },
-    ]);
+    releaseWait.resolve();
+    const answer = await publishing;
+    expect(answer.status).toBe(200);
+    // The refused save wrote nothing and asked for no rebuild; the publish pushed the save made before it.
+    expect(rig.pushes()).toBe(1);
+    expect(rig.rebuilds).toStrictEqual([]);
+    expect(await readFile(join(rig.siteFolder, CONFIG), 'utf8')).toBe(before);
     expect((await rig.status.snapshot()).publish).toStrictEqual({
       state: 'idle',
       error: null,

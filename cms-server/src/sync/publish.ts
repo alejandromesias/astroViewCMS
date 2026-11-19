@@ -4,8 +4,9 @@
 // values (the lock is released because that rebuild needs it). (3) Under the lock again: recheck the delete guard,
 // validate every document, squash `cms/work` into one commit on the commit it sits on, and push it, never forced. A push
 // that is refused because the remote moved syncs and tries again, up to three more times; the saves are never touched
-// until the push has succeeded.
-import { type ApiError, apiError, type PublishBody } from 'cms-contract';
+// until the push has succeeded. From the click to the answer the publish gate (`publish-gate.ts`, 2.10l) refuses saves and
+// skips poll ticks, and it asserts that `cms/work` stays at the snapshot of each attempt around the push.
+import { apiError, type PublishAnswer, type PublishBody } from 'cms-contract';
 import type { FieldError, MediaInfo } from 'preview-protocol';
 import { type Bundle, BundleError } from '../bundle/read.ts';
 import type { BundleStore } from '../bundle/store.ts';
@@ -13,6 +14,7 @@ import type { CmsConfig } from '../config/schema.ts';
 import { type Changeset, changesetOf } from '../documents/changeset.ts';
 import { redact } from '../git/exec.ts';
 import type { Repo, RepoTx } from '../git/ops.ts';
+import { WORK_REF } from '../git/repo.ts';
 import { MAX_BODY_BYTES } from '../http/changes-routes.ts';
 import type { Logger } from '../log.ts';
 import type { Status } from '../preview/status.ts';
@@ -28,6 +30,7 @@ import {
   mediaMapOf,
   previewUnavailableStop,
 } from '../save/validate.ts';
+import type { PublishGate } from './publish-gate.ts';
 import type { SyncOutcome, SyncTx } from './sync.ts';
 
 /** How long a publish waits for a running rebuild before it answers 503 `build-in-progress`. */
@@ -43,11 +46,6 @@ const BUILD_IN_PROGRESS =
 /** The text of a 503 `upstream-changed`, the answer when no builder runs (`--bundle`): the retry's sync found new code, and no build will follow it. */
 const CODE_CHANGED =
   'The upstream code changed while the publish ran, so nothing was published. Try again.';
-
-/** What a publish answers: 200 with the contract's body, or an error of the contract (a stop of the save pipeline's shape, or a failure). */
-export type PublishAnswer =
-  | { readonly status: 200; readonly body: PublishBody }
-  | ApiError;
 
 /** The preview's builds, as a publish sees them: whether one runs, and a wait for the end of the running ones. */
 export interface Builds {
@@ -68,6 +66,8 @@ export interface PublishDeps {
   readonly syncLocked: (tx: SyncTx) => Promise<SyncOutcome>;
   readonly status: Pick<Status, 'setPublish' | 'setRenamed' | 'getRenamed'>;
   readonly builds: Builds;
+  /** The publish gate (2.10l): closed from the click to the answer, so saves and poll ticks are refused meanwhile. */
+  readonly gate: PublishGate;
   /** Whether a builder runs. With `--bundle` it does not, and a code change found by a retry has no build to wait for. */
   readonly builderOn: boolean;
   /** Asks for the rebuild of the published commit (2.9c). Not awaited: the build takes the repo lock itself. */
@@ -116,6 +116,7 @@ export function createPublish({
   syncLocked,
   status,
   builds,
+  gate,
   builderOn,
   trigger,
   log,
@@ -207,12 +208,28 @@ export function createPublish({
         prepared = again;
       }
       const { message, overwritten } = publishMessage(prepared.changeset);
+      // The snapshot `S` of this attempt: the gate keeps saves out, so `cms/work` stays at `base` until the push (2.10l).
+      const base = await tx.revParse(WORK_REF);
       const commit = await tx.squash(message);
       if (commit === null) return finishEmpty(tx, await repo.mergeBase());
+      await gate.beforePush(tx, base);
       const pushed = await tx.push(commit);
       if (pushed.ok) {
+        await gate.afterPush(tx, base);
         const renamed = status.getRenamed();
-        await tx.resetWork(commit);
+        // The push is accepted, so the publish has landed: a reset that fails after it is logged, and the answer stays 200.
+        // The next sync re-applies the saves on the new upstream, so nothing is published twice (2.10l).
+        try {
+          await tx.resetWork(commit);
+        } catch (error: unknown) {
+          log.error(
+            'the publish landed, but cms/work could not be reset to it',
+            {
+              commit,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          );
+        }
         guard.invalidate();
         trigger('publish');
         status.setRenamed([]);
@@ -276,6 +293,10 @@ export function createPublish({
   }
 
   return async function publish(): Promise<PublishAnswer> {
+    // The click closes the gate before anything waits, so a save or a poll tick that comes from now on is refused (2.10l).
+    // A second click while one runs gets the 409 from `begin`, and touches neither the gate nor the status.
+    const refused = gate.begin();
+    if (refused !== undefined) return refused;
     status.setPublish('publishing');
     try {
       const answer = await run();
@@ -298,6 +319,9 @@ export function createPublish({
         log.error('a publish failed unexpectedly', { error: failure.message });
       status.setPublish('failed', failure.message);
       return apiError(failure.code, { message: failure.message });
+    } finally {
+      // Reopened once the answer is decided, on every path, so the gate reopens after every answer (2.10l).
+      gate.end();
     }
   };
 }

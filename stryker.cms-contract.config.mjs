@@ -13,4 +13,7 @@ export default {
   // The JSON report is judged by scripts/lib/stryker-reports.ts (WORKPLAN 2.1l), so Stryker never fails on the score.
   jsonReporter: { fileName: 'reports/mutation/triage-cms-contract.json' },
   thresholds: { ...base.thresholds, break: null },
+  // Static mutants are tested, not ignored. cms-contract's answers.ts is module-level zod schemas, so with the base
+  // `ignoreStatic: true` Stryker marked its 51 mutants `Ignored` and the file scored nothing (CI run 44446210093, WORKPLAN 2.1l).
+  ignoreStatic: false,
 };
