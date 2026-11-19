@@ -9,6 +9,7 @@ import type { CmsConfig } from '../config/schema.ts';
 import { writeFileAtomic } from '../fs/atomic.ts';
 import type { Repo } from '../git/ops.ts';
 import type { Logger } from '../log.ts';
+import type { PublishGate } from '../sync/publish-gate.ts';
 import type { SaveChange } from './body.ts';
 import { checkRevisions } from './conflicts.ts';
 import type {
@@ -50,6 +51,8 @@ export interface SaveInput {
   readonly afterCommit?: readonly AfterCommitHook[];
   /** The app's delete guard (2.6b): one per app, so that its index is built once per bundle. */
   readonly guard: DeleteGuard;
+  /** The publish gate (2.10l): a save that meets it closed answers 409 `publish-in-progress` and writes nothing. */
+  readonly gate: Pick<PublishGate, 'saveStop'>;
 }
 
 /** The parts of a save that a test replaces: the stages, the file writer and the file copier (the real ones by default). */
@@ -83,7 +86,7 @@ export async function runStages(
  * Saves `input` as one commit, under the repo lock. Resolves with the answer of the save: 503 when there is no bundle,
  * and 500 when the bundle does not parse (as the other bundle routes answer).
  */
-export function saveChanges(
+export async function saveChanges(
   input: SaveInput,
   repo: Repo,
   {
@@ -92,7 +95,12 @@ export function saveChanges(
     copyFile = copyFileAtomic,
   }: SaveDeps = {},
 ): Promise<SaveAnswer> {
+  // Refused before the lock, so a save during a publish does not wait for it (2.10l). The check is repeated under the lock.
+  const refused = input.gate.saveStop();
+  if (refused !== undefined) return refused;
   return repo.locked('save', async (tx): Promise<SaveAnswer> => {
+    const stop = input.gate.saveStop();
+    if (stop !== undefined) return stop;
     let bundle: Bundle | null;
     try {
       bundle = await input.bundles.current();

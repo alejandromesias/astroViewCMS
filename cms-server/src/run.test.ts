@@ -38,7 +38,7 @@ import {
 } from './run.ts';
 import type { DeleteGuard } from './save/context.ts';
 import { startServer as listen } from './server.ts';
-import type { PublishAnswer } from './sync/publish.ts';
+import type { PublishAnswer } from 'cms-contract';
 
 // The tests on a real clone run several git calls each, so one takes a few seconds under load.
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
@@ -306,6 +306,7 @@ describe('run', () => {
             }),
             guard: expect.any(Object) as DeleteGuard,
             onRebuild: expect.any(Function) as () => void,
+            gate: expect.any(Object),
           },
           publish: {
             publish: expect.any(Function) as () => Promise<PublishAnswer>,

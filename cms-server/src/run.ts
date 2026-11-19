@@ -53,6 +53,7 @@ import type { MediaFiles } from './save/context.ts';
 import { createDeleteGuard } from './save/delete-guard.ts';
 import { startServer } from './server.ts';
 import { createPollLoop, type PollLoop } from './sync/poll.ts';
+import { createPublishGate } from './sync/publish-gate.ts';
 import { type Builds, createPublish } from './sync/publish.ts';
 import { createSync, type SyncNowOutcome } from './sync/sync.ts';
 
@@ -199,6 +200,8 @@ export async function run(
     node: () => supervisor.status(),
     changedPaths: () => openedRepo.changedPaths(),
   });
+  // The publish gate (2.10l): one per app, shared by the saves, the poll loop and the publish.
+  const gate = createPublishGate({ status });
   const bundlesDir = join(siteDir, 'bundles');
   let source: BundleSource;
   let lifecycle: BundleLifecycle | undefined;
@@ -263,6 +266,7 @@ export async function run(
     guard,
     status,
     trigger: syncTrigger,
+    gate,
   });
   // The poll loop (2.10g): it syncs while an /api call was recent. While no node serves, a content-only change asks for a
   // build too (the failed-first-build recovery). With --bundle there is no builder, so there is nothing to recover.
@@ -303,6 +307,7 @@ export async function run(
     syncLocked: sync.syncLocked,
     status,
     builds,
+    gate,
     builderOn: lifecycle !== undefined,
     trigger: (reason) => {
       if (lifecycle === undefined)
@@ -325,6 +330,7 @@ export async function run(
       preview,
       guard,
       onRebuild,
+      gate,
     },
     // POST /api/publish (2.10d).
     publish: { publish },

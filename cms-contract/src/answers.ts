@@ -1,5 +1,6 @@
 // The 200 and 201 answers of the CMS API (PHASE-2-DESIGN 5.9). One schema per route; the error answers are in errors.ts.
 import { z } from 'zod';
+import type { ApiError } from './errors.ts';
 import {
   documentEntrySchema,
   documentErrorSchema,
@@ -178,6 +179,12 @@ export const publishAnswerSchema = z.object({
 });
 
 export type PublishBody = z.infer<typeof publishAnswerSchema>;
+
+// What POST /api/publish answers (2.10d, 2.10l): 200 with the body, or an error of the table. The server's publish and its
+// route share this type (moved here from sync/publish.ts, open from 2.14d).
+export type PublishAnswer =
+  | { readonly status: 200; readonly body: PublishBody }
+  | ApiError;
 
 // POST /api/media, 201: the staged image, its id, its URL on the CMS origin and its measures.
 export const mediaAnswerSchema = z.object({

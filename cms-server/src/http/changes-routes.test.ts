@@ -20,6 +20,8 @@ import type { Repo } from '../git/ops.ts';
 import { createReferenceIndex } from '../references/reference-index.ts';
 import type { DeleteGuard, PreviewClient } from '../save/context.ts';
 import { createDeleteGuard } from '../save/delete-guard.ts';
+import { createStatus } from '../preview/status.ts';
+import { createPublishGate, type PublishGate } from '../sync/publish-gate.ts';
 import { MAX_BODY_BYTES, registerChangeRoutes } from './changes-routes.ts';
 
 // Each save and read here runs real git calls, so one test takes a few seconds under load.
@@ -156,6 +158,7 @@ async function saveApp(
   bundle?: string,
   guard?: DeleteGuard,
   onRebuild?: () => void,
+  gate: Pick<PublishGate, 'saveStop'> = { saveStop: () => undefined },
 ): Promise<{ app: Hono; siteFolder: string; repoDir: string }> {
   const root = await makeTestRoot();
   folders.push(root);
@@ -170,7 +173,7 @@ async function saveApp(
     bundle: directoryBundleSource(bundle ?? (await bundleFolder())),
     workingCopy: state.siteFolder,
     repo: saves,
-    save: { config, preview, guard, onRebuild },
+    save: { config, preview, guard, onRebuild, gate },
   });
   return { app, siteFolder: state.siteFolder, repoDir: state.repoDir };
 }
@@ -648,6 +651,7 @@ describe('PUT /api/changes', () => {
       save: {
         config: { collections: {}, media: { folder: 'src/assets/uploads' } },
         preview: previewSays(),
+        gate: { saveStop: () => undefined },
       },
     });
     const res = await put(
@@ -694,6 +698,7 @@ describe('PUT /api/changes', () => {
       save: {
         config: { collections: {}, media: { folder: 'src/assets/uploads' } },
         preview: previewSays(),
+        gate: { saveStop: () => undefined },
       },
     });
     const res = await put(
@@ -729,5 +734,42 @@ describe('PUT /api/changes', () => {
     );
     expect(res.status).toBe(503);
     expect(await res.json()).toStrictEqual({ error: 'no-bundle' });
+  });
+});
+
+describe('PUT /api/changes: the publish gate (2.10l)', () => {
+  it('answers 409 publish-in-progress and writes nothing while a publish holds the gate, and saves again once it answers', async () => {
+    const status = createStatus({
+      builder: 'off',
+      node: () => ({
+        state: 'ready',
+        port: 4401,
+        bundleId: null,
+        failures: 0,
+        error: null,
+      }),
+      changedPaths: async () => [],
+    });
+    const gate = createPublishGate({ status });
+    const { app, siteFolder } = await saveApp(
+      previewSays(),
+      undefined,
+      undefined,
+      undefined,
+      gate,
+    );
+    const before = await readFile(join(siteFolder, ANA), 'utf8');
+    expect(gate.begin()).toBeUndefined();
+    const refused = await put(app, anaUpdate(before, 'Ana T.'));
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toStrictEqual({
+      error: 'publish-in-progress',
+      message:
+        'A publish is running, so nothing was saved or published by this request. Try again once it is done.',
+    });
+    expect(await readFile(join(siteFolder, ANA), 'utf8')).toBe(before);
+    gate.end();
+    const saved = await put(app, anaUpdate(before, 'Ana T.'));
+    expect(saved.status).toBe(200);
   });
 });

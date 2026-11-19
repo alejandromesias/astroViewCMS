@@ -191,6 +191,7 @@ describe('syncNow on a real clone (2.10c, both paths of the done-when)', () => {
       guard: { invalidate: vi.fn() },
       status,
       trigger,
+      gate: { pollMayRun: () => true },
       now: () => NOW,
     });
     expect(await sync.syncNow()).toStrictEqual({
@@ -231,6 +232,7 @@ describe('syncNow on a real clone (2.10c, both paths of the done-when)', () => {
       guard,
       status: statusSpy(),
       trigger,
+      gate: { pollMayRun: () => true },
       now: () => NOW,
     });
     expect(await sync.syncNow()).toStrictEqual({
@@ -285,6 +287,7 @@ describe('syncNow on a real clone (2.10c, both paths of the done-when)', () => {
       guard,
       status: statusSpy(),
       trigger,
+      gate: { pollMayRun: () => true },
       now: () => NOW,
     });
     expect(await sync.syncNow()).toStrictEqual({
@@ -371,6 +374,7 @@ describe('the sync routine, with fakes', () => {
       guard,
       status,
       trigger,
+      gate: { pollMayRun: () => true },
       now: () => NOW,
     });
     return { sync, status, guard, trigger, tx };
@@ -676,6 +680,7 @@ describe('the sync routine, with fakes', () => {
       repo: repoOf(tx).repo,
       bundles: { current: vi.fn(async () => null) },
       guard: { invalidate: vi.fn() },
+      gate: { pollMayRun: () => true },
       status,
       trigger: vi.fn(),
     });
@@ -683,5 +688,71 @@ describe('the sync routine, with fakes', () => {
     expect(status.setLastSync).toHaveBeenCalledWith(
       expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
     );
+  });
+});
+
+describe('syncNow: the publish gate (2.10l)', () => {
+  // A repo whose fetch answers a new origin tip, and whose lock counts the takes. The gate is `pollMayRun`.
+  function gated(pollMayRun: () => boolean) {
+    const fetch = vi.fn(
+      async (): Promise<FetchResult> => ({
+        ok: true,
+        upstream: 'upstream-sha',
+        reapply: false,
+        change: 'none',
+        paths: [],
+      }),
+    );
+    const tx: SyncTx = {
+      fetch,
+      reapply: vi.fn(
+        async (): Promise<ReapplyResult> => ({ tip: 'x', renamed: [] }),
+      ),
+      revParse: vi.fn(async () => 'head-sha'),
+    };
+    let takes = 0;
+    const repo: Pick<Repo, 'locked' | 'fetchOrigin'> = {
+      locked: async (_holder, work) => {
+        takes += 1;
+        return work(tx as RepoTx);
+      },
+      fetchOrigin: vi.fn(
+        async (): Promise<FetchOriginResult> => ({
+          ok: true,
+          upstream: 'upstream-sha',
+        }),
+      ),
+    };
+    const status = statusSpy();
+    const sync = createSync({
+      repo,
+      bundles: { current: vi.fn(async () => null) },
+      guard: { invalidate: vi.fn() },
+      status,
+      trigger: vi.fn(),
+      gate: { pollMayRun },
+    });
+    return { sync, repo, fetch, status, takes: () => takes };
+  }
+
+  it('skips a tick while the gate is closed, before the fetch and the lock', async () => {
+    const { sync, repo, takes } = gated(() => false);
+    expect(await sync.syncNow()).toStrictEqual({ kind: 'skipped' });
+    expect(repo.fetchOrigin).not.toHaveBeenCalled();
+    expect(takes()).toBe(0);
+  });
+
+  it('skips a tick that the gate closes while it waits for the lock: nothing is fetched or recorded', async () => {
+    const pollMayRun = vi
+      .fn<() => boolean>()
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(false);
+    const { sync, fetch, status, takes } = gated(pollMayRun);
+    expect(await sync.syncNow()).toStrictEqual({ kind: 'skipped' });
+    expect(pollMayRun).toHaveBeenCalledTimes(2);
+    expect(takes()).toBe(1);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(status.setLastSync).not.toHaveBeenCalled();
+    expect(status.setSyncError).not.toHaveBeenCalled();
   });
 });

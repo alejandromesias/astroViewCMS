@@ -1,4 +1,4 @@
-import { publishAnswerSchema } from 'cms-contract';
+import { type PublishAnswer, publishAnswerSchema } from 'cms-contract';
 import type { FieldError, MediaInfo } from 'preview-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -18,12 +18,8 @@ import type { Logger } from '../log.ts';
 import { PreviewUnavailableError } from '../preview/client.ts';
 import { createStatus, type Status } from '../preview/status.ts';
 import type { PreviewClient, SaveStop } from '../save/context.ts';
-import {
-  type Builds,
-  createPublish,
-  type PublishAnswer,
-  validateInBatches,
-} from './publish.ts';
+import { type Builds, createPublish, validateInBatches } from './publish.ts';
+import { createPublishGate } from './publish-gate.ts';
 import type { SyncOutcome } from './sync.ts';
 
 afterEach(() => {
@@ -32,6 +28,8 @@ afterEach(() => {
 
 const UPSTREAM = 'u'.repeat(40);
 const BASE = 'b'.repeat(40);
+// The HEAD of cms/work in the rig: a publish reads it as the snapshot of each attempt (2.10l), and the gate asserts it.
+const WORK = 'w'.repeat(40);
 
 // A changed document that holds a value, with the fields of the changeset a test sets.
 function changed(
@@ -81,6 +79,8 @@ interface RigOptions {
   readonly lockTimeouts?: readonly number[];
   readonly bundle?: 'none' | 'invalid' | 'ok';
   readonly squashThrows?: unknown;
+  /** The HEADs of `cms/work` that the reads answer, per read (the last one repeats). The default is `WORK`. */
+  readonly workHeads?: readonly string[];
   readonly maxBatchBytes?: number;
   readonly buildWaitMs?: number;
   /** Whether a builder runs (the default). */
@@ -107,6 +107,7 @@ function rig(options: RigOptions = {}) {
   let pushes = 0;
   let syncs = 0;
   let reads = 0;
+  let heads = 0;
   const tx: RepoTx = fakeTx({
     hasSavedChanges: vi.fn(async () => {
       events.push('hasSavedChanges');
@@ -126,6 +127,12 @@ function rig(options: RigOptions = {}) {
       const answer = list[Math.min(pushes, list.length - 1)] ?? { ok: true };
       pushes += 1;
       return answer;
+    }),
+    revParse: vi.fn(async () => {
+      const list = options.workHeads ?? [WORK];
+      const head = list[Math.min(heads, list.length - 1)] ?? WORK;
+      heads += 1;
+      return head;
     }),
     resetWork: vi.fn(async (commit: string) => {
       events.push(`reset:${commit}`);
@@ -210,6 +217,7 @@ function rig(options: RigOptions = {}) {
     reads += 1;
     return changeset;
   });
+  const gate = createPublishGate({ status });
   const publish = createPublish({
     repo,
     bundles,
@@ -221,6 +229,7 @@ function rig(options: RigOptions = {}) {
     syncLocked,
     status,
     builds,
+    gate,
     builderOn: options.builderOn ?? true,
     trigger,
     log,
@@ -236,6 +245,7 @@ function rig(options: RigOptions = {}) {
     publish,
     events,
     status,
+    gate,
     tx,
     repo,
     preview,
@@ -1256,5 +1266,90 @@ describe('the answer type', () => {
     const { publish } = rig();
     const answer: PublishAnswer = await publish();
     expect(answer.status).toBe(200);
+  });
+});
+
+describe('createPublish: the publish gate (2.10l)', () => {
+  const REFUSAL = {
+    status: 409,
+    body: {
+      error: 'publish-in-progress',
+      message:
+        'A publish is running, so nothing was saved or published by this request. Try again once it is done.',
+    },
+  };
+  const MOVED = 'm'.repeat(40);
+
+  it('answers 409 publish-in-progress to a second click made while a publish runs, and the first publish still answers 200', async () => {
+    const { publish, status } = rig();
+    // The second click comes before the first has reached its first await: the gate is closed by then.
+    const first = publish();
+    expect(await publish()).toStrictEqual(REFUSAL);
+    expect((await first).status).toBe(200);
+    expect((await status.snapshot()).publish).toStrictEqual({
+      state: 'idle',
+      error: null,
+    });
+  });
+
+  it.each<[string, RigOptions, number]>([
+    ['a publish with nothing to publish', { changesets: [changesetOf()] }, 200],
+    ['a publish that cannot take the lock', { lockTimeouts: [1] }, 503],
+    ['a publish whose squash throws', { squashThrows: new Error('boom') }, 500],
+  ])('reopens the gate after %s answers %i', async (_name, options, answer) => {
+    const { publish, gate } = rig(options);
+    expect((await publish()).status).toBe(answer);
+    expect(gate.pollMayRun()).toBe(true);
+    expect(gate.begin()).toBeUndefined();
+    gate.end();
+  });
+
+  it('stops before the push, and pushes nothing, when cms/work moved since the snapshot', async () => {
+    const { publish, events, status, gate } = rig({
+      workHeads: [WORK, MOVED],
+    });
+    const message = `Publishing failed unexpectedly: cms/work moved from ${WORK} to ${MOVED} before the push, so the publish stops`;
+    expect(await publish()).toStrictEqual({
+      status: 500,
+      body: { error: 'publish-failed', message },
+    });
+    expect(events.some((event) => event.startsWith('push:'))).toBe(false);
+    expect((await status.snapshot()).publish).toStrictEqual({
+      state: 'failed',
+      error: message,
+    });
+    expect(gate.pollMayRun()).toBe(true);
+  });
+
+  it('stops after an accepted push, and does not move cms/work, when it moved during the push', async () => {
+    const { publish, events } = rig({ workHeads: [WORK, WORK, MOVED] });
+    expect(await publish()).toStrictEqual({
+      status: 500,
+      body: {
+        error: 'publish-failed',
+        message: `Publishing failed unexpectedly: cms/work moved from ${WORK} to ${MOVED} during the push, so the publish stops`,
+      },
+    });
+    expect(events).toContain('push:c1');
+    expect(events.some((event) => event.startsWith('reset:'))).toBe(false);
+  });
+
+  it('takes a new snapshot for each attempt: a retry compares with the HEAD it reads after the sync', async () => {
+    const { publish, events, tx } = rig({
+      pushes: [RACE, OK],
+      workHeads: [WORK, WORK, MOVED, MOVED],
+    });
+    expect((await publish()).status).toBe(200);
+    expect(
+      events.filter((event) => /^(squash|push|reset):/.test(event)),
+    ).toStrictEqual([
+      'squash:cms: publish 1 documents',
+      'push:c1',
+      'squash:cms: publish 1 documents',
+      'push:c2',
+      'reset:c2',
+    ]);
+    // Attempt 1: the snapshot and the check before the refused push. Attempt 2: the snapshot, the check, and the check after the push.
+    expect(tx.revParse).toHaveBeenCalledTimes(5);
   });
 });

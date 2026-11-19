@@ -97,6 +97,7 @@ function inputOf(
     },
     log: silentLog(),
     guard: createDeleteGuard(),
+    gate: { saveStop: () => undefined },
   };
 }
 
@@ -241,6 +242,7 @@ describe('a document upstream added and the bundle lacks (2.10h)', () => {
           },
           log: silentLog(),
           guard: createDeleteGuard(),
+          gate: { saveStop: () => undefined },
         },
         repo,
       );
@@ -389,6 +391,7 @@ describe('saveChanges', () => {
         },
         log: silentLog(),
         guard: createDeleteGuard(),
+        gate: { saveStop: () => undefined },
       },
       repo,
       {
@@ -459,6 +462,7 @@ describe('a save with a staged image', () => {
           },
           log: silentLog(),
           guard: createDeleteGuard(),
+          gate: { saveStop: () => undefined },
         },
         repo,
         deps,
@@ -533,4 +537,55 @@ describe('a save with a staged image', () => {
     );
     expect(await shown('upstream-note.txt')).toBe('upstream\n');
   }, 60_000);
+});
+
+describe('saveChanges: the publish gate (2.10l)', () => {
+  const REFUSAL = {
+    status: 409,
+    body: {
+      error: 'publish-in-progress',
+      message:
+        'A publish is running, so nothing was saved or published by this request. Try again once it is done.',
+    },
+  } as const;
+
+  it('refuses a save before the lock while the gate is closed, and reads and writes nothing', async () => {
+    const current = vi.fn(async () => bundleOf([]));
+    const locked = vi.fn();
+    const stage = vi.fn(async () => undefined);
+    const saveStop = vi.fn(() => REFUSAL);
+    const answer = await saveChanges(
+      { ...inputOf([], current), gate: { saveStop } },
+      { locked } as unknown as Repo,
+      { stages: [stage] },
+    );
+    expect(answer).toStrictEqual(REFUSAL);
+    expect(saveStop).toHaveBeenCalledTimes(1);
+    expect(locked).not.toHaveBeenCalled();
+    expect(current).not.toHaveBeenCalled();
+    expect(stage).not.toHaveBeenCalled();
+  });
+
+  it('refuses a save that queued on the lock before the gate closed, under the lock, before it reads the bundle', async () => {
+    const current = vi.fn(async () => bundleOf([]));
+    const stage = vi.fn(async () => undefined);
+    const saveStop = vi
+      .fn<() => typeof REFUSAL | undefined>()
+      .mockReturnValueOnce(undefined)
+      .mockReturnValueOnce(REFUSAL);
+    const locked = vi.fn(
+      async (_holder: string, work: (tx: RepoTx) => Promise<unknown>) =>
+        work(fakeTx()),
+    );
+    const answer = await saveChanges(
+      { ...inputOf([], current), gate: { saveStop } },
+      { locked } as unknown as Repo,
+      { stages: [stage] },
+    );
+    expect(answer).toStrictEqual(REFUSAL);
+    expect(saveStop).toHaveBeenCalledTimes(2);
+    expect(locked).toHaveBeenCalledWith('save', expect.any(Function));
+    expect(current).not.toHaveBeenCalled();
+    expect(stage).not.toHaveBeenCalled();
+  });
 });

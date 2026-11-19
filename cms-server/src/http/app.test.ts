@@ -286,7 +286,11 @@ describe('PUT /api/changes from a rebinding Host', () => {
       bundle: directoryBundleSource(await bundleFolder()),
       workingCopy: state.siteFolder,
       repo: saves,
-      save: { config, preview: previewSays() },
+      save: {
+        config,
+        preview: previewSays(),
+        gate: { saveStop: () => undefined },
+      },
     });
     return { app, siteFolder: state.siteFolder, repoDir: state.repoDir };
   }

@@ -1,7 +1,8 @@
 // GET and PUT /api/changes (WORKPLAN 2.5b, 2.5c). GET answers the documents that differ between the merge base and
 // cms/work, with their base revisions and saved values. A document that cannot be read carries its own `error`, so a
 // broken file still answers 200. PUT saves a change list (PHASE-2-DESIGN 5.3). No bundle answers 503 and a bundle file
-// that does not parse answers 500, as the other bundle routes do. A git failure answers 500 `changes-unavailable`.
+// that does not parse answers 500, as the other bundle routes do. A git failure answers 500 `changes-unavailable`. While
+// a publish runs, PUT answers 409 `publish-in-progress` and writes nothing (2.10l).
 import { apiError, type ChangesBody } from 'cms-contract';
 import type { Context, Hono } from 'hono';
 import type { BundleSource } from '../bundle/source.ts';
@@ -20,6 +21,7 @@ import type {
 } from '../save/context.ts';
 import { createDeleteGuard } from '../save/delete-guard.ts';
 import { saveChanges } from '../save/pipeline.ts';
+import type { PublishGate } from '../sync/publish-gate.ts';
 import { BodyTooLargeError, readBody } from './body.ts';
 import { withBundle } from './bundle-routes.ts';
 import { errorJson } from './errors.ts';
@@ -35,6 +37,8 @@ export interface SaveRouteDeps {
   readonly preview: PreviewClient;
   readonly log?: Logger;
   readonly guard?: DeleteGuard | undefined;
+  /** The publish gate (2.10l): a save that meets it closed answers 409 `publish-in-progress`. */
+  readonly gate: Pick<PublishGate, 'saveStop'>;
   /**
    * Called for a save that asks for a rebuild (`rebuild: true`), so the preview is built again (2.9c). It runs after the
    * save's commit and still under the repo lock (an after-commit hook), so a publish queued for the lock sees the build
@@ -125,6 +129,7 @@ export function registerChangeRoutes(app: Hono, deps: ChangeRouteDeps): void {
             media: deps.media,
             log,
             guard,
+            gate: save.gate,
             afterCommit: [rebuildAfterCommit],
           },
           deps.repo,

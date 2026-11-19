@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createTestApp, fakeAppDeps } from '../../test/helpers/app-deps.ts';
-import type { PublishAnswer } from '../sync/publish.ts';
+import type { PublishAnswer } from 'cms-contract';
 import { createApp } from './app.ts';
 
 // The app with only the publish route, over a publish that answers `answer`.
