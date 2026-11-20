@@ -158,8 +158,6 @@ type Landing =
   | {
       readonly kind: 'pushed';
       readonly adoption: Adoption;
-      /** Whether `cms/work` was reset to the pushed commit. When it was not, HEAD is still `S`, so no build is triggered. */
-      readonly reset: boolean;
       readonly renamed: PublishBody['renamed'];
     };
 
@@ -535,11 +533,9 @@ export function createPublish({
     await gate.afterPush(tx, plan.base);
     const renamed = status.getRenamed();
     // The push is accepted, so the publish has landed: a reset that fails after it is logged, and the answer stays 200 (2.10l).
-    let reset = true;
     try {
       await tx.resetWork(plan.commit);
     } catch (error: unknown) {
-      reset = false;
       log.error('the publish landed, but cms/work could not be reset to it', {
         commit: plan.commit,
         error: error instanceof Error ? error.message : String(error),
@@ -549,9 +545,9 @@ export function createPublish({
     try {
       adoption = (await builds.adopt(candidate, tx)) ? 'served' : 'refused';
     } catch (error: unknown) {
-      // The push landed, so the answer stays 200. The candidate is kept, and the publish builds the pushed commit instead.
+      // The push landed, so the answer stays 200. The candidate is kept, and the publish triggers the build of cms/work instead.
       log.error(
-        'the candidate could not be adopted, so the publish triggers the build of the pushed commit',
+        'the candidate could not be adopted, so the publish triggers the build of cms/work',
         {
           bundleId: candidate.bundleId,
           commit: plan.commit,
@@ -560,7 +556,7 @@ export function createPublish({
       );
       adoption = 'unknown';
     }
-    return { kind: 'pushed', adoption, reset, renamed };
+    return { kind: 'pushed', adoption, renamed };
   }
 
   return async function publish(): Promise<PublishAnswer> {

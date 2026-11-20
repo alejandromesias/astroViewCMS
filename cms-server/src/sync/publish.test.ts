@@ -1979,7 +1979,7 @@ describe('createPublish: the build check on a retry, an adopt that throws, and t
     expect(builds.afterAdopt).not.toHaveBeenCalled();
     expect(builds.discard).not.toHaveBeenCalled();
     expect(log.error).toHaveBeenCalledWith(
-      'the candidate could not be adopted, so the publish triggers the build of the pushed commit',
+      'the candidate could not be adopted, so the publish triggers the build of cms/work',
       {
         bundleId: 'bundle-c1',
         commit: 'c1',
@@ -2020,7 +2020,7 @@ describe('createPublish: the build check on a retry, an adopt that throws, and t
     expect(trigger).toHaveBeenCalledWith('publish');
     expect(builds.discard).not.toHaveBeenCalled();
     expect(log.error).toHaveBeenCalledWith(
-      'the candidate could not be adopted, so the publish triggers the build of the pushed commit',
+      'the candidate could not be adopted, so the publish triggers the build of cms/work',
       {
         bundleId: 'bundle-c1',
         commit: 'c1',
