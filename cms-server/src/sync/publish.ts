@@ -5,18 +5,29 @@
 // validate every document, squash `cms/work` into one commit on the commit it sits on, and push it, never forced. A push
 // that is refused because the remote moved syncs and tries again, up to three more times; the saves are never touched
 // until the push has succeeded. From the click to the answer the publish gate (`publish-gate.ts`, 2.10l) refuses saves and
-// skips poll ticks, and it asserts that `cms/work` stays at the snapshot of each attempt around the push.
+// skips poll ticks, and it asserts that `cms/work` stays at the snapshot of each attempt around the push. With a build
+// decided (2.10m), the squash is built as a candidate with the lock released, then pushed under the lock. A failed build
+// answers 424 `build-failed`; a push race after a build answers 409 `remote-moved` and is not retried.
 import { apiError, type PublishAnswer, type PublishBody } from 'cms-contract';
 import type { FieldError, MediaInfo } from 'preview-protocol';
 import { type Bundle, BundleError } from '../bundle/read.ts';
 import type { BundleStore } from '../bundle/store.ts';
 import type { CmsConfig } from '../config/schema.ts';
-import { type Changeset, changesetOf } from '../documents/changeset.ts';
+import {
+  beforeOf,
+  type Changeset,
+  type ChangesetRepo,
+  changesetOf,
+} from '../documents/changeset.ts';
 import { redact } from '../git/exec.ts';
 import type { Repo, RepoTx } from '../git/ops.ts';
 import { WORK_REF } from '../git/repo.ts';
 import { MAX_BODY_BYTES } from '../http/changes-routes.ts';
 import type { Logger } from '../log.ts';
+import type {
+  BundleLifecycle,
+  Candidate,
+} from '../preview/bundle-lifecycle.ts';
 import type { Status } from '../preview/status.ts';
 import { busyStop } from '../save/busy.ts';
 import type {
@@ -30,6 +41,7 @@ import {
   mediaMapOf,
   previewUnavailableStop,
 } from '../save/validate.ts';
+import { type BuildDecision, decideBuild } from './build-check.ts';
 import type { PublishGate } from './publish-gate.ts';
 import type { SyncOutcome, SyncTx } from './sync.ts';
 
@@ -47,18 +59,25 @@ const BUILD_IN_PROGRESS =
 const CODE_CHANGED =
   'The upstream code changed while the publish ran, so nothing was published. Try again.';
 
-/** The preview's builds, as a publish sees them: whether one runs, and a wait for the end of the running ones. */
-export interface Builds {
-  busy(): boolean;
-  waitForIdle(timeoutMs: number): Promise<boolean>;
-}
+/** The text of a 409 `remote-moved`: the remote moved while the candidate built. A candidate is not rebuilt for a retry, so the user publishes again (2.10m). */
+const REMOTE_MOVED =
+  'The remote branch moved while the candidate was built, so nothing was published. Publish again.';
+
+/**
+ * The preview's builds, as a publish sees them: the wait for a running one, and the candidate of a build (2.10m). With
+ * `--bundle` there is no builder, and a publish never asks for a candidate.
+ */
+export type Builds = Pick<
+  BundleLifecycle,
+  'busy' | 'waitForIdle' | 'buildCandidate' | 'adopt' | 'afterAdopt' | 'discard'
+>;
 
 /** The parts of a publish. The wait and the batch size have real defaults. */
 export interface PublishDeps {
   readonly repo: Pick<Repo, 'locked' | 'changesetReader' | 'mergeBase'>;
   readonly bundles: BundleStore;
   readonly siteFolder: string;
-  readonly config: Pick<CmsConfig, 'collections' | 'media'>;
+  readonly config: Pick<CmsConfig, 'collections' | 'media' | 'publish'>;
   readonly preview: PreviewClient;
   readonly media: MediaFiles;
   readonly guard: Pick<DeleteGuard, 'recheck' | 'invalidate'>;
@@ -80,28 +99,72 @@ export interface PublishDeps {
   readonly readChangeset?: typeof changesetOf;
 }
 
-/** The codes a failed publish answers with (502 for the remote, 500 otherwise: the contract's table gives the status). */
+/** The codes a failed publish answers with (502 for the remote, 424 for a failed build, 500 otherwise: the contract's table gives the status). */
 type PublishFailureCode =
   | 'sync-failed'
   | 'push-failed'
   | 'push-rejected'
   | 'bundle-invalid'
-  | 'publish-failed';
+  | 'publish-failed'
+  | 'build-failed';
 
-/** A publish that failed, with the code it answers. Thrown inside the lock, so the lock is released by the throw. */
+/**
+ * A publish that failed, with the code it answers. Thrown inside the lock, so the lock is released by the throw. `firstError`
+ * is the first error of a failed build (the 424 body); for the other codes it is the message.
+ */
 class PublishFailure extends Error {
   readonly code: PublishFailureCode;
+  readonly firstError: string;
 
-  constructor(code: PublishFailureCode, message: string) {
+  constructor(code: PublishFailureCode, message: string, firstError = message) {
     super(redact(message));
     this.code = code;
+    this.firstError = redact(firstError);
   }
 }
 
-/** What the steps under the lock hand on: the bundle and the changeset as the working copy has them now. */
+/** What the steps under the lock hand on: the bundle and the changeset as the working copy has them now, and their reader. */
 interface Prepared {
   readonly bundle: Bundle;
   readonly changeset: Changeset;
+  readonly reader: ChangesetRepo;
+}
+
+/** The sync of the first lock, whose outcome the build check reads (2.10m). */
+type Synced = Extract<SyncOutcome, { kind: 'synced' }>;
+
+/** A squashed candidate (2.10m): the commit `C`, the snapshot `S` it sits on, and what the answer and the log carry. */
+interface Squashed {
+  readonly commit: string;
+  readonly base: string;
+  readonly overwritten: PublishBody['overwritten'];
+  readonly documents: number;
+}
+
+/** What the locked step decides: an answer, or the candidate that the publish builds and then pushes. */
+type Decided =
+  | { readonly kind: 'answer'; readonly answer: PublishAnswer }
+  | { readonly kind: 'candidate'; readonly plan: Squashed };
+
+/**
+ * What the node did with a pushed candidate: it serves it (`served`), it refused the swap (`refused`), or the adoption threw,
+ * so whether it serves the candidate is not known (`unknown`). Only `refused` leaves the candidate unserved.
+ */
+type Adoption = 'served' | 'refused' | 'unknown';
+
+/** What the push of a candidate found under the lock: the remote moved (no retry), or the push landed. */
+type Landing =
+  | { readonly kind: 'race' }
+  | {
+      readonly kind: 'pushed';
+      readonly adoption: Adoption;
+      readonly renamed: PublishBody['renamed'];
+    };
+
+/** The node's check of the values: every error it gave (refinements included), and the stop that answers the publish, if any. */
+interface Checked {
+  readonly errors: readonly FieldError[];
+  readonly stop: SaveStop | undefined;
 }
 
 /** Makes `publish`, which runs one publish and answers. It never rejects. */
@@ -129,6 +192,9 @@ export function createPublish({
   });
   const codeChanged: SaveStop = apiError('upstream-changed', {
     message: CODE_CHANGED,
+  });
+  const remoteMoved: SaveStop = apiError('remote-moved', {
+    message: REMOTE_MOVED,
   });
   const nothingToPublish: PublishAnswer = {
     status: 200,
@@ -181,37 +247,119 @@ export function createPublish({
     return {
       bundle,
       changeset: await readChangeset({ bundle, repo: reader, siteFolder }),
+      reader,
     };
   }
 
-  // Step 3 of the order: runs under the lock, after the wait.
-  async function publishLocked(tx: RepoTx): Promise<PublishAnswer> {
+  // Step 3 of the order: runs under the lock, after the wait. It validates once, then decides the build (2.10m). With no
+  // build, the 2.10d path runs under this lock; with one, the squash is the candidate, which is built with the lock released.
+  async function publishLocked(tx: RepoTx, sync: Synced): Promise<Decided> {
     // A save made while the lock was free can have started another rebuild: wait for none, answer instead (one wait only).
-    if (builds.busy()) return buildInProgress;
+    if (builds.busy()) return { kind: 'answer', answer: buildInProgress };
     const first = await prepare();
-    if ('status' in first) return first;
+    if ('status' in first) return { kind: 'answer', answer: first };
     // 2.10f: when the build of the new upstream code failed, the node still serves the last good bundle, and this
     // validation must run against it and report `upstreamBuildFailed`. That path is not built here.
-    const invalid = await validate(first.changeset);
-    if (invalid !== undefined) return invalid;
+    const checked = await validate(first.changeset);
+    if (checked.stop !== undefined)
+      return { kind: 'answer', answer: checked.stop };
+    if (!(await buildDecided(first, checked.errors, sync)))
+      return pushWithoutBuild(tx, first);
+    return squashCandidate(tx, first);
+  }
+
+  // Whether the build check builds the candidate (2.10m). With no builder nothing builds. `always` and `never` answer alone,
+  // and `auto` reads the changeset, the values at the merge base, the node's errors and the sync, recomputed now.
+  async function buildDecided(
+    prepared: Prepared,
+    errors: readonly FieldError[],
+    sync: Synced,
+  ): Promise<boolean> {
+    if (!builderOn) return false;
+    // The values at the merge base are read for `auto` only: `always` and `never` do not compare them, so they read nothing.
+    const before =
+      config.publish.buildCheck === 'auto'
+        ? await beforeOf({
+            bundle: prepared.bundle,
+            repo: prepared.reader,
+            changeset: prepared.changeset,
+          })
+        : new Map<string, unknown>();
+    const decision: BuildDecision = decideBuild({
+      mode: config.publish.buildCheck,
+      changeset: prepared.changeset,
+      bundled: prepared.bundle.documents,
+      before,
+      validate: errors,
+      sync,
+      configured: prepared.bundle.buildTimeFields,
+    });
+    return decision.build;
+  }
+
+  // The build path, under the lock: `S` is `cms/work` as it is now, and `C` is its squash. `cms/work` does not move, so `S`
+  // stays until the push (2.10l). Nothing is pushed here: the candidate builds with the lock released.
+  async function squashCandidate(
+    tx: RepoTx,
+    prepared: Prepared,
+  ): Promise<Decided> {
+    const { message, overwritten } = publishMessage(prepared.changeset);
+    const base = await tx.revParse(WORK_REF);
+    const commit = await tx.squash(message);
+    if (commit === null)
+      return {
+        kind: 'answer',
+        answer: await finishEmpty(tx, await repo.mergeBase()),
+      };
+    return {
+      kind: 'candidate',
+      plan: {
+        commit,
+        base,
+        overwritten,
+        documents: prepared.changeset.documents.length,
+      },
+    };
+  }
+
+  // The 2.10d path, for a publish whose first decision is no build: squash, push, and on a refused push sync, check and push
+  // again (up to three retries). Each retry re-decides the build (2.10m): when the changed changeset now builds, that attempt
+  // is the candidate instead, so a race after it answers `remote-moved` and is not retried.
+  async function pushWithoutBuild(
+    tx: RepoTx,
+    first: Prepared,
+  ): Promise<Decided> {
     let prepared: Prepared = first;
     for (let retry = 0; retry <= MAX_RETRIES; retry += 1) {
       if (retry > 0) {
         // The remote moved: fetch it, re-apply the saves on it, and look at the changeset again (the sync may have
-        // recorded new overwrites, or a referrer of a deleted document). Content cannot change the schema, so it is not
-        // validated again; new code can, and the sync has just asked for its rebuild, so the values would be checked
-        // against the old node. Nothing is pushed: the saves stay on `cms/work`, and a publish later waits for that build.
-        const { change } = await synced(tx);
-        if (change === 'code') return builderOn ? buildInProgress : codeChanged;
+        // recorded new overwrites, or a referrer of a deleted document). New code waits for its build, since the values
+        // would be checked against the old node. The values are validated again, because the changed changeset may hold new
+        // ones. Nothing is pushed here: the saves stay on `cms/work`, and a publish later waits for that build.
+        const outcome = await synced(tx);
+        if (outcome.change === 'code')
+          return {
+            kind: 'answer',
+            answer: builderOn ? buildInProgress : codeChanged,
+          };
         const again = await prepare();
-        if ('status' in again) return again;
+        if ('status' in again) return { kind: 'answer', answer: again };
+        const checked = await validate(again.changeset);
+        if (checked.stop !== undefined)
+          return { kind: 'answer', answer: checked.stop };
+        if (await buildDecided(again, checked.errors, outcome))
+          return squashCandidate(tx, again);
         prepared = again;
       }
       const { message, overwritten } = publishMessage(prepared.changeset);
       // The snapshot `S` of this attempt: the gate keeps saves out, so `cms/work` stays at `base` until the push (2.10l).
       const base = await tx.revParse(WORK_REF);
       const commit = await tx.squash(message);
-      if (commit === null) return finishEmpty(tx, await repo.mergeBase());
+      if (commit === null)
+        return {
+          kind: 'answer',
+          answer: await finishEmpty(tx, await repo.mergeBase()),
+        };
       await gate.beforePush(tx, base);
       const pushed = await tx.push(commit);
       if (pushed.ok) {
@@ -237,7 +385,10 @@ export function createPublish({
           commit,
           documents: prepared.changeset.documents.length,
         });
-        return { status: 200, body: { commit, overwritten, renamed } };
+        return {
+          kind: 'answer',
+          answer: { status: 200, body: { commit, overwritten, renamed } },
+        };
       }
       if (!pushed.race)
         throw new PublishFailure(
@@ -259,7 +410,8 @@ export function createPublish({
   }
 
   // The values of the changeset go to the node in batches under the body cap; the errors of all batches are merged (2.10d item 6).
-  async function validate(changeset: Changeset): Promise<SaveStop | undefined> {
+  // The stop answers the publish (503 when the node cannot check, 422 for a blocking error); the errors go to the build check.
+  async function validate(changeset: Changeset): Promise<Checked> {
     const documents = changeset.documents.flatMap(
       (document): [string, unknown][] =>
         document.value === undefined ? [] : [[document.key, document.value]],
@@ -274,22 +426,137 @@ export function createPublish({
         maxBatchBytes,
       );
     } catch (error: unknown) {
-      return previewUnavailableStop(error, log);
+      return { errors: [], stop: previewUnavailableStop(error, log) };
     }
-    return invalidStop(errors);
+    return { errors, stop: invalidStop(errors) };
   }
 
-  // Steps 1 and 2 of the order, then step 3.
+  // Steps 1 and 2 of the order, then step 3, and the candidate build (2.10m) when the build check decides one.
   async function run(): Promise<PublishAnswer> {
-    const emptied = await repo.locked('publish', async (tx) => {
-      const { upstream } = await synced(tx);
-      if (await tx.hasSavedChanges()) return undefined;
-      return finishEmpty(tx, upstream);
-    });
-    if (emptied !== undefined) return emptied;
+    const first = await repo.locked(
+      'publish',
+      async (
+        tx,
+      ): Promise<
+        { readonly sync: Synced } | { readonly answer: PublishAnswer }
+      > => {
+        const sync = await synced(tx);
+        if (await tx.hasSavedChanges()) return { sync };
+        return { answer: await finishEmpty(tx, sync.upstream) };
+      },
+    );
+    if ('answer' in first) return first.answer;
     // With the lock released: the rebuild that the sync asked for needs it.
     if (!(await builds.waitForIdle(buildWaitMs))) return buildInProgress;
-    return repo.locked('publish', publishLocked);
+    const decided = await repo.locked('publish', (tx) =>
+      publishLocked(tx, first.sync),
+    );
+    if (decided.kind === 'answer') return decided.answer;
+    return buildAndPush(decided.plan);
+  }
+
+  // The build path, with the lock released (2.10m, steps f to k): the candidate builds with no lock held, then the lock
+  // pushes it, or it is dropped. The candidate is discarded on every path where the node does not serve it.
+  async function buildAndPush(plan: Squashed): Promise<PublishAnswer> {
+    const built = await builds.buildCandidate(plan.commit);
+    if (built.kind === 'failed')
+      throw new PublishFailure(
+        'build-failed',
+        `The candidate did not build, so nothing was published: ${built.error}`,
+        built.error,
+      );
+    const { candidate } = built;
+    // The candidate is discarded unless the node may serve it. An adopted one, and one whose adoption threw (the swap may have
+    // happened), are kept: a discard of the bundle the node serves would break the node.
+    let mayBeServed = false;
+    try {
+      const landed = await repo.locked('publish', (tx) =>
+        pushCandidate(tx, plan, candidate),
+      );
+      if (landed.kind === 'race') return remoteMoved;
+      mayBeServed = landed.adoption !== 'refused';
+      // An adopted candidate is checked after the lock is released: its protocol check may rebuild, and a rebuild takes the lock.
+      // Not awaited, as the trigger of 2.9c is not. A candidate the node did not take is rebuilt from `cms/work` instead.
+      if (landed.adoption === 'served')
+        builds.afterAdopt(candidate).catch((error: unknown) =>
+          log.error('the protocol check of the published bundle failed', {
+            bundleId: candidate.bundleId,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      // The fallback build is the build of `cms/work` HEAD. When the reset failed, HEAD is still `S`, but the push is a
+      // fast-forward from S's base and the squash takes the cms/work tree, so a build of S builds the same tree as the
+      // pushed commit. This matches pushWithoutBuild, which also triggers after a failed reset.
+      else trigger('publish');
+      guard.invalidate();
+      status.setRenamed([]);
+      log.info('published', {
+        commit: plan.commit,
+        documents: plan.documents,
+      });
+      return {
+        status: 200,
+        body: {
+          commit: plan.commit,
+          overwritten: plan.overwritten,
+          renamed: landed.renamed,
+        },
+      };
+    } finally {
+      if (!mayBeServed) await builds.discard(candidate);
+    }
+  }
+
+  // The push of a candidate, under the lock (2.10m, steps g and h). `cms/work` must still be at `S`, the push is never forced,
+  // and a race answers `remote-moved` without a retry. An accepted push is reset and adopted (no protocol check here: it
+  // would take the lock this holds).
+  async function pushCandidate(
+    tx: RepoTx,
+    plan: Squashed,
+    candidate: Candidate,
+  ): Promise<Landing> {
+    await gate.beforePush(tx, plan.base);
+    const pushed = await tx.push(plan.commit);
+    if (!pushed.ok) {
+      if (pushed.race) {
+        log.warn(
+          'the remote moved while the candidate was built, so nothing was published',
+          { commit: plan.commit },
+        );
+        return { kind: 'race' };
+      }
+      throw new PublishFailure(
+        'push-failed',
+        `The remote refused the push, so nothing was published: ${pushed.message}`,
+      );
+    }
+    await gate.afterPush(tx, plan.base);
+    const renamed = status.getRenamed();
+    // The push is accepted, so the publish has landed: a reset that fails after it is logged, and the answer stays 200 (2.10l).
+    try {
+      await tx.resetWork(plan.commit);
+    } catch (error: unknown) {
+      log.error('the publish landed, but cms/work could not be reset to it', {
+        commit: plan.commit,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    let adoption: Adoption;
+    try {
+      adoption = (await builds.adopt(candidate, tx)) ? 'served' : 'refused';
+    } catch (error: unknown) {
+      // The push landed, so the answer stays 200. The candidate is kept, and the publish triggers the build of cms/work instead.
+      log.error(
+        'the candidate could not be adopted, so the publish triggers the build of cms/work',
+        {
+          bundleId: candidate.bundleId,
+          commit: plan.commit,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+      adoption = 'unknown';
+    }
+    return { kind: 'pushed', adoption, renamed };
   }
 
   return async function publish(): Promise<PublishAnswer> {
@@ -318,6 +585,11 @@ export function createPublish({
       if (!(error instanceof PublishFailure))
         log.error('a publish failed unexpectedly', { error: failure.message });
       status.setPublish('failed', failure.message);
+      if (failure.code === 'build-failed')
+        return apiError('build-failed', {
+          message: failure.message,
+          firstError: failure.firstError,
+        });
       return apiError(failure.code, { message: failure.message });
     } finally {
       // Reopened once the answer is decided, on every path, so the gate reopens after every answer (2.10l).

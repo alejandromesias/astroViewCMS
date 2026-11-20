@@ -21,6 +21,7 @@ import {
   type BuildResult,
   createBuildRunner,
 } from './build-runner.ts';
+import { removeBundle } from './bundles.ts';
 import type { BundleEntry, StateStore } from './state.ts';
 import type { Status } from './status.ts';
 import type { Supervisor } from './supervisor.ts';
@@ -43,6 +44,28 @@ type TriggerOutcome =
       readonly rolledBack: boolean;
     }
   | { readonly kind: 'stopped' };
+
+/** How one swap ended, as the swap helper reports it. The helper writes no state: its caller does (2.10m). */
+type SwapStep =
+  | { readonly kind: 'stopped' }
+  | { readonly kind: 'ok' }
+  | {
+      readonly kind: 'failed';
+      readonly error: string;
+      readonly rolledBack: boolean;
+    };
+
+/** A candidate of a publish (2.10m): the commit built before it is pushed, and the bundle it was built into. */
+export interface Candidate {
+  readonly commit: string;
+  readonly bundleId: string;
+  readonly dir: string;
+}
+
+/** How a candidate build ended. A failed candidate changes no bundle state: the node keeps serving what it served. */
+export type CandidateOutcome =
+  | { readonly kind: 'built'; readonly candidate: Candidate }
+  | { readonly kind: 'failed'; readonly error: string };
 
 /**
  * The part of the repo the lifecycle reads. `cms/work` and origin's branch are read together under the lock, so a
@@ -83,7 +106,10 @@ export interface BundleLifecycle {
   trigger(reason: TriggerReason): Promise<TriggerOutcome>;
   /** Stops the lifecycle: no new build starts, and the build in flight is killed. */
   stop(): Promise<void>;
-  /** The bundles whose swap is queued or running: the builder keeps them when it collects old bundles (2.9c review). */
+  /**
+   * The bundles the builder keeps when it collects old bundles (2.9c review): those whose swap is queued or running, and
+   * the one the node was swapped onto while no state write names it yet (2.10m).
+   */
   pendingSwaps(): ReadonlySet<string>;
   /** True while a trigger is under way (a build, its swap, or a nested protocol rebuild). A publish reads it (2.10d). */
   busy(): boolean;
@@ -92,6 +118,20 @@ export interface BundleLifecycle {
    * here, with the repo lock released, for the build that a sync of code asked for.
    */
   waitForIdle(timeoutMs: number): Promise<boolean>;
+  /**
+   * Builds `commit` as a candidate of a publish (2.10m). It takes the build slot after the builds already queued, and runs
+   * the raw builder. A failure is an outcome and changes no bundle state.
+   */
+  buildCandidate(commit: string): Promise<CandidateOutcome>;
+  /**
+   * Under the repo lock, after the candidate's push: swaps the node onto it and writes the state. `tx` reads origin's branch,
+   * since a lock taken here would deadlock. Resolves false when the swap failed. No protocol check runs here (afterAdopt).
+   */
+  adopt(candidate: Candidate, tx: Pick<RepoTx, 'revParse'>): Promise<boolean>;
+  /** After the lock is released: runs the protocol check of an adopted candidate. Does nothing once a newer bundle is served. */
+  afterAdopt(candidate: Candidate): Promise<void>;
+  /** Removes a candidate's bundle folder. The builder has already removed the candidate's worktree. */
+  discard(candidate: Candidate): Promise<void>;
 }
 
 // The error a build gets when it is asked for after stop.
@@ -125,6 +165,9 @@ export function createBundleLifecycle(
   const inheritedOf = new Map<string, number>();
   // The bundles whose swap is queued or waiting for the node. A build's collection keeps their folders until the swap settles.
   const swapsPending = new Set<string>();
+  // The bundle the node was last swapped onto, while the state does not name it: its state write failed, or has not run
+  // yet. It is kept, as the node serves it. A later swap that succeeds replaces it; its state write clears it.
+  let unrecorded: string | null = null;
   // The triggers still under way, so stop() can wait for them.
   const working = new Set<Promise<TriggerOutcome>>();
   // The swaps and the restarts, one after another: each starts only after the one before it has settled.
@@ -141,6 +184,9 @@ export function createBundleLifecycle(
   // The commit of the last build that failed, and its error, recorded by the build wrapper as each build ends. A commit
   // with a failure is not built again by this lifecycle (2.9c-B recovery).
   let lastFailure: { readonly commit: string; readonly error: string } | null =
+    null;
+  // The candidate adopted last, by its commit and bundle: a trigger that reads that commit answers from it (2.10m).
+  let adopted: { readonly commit: string; readonly bundleId: string } | null =
     null;
   // One build at a time, and the triggers that wait merge into one queued build. After stop, a queued build is refused.
   const runner = createBuildRunner({
@@ -175,6 +221,8 @@ export function createBundleLifecycle(
       status.setFailedCommit(lastFailure?.commit ?? null);
       return result;
     },
+    // A candidate runs the raw builder: its failure is not a failed request, so it touches none of the bookkeeping above.
+    buildCandidate: build,
     ...(newBundleId === undefined ? {} : { newBundleId }),
   });
 
@@ -258,6 +306,16 @@ export function createBundleLifecycle(
         base: await tx.revParse(upstreamRef),
       }));
       baseOfCommit.set(pair.head, pair.base);
+      // A candidate adopted for this commit, on this base, already serves it: the trigger has nothing to build (2.10m). A
+      // protocol rebuild (`inherited` set) is never answered from it: the adopted bundle is the one that does not match.
+      const current = state.get().current;
+      if (
+        inherited === undefined &&
+        adopted?.commit === pair.head &&
+        current?.bundleId === adopted.bundleId &&
+        current.baseCommit === pair.base
+      )
+        return { kind: 'served', bundleId: adopted.bundleId };
       const result = await runner.request(pair.head);
       if (!result.ok) return buildFailed(buildErrorText(result.firstError));
       lastBuildFailed = false;
@@ -308,29 +366,14 @@ export function createBundleLifecycle(
     // stop() may have come while the build ran. The check is repeated where the swap starts, after any earlier swap has settled.
     if (stopped) return { kind: 'stopped' };
     const entry: BundleEntry = { bundleId, baseCommit: base };
-    latestSwap += 1;
-    const seq = latestSwap;
-    const swap = await keepWhileSwapping(bundleId, () =>
-      inOrder(async () =>
-        stopped ? undefined : await supervisor.swap({ bundleId, dir }),
-      ),
-    );
-    if (swap === undefined) return { kind: 'stopped' };
-    if (!swap.ok) {
-      status.setSwapError(swap.error);
-      // Recover only if no newer swap was asked for meanwhile: that swap is the one the node should serve.
-      if (!swap.rolledBack) {
-        await inOrder(async () => {
-          if (seq === latestSwap) await restartLastGood();
-        });
-      }
+    const swap = await swapOnto(bundleId, dir);
+    if (swap.kind === 'stopped') return { kind: 'stopped' };
+    if (swap.kind === 'failed')
       return {
         kind: 'swap-failed',
         error: swap.error,
         rolledBack: swap.rolledBack,
       };
-    }
-    status.setSwapError(null);
     // The largest count any caller sharing this serve asked for, read when the state is written (after the swap).
     const attempts = new Map(state.get().protocolAttempts);
     const merged = inheritedOf.get(bundleId);
@@ -340,6 +383,7 @@ export function createBundleLifecycle(
       lastGood: entry,
       protocolAttempts: attempts,
     });
+    if (unrecorded === bundleId) unrecorded = null;
     await checkProtocol(entry);
     return { kind: 'served', bundleId };
   }
@@ -368,6 +412,35 @@ export function createBundleLifecycle(
         error: restarted.error,
       });
     }
+  }
+
+  /**
+   * One swap of the chain (serveBundle's and adopt's): its number, the bundle kept while it swaps, the swap error set or
+   * cleared, and the rollback. A failed swap that was not rolled back starts the last good bundle again, unless a newer
+   * swap was asked for meanwhile. `stopped` when a stop reached the swap before it started.
+   */
+  async function swapOnto(bundleId: string, dir: string): Promise<SwapStep> {
+    latestSwap += 1;
+    const seq = latestSwap;
+    const swap = await keepWhileSwapping(bundleId, () =>
+      inOrder(async () =>
+        stopped ? undefined : await supervisor.swap({ bundleId, dir }),
+      ),
+    );
+    if (swap === undefined) return { kind: 'stopped' };
+    if (!swap.ok) {
+      status.setSwapError(swap.error);
+      // Recover only if no newer swap was asked for meanwhile: that swap is the one the node should serve.
+      if (!swap.rolledBack) {
+        await inOrder(async () => {
+          if (seq === latestSwap) await restartLastGood();
+        });
+      }
+      return { kind: 'failed', error: swap.error, rolledBack: swap.rolledBack };
+    }
+    status.setSwapError(null);
+    unrecorded = bundleId;
+    return { kind: 'ok' };
   }
 
   /**
@@ -416,9 +489,11 @@ export function createBundleLifecycle(
       : `Bundle ${bundleId} speaks protocol ${built}, and the server speaks protocol ${PROTOCOL_VERSION}`;
   }
 
-  /** The bundles whose swap is queued or running now, as a copy taken at the call. A collection reads it when it runs. */
+  /** The bundles a collection keeps now, as a copy taken at the call (see the interface). A collection reads it when it runs. */
   function pendingSwaps(): ReadonlySet<string> {
-    return new Set(swapsPending);
+    const kept = new Set(swapsPending);
+    if (unrecorded !== null) kept.add(unrecorded);
+    return kept;
   }
 
   /** Runs one bundle's swap while the bundle is kept: it is removed again when the swap settles, however it ends. */
@@ -452,7 +527,110 @@ export function createBundleLifecycle(
     });
   }
 
-  return { start, trigger, stop, pendingSwaps, busy, waitForIdle };
+  /** Builds `commit` as a candidate. No bundle state changes; a failure is an outcome. */
+  async function buildCandidate(commit: string): Promise<CandidateOutcome> {
+    if (stopped) return { kind: 'failed', error: STOPPING };
+    log.info('A candidate build was asked for', { commit });
+    try {
+      const result = await runner.candidate(commit);
+      if (!result.ok)
+        return { kind: 'failed', error: buildErrorText(result.firstError) };
+      return {
+        kind: 'built',
+        candidate: { commit, bundleId: result.bundleId, dir: result.dir },
+      };
+    } catch (error: unknown) {
+      return { kind: 'failed', error: messageOf(error) };
+    }
+  }
+
+  /**
+   * Swaps the node onto a pushed candidate, and writes the state (serveBundle's path, without the protocol check). The
+   * entry's base is origin's branch, read with `tx` under the lock the caller holds.
+   */
+  async function adopt(
+    candidate: Candidate,
+    tx: Pick<RepoTx, 'revParse'>,
+  ): Promise<boolean> {
+    // A read that fails before the swap leaves the node on its bundle, so the candidate is refused, not unknown (2.10m).
+    let base: string;
+    try {
+      base = await tx.revParse(upstreamRef);
+    } catch (error: unknown) {
+      log.error('The candidate was not adopted: origin could not be read', {
+        bundleId: candidate.bundleId,
+        error: messageOf(error),
+      });
+      return false;
+    }
+    if (stopped) return false;
+    const entry: BundleEntry = {
+      bundleId: candidate.bundleId,
+      baseCommit: base,
+    };
+    const swap = await swapOnto(candidate.bundleId, candidate.dir);
+    if (swap.kind !== 'ok') return false;
+    // The node serves a candidate that built and swapped, so the errors of earlier builds and swaps no longer apply (as buildAndServe).
+    lastBuildFailed = false;
+    status.setBuildError(null);
+    // The build state is idle when no trigger is under way; with one under way, the trigger sets it when it ends (runBuild).
+    if (inFlight === 0) status.setBuildState('idle');
+    await state.set({
+      current: entry,
+      lastGood: entry,
+      protocolAttempts: new Map(state.get().protocolAttempts),
+    });
+    if (unrecorded === candidate.bundleId) unrecorded = null;
+    adopted = { commit: candidate.commit, bundleId: candidate.bundleId };
+    return true;
+  }
+
+  /**
+   * The protocol check of an adopted candidate. Runs without the lock: a rebuild takes it. It is a trigger under way from the
+   * call on, so `busy` and `waitForIdle` see it before the check awaits anything.
+   */
+  async function afterAdopt(candidate: Candidate): Promise<void> {
+    inFlight += 1;
+    try {
+      const current = state.get().current;
+      if (current === null || current.bundleId !== candidate.bundleId) return;
+      await checkProtocol(current);
+    } finally {
+      // The state is set as runBuild sets it, when this is the last trigger under way.
+      if (inFlight === 1)
+        status.setBuildState(lastBuildFailed ? 'failed' : 'idle');
+      inFlight -= 1;
+      if (inFlight === 0) {
+        for (const waiter of idleWaiters) waiter();
+        idleWaiters.clear();
+      }
+    }
+  }
+
+  /** Removes the folder of a candidate that is not adopted. A failure is logged: the publish that calls this has its answer. */
+  async function discard(candidate: Candidate): Promise<void> {
+    await removeBundle(bundlesDir, candidate.bundleId).catch(
+      (error: unknown) => {
+        log.warn('Could not remove the candidate bundle', {
+          bundleId: candidate.bundleId,
+          error: messageOf(error),
+        });
+      },
+    );
+  }
+
+  return {
+    start,
+    trigger,
+    stop,
+    pendingSwaps,
+    busy,
+    waitForIdle,
+    buildCandidate,
+    adopt,
+    afterAdopt,
+    discard,
+  };
 }
 
 /** The text of a failed build's first error: its message, with the file it names when there is one. */

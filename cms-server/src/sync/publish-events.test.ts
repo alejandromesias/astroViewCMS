@@ -1,8 +1,9 @@
 // The event-order harness of 2.10l (WORKPLAN 2.10l item 5, 2.10e-STATE-TABLE sections 3 to 5). It runs the real save, poll
 // and publish functions over an in-memory repo. Git is a model (`origin` and `cms/work`), the lock is the real mutex on an
 // injected clock, and a build is a point where the publish waits until the harness releases it. The curated scenarios are
-// the cells of the table that need no candidate build (2.10m). The seeded random runs draw sequences of events and check
-// the invariants after every step; a failure names its seed and step.
+// the cells of the table, with and without the candidate build (2.10m). The seeded random runs draw sequences of events,
+// with `always` on the even seeds and `never` on the odd ones, and check the invariants after every step; a failure names
+// its seed and step.
 import type { PublishAnswer } from 'cms-contract';
 import type { FieldError } from 'preview-protocol';
 import { describe, expect, it } from 'vitest';
@@ -16,8 +17,12 @@ import {
 } from '../../test/helpers/save-context.ts';
 import type { ChangedDocument, Changeset } from '../documents/changeset.ts';
 import { createMutex } from '../git/mutex.ts';
-import type { Repo, RepoTx, FetchResult, ReapplyResult } from '../git/ops.ts';
+import type { FetchResult, ReapplyResult, Repo, RepoTx } from '../git/ops.ts';
 import type { PushResult } from '../git/push.ts';
+import type {
+  Candidate,
+  CandidateOutcome,
+} from '../preview/bundle-lifecycle.ts';
 import { PreviewUnavailableError } from '../preview/client.ts';
 import { createStatus } from '../preview/status.ts';
 import type { PreviewClient, SaveAnswer } from '../save/context.ts';
@@ -28,10 +33,21 @@ import { createPublishGate, type PublishGate } from './publish-gate.ts';
 import { createSync, type SyncNowOutcome } from './sync.ts';
 
 /**
- * The points where a publish can wait: its sync (A), its validation (A), the build (W), the squash (after `S` is read), its
- * push (P), and the reset after an accepted push (F, the finishing phase).
+ * The points where a publish can wait: its sync (A), its validation (A), the build of the saved changes (W), the squash
+ * (after `S` is read), the candidate's build (B, 2.10m), its push (P), and the reset after an accepted push (F, the
+ * finishing phase).
  */
-type Point = 'fetch' | 'validate' | 'wait' | 'squashed' | 'push' | 'finish';
+type Point =
+  | 'fetch'
+  | 'validate'
+  | 'wait'
+  | 'squashed'
+  | 'building'
+  | 'push'
+  | 'finish';
+
+/** The build check the world's publish runs with: `always` builds the candidate, `never` builds nothing (2.10k). */
+type BuildCheck = 'always' | 'never';
 
 const SAVE_REFUSED = {
   status: 409,
@@ -89,6 +105,15 @@ class Model {
   nodeDown = false;
   invalid = false;
   crashOnReset = false;
+  /** Whether a candidate's build fails (2.10m). */
+  buildFails = false;
+  /** The candidates the publish adopted, and the ones it discarded, by commit (2.10m). */
+  adopted: string[] = [];
+  discarded: string[] = [];
+  /** The commits the remote accepted, in order. Every adopted candidate is one of them (2.10m). */
+  landed: string[] = [];
+  /** Adoptions of a commit the remote had not accepted yet. Always empty (2.10m). */
+  adoptedBeforePush: string[] = [];
   private readonly counts = new Map<string, number>();
 
   name(prefix: string): string {
@@ -119,7 +144,7 @@ function fetched(m: Model): FetchResult {
 }
 
 /** Makes the world the events run in: the model, the pauses and the lock. A restart keeps the model and makes new parts. */
-function rig(builderOn = true) {
+function rig(builderOn = true, buildCheck: BuildCheck = 'never') {
   const m = new Model();
   // Every error the publish logs, so a test can check what an unexpected failure says.
   const logged: { message: string; fields: unknown }[] = [];
@@ -127,19 +152,22 @@ function rig(builderOn = true) {
   let pause: { readonly point: Point; readonly resume: () => void } | undefined;
   const timers: { readonly callback: () => void; readonly handle: object }[] =
     [];
-  const mutex = createMutex({
-    clock: {
-      setTimeout: (callback) => {
-        const handle = {};
-        timers.push({ callback, handle });
-        return handle;
+  // A process has its own lock. A restart makes a new one, so a publish that paused in the old process is left with it.
+  const newLock = () =>
+    createMutex({
+      clock: {
+        setTimeout: (callback) => {
+          const handle = {};
+          timers.push({ callback, handle });
+          return handle;
+        },
+        clearTimeout: (handle) => {
+          const at = timers.findIndex((timer) => timer.handle === handle);
+          if (at >= 0) timers.splice(at, 1);
+        },
       },
-      clearTimeout: (handle) => {
-        const at = timers.findIndex((timer) => timer.handle === handle);
-        if (at >= 0) timers.splice(at, 1);
-      },
-    },
-  });
+    });
+  let mutex = newLock();
 
   // The publish waits here when the harness holds the point, until `release`.
   function at(point: Point): Promise<void> {
@@ -193,6 +221,7 @@ function rig(builderOn = true) {
         m.pushed.set(key, values);
       }
       m.originTip = commit;
+      m.landed.push(commit);
       m.originDocs = pushed.docs;
       m.originCode = false;
       return { ok: true };
@@ -226,6 +255,30 @@ function rig(builderOn = true) {
     waitForIdle: async () => {
       await at('wait');
       return true;
+    },
+    // The candidate builds at its point; the bundle it makes is not modelled, so an adoption is a record only (2.10m).
+    buildCandidate: async (commit: string): Promise<CandidateOutcome> => {
+      await at('building');
+      if (m.buildFails)
+        return { kind: 'failed', error: 'src/pages/a.astro: boom' };
+      return {
+        kind: 'built',
+        candidate: {
+          commit,
+          bundleId: `bundle-${commit}`,
+          dir: `/bundles/${commit}`,
+        },
+      };
+    },
+    adopt: async (candidate: Candidate) => {
+      if (!m.landed.includes(candidate.commit))
+        m.adoptedBeforePush.push(candidate.commit);
+      m.adopted.push(candidate.commit);
+      return true;
+    },
+    afterAdopt: async () => undefined,
+    discard: async (candidate: Candidate) => {
+      m.discarded.push(candidate.commit);
     },
   };
   const preview: PreviewClient = {
@@ -271,7 +324,11 @@ function rig(builderOn = true) {
       repo,
       bundles,
       siteFolder: 'unused-site',
-      config: { collections: {}, media: MEDIA_CONFIG },
+      config: {
+        collections: {},
+        media: MEDIA_CONFIG,
+        publish: { buildCheck },
+      },
       preview,
       media: MEDIA,
       guard,
@@ -362,6 +419,8 @@ function rig(builderOn = true) {
       return current.publish();
     },
     restart(): void {
+      mutex = newLock();
+      pause = undefined;
       current = world();
     },
   };
@@ -376,6 +435,8 @@ function allowed(answer: PublishAnswer): boolean {
     'preview-unavailable',
     'push-rejected',
     'invalid',
+    'build-failed',
+    'remote-moved',
   ].includes(answer.body.error);
 }
 
@@ -387,8 +448,8 @@ async function waitUntil(condition: () => boolean): Promise<void> {
 }
 
 /** A driver over one world: it issues the events, and it checks the invariants after each one. */
-function driver() {
-  const r = rig();
+function driver(buildCheck: BuildCheck = 'never') {
+  const r = rig(true, buildCheck);
   const m = r.m;
   // The value of the last save that answered 200, per key: invariant 1 is checked for each.
   const latest = new Map<string, string>();
@@ -426,7 +487,14 @@ function driver() {
     unpause: r.unpause,
     holdLock: r.holdLock,
     expireLockWaits: r.expireLockWaits,
-    restart: r.restart,
+    // A restart is a new process: a publish in flight is abandoned with its lock, so its answer never comes.
+    restart(): void {
+      r.restart();
+      if (inFlight) {
+        inFlight = false;
+        pending.splice(0);
+      }
+    },
     logged: r.logged,
     snapshot,
     isInFlight: (): boolean => inFlight,
@@ -499,6 +567,15 @@ function driver() {
       ).toBe(!inFlight);
       expect(m.overpushes, `${where}: a document pushed unchanged`).toBe(0);
       expect(m.headMoves, `${where}: cms/work moved during a publish`).toBe(0);
+      expect(
+        m.adoptedBeforePush,
+        `${where}: a candidate was adopted before its push`,
+      ).toStrictEqual([]);
+      for (const commit of m.adopted)
+        expect(
+          m.landed.includes(commit),
+          `${where}: adopted ${commit}, which the remote never accepted`,
+        ).toBe(true);
       for (const [key, value] of latest) {
         const kept =
           m.saved.get(key) === value ||
@@ -841,6 +918,136 @@ describe('publish event order: curated scenarios (2.10l)', () => {
     expect(d.m.commits.get('c2')?.keys).toStrictEqual(['b']);
     d.check('the second publish');
   });
+
+  it('refuses a save and a poll tick while the candidate builds, and pushes the candidate it built', async () => {
+    const d = driver('always');
+    await d.save('a', '1');
+    const { answer } = await d.start(['building']);
+    expect(d.paused()).toBe(true);
+    const before = d.snapshot();
+    expect(await d.save('b', '2')).toStrictEqual(SAVE_REFUSED);
+    expect(d.snapshot()).toBe(before);
+    expect(await d.poll()).toStrictEqual({ kind: 'skipped' });
+    await d.release();
+    expect(await answer).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    });
+    expect(d.origin()).toStrictEqual({ tip: 'c1', docs: { a: '1' } });
+    expect(d.m.adopted).toStrictEqual(['c1']);
+    d.check('after the candidate build');
+  });
+
+  it('answers 424 when the candidate does not build: nothing is pushed, cms/work keeps the save, and the next publish works', async () => {
+    const d = driver('always');
+    await d.save('a', '1');
+    d.m.buildFails = true;
+    expect(await d.click()).toStrictEqual({
+      status: 424,
+      body: {
+        error: 'build-failed',
+        message:
+          'The candidate did not build, so nothing was published: src/pages/a.astro: boom',
+        firstError: 'src/pages/a.astro: boom',
+      },
+    });
+    expect(d.origin()).toStrictEqual({ tip: 'o0', docs: {} });
+    expect(d.m.workBase).toBe('o0');
+    expect(d.m.saved.get('a')).toBe('1');
+    expect(d.world().gate.pollMayRun()).toBe(true);
+    d.m.buildFails = false;
+    expect(await d.click()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c2', overwritten: [], renamed: [] },
+    });
+    expect(d.origin()).toStrictEqual({ tip: 'c2', docs: { a: '1' } });
+    d.check('after the failed build');
+  });
+
+  it('answers 409 remote-moved when the remote moves while the candidate builds: nothing is pushed, the candidate is discarded, and the next publish succeeds', async () => {
+    const d = driver('always');
+    await d.save('a', '1');
+    const { answer } = await d.start(['building']);
+    d.m.originTip = d.m.name('o');
+    d.m.originDocs = new Map([['b', 'remote']]);
+    await d.release();
+    expect(await answer).toStrictEqual({
+      status: 409,
+      body: {
+        error: 'remote-moved',
+        message:
+          'The remote branch moved while the candidate was built, so nothing was published. Publish again.',
+      },
+    });
+    expect(d.origin()).toStrictEqual({ tip: 'o1', docs: { b: 'remote' } });
+    expect(d.m.discarded).toStrictEqual(['c1']);
+    expect(d.m.adopted).toStrictEqual([]);
+    expect(d.m.saved.get('a')).toBe('1');
+    expect(d.world().gate.pollMayRun()).toBe(true);
+    expect(await d.click()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c2', overwritten: [], renamed: [] },
+    });
+    expect(d.origin()).toStrictEqual({
+      tip: 'c2',
+      docs: { a: '1', b: 'remote' },
+    });
+    d.check('after a push race after the build');
+  });
+
+  it('answers 503 busy when the publish cannot take the lock at the push after the build, discards the candidate, and reopens the gate', async () => {
+    const d = driver('always');
+    await d.save('a', '1');
+    const { answer } = await d.start(['building']);
+    const unlock = d.holdLock();
+    // The build ends while another holder keeps the lock, so the push waits for it and times out.
+    d.unpause();
+    await d.flush();
+    d.expireLockWaits();
+    expect(await answer).toStrictEqual({
+      status: 503,
+      body: {
+        error: 'busy',
+        message:
+          'The site is busy with another operation (sync). Try again in a moment.',
+      },
+    });
+    expect(d.m.discarded).toStrictEqual(['c1']);
+    expect(d.m.adopted).toStrictEqual([]);
+    expect(d.origin()).toStrictEqual({ tip: 'o0', docs: {} });
+    expect(d.m.saved.get('a')).toBe('1');
+    expect(d.world().gate.pollMayRun()).toBe(true);
+    unlock();
+    expect(await d.click()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c2', overwritten: [], renamed: [] },
+    });
+    expect(d.origin()).toStrictEqual({ tip: 'c2', docs: { a: '1' } });
+    d.check('after the lock timeout at the push');
+  });
+
+  it('a restart after the push and before the reset leaves a changeset with nothing in it, so the next publish publishes nothing twice (invariant 5)', async () => {
+    const d = driver('always');
+    await d.save('a', '1');
+    await d.start(['finish']);
+    expect(d.paused()).toBe(true);
+    // The commit is on the remote, and cms/work still sits on the base with the save: the process stops before the reset.
+    expect(d.origin()).toStrictEqual({ tip: 'c1', docs: { a: '1' } });
+    expect(d.m.workBase).toBe('o0');
+    expect(d.m.adopted).toStrictEqual([]);
+    d.restart();
+    expect(d.isInFlight()).toBe(false);
+    // The first sync after the restart finds the same content on both, so the changeset holds nothing.
+    expect(await d.poll()).toMatchObject({ kind: 'synced' });
+    expect(d.m.changeset().documents).toStrictEqual([]);
+    expect(await d.click()).toStrictEqual({
+      status: 200,
+      body: { commit: null, overwritten: [], renamed: [] },
+    });
+    expect(d.origin()).toStrictEqual({ tip: 'c1', docs: { a: '1' } });
+    expect(d.m.overpushes).toBe(0);
+    d.check('after the restart');
+  });
 });
 
 describe('publish event order: seeded random runs (2.10l)', () => {
@@ -868,13 +1075,14 @@ describe('publish event order: seeded random runs (2.10l)', () => {
     'validate',
     'wait',
     'squashed',
+    'building',
     'push',
     'finish',
   ];
 
   async function runSeed(seed: number): Promise<void> {
     const random = generator(seed);
-    const d = driver();
+    const d = driver(seed % 2 === 0 ? 'always' : 'never');
     const length = 8 + Math.floor(random() * 5);
     const trail: string[] = [];
     for (let step = 1; step <= length; step += 1) {

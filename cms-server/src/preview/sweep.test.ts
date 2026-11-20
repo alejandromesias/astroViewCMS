@@ -92,6 +92,20 @@ describe('sweepLeftovers', () => {
     expect(events).toEqual(['lock sweep build-old', 'remove build-old']);
   });
 
+  it('removes a stale candidate worktree, named build-<bundleId>, at start-up', async () => {
+    const name = 'build-6f1c2a9e-3b7d-4e8f-9a0b-1c2d3e4f5a6b';
+    await makeFile(['worktrees', name, 'file.txt']);
+    const result = await sweepLeftovers({
+      repo: fakeRepo(gitRemoves),
+      cmsDir,
+      site: SITE,
+      log: recordingLog(),
+    });
+    expect(result).toEqual({ worktrees: [name], bundles: [], temp: [] });
+    expect(existsSync(path.join(siteRoot, 'worktrees', name))).toBe(false);
+    expect(events).toEqual([`lock sweep ${name}`, `remove ${name}`]);
+  });
+
   it('deletes the folder of a leftover build worktree that git cannot remove, and logs why', async () => {
     await makeFile(['worktrees', 'build-crashed', 'file.txt']);
     const log = recordingLog();

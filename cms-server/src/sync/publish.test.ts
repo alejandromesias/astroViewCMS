@@ -7,7 +7,7 @@ import {
   MEDIA,
   MEDIA_CONFIG,
 } from '../../test/helpers/save-context.ts';
-import { BundleError } from '../bundle/read.ts';
+import { BundleError, type DocumentEntry } from '../bundle/read.ts';
 import type { BundleStore } from '../bundle/store.ts';
 import type { ChangedDocument, Changeset } from '../documents/changeset.ts';
 import { LockTimeoutError } from '../git/mutex.ts';
@@ -15,6 +15,10 @@ import type { RepoTx } from '../git/ops.ts';
 import type { PushResult } from '../git/push.ts';
 import { MAX_BODY_BYTES } from '../http/changes-routes.ts';
 import type { Logger } from '../log.ts';
+import type {
+  Candidate,
+  CandidateOutcome,
+} from '../preview/bundle-lifecycle.ts';
 import { PreviewUnavailableError } from '../preview/client.ts';
 import { createStatus, type Status } from '../preview/status.ts';
 import type { PreviewClient, SaveStop } from '../save/context.ts';
@@ -85,6 +89,26 @@ interface RigOptions {
   readonly buildWaitMs?: number;
   /** Whether a builder runs (the default). */
   readonly builderOn?: boolean;
+  /** Whether a read of the merge base (through the reader) throws: a test where none may happen sees it. */
+  readonly failBaseReads?: boolean;
+  /** The error `adopt` throws, when it throws (the push has landed by then). */
+  readonly adoptError?: Error;
+  /** Whether the node took the candidate before `adopt` threw (a swap, then a failed state write). */
+  readonly swapBeforeError?: boolean;
+  /** The error `afterAdopt` throws, when it throws (the protocol check of an adopted candidate fails). */
+  readonly afterAdoptError?: Error;
+  /** The error `resetWork` throws, when it throws (the push has landed by then). */
+  readonly resetError?: Error;
+  /** The build check of the config. The default is `never`: the tests of the 2.10d path build nothing. */
+  readonly buildCheck?: 'always' | 'never' | 'auto';
+  /** The records of the bundle, which the build check reads. The default is none. */
+  readonly records?: readonly DocumentEntry[];
+  /** The text of each file at the merge base, by path: what the build check reads there (`beforeOf`). The default is none. */
+  readonly baseFiles?: ReadonlyMap<string, string>;
+  /** The answer of a candidate build, by commit. The default builds it into a bundle named after the commit. */
+  readonly build?: (commit: string) => CandidateOutcome;
+  /** Whether the node takes the candidate (`adopt`). The default is yes. */
+  readonly adopted?: boolean;
 }
 
 function rig(options: RigOptions = {}) {
@@ -136,8 +160,21 @@ function rig(options: RigOptions = {}) {
     }),
     resetWork: vi.fn(async (commit: string) => {
       events.push(`reset:${commit}`);
+      if (options.resetError !== undefined) throw options.resetError;
     }),
   });
+  // The reads of the merge base through the reader: each throws when the test says none may happen (`failBaseReads`).
+  const baseReads = {
+    mergeBase: vi.fn(async () => {
+      if (options.failBaseReads) throw new Error('a read of the merge base');
+      return BASE;
+    }),
+    showAtBytes: vi.fn(async (_ref: string, path: string) => {
+      if (options.failBaseReads) throw new Error('a read of the merge base');
+      const text = options.baseFiles?.get(path);
+      return text === undefined ? null : Buffer.from(text);
+    }),
+  };
   const repo = {
     locked: async <T>(
       holder: string,
@@ -159,14 +196,14 @@ function rig(options: RigOptions = {}) {
       events.push('reader');
       return {
         changedPaths: async () => [],
-        mergeBase: async () => BASE,
-        showAtBytes: async () => null,
+        mergeBase: baseReads.mergeBase,
+        showAtBytes: baseReads.showAtBytes,
         overwrittenSince: async () => new Map<string, string>(),
       };
     }),
     mergeBase: vi.fn(async () => BASE),
   };
-  const bundle = bundleOf([]);
+  const bundle = bundleOf(options.records ?? []);
   const bundles: BundleStore = {
     current: vi.fn(async () => {
       if (options.bundle === 'none') return null;
@@ -205,6 +242,26 @@ function rig(options: RigOptions = {}) {
       events.push(`waitForIdle(lock held: ${held})`);
       return options.idle ?? true;
     }),
+    buildCandidate: vi.fn(async (commit: string) => {
+      events.push(`build:${commit}`);
+      return (options.build ?? builtOf)(commit);
+    }),
+    adopt: vi.fn(async (candidate: Candidate) => {
+      events.push(`adopt:${candidate.commit}`);
+      if (options.adoptError !== undefined) {
+        // A swap that happened before the error: the node serves the candidate from then on.
+        if (options.swapBeforeError) events.push(`swapped:${candidate.commit}`);
+        throw options.adoptError;
+      }
+      return options.adopted ?? true;
+    }),
+    afterAdopt: vi.fn(async (candidate: Candidate) => {
+      events.push(`afterAdopt:${candidate.commit}`);
+      if (options.afterAdoptError !== undefined) throw options.afterAdoptError;
+    }),
+    discard: vi.fn(async (candidate: Candidate) => {
+      events.push(`discard:${candidate.commit}`);
+    }),
   };
   const trigger = vi.fn((reason: 'publish') => {
     events.push(`trigger:${reason}`);
@@ -222,7 +279,11 @@ function rig(options: RigOptions = {}) {
     repo,
     bundles,
     siteFolder: 'unused-site',
-    config: { collections: {}, media: MEDIA_CONFIG },
+    config: {
+      collections: {},
+      media: MEDIA_CONFIG,
+      publish: { buildCheck: options.buildCheck ?? 'never' },
+    },
     preview,
     media: MEDIA,
     guard,
@@ -256,8 +317,19 @@ function rig(options: RigOptions = {}) {
     log,
     bundles,
     statusDuring,
+    baseReads,
   };
 }
+
+// The candidate of a build that passes: a bundle named after its commit, as the lifecycle names it.
+const builtOf = (commit: string): CandidateOutcome => ({
+  kind: 'built',
+  candidate: {
+    commit,
+    bundleId: `bundle-${commit}`,
+    dir: `/bundles/bundle-${commit}`,
+  },
+});
 
 const OK = { ok: true } as const;
 const RACE: PushResult = {
@@ -743,8 +815,8 @@ describe('createPublish: the push', () => {
     expect(answer).toMatchObject({ status: 200, body: { commit: 'c2' } });
     expect(syncLocked).toHaveBeenCalledTimes(2);
     expect(guard.recheck).toHaveBeenCalledTimes(2);
-    // The values are validated once, before the first push; a retry does not validate again.
-    expect(preview.validate).toHaveBeenCalledTimes(1);
+    // The values are validated before the first push, and again on the retry: its changed changeset may hold new values (2.10m).
+    expect(preview.validate).toHaveBeenCalledTimes(2);
     expect(tx.resetWork).toHaveBeenCalledTimes(1);
     expect(tx.resetWork).toHaveBeenCalledWith('c2');
     expect(trigger).toHaveBeenCalledTimes(1);
@@ -880,6 +952,86 @@ describe('createPublish: the push', () => {
       .mockResolvedValueOnce(referenced);
     expect(await publish()).toStrictEqual(referenced);
     expect(tx.push).toHaveBeenCalledTimes(1);
+  });
+
+  it('a retry whose check of the values stops the publish with 422, and nothing is pushed again', async () => {
+    const errors: FieldError[] = [
+      { key: 'notes/a', path: ['title'], message: 'Required', kind: 'invalid' },
+    ];
+    let checks = 0;
+    const { publish, events, status } = rig({
+      pushes: [RACE, OK],
+      validate: async () => {
+        checks += 1;
+        return checks === 1 ? [] : errors;
+      },
+    });
+    expect(await publish()).toStrictEqual({
+      status: 422,
+      body: {
+        error: 'invalid',
+        errors: [{ key: 'notes/a', path: ['title'], message: 'Required' }],
+      },
+    });
+    expect(events).toStrictEqual([
+      ...syncedEvents(),
+      'lock:publish',
+      'busy?',
+      'reader',
+      'recheck',
+      'squash:cms: publish 1 documents',
+      'push:c1',
+      'sync',
+      'reader',
+      'recheck',
+      'unlock',
+    ]);
+    expect((await status.snapshot()).publish).toStrictEqual({
+      state: 'idle',
+      error: null,
+    });
+  });
+
+  it('a retry whose check of the values cannot reach the node answers 503 with the client message, and nothing is pushed again', async () => {
+    let checks = 0;
+    const { publish, events, log } = rig({
+      pushes: [RACE, OK],
+      validate: async () => {
+        checks += 1;
+        if (checks === 1) return [];
+        throw new PreviewUnavailableError(
+          'The preview build failed: bad component',
+          500,
+        );
+      },
+    });
+    expect(await publish()).toStrictEqual({
+      status: 503,
+      body: {
+        error: 'preview-unavailable',
+        message: 'The preview build failed: bad component',
+      },
+    });
+    expect(events).toStrictEqual([
+      ...syncedEvents(),
+      'lock:publish',
+      'busy?',
+      'reader',
+      'recheck',
+      'squash:cms: publish 1 documents',
+      'push:c1',
+      'sync',
+      'reader',
+      'recheck',
+      'unlock',
+    ]);
+    expect(log.warn).toHaveBeenCalledWith(
+      'the preview node did not check the save',
+      {
+        reason: 'The preview build failed: bad component',
+        status: 500,
+      },
+    );
   });
 });
 
@@ -1351,5 +1503,647 @@ describe('createPublish: the publish gate (2.10l)', () => {
     ]);
     // Attempt 1: the snapshot and the check before the refused push. Attempt 2: the snapshot, the check, and the check after the push.
     expect(tx.revParse).toHaveBeenCalledTimes(5);
+  });
+});
+
+// The events of the sync under the first lock, and of the squash under it, for a publish that builds `c1`. Functions, so
+// each test builds its own arrays.
+const syncedEvents = (): string[] => [
+  'lock:publish',
+  'sync',
+  'hasSavedChanges',
+  'unlock',
+  'waitForIdle(lock held: false)',
+];
+const squashedEvents = (): string[] => [
+  'lock:publish',
+  'busy?',
+  'reader',
+  'recheck',
+  'squash:cms: publish 1 documents',
+  'unlock',
+];
+
+describe('createPublish: the candidate build (2.10m)', () => {
+  it('builds the candidate with no lock held, pushes it under a lock, adopts it, and checks it after the lock is released', async () => {
+    const { publish, events, status, trigger, builds } = rig({
+      buildCheck: 'always',
+    });
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    });
+    expect(events).toStrictEqual([
+      ...syncedEvents(),
+      ...squashedEvents(),
+      'build:c1',
+      'lock:publish',
+      'push:c1',
+      'reset:c1',
+      'adopt:c1',
+      'unlock',
+      'afterAdopt:c1',
+      'invalidate',
+    ]);
+    expect(trigger).not.toHaveBeenCalled();
+    expect(builds.discard).not.toHaveBeenCalled();
+    expect((await status.snapshot()).publish).toStrictEqual({
+      state: 'idle',
+      error: null,
+    });
+  });
+
+  it('a failed build answers 424 with its first error, marks the status failed, and pushes nothing', async () => {
+    const message =
+      'The candidate did not build, so nothing was published: src/pages/a.astro: Unexpected token';
+    const { publish, events, status, trigger, builds } = rig({
+      buildCheck: 'always',
+      build: () => ({
+        kind: 'failed',
+        error: 'src/pages/a.astro: Unexpected token',
+      }),
+    });
+    expect(await publish()).toStrictEqual({
+      status: 424,
+      body: {
+        error: 'build-failed',
+        message,
+        firstError: 'src/pages/a.astro: Unexpected token',
+      },
+    });
+    expect(events).toStrictEqual([
+      ...syncedEvents(),
+      ...squashedEvents(),
+      'build:c1',
+    ]);
+    expect(trigger).not.toHaveBeenCalled();
+    expect(builds.discard).not.toHaveBeenCalled();
+    expect((await status.snapshot()).publish).toStrictEqual({
+      state: 'failed',
+      error: message,
+    });
+  });
+
+  it('a push race after the build answers 409 remote-moved, does not retry, and discards the candidate', async () => {
+    const { publish, events, status, builds, log } = rig({
+      buildCheck: 'always',
+      pushes: [RACE],
+    });
+    expect(await publish()).toStrictEqual({
+      status: 409,
+      body: {
+        error: 'remote-moved',
+        message:
+          'The remote branch moved while the candidate was built, so nothing was published. Publish again.',
+      },
+    });
+    expect(events).toStrictEqual([
+      ...syncedEvents(),
+      ...squashedEvents(),
+      'build:c1',
+      'lock:publish',
+      'push:c1',
+      'unlock',
+      'discard:c1',
+    ]);
+    expect(log.warn).toHaveBeenCalledWith(
+      'the remote moved while the candidate was built, so nothing was published',
+      { commit: 'c1' },
+    );
+    expect(builds.adopt).not.toHaveBeenCalled();
+    expect((await status.snapshot()).publish).toStrictEqual({
+      state: 'idle',
+      error: null,
+    });
+  });
+
+  it('a lock timeout at the push after the build answers 503 busy, and discards the candidate', async () => {
+    const { publish, events, status } = rig({
+      buildCheck: 'always',
+      lockTimeouts: [3],
+    });
+    expect(await publish()).toStrictEqual({
+      status: 503,
+      body: {
+        error: 'busy',
+        message:
+          'The site is busy with another operation (save). Try again in a moment.',
+      },
+    });
+    expect(events).toStrictEqual([
+      ...syncedEvents(),
+      ...squashedEvents(),
+      'build:c1',
+      'discard:c1',
+    ]);
+    expect((await status.snapshot()).publish).toStrictEqual({
+      state: 'idle',
+      error: null,
+    });
+  });
+
+  it('when the node does not take the candidate, the publish triggers the build of the pushed commit, and discards the candidate', async () => {
+    const { publish, events } = rig({ buildCheck: 'always', adopted: false });
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    });
+    expect(events).toStrictEqual([
+      ...syncedEvents(),
+      ...squashedEvents(),
+      'build:c1',
+      'lock:publish',
+      'push:c1',
+      'reset:c1',
+      'adopt:c1',
+      'unlock',
+      'trigger:publish',
+      'invalidate',
+      'discard:c1',
+    ]);
+  });
+
+  it('under auto, a refinement that threw builds the candidate', async () => {
+    const refinement: FieldError = {
+      key: 'notes/a',
+      path: ['title'],
+      message: 'refine boom',
+      kind: 'refinement-threw',
+    };
+    const { publish, builds } = rig({
+      buildCheck: 'auto',
+      validate: async () => [refinement],
+    });
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    });
+    expect(vi.mocked(builds.buildCandidate).mock.calls).toStrictEqual([['c1']]);
+  });
+
+  it('under never, the same refinement builds nothing: the 2.10d path pushes and triggers', async () => {
+    const refinement: FieldError = {
+      key: 'notes/a',
+      path: ['title'],
+      message: 'refine boom',
+      kind: 'refinement-threw',
+    };
+    const { publish, builds, trigger } = rig({
+      buildCheck: 'never',
+      validate: async () => [refinement],
+    });
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    });
+    expect(builds.buildCandidate).not.toHaveBeenCalled();
+    expect(trigger).toHaveBeenCalledWith('publish');
+  });
+
+  it('under auto, a content-only change of a document the bundle holds builds nothing', async () => {
+    const records: DocumentEntry[] = [
+      {
+        key: 'notes/a',
+        file: 'src/content/notes/a.md',
+        format: 'md',
+        buildTime: false,
+        revision: 'r',
+      },
+    ];
+    const { publish, builds } = rig({ buildCheck: 'auto', records });
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    });
+    expect(builds.buildCandidate).not.toHaveBeenCalled();
+  });
+
+  it('under auto, a build-time field that differs from its value at the merge base builds the candidate', async () => {
+    const records: DocumentEntry[] = [
+      {
+        key: 'site',
+        file: 'src/content/site.json',
+        format: 'json',
+        buildTime: true,
+        buildTimeFields: ['site.base_url'],
+        revision: 'r',
+      },
+    ];
+    const { publish, builds } = rig({
+      buildCheck: 'auto',
+      records,
+      changesets: [
+        changesetOf(
+          changed('site', { site: { base_url: 'https://new.example' } }),
+        ),
+      ],
+      baseFiles: new Map([
+        [
+          'src/content/site.json',
+          '{"site":{"base_url":"https://old.example"}}',
+        ],
+      ]),
+    });
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    });
+    expect(vi.mocked(builds.buildCandidate).mock.calls).toStrictEqual([['c1']]);
+  });
+
+  it('under auto, a build-time field with the same value at the merge base builds nothing', async () => {
+    const records: DocumentEntry[] = [
+      {
+        key: 'site',
+        file: 'src/content/site.json',
+        format: 'json',
+        buildTime: true,
+        buildTimeFields: ['site.base_url'],
+        revision: 'r',
+      },
+    ];
+    const { publish, builds, trigger } = rig({
+      buildCheck: 'auto',
+      records,
+      changesets: [
+        changesetOf(
+          changed('site', { site: { base_url: 'https://new.example' } }),
+        ),
+      ],
+      baseFiles: new Map([
+        [
+          'src/content/site.json',
+          '{"site":{"base_url":"https://new.example"}}',
+        ],
+      ]),
+    });
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    });
+    expect(builds.buildCandidate).not.toHaveBeenCalled();
+    expect(trigger).toHaveBeenCalledWith('publish');
+  });
+
+  it('a candidate publish clears the renamed list once the push lands, and the answer carries the list it had', async () => {
+    const renamed = [{ key: 'blog/a', from: 'a.md', to: 'b.md' }];
+    const { publish, status } = rig({ buildCheck: 'always' });
+    status.setRenamed(renamed);
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed },
+    });
+    expect(status.getRenamed()).toStrictEqual([]);
+  });
+
+  it('a candidate whose squash is empty answers 200 with commit null, resets cms/work to the base, and builds nothing', async () => {
+    const { publish, events, tx, trigger, builds, status } = rig({
+      buildCheck: 'always',
+      squashes: [null],
+    });
+    status.setRenamed([{ key: 'old', from: 'a', to: 'b' }]);
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: null, overwritten: [], renamed: [] },
+    });
+    expect(events).toStrictEqual([
+      ...syncedEvents(),
+      'lock:publish',
+      'busy?',
+      'reader',
+      'recheck',
+      'squash:cms: publish 1 documents',
+      `reset:${BASE}`,
+      'unlock',
+    ]);
+    expect(builds.buildCandidate).not.toHaveBeenCalled();
+    expect(tx.push).not.toHaveBeenCalled();
+    expect(trigger).not.toHaveBeenCalled();
+    expect(status.getRenamed()).toStrictEqual([]);
+    expect((await status.snapshot()).publish).toStrictEqual({
+      state: 'idle',
+      error: null,
+    });
+  });
+
+  it('a rejection of the protocol check of an adopted candidate is logged with its bundle and its message, and the answer stays 200', async () => {
+    const { publish, log } = rig({
+      buildCheck: 'always',
+      afterAdoptError: new Error('the protocol check failed'),
+    });
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    });
+    expect(log.error).toHaveBeenCalledWith(
+      'the protocol check of the published bundle failed',
+      { bundleId: 'bundle-c1', error: 'the protocol check failed' },
+    );
+  });
+});
+
+describe('createPublish: the build check on a retry, an adopt that throws, and the base reads (2.10m review)', () => {
+  // The options of a publish whose first attempt is content-only (a document the bundle holds, with no build-time field), and
+  // whose retry moves a build-time field of `site`: the retry's decision builds. Built per call, so no test shares a value.
+  function retryOptions(): Parameters<typeof rig>[0] {
+    const notes = changed('notes/a', { title: 'A' });
+    const records: DocumentEntry[] = [
+      {
+        key: 'notes/a',
+        file: 'src/content/notes/a.md',
+        format: 'md',
+        buildTime: false,
+        revision: 'r',
+      },
+      {
+        key: 'site',
+        file: 'src/content/site.json',
+        format: 'json',
+        buildTime: true,
+        buildTimeFields: ['site.base_url'],
+        revision: 'r',
+      },
+    ];
+    return {
+      buildCheck: 'auto',
+      records,
+      changesets: [
+        changesetOf(notes),
+        changesetOf(
+          notes,
+          changed('site', { site: { base_url: 'https://new.example' } }),
+        ),
+      ],
+      baseFiles: new Map([
+        [
+          'src/content/site.json',
+          '{"site":{"base_url":"https://old.example"}}',
+        ],
+      ]),
+      syncs: [synced(), synced({ change: 'content-only' })],
+    };
+  }
+
+  it('a retry re-decides auto: the first attempt pushes nothing built, and the retry that moves a build-time field builds the candidate it pushes', async () => {
+    const { publish, events, builds, trigger } = rig({
+      ...retryOptions(),
+      pushes: [RACE, OK],
+    });
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c2', overwritten: [], renamed: [] },
+    });
+    expect(events).toStrictEqual([
+      ...syncedEvents(),
+      'lock:publish',
+      'busy?',
+      'reader',
+      'recheck',
+      'squash:cms: publish 1 documents',
+      'push:c1',
+      'sync',
+      'reader',
+      'recheck',
+      'squash:cms: publish 2 documents',
+      'unlock',
+      'build:c2',
+      'lock:publish',
+      'push:c2',
+      'reset:c2',
+      'adopt:c2',
+      'unlock',
+      'afterAdopt:c2',
+      'invalidate',
+    ]);
+    expect(trigger).not.toHaveBeenCalled();
+    expect(builds.discard).not.toHaveBeenCalled();
+  });
+
+  it('a race after the candidate that a retry builds answers 409 remote-moved, with no further retry', async () => {
+    const { publish, events, status } = rig({
+      ...retryOptions(),
+      pushes: [RACE, RACE],
+    });
+    expect(await publish()).toStrictEqual({
+      status: 409,
+      body: {
+        error: 'remote-moved',
+        message:
+          'The remote branch moved while the candidate was built, so nothing was published. Publish again.',
+      },
+    });
+    expect(events.filter((event) => event.startsWith('push:'))).toStrictEqual([
+      'push:c1',
+      'push:c2',
+    ]);
+    expect(events.slice(-5)).toStrictEqual([
+      'build:c2',
+      'lock:publish',
+      'push:c2',
+      'unlock',
+      'discard:c2',
+    ]);
+    expect((await status.snapshot()).publish).toStrictEqual({
+      state: 'idle',
+      error: null,
+    });
+  });
+
+  it('an adopt that throws answers 200, triggers the build of the pushed commit, and keeps the candidate: nothing is discarded', async () => {
+    const { publish, events, trigger, builds, log, status } = rig({
+      buildCheck: 'always',
+      adoptError: new Error('the adoption failed before the swap'),
+    });
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    });
+    expect(events).toStrictEqual([
+      ...syncedEvents(),
+      'lock:publish',
+      'busy?',
+      'reader',
+      'recheck',
+      'squash:cms: publish 1 documents',
+      'unlock',
+      'build:c1',
+      'lock:publish',
+      'push:c1',
+      'reset:c1',
+      'adopt:c1',
+      'unlock',
+      'trigger:publish',
+      'invalidate',
+    ]);
+    expect(trigger).toHaveBeenCalledWith('publish');
+    expect(builds.afterAdopt).not.toHaveBeenCalled();
+    expect(builds.discard).not.toHaveBeenCalled();
+    expect(log.error).toHaveBeenCalledWith(
+      'the candidate could not be adopted, so the publish triggers the build of cms/work',
+      {
+        bundleId: 'bundle-c1',
+        commit: 'c1',
+        error: 'the adoption failed before the swap',
+      },
+    );
+    expect((await status.snapshot()).publish).toStrictEqual({
+      state: 'idle',
+      error: null,
+    });
+  });
+
+  it('an adopt that throws after the node took the candidate keeps it: the swap happened, so a discard would remove the bundle the node serves', async () => {
+    const { publish, events, trigger, builds, log } = rig({
+      buildCheck: 'always',
+      adoptError: new Error(
+        'the bundle was swapped, but its state was not written',
+      ),
+      swapBeforeError: true,
+    });
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    });
+    expect(events).toStrictEqual([
+      ...syncedEvents(),
+      ...squashedEvents(),
+      'build:c1',
+      'lock:publish',
+      'push:c1',
+      'reset:c1',
+      'adopt:c1',
+      'swapped:c1',
+      'unlock',
+      'trigger:publish',
+      'invalidate',
+    ]);
+    expect(trigger).toHaveBeenCalledWith('publish');
+    expect(builds.discard).not.toHaveBeenCalled();
+    expect(log.error).toHaveBeenCalledWith(
+      'the candidate could not be adopted, so the publish triggers the build of cms/work',
+      {
+        bundleId: 'bundle-c1',
+        commit: 'c1',
+        error: 'the bundle was swapped, but its state was not written',
+      },
+    );
+  });
+
+  it('under never, the build check reads nothing at the merge base: a read that fails would show it', async () => {
+    const { publish, baseReads } = rig({
+      buildCheck: 'never',
+      failBaseReads: true,
+    });
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    });
+    expect(baseReads.mergeBase).not.toHaveBeenCalled();
+    expect(baseReads.showAtBytes).not.toHaveBeenCalled();
+  });
+
+  it('under auto, the build check reads the merge base once, for the decision', async () => {
+    const { publish, baseReads } = rig({ buildCheck: 'auto' });
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    });
+    expect(baseReads.mergeBase).toHaveBeenCalledTimes(1);
+  });
+
+  it('when the reset after the push fails and the node refuses the candidate, the publish answers 200 and triggers the build of cms/work', async () => {
+    const { publish, events, trigger, builds, log, status } = rig({
+      buildCheck: 'always',
+      adopted: false,
+      resetError: new Error('the reset could not run'),
+    });
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    });
+    // cms/work still sits on `S`, whose tree is the pushed commit's, so a build of HEAD builds the same tree: it is triggered.
+    expect(events).toStrictEqual([
+      ...syncedEvents(),
+      ...squashedEvents(),
+      'build:c1',
+      'lock:publish',
+      'push:c1',
+      'reset:c1',
+      'adopt:c1',
+      'unlock',
+      'trigger:publish',
+      'invalidate',
+      'discard:c1',
+    ]);
+    expect(trigger).toHaveBeenCalledWith('publish');
+    expect(builds.afterAdopt).not.toHaveBeenCalled();
+    expect(log.error).toHaveBeenCalledWith(
+      'the publish landed, but cms/work could not be reset to it',
+      { commit: 'c1', error: 'the reset could not run' },
+    );
+    expect((await status.snapshot()).publish).toStrictEqual({
+      state: 'idle',
+      error: null,
+    });
+  });
+
+  it('when the reset after the push fails and the node takes the candidate, the publish answers 200, runs the protocol check, and triggers no build', async () => {
+    const { publish, events, trigger, builds, log, status } = rig({
+      buildCheck: 'always',
+      resetError: new Error('the reset could not run'),
+    });
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    });
+    expect(events).toStrictEqual([
+      ...syncedEvents(),
+      ...squashedEvents(),
+      'build:c1',
+      'lock:publish',
+      'push:c1',
+      'reset:c1',
+      'adopt:c1',
+      'unlock',
+      'afterAdopt:c1',
+      'invalidate',
+    ]);
+    expect(trigger).not.toHaveBeenCalled();
+    expect(builds.discard).not.toHaveBeenCalled();
+    expect(log.error).toHaveBeenCalledWith(
+      'the publish landed, but cms/work could not be reset to it',
+      { commit: 'c1', error: 'the reset could not run' },
+    );
+    expect((await status.snapshot()).publish).toStrictEqual({
+      state: 'idle',
+      error: null,
+    });
+  });
+
+  it('a push the remote refuses for another reason after the build answers 502 push-failed: cms/work is unchanged, the candidate is discarded, and nothing is retried', async () => {
+    const message =
+      'The remote refused the push, so nothing was published: a hook declined the push';
+    const { publish, events, builds, status } = rig({
+      buildCheck: 'always',
+      pushes: [{ ok: false, race: false, message: 'a hook declined the push' }],
+    });
+    expect(await publish()).toStrictEqual({
+      status: 502,
+      body: { error: 'push-failed', message },
+    });
+    expect(events).toStrictEqual([
+      ...syncedEvents(),
+      ...squashedEvents(),
+      'build:c1',
+      'lock:publish',
+      'push:c1',
+      'unlock',
+      'discard:c1',
+    ]);
+    expect(builds.adopt).not.toHaveBeenCalled();
+    expect((await status.snapshot()).publish).toStrictEqual({
+      state: 'failed',
+      error: message,
+    });
   });
 });

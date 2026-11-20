@@ -18,7 +18,7 @@ import { parseConfig } from '../config/schema.ts';
 import { openRepo, type Repo } from '../git/ops.ts';
 import { ensureRepo } from '../git/repo.ts';
 import type { Logger } from '../log.ts';
-import { changesetOf, changesetWithTombstones } from './changeset.ts';
+import { beforeOf, changesetOf, changesetWithTombstones } from './changeset.ts';
 
 // Each test makes its own remote and clone, so one test takes a few git calls.
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
@@ -1084,5 +1084,107 @@ describe('changesetOf: entries of a file() file', () => {
         },
       ],
     });
+  });
+});
+
+describe('beforeOf: the values of the changed documents at the merge base (2.10m)', () => {
+  it('gives each changed document its value at the merge base, and leaves out a document the base lacks', async () => {
+    const h = await harness();
+    await edit(h, BLOG_A, '---\ntitle: Post A\n---\nBody A edited\n');
+    await edit(
+      h,
+      PEOPLE,
+      '[\n  { "id": "ana", "name": "Ana B" },\n  { "id": "kofi", "name": "Kofi" }\n]\n',
+    );
+    await edit(
+      h,
+      'src/content/blog/post-c.md',
+      '---\ntitle: Post C\n---\nBody C\n',
+    );
+    await save(h, [BLOG_A, PEOPLE, 'src/content/blog/post-c.md'], 'three');
+    const changeset = await changes(h);
+    expect(
+      await beforeOf({ bundle: bundleOf(), repo: h.repo, changeset }),
+    ).toStrictEqual(
+      new Map<string, unknown>([
+        ['blog/post-a', { data: { title: 'Post A' }, body: 'Body A\n' }],
+        ['people/ana', { id: 'ana', name: 'Ana' }],
+      ]),
+    );
+  });
+
+  it('gives a deleted document its value at the merge base', async () => {
+    const h = await harness();
+    await rm(join(h.siteFolder, BLOG_A));
+    await save(h, [BLOG_A], 'delete a');
+    const changeset = await changes(h);
+    expect(
+      changeset.documents.map((document) => document.status),
+    ).toStrictEqual(['deleted']);
+    expect(
+      await beforeOf({ bundle: bundleOf(), repo: h.repo, changeset }),
+    ).toStrictEqual(
+      new Map<string, unknown>([
+        ['blog/post-a', { data: { title: 'Post A' }, body: 'Body A\n' }],
+      ]),
+    );
+  });
+
+  it('gives a file() entry its raw entry at the merge base, and leaves out an entry the base lacks', async () => {
+    const h = await harness();
+    await edit(
+      h,
+      PEOPLE,
+      '[\n  { "id": "ana", "name": "Ana B" },\n  { "id": "kofi", "name": "Kofi" },\n  { "id": "lena", "name": "Lena" }\n]\n',
+    );
+    await save(h, [PEOPLE], 'people');
+    const changeset = await changes(h);
+    expect(changeset.documents.map((document) => document.key)).toStrictEqual([
+      'people/ana',
+      'people/lena',
+    ]);
+    expect(
+      await beforeOf({ bundle: bundleOf(), repo: h.repo, changeset }),
+    ).toStrictEqual(
+      new Map<string, unknown>([['people/ana', { id: 'ana', name: 'Ana' }]]),
+    );
+  });
+
+  it('leaves out a document whose file does not parse at the merge base', async () => {
+    const SITE_JSON = 'src/content/site.json';
+    const h = await harness({ [SITE_JSON]: '{ "site": ' });
+    await edit(
+      h,
+      SITE_JSON,
+      '{ "site": { "base_url": "https://new.example" } }\n',
+    );
+    await save(h, [SITE_JSON], 'site');
+    const bundle: Pick<Bundle, 'documents' | 'collections'> = {
+      documents: new Map<string, DocumentEntry>([
+        [
+          'site',
+          {
+            key: 'site',
+            file: SITE_JSON,
+            format: 'json',
+            buildTime: true,
+            buildTimeFields: ['site.base_url'],
+            revision: 'r',
+          },
+        ],
+      ]),
+      collections: new Map(),
+    };
+    const changeset = await changesetOf({
+      bundle,
+      repo: h.repo,
+      siteFolder: h.siteFolder,
+    });
+    expect(changeset.documents.map((document) => document.key)).toStrictEqual([
+      'site',
+    ]);
+    expect(await beforeOf({ bundle, repo: h.repo, changeset })).toStrictEqual(
+      new Map(),
+    );
   });
 });

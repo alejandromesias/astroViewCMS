@@ -31,62 +31,88 @@ export type BuildFn = (job: BuildJob) => Promise<BuildResult>;
 export interface BuildRunner {
   /** Asks for a build of `commit`. Resolves with the result of the build that runs it. */
   request(commit: string): Promise<BuildResult>;
+  /**
+   * Builds `commit` as a candidate (2.10m): it takes the build slot after the builds already queued, and runs
+   * `buildCandidate`. A request made after it queues behind it and is not merged into it.
+   */
+  candidate(commit: string): Promise<BuildResult>;
 }
 
 export interface BuildRunnerOptions {
   readonly build: BuildFn;
+  /** The function a candidate runs. Default: `build`. The lifecycle passes its raw builder, without the request bookkeeping. */
+  readonly buildCandidate?: BuildFn;
   /** The id of each new bundle. Default: a random UUID. */
   readonly newBundleId?: () => string;
 }
 
-// A build waiting in the queue: the newest commit asked for, and the promise of every trigger that merged into it.
+// A build waiting in the queue: the commit to build, the function that runs it, and the promise of every caller that waits
+// for it. A request merges only into the last waiting build, and only when that one is a request, never a candidate.
 interface Waiting {
   commit: string;
+  readonly kind: 'request' | 'candidate';
+  readonly run: BuildFn;
   readonly done: PromiseWithResolvers<BuildResult>;
 }
 
 export function createBuildRunner({
   build,
+  buildCandidate = build,
   newBundleId = randomUUID,
 }: BuildRunnerOptions): BuildRunner {
-  // True while a drain runs. `queued` is the one build that waits behind the running one.
+  // True while a drain runs. `queue` holds the builds that wait behind the running one, in the order they were asked for.
   let busy = false;
-  let queued: Waiting | undefined;
+  const queue: Waiting[] = [];
 
-  // Runs `first`, then each queued build, until nothing is queued. A failed build rejects only its own callers.
-  async function drain(first: Waiting): Promise<void> {
-    let next: Waiting | undefined = first;
+  // Runs the queued builds in order, until none is left. A failed build rejects only its own callers.
+  async function drain(): Promise<void> {
+    let next = queue.shift();
     while (next !== undefined) {
       const current = next;
       try {
         const bundleId = newBundleId();
-        current.done.resolve(await build({ commit: current.commit, bundleId }));
+        current.done.resolve(
+          await current.run({ commit: current.commit, bundleId }),
+        );
       } catch (error: unknown) {
         current.done.reject(error);
       }
-      next = queued;
-      queued = undefined;
+      next = queue.shift();
     }
     busy = false;
   }
 
+  // Queues `waiting` behind the builds already queued, and starts the drain when none runs.
+  function enqueue(waiting: Waiting): Promise<BuildResult> {
+    queue.push(waiting);
+    if (!busy) {
+      busy = true;
+      void drain();
+    }
+    return waiting.done.promise;
+  }
+
   return {
     request(commit) {
-      if (queued !== undefined) {
-        queued.commit = commit;
-        return queued.done.promise;
+      const last = queue.at(-1);
+      if (last?.kind === 'request') {
+        last.commit = commit;
+        return last.done.promise;
       }
-      const waiting: Waiting = {
+      return enqueue({
         commit,
+        kind: 'request',
+        run: build,
         done: Promise.withResolvers<BuildResult>(),
-      };
-      if (busy) {
-        queued = waiting;
-      } else {
-        busy = true;
-        void drain(waiting);
-      }
-      return waiting.done.promise;
+      });
+    },
+    candidate(commit) {
+      return enqueue({
+        commit,
+        kind: 'candidate',
+        run: buildCandidate,
+        done: Promise.withResolvers<BuildResult>(),
+      });
     },
   };
 }

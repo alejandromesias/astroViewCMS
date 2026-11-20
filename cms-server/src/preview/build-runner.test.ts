@@ -158,3 +158,97 @@ describe('createBuildRunner', () => {
     await second;
   });
 });
+
+describe('candidate (2.10m)', () => {
+  it('runs the candidate function under a new bundle id, and resolves with its result', async () => {
+    const jobs: BuildJob[] = [];
+    const runner = createBuildRunner({
+      build: async () => {
+        throw new Error('the request function must not run');
+      },
+      buildCandidate: async (job) => {
+        jobs.push(job);
+        return resultOf(job);
+      },
+      newBundleId: sequence(),
+    });
+    expect(await runner.candidate('c1')).toEqual(resultOf(FIRST));
+    expect(jobs).toEqual([FIRST]);
+  });
+
+  it('runs the request function when no candidate function is given', async () => {
+    const runner = createBuildRunner({
+      build: async (job) => resultOf(job),
+      newBundleId: sequence(),
+    });
+    expect(await runner.candidate('c1')).toEqual(resultOf(FIRST));
+  });
+
+  it('waits for the running build and the builds queued before it, and runs after them', async () => {
+    const held = heldBuilds();
+    const order: string[] = [];
+    const runner = createBuildRunner({
+      build: (job) => {
+        order.push(`build ${job.commit}`);
+        return held.build(job);
+      },
+      buildCandidate: async (job) => {
+        order.push(`candidate ${job.commit}`);
+        return resultOf(job);
+      },
+      newBundleId: sequence(),
+    });
+    const first = runner.request('c1');
+    const queued = runner.request('c2');
+    const candidate = runner.candidate('c3');
+    expect(order).toEqual(['build c1']);
+    held.holds[0]?.resolve(resultOf(FIRST));
+    await first;
+    expect(order).toEqual(['build c1', 'build c2']);
+    held.holds[1]?.resolve(resultOf(SECOND));
+    await queued;
+    expect(await candidate).toEqual(resultOf({ commit: 'c3', bundleId: 'b3' }));
+    expect(order).toEqual(['build c1', 'build c2', 'candidate c3']);
+  });
+
+  it('does not merge a request made during the candidate into it: the request queues behind it', async () => {
+    const release = Promise.withResolvers<void>();
+    const order: string[] = [];
+    const runner = createBuildRunner({
+      build: async (job) => {
+        order.push(`build ${job.commit}`);
+        return resultOf(job);
+      },
+      buildCandidate: async (job) => {
+        order.push(`candidate ${job.commit}`);
+        await release.promise;
+        return resultOf(job);
+      },
+      newBundleId: sequence(),
+    });
+    const candidate = runner.candidate('c1');
+    const after = runner.request('c2');
+    const later = runner.request('c3');
+    expect(later).toBe(after);
+    release.resolve();
+    expect(await candidate).toEqual(resultOf(FIRST));
+    expect(await after).toEqual(resultOf({ commit: 'c3', bundleId: 'b2' }));
+    expect(order).toEqual(['candidate c1', 'build c3']);
+  });
+
+  it('rejects the caller of a candidate whose build throws, and the request after it still runs', async () => {
+    const held = heldBuilds();
+    const failure = new Error('disk full');
+    const runner = createBuildRunner({
+      build: held.build,
+      buildCandidate: () => Promise.reject(failure),
+      newBundleId: sequence(),
+    });
+    const candidate = runner.candidate('c1');
+    await expect(candidate).rejects.toBe(failure);
+    const after = runner.request('c2');
+    expect(held.started).toEqual([SECOND]);
+    held.holds[0]?.resolve(resultOf(SECOND));
+    expect(await after).toEqual(resultOf(SECOND));
+  });
+});
