@@ -45,6 +45,16 @@ type TriggerOutcome =
     }
   | { readonly kind: 'stopped' };
 
+/** How one swap ended, as the swap helper reports it. The helper writes no state: its caller does (2.10m). */
+type SwapStep =
+  | { readonly kind: 'stopped' }
+  | { readonly kind: 'ok' }
+  | {
+      readonly kind: 'failed';
+      readonly error: string;
+      readonly rolledBack: boolean;
+    };
+
 /** A candidate of a publish (2.10m): the commit built before it is pushed, and the bundle it was built into. */
 export interface Candidate {
   readonly commit: string;
@@ -350,29 +360,14 @@ export function createBundleLifecycle(
     // stop() may have come while the build ran. The check is repeated where the swap starts, after any earlier swap has settled.
     if (stopped) return { kind: 'stopped' };
     const entry: BundleEntry = { bundleId, baseCommit: base };
-    latestSwap += 1;
-    const seq = latestSwap;
-    const swap = await keepWhileSwapping(bundleId, () =>
-      inOrder(async () =>
-        stopped ? undefined : await supervisor.swap({ bundleId, dir }),
-      ),
-    );
-    if (swap === undefined) return { kind: 'stopped' };
-    if (!swap.ok) {
-      status.setSwapError(swap.error);
-      // Recover only if no newer swap was asked for meanwhile: that swap is the one the node should serve.
-      if (!swap.rolledBack) {
-        await inOrder(async () => {
-          if (seq === latestSwap) await restartLastGood();
-        });
-      }
+    const swap = await swapOnto(bundleId, dir);
+    if (swap.kind === 'stopped') return { kind: 'stopped' };
+    if (swap.kind === 'failed')
       return {
         kind: 'swap-failed',
         error: swap.error,
         rolledBack: swap.rolledBack,
       };
-    }
-    status.setSwapError(null);
     // The largest count any caller sharing this serve asked for, read when the state is written (after the swap).
     const attempts = new Map(state.get().protocolAttempts);
     const merged = inheritedOf.get(bundleId);
@@ -410,6 +405,34 @@ export function createBundleLifecycle(
         error: restarted.error,
       });
     }
+  }
+
+  /**
+   * One swap of the chain (serveBundle's and adopt's): its number, the bundle kept while it swaps, the swap error set or
+   * cleared, and the rollback. A failed swap that was not rolled back starts the last good bundle again, unless a newer
+   * swap was asked for meanwhile. `stopped` when a stop reached the swap before it started.
+   */
+  async function swapOnto(bundleId: string, dir: string): Promise<SwapStep> {
+    latestSwap += 1;
+    const seq = latestSwap;
+    const swap = await keepWhileSwapping(bundleId, () =>
+      inOrder(async () =>
+        stopped ? undefined : await supervisor.swap({ bundleId, dir }),
+      ),
+    );
+    if (swap === undefined) return { kind: 'stopped' };
+    if (!swap.ok) {
+      status.setSwapError(swap.error);
+      // Recover only if no newer swap was asked for meanwhile: that swap is the one the node should serve.
+      if (!swap.rolledBack) {
+        await inOrder(async () => {
+          if (seq === latestSwap) await restartLastGood();
+        });
+      }
+      return { kind: 'failed', error: swap.error, rolledBack: swap.rolledBack };
+    }
+    status.setSwapError(null);
+    return { kind: 'ok' };
   }
 
   /**
@@ -535,34 +558,13 @@ export function createBundleLifecycle(
       bundleId: candidate.bundleId,
       baseCommit: base,
     };
-    latestSwap += 1;
-    const seq = latestSwap;
-    const swap = await keepWhileSwapping(candidate.bundleId, () =>
-      inOrder(async () =>
-        stopped
-          ? undefined
-          : await supervisor.swap({
-              bundleId: candidate.bundleId,
-              dir: candidate.dir,
-            }),
-      ),
-    );
-    if (swap === undefined) return false;
-    if (!swap.ok) {
-      status.setSwapError(swap.error);
-      if (!swap.rolledBack) {
-        await inOrder(async () => {
-          if (seq === latestSwap) await restartLastGood();
-        });
-      }
-      return false;
-    }
+    const swap = await swapOnto(candidate.bundleId, candidate.dir);
+    if (swap.kind !== 'ok') return false;
     // The node serves a candidate that built and swapped, so the errors of earlier builds and swaps no longer apply (as buildAndServe).
     lastBuildFailed = false;
     status.setBuildError(null);
     // The build state is idle when no trigger is under way; with one under way, the trigger sets it when it ends (runBuild).
     if (inFlight === 0) status.setBuildState('idle');
-    status.setSwapError(null);
     await state.set({
       current: entry,
       lastGood: entry,
