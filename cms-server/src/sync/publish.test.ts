@@ -95,6 +95,8 @@ interface RigOptions {
   readonly adoptError?: Error;
   /** Whether the node took the candidate before `adopt` threw (a swap, then a failed state write). */
   readonly swapBeforeError?: boolean;
+  /** The error `afterAdopt` throws, when it throws (the protocol check of an adopted candidate fails). */
+  readonly afterAdoptError?: Error;
   /** The error `resetWork` throws, when it throws (the push has landed by then). */
   readonly resetError?: Error;
   /** The build check of the config. The default is `never`: the tests of the 2.10d path build nothing. */
@@ -255,6 +257,7 @@ function rig(options: RigOptions = {}) {
     }),
     afterAdopt: vi.fn(async (candidate: Candidate) => {
       events.push(`afterAdopt:${candidate.commit}`);
+      if (options.afterAdoptError !== undefined) throw options.afterAdoptError;
     }),
     discard: vi.fn(async (candidate: Candidate) => {
       events.push(`discard:${candidate.commit}`);
@@ -950,6 +953,86 @@ describe('createPublish: the push', () => {
     expect(await publish()).toStrictEqual(referenced);
     expect(tx.push).toHaveBeenCalledTimes(1);
   });
+
+  it('a retry whose check of the values stops the publish with 422, and nothing is pushed again', async () => {
+    const errors: FieldError[] = [
+      { key: 'notes/a', path: ['title'], message: 'Required', kind: 'invalid' },
+    ];
+    let checks = 0;
+    const { publish, events, status } = rig({
+      pushes: [RACE, OK],
+      validate: async () => {
+        checks += 1;
+        return checks === 1 ? [] : errors;
+      },
+    });
+    expect(await publish()).toStrictEqual({
+      status: 422,
+      body: {
+        error: 'invalid',
+        errors: [{ key: 'notes/a', path: ['title'], message: 'Required' }],
+      },
+    });
+    expect(events).toStrictEqual([
+      ...syncedEvents(),
+      'lock:publish',
+      'busy?',
+      'reader',
+      'recheck',
+      'squash:cms: publish 1 documents',
+      'push:c1',
+      'sync',
+      'reader',
+      'recheck',
+      'unlock',
+    ]);
+    expect((await status.snapshot()).publish).toStrictEqual({
+      state: 'idle',
+      error: null,
+    });
+  });
+
+  it('a retry whose check of the values cannot reach the node answers 503 with the client message, and nothing is pushed again', async () => {
+    let checks = 0;
+    const { publish, events, log } = rig({
+      pushes: [RACE, OK],
+      validate: async () => {
+        checks += 1;
+        if (checks === 1) return [];
+        throw new PreviewUnavailableError(
+          'The preview build failed: bad component',
+          500,
+        );
+      },
+    });
+    expect(await publish()).toStrictEqual({
+      status: 503,
+      body: {
+        error: 'preview-unavailable',
+        message: 'The preview build failed: bad component',
+      },
+    });
+    expect(events).toStrictEqual([
+      ...syncedEvents(),
+      'lock:publish',
+      'busy?',
+      'reader',
+      'recheck',
+      'squash:cms: publish 1 documents',
+      'push:c1',
+      'sync',
+      'reader',
+      'recheck',
+      'unlock',
+    ]);
+    expect(log.warn).toHaveBeenCalledWith(
+      'the preview node did not check the save',
+      {
+        reason: 'The preview build failed: bad component',
+        status: 500,
+      },
+    );
+  });
 });
 
 describe('createPublish: a sync that fails', () => {
@@ -1502,7 +1585,7 @@ describe('createPublish: the candidate build (2.10m)', () => {
   });
 
   it('a push race after the build answers 409 remote-moved, does not retry, and discards the candidate', async () => {
-    const { publish, events, status, builds } = rig({
+    const { publish, events, status, builds, log } = rig({
       buildCheck: 'always',
       pushes: [RACE],
     });
@@ -1523,6 +1606,10 @@ describe('createPublish: the candidate build (2.10m)', () => {
       'unlock',
       'discard:c1',
     ]);
+    expect(log.warn).toHaveBeenCalledWith(
+      'the remote moved while the candidate was built, so nothing was published',
+      { commit: 'c1' },
+    );
     expect(builds.adopt).not.toHaveBeenCalled();
     expect((await status.snapshot()).publish).toStrictEqual({
       state: 'idle',
@@ -1696,6 +1783,62 @@ describe('createPublish: the candidate build (2.10m)', () => {
     });
     expect(builds.buildCandidate).not.toHaveBeenCalled();
     expect(trigger).toHaveBeenCalledWith('publish');
+  });
+
+  it('a candidate publish clears the renamed list once the push lands, and the answer carries the list it had', async () => {
+    const renamed = [{ key: 'blog/a', from: 'a.md', to: 'b.md' }];
+    const { publish, status } = rig({ buildCheck: 'always' });
+    status.setRenamed(renamed);
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed },
+    });
+    expect(status.getRenamed()).toStrictEqual([]);
+  });
+
+  it('a candidate whose squash is empty answers 200 with commit null, resets cms/work to the base, and builds nothing', async () => {
+    const { publish, events, tx, trigger, builds, status } = rig({
+      buildCheck: 'always',
+      squashes: [null],
+    });
+    status.setRenamed([{ key: 'old', from: 'a', to: 'b' }]);
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: null, overwritten: [], renamed: [] },
+    });
+    expect(events).toStrictEqual([
+      ...syncedEvents(),
+      'lock:publish',
+      'busy?',
+      'reader',
+      'recheck',
+      'squash:cms: publish 1 documents',
+      `reset:${BASE}`,
+      'unlock',
+    ]);
+    expect(builds.buildCandidate).not.toHaveBeenCalled();
+    expect(tx.push).not.toHaveBeenCalled();
+    expect(trigger).not.toHaveBeenCalled();
+    expect(status.getRenamed()).toStrictEqual([]);
+    expect((await status.snapshot()).publish).toStrictEqual({
+      state: 'idle',
+      error: null,
+    });
+  });
+
+  it('a rejection of the protocol check of an adopted candidate is logged with its bundle and its message, and the answer stays 200', async () => {
+    const { publish, log } = rig({
+      buildCheck: 'always',
+      afterAdoptError: new Error('the protocol check failed'),
+    });
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    });
+    expect(log.error).toHaveBeenCalledWith(
+      'the protocol check of the published bundle failed',
+      { bundleId: 'bundle-c1', error: 'the protocol check failed' },
+    );
   });
 });
 
