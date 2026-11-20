@@ -2051,7 +2051,7 @@ describe('createPublish: the build check on a retry, an adopt that throws, and t
     expect(baseReads.mergeBase).toHaveBeenCalledTimes(1);
   });
 
-  it('when the reset after the push fails and the node refuses the candidate, the publish answers 200 and triggers no build: the next sync reconciles', async () => {
+  it('when the reset after the push fails and the node refuses the candidate, the publish answers 200 and triggers the build of cms/work', async () => {
     const { publish, events, trigger, builds, log, status } = rig({
       buildCheck: 'always',
       adopted: false,
@@ -2061,7 +2061,7 @@ describe('createPublish: the build check on a retry, an adopt that throws, and t
       status: 200,
       body: { commit: 'c1', overwritten: [], renamed: [] },
     });
-    // cms/work still sits on `S`, so a build of HEAD would build the base, not the pushed commit: none is triggered.
+    // cms/work still sits on `S`, whose tree is the pushed commit's, so a build of HEAD builds the same tree: it is triggered.
     expect(events).toStrictEqual([
       ...syncedEvents(),
       ...squashedEvents(),
@@ -2071,18 +2071,48 @@ describe('createPublish: the build check on a retry, an adopt that throws, and t
       'reset:c1',
       'adopt:c1',
       'unlock',
+      'trigger:publish',
       'invalidate',
       'discard:c1',
     ]);
-    expect(trigger).not.toHaveBeenCalled();
+    expect(trigger).toHaveBeenCalledWith('publish');
     expect(builds.afterAdopt).not.toHaveBeenCalled();
     expect(log.error).toHaveBeenCalledWith(
       'the publish landed, but cms/work could not be reset to it',
       { commit: 'c1', error: 'the reset could not run' },
     );
-    expect(log.warn).toHaveBeenCalledWith(
-      'the publish landed, but cms/work was not reset, so no build of the pushed commit is triggered: the next sync reconciles it',
-      { commit: 'c1', adoption: 'refused' },
+    expect((await status.snapshot()).publish).toStrictEqual({
+      state: 'idle',
+      error: null,
+    });
+  });
+
+  it('when the reset after the push fails and the node takes the candidate, the publish answers 200, runs the protocol check, and triggers no build', async () => {
+    const { publish, events, trigger, builds, log, status } = rig({
+      buildCheck: 'always',
+      resetError: new Error('the reset could not run'),
+    });
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    });
+    expect(events).toStrictEqual([
+      ...syncedEvents(),
+      ...squashedEvents(),
+      'build:c1',
+      'lock:publish',
+      'push:c1',
+      'reset:c1',
+      'adopt:c1',
+      'unlock',
+      'afterAdopt:c1',
+      'invalidate',
+    ]);
+    expect(trigger).not.toHaveBeenCalled();
+    expect(builds.discard).not.toHaveBeenCalled();
+    expect(log.error).toHaveBeenCalledWith(
+      'the publish landed, but cms/work could not be reset to it',
+      { commit: 'c1', error: 'the reset could not run' },
     );
     expect((await status.snapshot()).publish).toStrictEqual({
       state: 'idle',

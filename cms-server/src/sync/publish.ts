@@ -486,14 +486,10 @@ export function createPublish({
             error: error instanceof Error ? error.message : String(error),
           }),
         );
-      // The fallback build is the build of `cms/work` HEAD. When the reset failed, HEAD is still `S`, not the pushed commit,
-      // so no build is asked for: the next sync re-applies the saves on the pushed commit and reconciles it (2.10l).
-      else if (landed.reset) trigger('publish');
-      else
-        log.warn(
-          'the publish landed, but cms/work was not reset, so no build of the pushed commit is triggered: the next sync reconciles it',
-          { commit: plan.commit, adoption: landed.adoption },
-        );
+      // The fallback build is the build of `cms/work` HEAD. When the reset failed, HEAD is still `S`, but the push is a
+      // fast-forward from S's base and the squash takes the cms/work tree, so a build of S builds the same tree as the
+      // pushed commit. This matches pushWithoutBuild, which also triggers after a failed reset.
+      else trigger('publish');
       guard.invalidate();
       status.setRenamed([]);
       log.info('published', {
