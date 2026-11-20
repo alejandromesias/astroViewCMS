@@ -25,7 +25,7 @@ Phase 2 builds `cms-server` for one site: read, save, preview from the saved sta
 | R3. Publish creates one commit | 2.10d | done |
 | R4. A developer's push to a saved document, then publish: the CMS wins and the message names it | 2.10b, 2.10d | done |
 | R5. Deleting a referenced document is refused unless the same save fixes it | 2.6b | done |
-| R6. With the build check on, a changeset that breaks the build is not pushed | 2.10e | open |
+| R6. With the build check on, a changeset that breaks the build is not pushed | 2.10e (2.10m, PR #61) | done |
 | R7. The test editor on the CMS origin drives the preview on its own origin | 2.8e; 2.12b | spike done; browser test open |
 | R8. `cms-server` memory measured | 2.13e, 2.13a | 2.13e measured (PR #57); the publish part is open in 2.13a |
 
@@ -41,7 +41,7 @@ Phase 2 builds `cms-server` for one site: read, save, preview from the saved sta
 | Editor | 2.11a, 2.11b, 2.11e | The test editor served on the CMS origin, its data sources, and its mutation scope (`editor.ts` 97.21%) |
 | CI and process | 2.1k to 2.1t | Fast gates, e2e, `mutation-diff`, sharded `mutation-full`, nightly, weekly Windows, security scans, ruleset, worktree tooling, docs straight to `main` |
 | Wave 11 (so far) | 2.14m, 2.14d, 2.10k, 2.11c, 2.12a, 2.13d | osv audit off docs-only pushes. `cms-contract` wire schemas and error codes. The pure `auto` build-check function. Save, conflicts, the changes list and the editor's API client. The test editor's stopgap routes removed (2.12a). The three files under 80 (2.13d) |
-| Wave 12 (so far) | 2.14e, 2.11d, 2.10l | The `Origin` guard on write routes and the start-up origin warning (2.14e). The editor's Publish button, status polling and the run guide (2.11d). The publish gate and the design 3 refusals, `PublishAnswer` in `cms-contract` (2.10l) |
+| Wave 12 (2.12d open) | 2.14e, 2.11d, 2.10l, 2.10m | The `Origin` guard on write routes and the start-up origin warning (2.14e). The editor's Publish button, status polling and the run guide (2.11d). The publish gate and the design 3 refusals, `PublishAnswer` in `cms-contract` (2.10l). The candidate build, `adopt` and `discard`, `decideBuild` wired in (2.10m) |
 
 ### 1.3 Decisions to carry
 
@@ -293,9 +293,11 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 
 ### Wave 12
 
-**Status (2026-11-19):** 2.14e (PR #58), 2.11d (PR #59) and 2.10l (PR #60) are merged. 2.12d `[user]` can start now (2.11d is in). 2.10m is next; 2.10e closes when it has merged.
+**Status (2026-11-19):** 2.14e (PR #58), 2.11d (PR #59), 2.10l (PR #60) and 2.10m (PR #61, merge `bef52af`) are merged. 2.10e is closed. Wave 12 closes when the user confirms 2.12d `[user]`, its only open item.
 
 #### 2.10e Build check and snapshot publish — after 2.10k, 2.14d, 2.9a · umbrella of 2.10l and 2.10m
+
+**Closed (2026-11-19).** 2.10l (PR #60) and 2.10m (PR #61) have both merged, which is its done-when.
 
 **Split (2026-11-18, architect, for the wave 12 prep).** 2.10e keeps its id, its row R6, its done-when and the link to the state table, and gets no code of its own. It is done when 2.10l and 2.10m have both merged. 2.10l merges before 2.10m starts. Both start after 2.14e merges, because 2.14e edits every write route in `http/` (section 5.2).
 
@@ -322,6 +324,11 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
   - Under `auto`, `upstream-code` builds the candidate even if the sync's rebuild just passed on the same tree. The extra build is accepted in phase 2; "skip it when the trees are equal" is a later optimisation.
   - Tests that this task owns: a restart after the push and before `finishing` leaves a changeset with nothing in it (invariant 5); a lock timeout at the push after a build answers `503 busy` and discards the candidate (scenario 8); the start-up sweep removes a stale candidate worktree.
   - **Done when:** the R6 items below hold, and the full event-order test is green.
+  - **Result:** PR #61, merge `bef52af` (head `d2eccaf`). Closed. Mutation-diff on the changed files, head `d2eccaf`, all at or above 80: `publish.ts` 97.20, `build-runner.ts` 96.97, `sweep.ts` 91.07, `changeset.ts` 90.91, `bundle-lifecycle.ts` 90.27 (306 of 339), `run.ts` 89.19. Reviewed by Reviewer-11.18 over four rounds (approved at `b80659f` and `d2eccaf`), and by Codex (one finding, on the keep set after a failed adopt write, fixed in `d2eccaf`). All required CI checks pass.
+    - **Built:** `buildCandidate`, `adopt` (in `finishing`, under the lock, through the swap path) and `discard` in `preview/bundle-lifecycle.ts`; the candidate builds in a worktree named `build-<bundleId>`, which the start-up sweep removes when stale; `sync/publish.ts` builds with no lock held, pushes under the lock, adopts, and runs the protocol check after the release; `decideBuild` is wired in (`always`, `never`, `auto`).
+    - **Decisions:** a push race after a build answers `409 remote-moved` and is not retried; a lock timeout at the push after a build answers `503 busy` and discards the candidate; an origin read that fails before the swap refuses the candidate; an adopt that throws after the swap keeps its bundle, which the collection keeps until the state write names it.
+    - **Implication:** the server now emits `409 publish-in-progress` (2.10l), `409 remote-moved` and `424 build-failed` (2.10m). `buildCheckSkipped` is still not emitted (2.10f).
+    - **Open:** `buildCheckSkipped` (2.10f). Two clearing checks of the new keep logic survive mutation (`bundle-lifecycle.ts` lines 386 and 583); the interleaving they guard is not tested. The keep window of `serveBundle` has no test of its own. The state table is confirmed by the user (2026-11-19); the curated scenarios of the table run in the harness. Lock timeouts are scripted in three curated scenarios; the seeded runs were not re-checked. `run.ts` 300 to 306 (`--bundle` stubs) is NoCoverage, out of scope.
 - **Smoke for 2.12c:** a save during a publish and a failed build, with `buildCheck: always`. 2.12d runs as planned, with `buildCheck: never`, which does not exercise the candidate build.
 
 The scope below is the whole of 2.10e, to be split between the two tasks as above.
@@ -340,7 +347,7 @@ The scope below is the whole of 2.10e, to be split between the two tasks as abov
      4. At most one publish runs.
      5. No document is published twice as a change.
      6. From the squash to the push, `cms/work` HEAD is `S` (phase 2 only; design 1 drops it).
-   - **The architect drafted the table (2026-11-18): [Proposals/2.10e-STATE-TABLE.md](Proposals/2.10e-STATE-TABLE.md).** The user approved it with D-a to D-f as recommended (U2, 2026-11-18). The builder checks it against the code and flags any cell that does not hold. It moves into `CMS-SERVER.md` in 2.13b.
+   - **The architect drafted the table (2026-11-18): [Proposals/2.10e-STATE-TABLE.md](Proposals/2.10e-STATE-TABLE.md).** The user approved it with D-a to D-f as recommended (U2, 2026-11-18), and confirmed it (2026-11-19, with the 2.10m merge). The builder checks it against the code and flags any cell that does not hold. It moves into `CMS-SERVER.md` in 2.13b.
 2. **The flow (design 3, decided 2026-11-18; the full table is in [Proposals/2.10e-STATE-TABLE.md](Proposals/2.10e-STATE-TABLE.md)):**
    1. The publish click closes the **publish gate**: from now until the answer, a save answers `409 publish-in-progress` and a poll tick is skipped. `cms/work` cannot move.
    2. Publish syncs, waits for a running rebuild, validates and decides whether to build (`always`, `never`, or `decideBuild` for `auto`, recomputed now). Under the lock it squashes the candidate `C` and notes `cms/work` HEAD as `S`, then releases the lock.
@@ -405,6 +412,8 @@ The scope below is the whole of 2.10e, to be split between the two tasks as abov
   - **Implication:** 2.10l and 2.10m rebase on this, and the start condition of the 2.10e umbrella holds. The generated route table (2.13b) must list `cross-origin`.
 
 #### 2.12d First manual run — after 2.11d · `[user]` (was 2.12c-1)
+
+**Status (2026-11-19):** unblocked. 2.11d (#59), 2.10l (#60) and 2.10m (#61) are merged, and the run guide is in `DOCS/Guidelines/RUN-CMS-SERVER.md`. The save-during-publish step now applies. Not run yet: no record of the user's run.
 
 - Against a throwaway GitHub repo with no deploy attached, following the run guide, with `buildCheck: never`.
 - One save, one publish, and one conflict made on purpose: push a change to a saved document from another clone, then publish. If 2.10l has merged, also save during a publish. It runs as soon as 2.11d merges and does not wait for 2.10l or 2.10m; the candidate build and the failed-build case are covered in 2.12c.
