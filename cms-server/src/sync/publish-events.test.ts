@@ -110,6 +110,10 @@ class Model {
   /** The candidates the publish adopted, and the ones it discarded, by commit (2.10m). */
   adopted: string[] = [];
   discarded: string[] = [];
+  /** The commits the remote accepted, in order. Every adopted candidate is one of them (2.10m). */
+  landed: string[] = [];
+  /** Adoptions of a commit the remote had not accepted yet. Always empty (2.10m). */
+  adoptedBeforePush: string[] = [];
   private readonly counts = new Map<string, number>();
 
   name(prefix: string): string {
@@ -217,6 +221,7 @@ function rig(builderOn = true, buildCheck: BuildCheck = 'never') {
         m.pushed.set(key, values);
       }
       m.originTip = commit;
+      m.landed.push(commit);
       m.originDocs = pushed.docs;
       m.originCode = false;
       return { ok: true };
@@ -266,6 +271,8 @@ function rig(builderOn = true, buildCheck: BuildCheck = 'never') {
       };
     },
     adopt: async (candidate: Candidate) => {
+      if (!m.landed.includes(candidate.commit))
+        m.adoptedBeforePush.push(candidate.commit);
       m.adopted.push(candidate.commit);
       return true;
     },
@@ -560,6 +567,15 @@ function driver(buildCheck: BuildCheck = 'never') {
       ).toBe(!inFlight);
       expect(m.overpushes, `${where}: a document pushed unchanged`).toBe(0);
       expect(m.headMoves, `${where}: cms/work moved during a publish`).toBe(0);
+      expect(
+        m.adoptedBeforePush,
+        `${where}: a candidate was adopted before its push`,
+      ).toStrictEqual([]);
+      for (const commit of m.adopted)
+        expect(
+          m.landed.includes(commit),
+          `${where}: adopted ${commit}, which the remote never accepted`,
+        ).toBe(true);
       for (const [key, value] of latest) {
         const kept =
           m.saved.get(key) === value ||
