@@ -106,7 +106,10 @@ export interface BundleLifecycle {
   trigger(reason: TriggerReason): Promise<TriggerOutcome>;
   /** Stops the lifecycle: no new build starts, and the build in flight is killed. */
   stop(): Promise<void>;
-  /** The bundles whose swap is queued or running: the builder keeps them when it collects old bundles (2.9c review). */
+  /**
+   * The bundles the builder keeps when it collects old bundles (2.9c review): those whose swap is queued or running, and
+   * the one the node was swapped onto while no state write names it yet (2.10m).
+   */
   pendingSwaps(): ReadonlySet<string>;
   /** True while a trigger is under way (a build, its swap, or a nested protocol rebuild). A publish reads it (2.10d). */
   busy(): boolean;
@@ -162,6 +165,9 @@ export function createBundleLifecycle(
   const inheritedOf = new Map<string, number>();
   // The bundles whose swap is queued or waiting for the node. A build's collection keeps their folders until the swap settles.
   const swapsPending = new Set<string>();
+  // The bundle the node was last swapped onto, while the state does not name it: its state write failed, or has not run
+  // yet. It is kept, as the node serves it. A later swap that succeeds replaces it; its state write clears it.
+  let unrecorded: string | null = null;
   // The triggers still under way, so stop() can wait for them.
   const working = new Set<Promise<TriggerOutcome>>();
   // The swaps and the restarts, one after another: each starts only after the one before it has settled.
@@ -377,6 +383,7 @@ export function createBundleLifecycle(
       lastGood: entry,
       protocolAttempts: attempts,
     });
+    if (unrecorded === bundleId) unrecorded = null;
     await checkProtocol(entry);
     return { kind: 'served', bundleId };
   }
@@ -432,6 +439,7 @@ export function createBundleLifecycle(
       return { kind: 'failed', error: swap.error, rolledBack: swap.rolledBack };
     }
     status.setSwapError(null);
+    unrecorded = bundleId;
     return { kind: 'ok' };
   }
 
@@ -481,9 +489,11 @@ export function createBundleLifecycle(
       : `Bundle ${bundleId} speaks protocol ${built}, and the server speaks protocol ${PROTOCOL_VERSION}`;
   }
 
-  /** The bundles whose swap is queued or running now, as a copy taken at the call. A collection reads it when it runs. */
+  /** The bundles a collection keeps now, as a copy taken at the call (see the interface). A collection reads it when it runs. */
   function pendingSwaps(): ReadonlySet<string> {
-    return new Set(swapsPending);
+    const kept = new Set(swapsPending);
+    if (unrecorded !== null) kept.add(unrecorded);
+    return kept;
   }
 
   /** Runs one bundle's swap while the bundle is kept: it is removed again when the swap settles, however it ends. */
@@ -570,6 +580,7 @@ export function createBundleLifecycle(
       lastGood: entry,
       protocolAttempts: new Map(state.get().protocolAttempts),
     });
+    if (unrecorded === candidate.bundleId) unrecorded = null;
     adopted = { commit: candidate.commit, bundleId: candidate.bundleId };
     return true;
   }

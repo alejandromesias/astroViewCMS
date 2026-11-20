@@ -1024,6 +1024,80 @@ describe('the bundles a pending swap keeps from collection (2.9c review)', () =>
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it('an adopt whose state write fails after its swap keeps the candidate while the node serves it, though two newer bundles exist', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'lifecycle-keep-'));
+    try {
+      // b-1 is the candidate and the oldest; b-2 and b-3 are newer, so the collection keeps only them by age.
+      await bundlesAt(root, { 'b-1': 1000, 'b-2': 2000, 'b-3': 3000 });
+      // The adopt's swap takes; the two later swaps are rolled back, so the node stays on the candidate.
+      const answers: SwapAnswer[] = [
+        { ok: true },
+        { ok: false, error: 'node down', rolledBack: true },
+        { ok: false, error: 'node down', rolledBack: true },
+      ];
+      const rig = await rigOf({
+        bundlesDir: root,
+        swap: () =>
+          Promise.resolve<SwapAnswer>(answers.shift() ?? { ok: true }),
+      });
+      const outcome = await rig.lifecycle.buildCandidate('c'.repeat(40));
+      if (outcome.kind !== 'built')
+        throw new Error(`the candidate did not build: ${outcome.error}`);
+      rig.store.set.mockRejectedValueOnce(new Error('state write failed'));
+      await expect(
+        rig.lifecycle.adopt(outcome.candidate, { revParse: async () => BASE }),
+      ).rejects.toThrow('state write failed');
+      // Each later trigger builds another head, so it swaps again and is rolled back.
+      rig.moveHead('d'.repeat(40));
+      expect(await rig.lifecycle.trigger('save-rebuild')).toStrictEqual({
+        kind: 'swap-failed',
+        error: 'node down',
+        rolledBack: true,
+      });
+      rig.moveHead('f'.repeat(40));
+      expect(await rig.lifecycle.trigger('save-rebuild')).toStrictEqual({
+        kind: 'swap-failed',
+        error: 'node down',
+        rolledBack: true,
+      });
+      expect(rig.supervisor.swap).toHaveBeenCalledTimes(3);
+      await collectBundles(root, rig.lifecycle.pendingSwaps());
+      expect((await readdir(root)).sort()).toStrictEqual(['b-1', 'b-2', 'b-3']);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('a later swap whose state write records its bundle releases the candidate, and a collection removes it', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'lifecycle-keep-'));
+    try {
+      await bundlesAt(root, { 'b-1': 1000, 'b-2': 2000, 'b-3': 3000 });
+      const answers: SwapAnswer[] = [{ ok: true }, { ok: true }];
+      const rig = await rigOf({
+        bundlesDir: root,
+        swap: () =>
+          Promise.resolve<SwapAnswer>(answers.shift() ?? { ok: true }),
+      });
+      const outcome = await rig.lifecycle.buildCandidate('c'.repeat(40));
+      if (outcome.kind !== 'built')
+        throw new Error(`the candidate did not build: ${outcome.error}`);
+      rig.store.set.mockRejectedValueOnce(new Error('state write failed'));
+      await expect(
+        rig.lifecycle.adopt(outcome.candidate, { revParse: async () => BASE }),
+      ).rejects.toThrow('state write failed');
+      // The trigger's swap succeeds and its state write names b-2, so b-1 is no longer served.
+      expect(await rig.lifecycle.trigger('save-rebuild')).toStrictEqual({
+        kind: 'served',
+        bundleId: 'b-2',
+      });
+      expect([...rig.lifecycle.pendingSwaps()]).toStrictEqual([]);
+      await collectBundles(root, rig.lifecycle.pendingSwaps());
+      expect((await readdir(root)).sort()).toStrictEqual(['b-2', 'b-3']);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('the build state after a protocol rebuild (2.9c review)', () => {
