@@ -40,9 +40,12 @@ jobs:
         env:
           ASTRO_VERSION: ${{ matrix.astro }}
         run: |
-          ws=$(grep -l '"astro":' */package.json | xargs -n1 dirname | sed 's/^/--workspace=/')
-          test -n "$ws"
-          npm install "astro@$ASTRO_VERSION" --no-save $ws
+          ws=()
+          for f in ./*/package.json; do
+            if grep -q '"astro":' "$f"; then ws+=("--workspace=$(basename "$(dirname "$f")")"); fi
+          done
+          test "${#ws[@]}" -gt 0
+          npm install "astro@$ASTRO_VERSION" --no-save "${ws[@]}"
       # Each suite keeps Vitest's output (the failure diagnostics) in e2e-output/. shell: bash sets pipefail, so a failing
       # suite still fails the step through tee.
       - name: cms-server end-to-end
