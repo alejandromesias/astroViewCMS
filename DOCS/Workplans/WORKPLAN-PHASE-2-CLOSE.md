@@ -495,6 +495,7 @@ Order in the `[build]` slot: 2.10f, then 2.12d-1, then 2.10m-1 (architect, 2026-
 - Check that every route gets the site's state through one object, and that one middleware sets an `actor` (today a constant with `git.author`) that saves and publishes take the author from.
 - Change the code only if either is missing. As found on 2026-11-20 there is no `actor`: the author is only `git.author`, set at clone level (`git/repo.ts`). The seam (architect, 2026-11-20): one middleware sets the actor as a constant from `git.author`, and save and publish read it from there, with no behaviour change. If the seam needs more than about 50 lines, write the finding in the PR and make it a phase 3 item instead.
 - **Done when:** the check is written in the PR. If code changed, no behaviour changed and the existing tests pass untouched.
+- **Result:** PR #67, merge `6fd72c3` (head `4118e8d` after review fixes). Closed; no code changed. (a) holds in substance: every dependency is built once in `run.ts` and passed by reference. Two notes: the parsed bundle is cached in four stores, and `media/metadata.ts:42` holds a module-level `queues` Map (keyed by file path, no collision today). (b) is missing: there is no `actor`, and the author comes only from the clone's git config. The seam is deferred to phase 3 (estimated 60 to 80 lines with tests, about 48 of them production). The check is `DOCS/Workplans/Proposals/2.14j-SITE-CONTEXT-CHECK.md`.
 
 #### 2.14n `preview-contract` static mutants — `[ci]`, tests only, parallel with the rest (from 2.10l)
 
