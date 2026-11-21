@@ -1,0 +1,97 @@
+# Weekly Astro canary (WORKPLAN 2.14f). Not a required check: a red run here is the signal. It runs the e2e and browser
+# suites, the set `npm run check -- --e2e` runs (scripts/check.ts, E2E), on two Astro versions: `latest`, and the newest
+# pre-release. The job installs that version in every workspace that declares astro. A failed leg makes `report` comment
+# on the one open `astro-canary` issue, or open it. It never opens one issue per run.
+name: astro-canary
+
+on:
+  schedule:
+    - cron: '53 4 * * 4'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    name: e2e on astro ${{ matrix.astro }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        # `latest` is the astro@latest tag. 7.4.4-beta.0 is the newest pre-release: the highest prerelease version among
+        # the non-latest dist-tags of `npm view astro dist-tags --json` on 2026-11-21, which is the tag `beta`. Set it
+        # again when a newer pre-release is tagged.
+        astro: ['latest', '7.4.4-beta.0']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Chromium for the browser suite
+        run: npx playwright install --with-deps chromium
+      # The workspaces whose package.json declares astro, found by grep. One npm call for all of them: a call per
+      # workspace would undo the earlier install, because --no-save keeps nothing.
+      - name: Install astro@${{ matrix.astro }} in each workspace that declares it
+        env:
+          ASTRO_VERSION: ${{ matrix.astro }}
+        run: |
+          ws=$(grep -l '"astro":' */package.json | xargs -n1 dirname | sed 's/^/--workspace=/')
+          test -n "$ws"
+          npm install "astro@$ASTRO_VERSION" --no-save $ws
+      # Each suite keeps Vitest's output (the failure diagnostics) in e2e-output/. shell: bash sets pipefail, so a failing
+      # suite still fails the step through tee.
+      - name: cms-server end-to-end
+        shell: bash
+        run: |
+          mkdir -p e2e-output
+          npm run test:e2e -w cms-server 2>&1 | tee e2e-output/cms-server.log
+      - name: preview end-to-end and budgets
+        shell: bash
+        run: npm run test:e2e -w preview-render-server 2>&1 | tee e2e-output/preview-e2e.log
+      - name: browser suite
+        shell: bash
+        run: npm run test:browser -w preview-render-server 2>&1 | tee e2e-output/browser.log
+      - name: Upload the test output of a failed run
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-output-${{ matrix.astro }}
+          path: e2e-output/
+          retention-days: 14
+          if-no-files-found: warn
+
+  report:
+    name: report a failed canary
+    needs: canary
+    if: failure()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Only this job writes issues. The canary job runs npm install and the repo's tests, so it keeps read access only.
+    permissions:
+      contents: read
+      issues: write
+    # One report at a time: two runs that fail together must not both open the issue.
+    concurrency:
+      group: astro-canary-report
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Create the astro-canary label if it is missing
+        run: gh label create astro-canary --color D93F0B --description "The weekly Astro canary failed" --force
+      - name: Comment on the open astro-canary issue, or open one
+        run: |
+          num=$(gh issue list --label astro-canary --state open --limit 1 --json number --jq '.[0].number // empty')
+          if [ -n "$num" ]; then
+            gh issue comment "$num" --body "The weekly Astro canary failed again: $RUN_URL"
+          else
+            gh issue create --title "Astro canary is failing" --label astro-canary \
+              --body "The weekly Astro canary (the e2e and browser suites on astro@latest and on the newest pre-release) failed: $RUN_URL. Later failures are comments on this issue."
+          fi

@@ -404,6 +404,24 @@ limit.
 it, so there is never a second instance. Per-site copies and isolation
 (Docker) are left for phase 4.
 
+## Astro internals the renderer touches
+
+Every import of `astro` or `astro/...` under `preview-render-server/`, with the files that have it. Paths are relative to that folder. The list is the result of `grep` for `['"]astro(/[^'"]*)?['"]` over the folder (tests and fixtures included), checked on 2026-11-21. Add a row when an import is added. The weekly `astro-canary` workflow (WORKPLAN 2.14f) runs the e2e suites on `astro@latest` and on the newest pre-release, so a break in one of these shows there first.
+
+| Specifier | Names | Files |
+| --- | --- | --- |
+| `astro` | `build` (value); `APIRoute`, `AstroIntegration`, `ImageMetadata` (types) | `build`: `src/build.ts`. `APIRoute`: `src/dev/memory-route.ts`, `src/preview-config-route.ts`, `src/render-route.ts`, `src/validate-route.ts`, `src/warmup-route.ts`. `AstroIntegration`: `src/integration.ts`. `ImageMetadata`: `src/overlay/content-api.ts`, `src/overlay/media.ts`, `src/virtual.d.ts`, `test/fixtures/virtual-preview-site.ts`. A string only: `src/integration.test.ts` |
+| `astro/zod` | `z` | `src/render/envelope.ts`, `src/schema/json-schema.ts`, `src/schema/stubs-flavor1.ts`, `src/schema/stubs-flavor2.ts`. Tests and fixtures: `src/overlay/content-api.test.ts`, `src/overlay/dates.test.ts`, `src/schema/json-schema.test.ts`, `src/schema/stubs-flavor2.test.ts`, `src/schema/config-bundle.test.ts`, `test/fixtures/loaderless-site/src/content.config.ts`, `test/fixtures/schema-site/src/content.config.ts`, `test/fixtures/schema-site/src/lib/shared.ts`. `src/schema/config-bundle.ts` resolves it to the stub (line 77) |
+| `astro/runtime/server/index.js` | `createComponent`, `renderTemplate`, `unescapeHTML`; type `AstroComponentFactory` | `src/overlay/content-shim.ts`, `src/overlay/markdown.ts`, `test/astro-modules.d.ts` (type only) |
+| `astro/container` | `experimental_AstroContainer` | `src/render/runtime.ts` |
+| `astro/loaders` | `glob`, `file` | `test/fixtures/flags-site/src/content.config.ts`, `test/fixtures/schema-site/src/content.config.ts`. `src/schema/config-bundle.ts` rewrites imports of it to the stub (line 71). `src/schema/config-bundle.test.ts` (strings) |
+| `astro/config` | `getViteConfig`, `defineConfig` | `vitest.config.ts` (`getViteConfig`), `test/fixtures/scan-site/astro.config.mjs` (`defineConfig`). `src/manifest/import-scan.test.ts` (a string) |
+| `astro/package.json` | read at run time for the version (`createRequire`) | `src/bundle.ts`. `src/bundle.test.ts` (strings) |
+
+`preview-render-server/package.json` pins `"astro": "^7.4.5"`; that is the package.json hit of the grep, not an import.
+
+Not covered by that grep, but also Astro internals the renderer touches: the virtual module `astro:content` (`src/overlay/content-shim.ts`, `src/overlay/plugins.ts`, `src/schema/config-bundle.ts`), the integration hook names (`src/integration.ts`), and the `astro:page-load` event (`src/client/bridge.ts`).
+
 ## Bundling (tested on the old sample, not yet a build option)
 
 By default the server build keeps npm packages **external**: `entry.mjs`
