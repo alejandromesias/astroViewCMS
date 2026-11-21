@@ -13,4 +13,7 @@ export default {
   // The JSON report is judged by scripts/lib/stryker-reports.ts (WORKPLAN 2.1l), so Stryker never fails on the score.
   jsonReporter: { fileName: 'reports/mutation/triage-contract.json' },
   thresholds: { ...base.thresholds, break: null },
+  // Static mutants are tested, not ignored. Five of preview-contract's files have module-level zod schemas, so with the
+  // base `ignoreStatic: true` Stryker marked their static mutants `Ignored` and the gate never judged them (WORKPLAN 2.14n).
+  ignoreStatic: false,
 };
