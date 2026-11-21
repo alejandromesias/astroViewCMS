@@ -185,10 +185,10 @@ change reaches the site**; the developer waits, fixes and retries **(user)**.
      build (call):** sync already tried to build it (4.4), so that is
      known. The breakage is the developer's, and the host keeps the last
      good deploy, so the CMS change isn't held back. Validate against the
-     last good bundle, push, and report `upstreamBuildFailed` in the
-     publish answer and in `GET /api/status`. With `buildCheck` set, the
-     check compares against upstream alone: it blocks the push only if the
-     changeset adds a failure that upstream didn't have;
+     last good bundle and push. `GET /api/status` reports
+     `upstreamBuildFailed { sha, firstError }`. While it is set, the build
+     check is skipped under `auto` and `always`, and the publish answer says
+     `buildCheckSkipped: 'upstream-broken'` (U1, decided 2026-11-16);
   3. run the build check if configured (section 4.4);
   4. squash `cms/work` into one commit on top of `origin/main`. The message
      lists the documents, and the overwritten ones with the commit they

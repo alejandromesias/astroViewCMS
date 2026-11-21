@@ -160,14 +160,14 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 |---|---|---|
 | 11 | 2.14m `[ci]`, then 2.14d, then 2.11c (after 2.14d). Beside them: 2.10k, 2.13d, 2.12a `[build]`, then 2.13e `[build]` | 2.12a, 2.13e |
 | 12 | 2.14e (code) first, then 2.11d. 2.10e is split into 2.10l `[build]` and then 2.10m `[build]` (2.10e stays as their umbrella; the table was approved, U2). 2.12d `[user]` as soon as 2.11d merges | 2.10l, 2.10m |
-| 13 | 2.10f `[build]`, then 2.10m-1 `[build]` (after 2.10f), 2.12b `[build]`, 2.14a `[build]`. Beside them: 2.14e spike `[user]`, 2.14f `[ci]`, 2.14g `[ci]`, 2.14n `[ci]`, 2.14j, and the fixes from 2.12d (2.12d-1, 2.12d-2 `[build]`) | 2.10f, 2.10m-1, 2.12b, 2.14a, 2.12d-1, 2.12d-2 |
+| 13 | 2.10f `[build]`, then 2.12d-1 `[build]` (its first step can start beside 2.10f; it merges after), then 2.10m-1 `[build]`, then 2.12b `[build]`, 2.14a `[build]`. Beside them: 2.12d-2 `[build]`, 2.14e spike `[user]`, 2.14f `[ci]`, 2.14g `[ci]`, 2.14n `[ci]`, 2.14j | 2.10f, 2.12d-1, 2.10m-1, 2.12b, 2.14a, 2.12d-2 |
 | 14 (close) | 2.14c `[build]` first, then 2.12c `[user]`, 2.13a `[build]`, 2.13b, decisions U3 to U7, then the phase close (section 7) | 2.14c, 2.13a |
 
 ```text
  wave 11  2.14m   2.14d ──▶ 2.11c ─────────┐     2.10k ─────┐    2.13d    2.12a ─▶ 2.13e
  wave 12          2.14e (code)       2.11d ◀┘──▶ 2.12d [user]   2.10l ─▶ 2.10m [build] ◀┘ (umbrella: 2.10e)
  wave 13  2.10f ──▶ 2.12b      2.14a ─▶ (U3)     2.14e spike   2.14f  2.14g  2.14j  2.14n
-          2.10f ──▶ 2.10m-1   2.12d-1  2.12d-2
+          2.10f ──▶ 2.12d-1 ──▶ 2.10m-1   2.12d-2
  wave 14  2.14c ──▶ 2.12c [user]   2.13a   2.13b   U3..U7   ──▶ phase close
 ```
 
@@ -179,7 +179,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 |---|---|
 | `cms-server/src/http/*` | 2.14d, then 2.14e (the `Origin` check, small), then 2.10l and 2.10m (they rebase on 2.14e) |
 | `cms-server/src/sync/publish.ts`, `preview/bundle-lifecycle.ts` | 2.10l, then 2.10m, then 2.10f |
-| `preview/status.ts` | 2.10l, then 2.10m, then 2.10f (the `upstreamBuildFailed` type change) |
+| `preview/status.ts` | 2.10l, then 2.10m, then 2.10f (the `upstreamBuildFailed` type change, which also edits `cms-contract/src/answers.ts` and `cms-server/editor/status.ts`, `messages.ts`) |
 | `preview-contract/src/` | 2.10k (the validate answer), 2.13d (`schema.ts`), 2.14c. A task that changes `schema.ts` before 2.13d merges must bring it to 80 |
 | `cms-server/editor/` | 2.11c, then 2.11d |
 | `preview-render-server/src/` | 2.12a and 2.13d (`bundle.ts`): 2.13d waits for 2.12a's merge if 2.12a touches `bundle.ts`. 2.14c is last (`integration.ts`, the schema pass) |
@@ -428,16 +428,19 @@ The scope below is the whole of 2.10e, to be split between the two tasks as abov
 
 - **Carried in:** the optional test for an invalid `build-time.json` in `read.test.ts` (open from 2.10k). Do it here, since this task touches `sync/build-check.ts`.
 - Sync builds `cms/work` HEAD after the re-apply. On a failure it builds the `origin/<branch>` tip once, to tell whose failure it is:
-  - if the tip fails too, record `upstreamBuildFailed { sha, firstError }` (a type change in `preview/status.ts`, its setter and its tests);
+  - if the tip fails too, record `upstreamBuildFailed { sha, firstError }`;
   - if the tip passes, the changeset is at fault, and that is reported instead.
-- The last good bundle stays current. Publish validates against it, pushes, and reports `upstreamBuildFailed`.
-- **If U1 is yes:** while `upstreamBuildFailed` is set, the build check is skipped and the answer and the status say `buildCheckSkipped: 'upstream-broken'`. The error-text comparison is dropped.
+- **The origin-tip build (architect, 2026-11-20).** It reuses `buildCandidate` and always `discard`s the result, even when it passes: it takes the one build slot, runs with no lock held, and the start-up sweep already covers its worktree. The tip without the changeset is never served. The commit is the `origin/<branch>` sha fetched in this sync, and it is the `sha` recorded; do not fetch again.
+- **The wire shape changes here.** `upstreamBuildFailed` becomes `{ sha, firstError } | null` in `cms-contract` `statusAnswer`, in `preview/status.ts` (and its setter), and in the editor (`editor/status.ts`, `messages.ts`). Keep a contract test for each. `sha` lets the message name the developer's commit; the shape matches `firstError` in `PublishFailure`.
+- **Clearing rule.** The flag clears on the next passing build of a commit that contains the current origin tip, in the same setter that records it. The sync's build of `cms/work` after the re-apply counts, and so does a passing publish candidate. The origin moving does not clear the flag by itself: the move triggers a sync build, and that build decides.
+- The last good bundle stays current. Publish validates against it and pushes. **Only `GET /api/status` reports `upstreamBuildFailed`; the publish answer gets no new field and carries only `buildCheckSkipped`.** The editor already reads status after a publish.
+- **U1 is yes:** while `upstreamBuildFailed` is set, the build check is skipped under `auto` and `always` (`never` has nothing to skip), and the publish answer says `buildCheckSkipped: 'upstream-broken'` (the status carries `upstreamBuildFailed`). Under `auto` the skip covers every reason, including `upstream-code`. Validation (the schemas) still runs. The error-text comparison is dropped. Cost, accepted by U1 and to be said in the PR: a broken MDX body in the changeset can be pushed while upstream is broken.
 - The optional origin-tip build at start-up moves to phase 4.
-- **Done when:** a developer pushes a broken component, and the CMS user still publishes a content edit and is told that the check was skipped and why. `[build]`
+- **Done when:** a developer pushes a broken component, and the CMS user still publishes a content edit and is told that the check was skipped and why. `[build]` Proven by both: a harness scenario in `publish-events.test.ts` (invariants and the `buildCheckSkipped` answer), and one `cms-server` e2e that pushes a real broken component to the bare remote, publishes a content edit and gets `200` with `buildCheckSkipped: 'upstream-broken'` plus the status flag. The e2e belongs to 2.10f, not 2.12b.
 
-#### 2.10m-1 Publish hardening tests — after 2.10f · `[build]`
+#### 2.10m-1 Publish hardening tests — after 2.10f and 2.12d-1 · `[build]`
 
-Tests only, no new behaviour. The Open items of 2.10l and 2.10m:
+Order in the `[build]` slot: 2.10f, then 2.12d-1, then 2.10m-1 (architect, 2026-11-20): 2.12d-1 may move the keep and swap window that the surviving mutants guard. Tests only, no new behaviour. The Open items of 2.10l and 2.10m:
 
 - Kill or justify the two surviving mutants at `bundle-lifecycle.ts` lines 386 and 583, with a test of the interleaving they guard.
 - A test of its own for the keep window of `serveBundle`.
@@ -452,7 +455,8 @@ Tests only, no new behaviour. The Open items of 2.10l and 2.10m:
   - the iframe's `fetch` succeeds, and the same preview opened top-level answers `401`;
   - a draft changes the preview;
   - Save, then reload, and the overlay shows the saved content.
-- A variant of the whole save and publish path with `siteDir` set (monorepo).
+- **Where it lives (architect, 2026-11-20):** a new `cms-server` browser project, for example `cms-server/test/browser/`, run by `npm run check -- --e2e`. Reuse the Playwright already in the workspace; add no dependency.
+- A variant of the whole save and publish path with `siteDir` set (monorepo). Build the fixture in the test: copy `sample-site` into a subfolder of a temporary repo, reusing `cms-server/test/fixtures` and the helpers if they fit. Do not commit a second copy of the site.
 - **Done when:** the table is complete and green.
 
 #### 2.14a Second-site spike — `[build]` (A2)
@@ -463,6 +467,7 @@ Tests only, no new behaviour. The Open items of 2.10l and 2.10m:
   - (b) the Astro version;
   - (c) an assumption taken from bigspring;
   - (d) a real bug.
+- **Where (architect, 2026-11-20):** the scaffolding stays outside the repo, in `C:\Users\aleja\DesignWork\2.14a-spike\`, as for the 2.12d run. The failure table is a new doc, `DOCS/Workplans/Proposals/2.14a-SECOND-SITE.md`, linked from this task's Result. Ask the user once for the path to their own site; if there is none, skip that part and say so in the Result. **Pending (2026-11-20): the user will provide the path to a site of their own on Astro 7 (expected 2026-11-21).** It does not block the start of wave 13: 2.14a is late in the `[build]` order, and the own-site part is optional.
 - **Done when:** this plan links a table of failures by cause, each with the smallest fix, and the list of what a site must satisfy today. The scaffolding is thrown away.
 
 #### 2.14e item 4 Same-site cookie spike — `[user]`
@@ -472,19 +477,20 @@ Tests only, no new behaviour. The Open items of 2.10l and 2.10m:
 
 #### 2.14f Astro canary and the internals list — `[ci]` (A11)
 
-- A weekly, non-blocking workflow runs the e2e suite on `astro@latest` and on the newest pre-release. A failure opens an issue.
+- A weekly, non-blocking workflow runs both e2e suites (the set `npm run check -- --e2e` runs) on `astro@latest` and on the newest pre-release. The job runs `npm install astro@<ver> --no-save` in every workspace that declares `astro`, with a matrix of the two versions picked from `npm view astro dist-tags --json`.
+- A failure comments on the one open issue labelled `astro-canary`, or opens it if none is open. It never opens one issue per run (architect, 2026-11-20).
 - A section in PREVIEW-RENDER-SERVER.md lists every Astro internal the renderer touches, with the file that touches it.
 - **Done when:** the workflow has run once, and the list matches a grep of the imports.
 
 #### 2.14g macOS smoke job — `[ci]` (A12)
 
-- A weekly job on `macos-latest`, shaped like `windows.yml`: the process and git unit tests and the e2e start test.
+- A weekly job on `macos-latest`, mirroring `windows.yml` exactly: `npm ci`, then `npm run coverage`, plus `cms-server/test/e2e/start.e2e.test.ts` under its e2e config. The full unit run costs nothing on a public repo and avoids picking files by guesswork (architect, 2026-11-20).
 - **Done when:** the job is green once, or its failures are tasks.
 
 #### 2.14j Site context and actor seam — check first (A10)
 
 - Check that every route gets the site's state through one object, and that one middleware sets an `actor` (today a constant with `git.author`) that saves and publishes take the author from.
-- Change the code only if either is missing.
+- Change the code only if either is missing. As found on 2026-11-20 there is no `actor`: the author is only `git.author`, set at clone level (`git/repo.ts`). The seam (architect, 2026-11-20): one middleware sets the actor as a constant from `git.author`, and save and publish read it from there, with no behaviour change. If the seam needs more than about 50 lines, write the finding in the PR and make it a phase 3 item instead.
 - **Done when:** the check is written in the PR. If code changed, no behaviour changed and the existing tests pass untouched.
 
 #### 2.14n `preview-contract` static mutants — `[ci]`, tests only, parallel with the rest (from 2.10l)
@@ -497,7 +503,7 @@ Tests only, no new behaviour. The Open items of 2.10l and 2.10m:
 
 - **Seen:** twice in the run (cms.log 03:33:45Z and 03:35:30Z), a save 0.6 to 1.8 s after `Build finished` answered "The preview node did not answer, so nothing was saved. Try again once it is ready." The log has the warn `the preview node did not check the save`. Nothing was lost, and a retry worked.
 - **Likely cause (not confirmed):** Save is enabled again when the publish ends, while the preview node is still swapping onto the new bundle.
-- **First step:** find the window in `bundle-lifecycle.ts` and the editor's status handling, and reproduce it in a test.
+- **First step:** find the window in `bundle-lifecycle.ts` and the editor's status handling, and reproduce it in a test. This step can start alongside 2.10f; the task merges after 2.10f, and 2.10m-1 follows it (architect, 2026-11-20).
 - **Done when:** a save after a publish either succeeds, or Save stays off until the preview node is ready.
 
 #### 2.12d-2 Editor on a non-CMS origin shows nothing — from 2.12d · `[build]`
