@@ -160,7 +160,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 |---|---|---|
 | 11 | 2.14m `[ci]`, then 2.14d, then 2.11c (after 2.14d). Beside them: 2.10k, 2.13d, 2.12a `[build]`, then 2.13e `[build]` | 2.12a, 2.13e |
 | 12 | 2.14e (code) first, then 2.11d. 2.10e is split into 2.10l `[build]` and then 2.10m `[build]` (2.10e stays as their umbrella; the table was approved, U2). 2.12d `[user]` as soon as 2.11d merges | 2.10l, 2.10m |
-| 13 | 2.10f `[build]`, then 2.12d-1 `[build]` (its first step can start beside 2.10f; it merges after), then 2.10m-1 `[build]`, then 2.12b `[build]`, 2.14a `[build]`. Beside them: 2.12d-2 `[build]`, 2.14e spike `[user]`, 2.14f `[ci]`, 2.14g `[ci]`, 2.14n `[ci]`, 2.14j | 2.10f, 2.12d-1, 2.10m-1, 2.12b, 2.14a, 2.12d-2 |
+| 13 | 2.10f `[build]`, then 2.12d-1 `[build]` (its first step can start beside 2.10f; it merges after), then 2.10m-1 `[build]`, then 2.12b `[build]`, 2.14a `[build]`. Beside them: 2.12d-2 `[build]`, 2.12d-3 `[build]` (after 2.12d-1), 2.14e spike `[user]`, 2.14f `[ci]`, 2.14g `[ci]`, 2.14n `[ci]`, 2.14j | 2.10f, 2.12d-1, 2.10m-1, 2.12b, 2.14a, 2.12d-2, 2.12d-3 |
 | 14 (close) | 2.14c `[build]` first, then 2.12c `[user]`, 2.13a `[build]`, 2.13b, decisions U3 to U7, then the phase close (section 7) | 2.14c, 2.13a |
 
 ```text
@@ -168,6 +168,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
  wave 12          2.14e (code)       2.11d ◀┘──▶ 2.12d [user]   2.10l ─▶ 2.10m [build] ◀┘ (umbrella: 2.10e)
  wave 13  2.10f ──▶ 2.12b      2.14a ─▶ (U3)     2.14e spike   2.14f  2.14g  2.14j  2.14n
           2.10f ──▶ 2.12d-1 ──▶ 2.10m-1   2.12d-2
+                    2.12d-1 ──▶ 2.12d-3
  wave 14  2.14c ──▶ 2.12c [user]   2.13a   2.13b   U3..U7   ──▶ phase close
 ```
 
@@ -179,7 +180,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 |---|---|
 | `cms-server/src/http/*` | 2.14d, then 2.14e (the `Origin` check, small), then 2.10l and 2.10m (they rebase on 2.14e) |
 | `cms-server/src/sync/publish.ts`, `preview/bundle-lifecycle.ts` | 2.10l, then 2.10m, then 2.10f |
-| `preview/status.ts` | 2.10l, then 2.10m, then 2.10f (the `upstreamBuildFailed` type change, which also edits `cms-contract/src/answers.ts` and `cms-server/editor/status.ts`, `messages.ts`) |
+| `preview/status.ts` | 2.10l, then 2.10m, then 2.10f (the `upstreamBuildFailed` type change, which also edits `cms-contract/src/answers.ts` and `cms-server/editor/status.ts`, `messages.ts`), then 2.12d-1 (`cms-server/editor/status.ts`), then 2.12d-3 |
 | `preview-contract/src/` | 2.10k (the validate answer), 2.13d (`schema.ts`), 2.14c. A task that changes `schema.ts` before 2.13d merges must bring it to 80 |
 | `cms-server/editor/` | 2.11c, then 2.11d |
 | `preview-render-server/src/` | 2.12a and 2.13d (`bundle.ts`): 2.13d waits for 2.12a's merge if 2.12a touches `bundle.ts`. 2.14c is last (`integration.ts`, the schema pass) |
@@ -512,6 +513,13 @@ Order in the `[build]` slot: 2.10f, then 2.12d-1, then 2.10m-1 (architect, 2026-
 - **Likely cause (not confirmed):** the preview trusts only `origins.cms` as the parent origin (`editorOrigins`, kept in 2.12a).
 - **First step:** decide the intent: a visible message that names `origins.cms`, or reads that work with saves refused. Then fix the code or the run guide.
 - **Done when:** opening the editor on the wrong origin says what to open instead, and a test covers it.
+
+#### 2.12d-3 Cache the changeset size in the status — after 2.12d-1 · `[build]`, small
+
+- **Why:** 2.12d-1 keeps every visible editor tab reading `GET /api/status` every 5 s while idle (1 s while a publish, build or node change runs). Each read runs `changedPaths()`, a `git diff --name-status` process, only to count `changesetSize`. That costs about 20 to 50 ms per read on Windows, mostly process start. It is cheap, but it is churn for a number that rarely changes.
+- **Not the fix:** a longer idle interval. The 5 s idle poll catches a sync-code build only because the build runs about 8 s before the swap; a small site builds faster (architect, 2026-11-21). Stopping idle reads after a quiet period is also out: the idle page is the case the poll is for.
+- **Fix:** `preview/status.ts` keeps the last `changesetSize` and recomputes it only after an event that can change it: a save, a publish (pushed or reset), or a sync that fetched new commits. Idle reads then serve it from memory, with no git process.
+- **Done when:** a test shows repeated status reads with no event in between run `changedPaths()` once, and that each of the three events makes the next read recompute it.
 
 ### Wave 14 (close)
 
