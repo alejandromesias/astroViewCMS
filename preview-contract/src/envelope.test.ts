@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { parseRenderRequest } from './envelope.ts';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { parseRenderRequest, renderRequestSchema } from './envelope.ts';
 
 // The same cases as preview-render-server/src/render/envelope.test.ts (the
 // renderer's own check). Keep the two tables in step.
@@ -86,5 +86,74 @@ describe('parseRenderRequest: media refs that are names of Object.prototype', ()
     ]);
     expect(Object.getPrototypeOf(result.media)).toBe(Object.prototype);
     expect((result.media as Record<string, unknown>).url).toBeUndefined();
+  });
+});
+
+describe('parseRenderRequest: exact messages and every image format', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each(['png', 'jpg', 'jpeg', 'tiff', 'webp', 'gif', 'svg', 'avif'])(
+    'accepts the image format %s',
+    (format) => {
+      const media = { 'x.png': { ...entry, format } };
+      expect(parseRenderRequest({ documents: {}, media })).toEqual({
+        ok: true,
+        documents: {},
+        media,
+      });
+    },
+  );
+
+  it('names the entry and the field on one line', () => {
+    expect(
+      message({ documents: {}, media: { 'x.png': { ...entry, width: 0 } } }),
+    ).toBe('"media" entry "x.png": "width" must be a positive integer');
+    expect(
+      message({ documents: {}, media: { 'x.png': { ...entry, url: 5 } } }),
+    ).toBe('"media" entry "x.png": "url" must be a string');
+  });
+
+  it('refuses an empty url with the same message as a non-string url', () => {
+    expect(
+      message({ documents: {}, media: { 'x.png': { ...entry, url: '' } } }),
+    ).toBe('"media" entry "x.png": "url" must be a string');
+  });
+
+  it('lists every accepted format when the format is refused', () => {
+    expect(
+      message({
+        documents: {},
+        media: { 'x.png': { ...entry, format: 'bmp' } },
+      }),
+    ).toBe(
+      '"media" entry "x.png": "format" must be one of png, jpg, jpeg, tiff, webp, gif, svg, avif',
+    );
+  });
+
+  it('names an entry that is not an object, with no field after it', () => {
+    expect(message({ documents: {}, media: { 'x.png': 'no' } })).toBe(
+      '"media" entry "x.png" must be an object',
+    );
+  });
+
+  it('gives the exact message of each refused part of the body', () => {
+    expect(message('text')).toBe('Body must be a JSON object with "documents"');
+    expect(message({})).toBe('"documents" must be an object');
+    expect(message({ documents: {}, media: [] })).toBe(
+      '"media" must be an object',
+    );
+  });
+
+  it('answers the fallback message when Zod gives no issue', () => {
+    vi.spyOn(renderRequestSchema, 'safeParse').mockReturnValueOnce({
+      success: false,
+      error: { issues: [] },
+    } as unknown as ReturnType<typeof renderRequestSchema.safeParse>);
+    expect(parseRenderRequest({ documents: {} })).toEqual({
+      ok: false,
+      message: 'Invalid body',
+    });
   });
 });

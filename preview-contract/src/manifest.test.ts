@@ -136,3 +136,15 @@ describe('routeRecordSchema', () => {
     ).toBe(false);
   });
 });
+
+describe('documentRecordSchema: every format the CMS names', () => {
+  it.each(['json', 'md', 'mdx', 'yaml', 'toml', 'other'])(
+    'accepts format %s',
+    (format) => {
+      expect(documentRecordSchema.parse({ ...documentOf(), format })).toEqual({
+        ...documentOf(),
+        format,
+      });
+    },
+  );
+});
