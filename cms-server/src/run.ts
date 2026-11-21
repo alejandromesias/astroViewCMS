@@ -347,8 +347,9 @@ export async function run(
     activity: { touch: poll.touch },
     // GET /api/overlay: the site's image folder, and the log of a clash (2.9e).
     overlay: { mediaFolder: config.media.folder, log: deps.logger },
-    // GET /api/preview-url: the preview origin and site, the token secret, and the node's warm-up (2.9e).
+    // GET /api/preview-url: the CMS origin (the only page that may open it), the preview origin and site, the token secret, and the node's warm-up (2.9e).
     previewUrl: {
+      cmsOrigin: config.origins.cms,
       origin: config.origins.preview,
       site: config.site,
       tokenSecret: secrets.previewTokenSecret,

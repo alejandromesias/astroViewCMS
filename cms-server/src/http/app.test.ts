@@ -119,12 +119,13 @@ describe('createApp', () => {
     const response = await createTestApp({
       ...fakeAppDeps(),
       previewUrl: {
+        cmsOrigin: 'http://cms.localhost:4400',
         origin: 'http://preview.localhost:4401',
         site: 'demo',
         tokenSecret: 'a-test-secret',
         warm: async () => {},
       },
-    }).request('/api/preview-url');
+    }).request('/api/preview-url', { headers: { host: 'cms.localhost:4400' } });
     expect(response.status).toBe(400);
     expect(await response.json()).toStrictEqual({
       error: 'invalid-path',
@@ -202,6 +203,7 @@ describe('createApp: the Host check', () => {
       repo,
       overlay: { mediaFolder: 'src/assets/uploads' },
       previewUrl: {
+        cmsOrigin: 'http://cms.localhost:4400',
         origin: 'http://preview.localhost:4401',
         site: 'demo',
         tokenSecret: 'a-test-secret',

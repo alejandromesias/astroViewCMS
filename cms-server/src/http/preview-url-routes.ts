@@ -18,6 +18,8 @@ import { errorJson } from './errors.ts';
 
 /** What the route needs: the preview origin and the site (from the config), the token secret, the node's warm-up, and the log and clock (the real ones by default). */
 export interface PreviewUrlRouteDeps {
+  /** config.origins.cms, without a trailing slash. Only a page on it may open the preview (its frame-ancestors names it). */
+  readonly cmsOrigin: string;
   /** config.origins.preview, without a trailing slash. */
   readonly origin: string;
   /** config.site: the token is for this site. */
@@ -42,7 +44,16 @@ export function registerPreviewUrlRoutes(
     now,
     log: deps.log ?? logger,
   });
+  // The preview frames only origins.cms, so a page opened anywhere else would get a broken frame: refused here, with the origin to open.
+  const cmsHost = new URL(deps.cmsOrigin).host;
   app.get('/api/preview-url', async (c) => {
+    if (c.req.header('host') !== cmsHost)
+      return errorJson(
+        c,
+        apiError('cross-origin', {
+          message: `This page is not origins.cms. Open the editor at ${deps.cmsOrigin}/ instead: the preview shows only on that origin, and saves are refused here.`,
+        }),
+      );
     const query = previewUrlQuerySchema.safeParse({
       path: c.req.query('path'),
     });
