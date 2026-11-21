@@ -89,6 +89,8 @@ These are the rules builders keep needing. Each is in the log under the task nam
 | H3 | **osv-scanner ignore** `GHSA-g3hv-75wg-m249` expires 2026-12-15. An expired entry fails `npm run audit` | revisit 2026-12-01 |
 | H3b | **osv-scanner ignore** `GHSA-fc5q-39xc-vjpf` (picomatch) expires 2026-12-17. Check first whether a patched picomatch exists. An expired entry fails `npm run audit`. Waiver merged in #56 (`fca9160`) | revisit 2026-12-01 |
 | H5 | **`run.test.ts` first-start flake:** one unexplained failure, then green after an explicit 5 s timeout. If it fails again, it becomes a task | watch |
+| H6 | **PR #62, `.vitest/` ignored:** done 2026-11-21, merge `3c3d00e`. Adds `.vitest/` to `.gitignore`; the JSON report folder blocked clean commits | done |
+| H7 | **PR #63, dependency group bump:** done 2026-11-21, merge `6431732`. Dependabot's minor and patch group (15 updates, including Biome 2.6.8, vitest 5.1.1 and playwright 1.65.1). No code change | done |
 
 ## 2. Working rules (short form)
 
@@ -499,6 +501,7 @@ Order in the `[build]` slot: 2.10f, then 2.12d-1, then 2.10m-1 (architect, 2026-
 - `preview-contract` has 5 files with module-level zod schemas. Stryker's `ignoreStatic: true` marks their static mutants `Ignored`, so the gate never judges them.
 - Set `ignoreStatic: false` for the `preview-contract` triage, as done for `cms-contract` in 2.10l, then kill the survivors.
 - **Done when:** the `preview-contract` mutation group judges static mutants, and its survivors are killed or justified, at or above the floor.
+- **Result:** PR #66, merge `d2b61ad` (head `93ff453`). Closed (2026-11-21). `ignoreStatic: false` in `stryker.contract.config.mjs`, with tests in `envelope.test.ts`, `manifest.test.ts` and `bundle.test.ts`, and a one-character url test. Stryker, preview-contract (9 files): overall 91.49 -> 97.52; every file above 80. Survivors and the no-coverage mutant are judged, not killed: `envelope.ts:55`, `:51` (the `{}` error option, equivalent under Zod 4), `:78` (unreachable through the public API), `revision.ts:59`, `token.ts:59` (unreachable) and `token.ts:93` (equivalent). The reasons are in the PR body. The renderer's copy of the messages is not checked against this one; the note is in the `envelope.test.ts` header. The score is from the run at `e254473`; it was not rerun at `93ff453`.
 
 #### 2.12d-1 Save right after a publish is refused — from 2.12d · `[build]`
 
@@ -506,6 +509,7 @@ Order in the `[build]` slot: 2.10f, then 2.12d-1, then 2.10m-1 (architect, 2026-
 - **Likely cause (not confirmed):** Save is enabled again when the publish ends, while the preview node is still swapping onto the new bundle.
 - **First step:** find the window in `bundle-lifecycle.ts` and the editor's status handling, and reproduce it in a test. This step can start alongside 2.10f; the task merges after 2.10f, and 2.10m-1 follows it (architect, 2026-11-20).
 - **Done when:** a save after a publish either succeeds, or Save stays off until the preview node is ready.
+- **Result:** PR #64, merge `67ef16b`. Closed (2026-11-21). Save is off while `GET /api/status` reports a node state other than `ready`, and the reason shows in the publish status line. The status poll reads every 1 s while a publish, a build or a node change runs, and every 5 s otherwise. All CI checks passed on the PR. Not run: Stryker and e2e were left to CI; 2.12d step 6 has not been rerun against the throwaway repo. A crash restart can leave Save on for up to 5 s, and the server refusal is the backstop.
 
 #### 2.12d-2 Editor on a non-CMS origin shows nothing — from 2.12d · `[build]`
 
@@ -513,6 +517,7 @@ Order in the `[build]` slot: 2.10f, then 2.12d-1, then 2.10m-1 (architect, 2026-
 - **Likely cause (not confirmed):** the preview trusts only `origins.cms` as the parent origin (`editorOrigins`, kept in 2.12a).
 - **First step:** decide the intent: a visible message that names `origins.cms`, or reads that work with saves refused. Then fix the code or the run guide.
 - **Done when:** opening the editor on the wrong origin says what to open instead, and a test covers it.
+- **Result:** PR #65, merge `3300565` (commit `2cc8c2e`). Closed (2026-11-21). `GET /api/preview-url` answers `403 cross-origin` unless the request's `Host` is the host of `origins.cms`; the message names `origins.cms` and the address to open instead, and the editor shows it in the status line. Saves stay refused by the Origin check (2.14e). The cause was `frame-ancestors`, which allows only `origins.cms`. `RUN-CMS-SERVER.md` corrected. Tests: the editor refusal table and the route tests, 265 pass in four targeted files. Not run locally: an Astro build and e2e; all CI checks passed on the PR.
 
 #### 2.12d-3 Cache the changeset size in the status — after 2.12d-1 · `[build]`, small
 
