@@ -84,6 +84,8 @@ export interface StatusPollOptions {
   readonly intervalMs?: number;
   /** The milliseconds between two reads while nothing runs. */
   readonly idleIntervalMs?: number;
+  /** Whether the state the caller last saw was busy. It decides the interval after a first read that fails. Default false. */
+  readonly initiallyBusy?: boolean;
   /** Runs `run` after `ms` and returns a function that cancels it. The default is `setTimeout`. */
   readonly schedule?: (run: () => void, ms: number) => () => void;
   /** Called with every answered read, changed or not (`onChange` is not, for an unchanged answer). */
@@ -109,10 +111,11 @@ export function startStatusPolling(options: StatusPollOptions): () => void {
     idleIntervalMs = STATUS_IDLE_POLL_MS,
     schedule = scheduleTimeout,
     onRead,
+    initiallyBusy = false,
   } = options;
   let stopped = false;
-  /** Whether the last answered read found something running. A failed read keeps it. */
-  let busy = false;
+  /** Whether the last answered read found something running. A failed read keeps it, starting from `initiallyBusy`. */
+  let busy = initiallyBusy;
   let cancelNext: (() => void) | undefined;
   /** The last status reported, as text, so an unchanged answer is not reported again. */
   let reported: string | undefined;

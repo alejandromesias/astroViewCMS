@@ -302,6 +302,18 @@ describe('startStatusPolling', () => {
     );
   });
 
+  it('keeps the busy interval it was started with when its first read fails', async () => {
+    const { schedule, runs } = manualSchedule();
+    startStatusPolling({
+      fetchImpl: fetchAnswering(answerWith({ error: 'internal_error' }, 500)),
+      onChange: vi.fn(),
+      schedule,
+      initiallyBusy: true,
+    });
+    await flush();
+    expect(runs[0]?.ms).toBe(STATUS_POLL_MS);
+  });
+
   it('switches between the idle and the busy interval with what each read finds', async () => {
     const { schedule, runs } = manualSchedule();
     startStatusPolling({

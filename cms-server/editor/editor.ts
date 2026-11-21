@@ -822,8 +822,8 @@ export async function startEditor(
   /** The stop of the status poll while one runs, or undefined. At most one poll runs. */
   let stopPoll: (() => void) | undefined;
 
-  /** Starts the poll of GET /api/status, unless one runs or the page is hidden. The poll reads at once, then every second while something runs and every 5 s while nothing does. */
-  function startPoll() {
+  /** Starts the poll of GET /api/status, unless one runs or the page is hidden. The poll reads at once, then every second while something runs and every 5 s while nothing does. `busy` is the state the caller last saw. */
+  function startPoll(busy = false) {
     if (stopPoll !== undefined || document.visibilityState === 'hidden') return;
     stopPoll = startStatusPolling({
       fetchImpl,
@@ -832,6 +832,7 @@ export async function startEditor(
       onRead: (status) => {
         if (status.state === 'publishing') lastPublishFailed = false;
       },
+      initiallyBusy: busy,
     });
   }
 
@@ -877,16 +878,17 @@ export async function startEditor(
         showLines(publishResult, publishFailureMessages(answer.failure));
       }
       // The publish may have cleared a failed state or an upstream build error: read the status now, not at the next reload.
+      // The poll is ended first, so a read it sent earlier cannot answer after this one.
+      endPoll();
       const status = await getStatus(fetchImpl);
+      let busy = false;
       if (status.ok) {
         const shown = publishStatusOf(status.body);
         onPublishStatus(shown);
-        // A publish or a build may run now: the poll restarts, so it reads at the busy interval from here on, not after its idle wait.
-        if (shown.state === 'publishing' || previewChanging(shown)) {
-          endPoll();
-          startPoll();
-        }
+        busy = shown.state === 'publishing' || previewChanging(shown);
       }
+      // The poll starts again from here: at the busy interval if the status is busy, after its idle wait otherwise.
+      startPoll(busy);
     } finally {
       publishing = false;
       refreshButtons();
