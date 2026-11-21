@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PROTOCOL_VERSION } from 'preview-protocol';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildTimeNote,
   limitNote,
@@ -143,6 +143,18 @@ interface SetupOptions {
   onOverlay?: () => void;
 }
 
+/** Sets the page's visibility and tells the editor, as a browser does when a tab is shown or hidden. */
+function showPage(state: DocumentVisibilityState) {
+  Object.defineProperty(document, 'visibilityState', {
+    value: state,
+    configurable: true,
+  });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
+/** The stops of the editors the tests started; afterEach ends them, so no poll outlives its test. */
+const stops: Array<() => void> = [];
+
 /** Starts the editor on a fake CMS API; resolves once its startup has run. */
 async function setup({
   search = '',
@@ -193,7 +205,7 @@ async function setup({
     }
     return new Response(null, { status: 404 });
   });
-  await startEditor(window, fetch);
+  stops.push(await startEditor(window, fetch));
 
   // Messages come from the preview origin by default, as the bridge sends them.
   const fromPage = (
@@ -278,6 +290,9 @@ const edit = (textarea: HTMLTextAreaElement, text: string) => {
 let editor: Awaited<ReturnType<typeof setup>>;
 beforeEach(async () => {
   editor = await setup();
+});
+afterEach(() => {
+  for (const stop of stops.splice(0)) stop();
 });
 
 describe('loading the page', () => {
@@ -2839,6 +2854,311 @@ describe('publishing', () => {
     }
   });
 
+  it('keeps Save off while the preview node starts, and on again once it is ready', async () => {
+    vi.useFakeTimers();
+    try {
+      await setup({
+        statuses: [
+          Response.json({
+            bundle: null,
+            publish: { state: 'idle', error: null },
+            node: { state: 'starting', bundleId: null, error: null },
+          }),
+          Response.json({
+            bundle: null,
+            publish: { state: 'idle', error: null },
+            node: { state: 'ready', bundleId: null, error: null },
+          }),
+        ],
+      });
+      await vi.waitFor(() =>
+        expect(saveControl().title).toBe('Preview is starting'),
+      );
+      expect(saveControl().disabled).toBe(true);
+      expect(publishButton().disabled).toBe(false);
+      // The reason is visible text, and Save names it as its description.
+      expect(publishStatus().textContent).toBe('Preview is starting');
+      expect(publishStatus().hidden).toBe(false);
+      expect(saveControl().getAttribute('aria-describedby')).toBe(
+        'publish-status',
+      );
+      // The next read, a second later, finds the node ready and stops.
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(saveControl().disabled).toBe(false);
+      expect(saveControl().title).toBe('');
+      expect(publishStatus().hidden).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('enables Save while a build runs once the preview node is ready', async () => {
+    vi.useFakeTimers();
+    try {
+      await setup({
+        statuses: [
+          Response.json({
+            bundle: null,
+            publish: { state: 'idle', error: null },
+            node: { state: 'starting', bundleId: null, error: null },
+          }),
+          Response.json({
+            bundle: null,
+            publish: { state: 'idle', error: null },
+            node: { state: 'ready', bundleId: null, error: null },
+            build: { state: 'building', error: null, failedCommit: null },
+          }),
+        ],
+      });
+      await vi.waitFor(() =>
+        expect(saveControl().title).toBe('Preview is starting'),
+      );
+      // The next read, a second later, finds the node ready while the build still runs.
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(saveControl().disabled).toBe(false);
+      expect(saveControl().title).toBe('');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('waits for the preview node after a publish, and enables Save when it is ready', async () => {
+    vi.useFakeTimers();
+    try {
+      editor = await setup({
+        statuses: [
+          // the page's load, the read after the publish answer, the poll's first read, and the poll one second later
+          Response.json({
+            bundle: null,
+            publish: { state: 'idle', error: null },
+            node: { state: 'ready', bundleId: null, error: null },
+          }),
+          Response.json({
+            bundle: null,
+            publish: { state: 'idle', error: null },
+            node: { state: 'starting', bundleId: null, error: null },
+            build: { state: 'building', error: null, failedCommit: null },
+          }),
+          Response.json({
+            bundle: null,
+            publish: { state: 'idle', error: null },
+            node: { state: 'starting', bundleId: null, error: null },
+          }),
+          Response.json({
+            bundle: null,
+            publish: { state: 'idle', error: null },
+            node: { state: 'ready', bundleId: null, error: null },
+          }),
+        ],
+      });
+      editor.fetch.mockResolvedValueOnce(
+        Response.json({ commit: 'c0ffee1234', overwritten: [], renamed: [] }),
+      );
+      publishButton().click();
+      await vi.waitFor(() =>
+        expect(saveControl().title).toBe('Preview is starting'),
+      );
+      expect(saveControl().disabled).toBe(true);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(saveControl().disabled).toBe(false);
+      expect(saveControl().title).toBe('');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops reading while the page is hidden, and reads at once when it is visible again', async () => {
+    vi.useFakeTimers();
+    try {
+      editor = await setup({
+        statuses: [
+          // the page's load, the read when it is visible again, and the read five seconds later
+          Response.json({
+            bundle: null,
+            publish: { state: 'idle', error: null },
+          }),
+          Response.json({
+            bundle: null,
+            publish: { state: 'idle', error: null },
+          }),
+          Response.json({
+            bundle: null,
+            publish: { state: 'idle', error: null },
+          }),
+        ],
+      });
+      const statusReads = () =>
+        editor.fetch.mock.calls.filter(([url]) => url === '/api/status').length;
+      expect(statusReads()).toBe(1);
+      showPage('hidden');
+      await vi.advanceTimersByTimeAsync(20000);
+      expect(statusReads()).toBe(1);
+      showPage('visible');
+      await vi.waitFor(() => expect(statusReads()).toBe(2));
+      // While nothing runs, the next read is five seconds later.
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(statusReads()).toBe(3);
+    } finally {
+      Reflect.deleteProperty(document, 'visibilityState');
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not read the status at startup while the page is hidden', async () => {
+    vi.useFakeTimers();
+    showPage('hidden');
+    try {
+      editor = await setup({
+        statuses: [
+          Response.json({
+            bundle: null,
+            publish: { state: 'idle', error: null },
+          }),
+        ],
+      });
+      const statusReads = () =>
+        editor.fetch.mock.calls.filter(([url]) => url === '/api/status').length;
+      expect(statusReads()).toBe(0);
+      showPage('visible');
+      await vi.waitFor(() => expect(statusReads()).toBe(1));
+    } finally {
+      Reflect.deleteProperty(document, 'visibilityState');
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not restart the poll after a publish while the page is hidden', async () => {
+    vi.useFakeTimers();
+    try {
+      editor = await setup({
+        statuses: [
+          Response.json({
+            bundle: null,
+            publish: { state: 'idle', error: null },
+          }),
+          Response.json({
+            bundle: null,
+            publish: { state: 'publishing', error: null },
+          }),
+        ],
+      });
+      const statusReads = () =>
+        editor.fetch.mock.calls.filter(([url]) => url === '/api/status').length;
+      editor.fetch.mockResolvedValueOnce(
+        Response.json({ commit: 'c0ffee1234', overwritten: [], renamed: [] }),
+      );
+      showPage('hidden');
+      publishButton().click();
+      await vi.waitFor(() =>
+        expect(publishResult().textContent).toBe('Published c0ffee1.'),
+      );
+      await vi.waitFor(() => expect(statusReads()).toBe(2));
+      // Hidden: no read follows the publish's own read, however long the wait.
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(statusReads()).toBe(2);
+    } finally {
+      Reflect.deleteProperty(document, 'visibilityState');
+      vi.useRealTimers();
+    }
+  });
+
+  it('drops a poll read that was in flight when a publish ended, so it cannot undo the status after the publish', async () => {
+    vi.useFakeTimers();
+    let answerPublish: (answer: Response) => void = () => {};
+    let answerPoll: (answer: Response) => void = () => {};
+    try {
+      editor = await setup({
+        statuses: [
+          // the page's load (build running, so the poll reads a second later), and the read after the publish answer
+          Response.json({
+            bundle: null,
+            publish: { state: 'idle', error: null },
+            build: { state: 'building', error: null, failedCommit: null },
+          }),
+          Response.json({
+            bundle: null,
+            publish: { state: 'idle', error: null },
+          }),
+        ],
+        publish: new Promise<Response>((resolve) => {
+          answerPublish = resolve;
+        }),
+      });
+      // The poll's next read is held until the test answers it, after the publish has ended.
+      editor.fetch.mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            answerPoll = resolve;
+          }),
+      );
+      await vi.advanceTimersByTimeAsync(1000);
+      publishButton().click();
+      answerPublish(
+        Response.json({ commit: 'c0ffee1234', overwritten: [], renamed: [] }),
+      );
+      await vi.waitFor(() =>
+        expect(publishResult().textContent).toBe('Published c0ffee1.'),
+      );
+      await vi.waitFor(() =>
+        expect(
+          editor.fetch.mock.calls.filter(([url]) => url === '/api/status')
+            .length,
+        ).toBeGreaterThanOrEqual(3),
+      );
+      // The held read answers last, and says a publish runs. It must not reach the page.
+      answerPoll(
+        Response.json({
+          bundle: null,
+          publish: { state: 'publishing', error: null },
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(10);
+      expect(publishButton().disabled).toBe(false);
+      expect(saveControl().disabled).toBe(false);
+      expect(publishStatus().hidden).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reads every second after a publish that still runs, even when the first read after it fails', async () => {
+    vi.useFakeTimers();
+    try {
+      editor = await setup({
+        statuses: [
+          Response.json({
+            bundle: null,
+            publish: { state: 'idle', error: null },
+          }),
+          Response.json({
+            bundle: null,
+            publish: { state: 'publishing', error: null },
+          }),
+          new Response(null, { status: 500 }),
+          Response.json({
+            bundle: null,
+            publish: { state: 'idle', error: null },
+          }),
+        ],
+      });
+      const statusReads = () =>
+        editor.fetch.mock.calls.filter(([url]) => url === '/api/status').length;
+      editor.fetch.mockResolvedValueOnce(
+        Response.json({ commit: 'c0ffee1234', overwritten: [], renamed: [] }),
+      );
+      publishButton().click();
+      await vi.waitFor(() =>
+        expect(publishResult().textContent).toBe('Published c0ffee1.'),
+      );
+      await vi.waitFor(() => expect(statusReads()).toBe(3));
+      // The read after the publish failed, so the next one comes a second later, not after five seconds.
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(statusReads()).toBe(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('shows the error of a failed publish after a reload, and leaves the buttons on', async () => {
     await setup({
       statuses: [
@@ -2947,6 +3267,12 @@ describe('publishing', () => {
         statuses: [
           statusResponse('publishing'),
           statusResponse('publishing'),
+          // the read after the publish answer, and the read that restarts the poll after it
+          statusResponse(
+            'failed',
+            'The remote refused the push',
+            'Build failed in src/x.tsx',
+          ),
           statusResponse(
             'failed',
             'The remote refused the push',
@@ -2971,7 +3297,8 @@ describe('publishing', () => {
           'The upstream code does not build: Build failed in src/x.tsx',
         ),
       );
-      await vi.advanceTimersByTimeAsync(1000); // a later poll reads failed, with a newer upstream error
+      // After a failed publish nothing runs, so the next poll read waits the idle five seconds; it reads failed, with a newer upstream error.
+      await vi.advanceTimersByTimeAsync(5000);
       await vi.waitFor(() =>
         expect(publishStatus().textContent).toBe(
           'The upstream code does not build: Build failed in src/y.tsx',

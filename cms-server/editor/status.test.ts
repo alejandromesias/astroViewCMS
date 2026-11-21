@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import type { FetchLike } from './api.ts';
 import {
   type PublishStatus,
+  previewChanging,
+  previewNotReadyText,
   publishStatusOf,
+  STATUS_IDLE_POLL_MS,
   STATUS_POLL_MS,
   startStatusPolling,
 } from './status.ts';
@@ -32,6 +35,16 @@ function statusAnswer(
     bundle: null,
     publish: { state, error },
     errors: { protocolMismatch: null, upstreamBuildFailed, swap: null },
+  });
+}
+
+/** A status answer that is idle, with the preview node in this state and the build in that one. */
+function nodeAnswer(node: string, build = 'idle'): Answer {
+  return answerWith({
+    bundle: null,
+    publish: { state: 'idle', error: null },
+    node: { state: node, bundleId: null, error: null },
+    build: { state: build, error: null, failedCommit: null },
   });
 }
 
@@ -92,6 +105,69 @@ describe('publishStatusOf', () => {
       }),
     ).toEqual({ state: 'idle', error: null, upstreamBuildFailed: null });
   });
+
+  it('takes the state of the preview node and of the build', () => {
+    const body: StatusAnswerBody = {
+      bundle: null,
+      node: { state: 'starting', bundleId: null, error: null },
+      build: { state: 'building', error: null, failedCommit: null },
+    };
+    expect(publishStatusOf(body)).toEqual({
+      state: undefined,
+      error: null,
+      upstreamBuildFailed: null,
+      node: 'starting',
+      build: 'building',
+    });
+  });
+});
+
+/** A status with the given preview node and build parts, and nothing else. */
+function statusWith(
+  part: Partial<Pick<PublishStatus, 'node' | 'build'>>,
+): PublishStatus {
+  return {
+    state: undefined,
+    error: null,
+    upstreamBuildFailed: null,
+    node: undefined,
+    build: undefined,
+    ...part,
+  };
+}
+
+describe('previewChanging', () => {
+  it.each([
+    { build: 'building' },
+    { node: 'starting' },
+    { node: 'restarting' },
+  ] as const)('is true for %o', (part) => {
+    expect(previewChanging(statusWith(part))).toBe(true);
+  });
+
+  it.each([
+    {},
+    { node: 'ready' },
+    { node: 'stopped' },
+    { node: 'failed' },
+    { build: 'idle' },
+    { build: 'failed' },
+  ] as const)('is false for %o', (part) => {
+    expect(previewChanging(statusWith(part))).toBe(false);
+  });
+});
+
+describe('previewNotReadyText', () => {
+  it.each([
+    [undefined, ''],
+    ['ready', ''],
+    ['starting', 'Preview is starting'],
+    ['restarting', 'Preview is restarting'],
+    ['stopped', 'Preview is not ready'],
+    ['failed', 'Preview is not ready'],
+  ] as const)('gives the text for node %s', (node, text) => {
+    expect(previewNotReadyText(node)).toBe(text);
+  });
 });
 
 describe('startStatusPolling', () => {
@@ -139,7 +215,7 @@ describe('startStatusPolling', () => {
     expect(runs).toHaveLength(2);
     expect(onChange).toHaveBeenCalledOnce();
 
-    // The publish failed: reported, and no read is scheduled after it.
+    // The publish failed: reported, and nothing runs now, so the next read waits the idle interval.
     runs[1]?.run();
     await flush();
     expect(onChange).toHaveBeenCalledTimes(2);
@@ -148,7 +224,8 @@ describe('startStatusPolling', () => {
       error: 'Push refused',
       upstreamBuildFailed: null,
     });
-    expect(runs).toHaveLength(2);
+    expect(runs).toHaveLength(3);
+    expect(runs[2]?.ms).toBe(5000);
   });
 
   it('reports a change of the upstream build error while a publish runs', async () => {
@@ -208,7 +285,7 @@ describe('startStatusPolling', () => {
     }
   });
 
-  it('stops at once when no publish runs', async () => {
+  it('reads again after five seconds while nothing runs', async () => {
     const { schedule } = manualSchedule();
     const onChange = vi.fn<(status: PublishStatus) => void>();
     startStatusPolling({
@@ -217,11 +294,98 @@ describe('startStatusPolling', () => {
       schedule,
     });
     await flush();
+    expect(STATUS_IDLE_POLL_MS).toBe(5000);
     expect(onChange).toHaveBeenCalledOnce();
-    expect(schedule).not.toHaveBeenCalled();
+    expect(schedule).toHaveBeenCalledExactlyOnceWith(
+      expect.any(Function),
+      STATUS_IDLE_POLL_MS,
+    );
   });
 
-  it('keeps polling through a read that fails while a publish runs, and stops after a read that finds none', async () => {
+  it('keeps the busy interval it was started with when its first read fails', async () => {
+    const { schedule, runs } = manualSchedule();
+    startStatusPolling({
+      fetchImpl: fetchAnswering(answerWith({ error: 'internal_error' }, 500)),
+      onChange: vi.fn(),
+      schedule,
+      initiallyBusy: true,
+    });
+    await flush();
+    expect(runs[0]?.ms).toBe(STATUS_POLL_MS);
+  });
+
+  it('switches between the idle and the busy interval with what each read finds', async () => {
+    const { schedule, runs } = manualSchedule();
+    startStatusPolling({
+      fetchImpl: fetchAnswering(
+        nodeAnswer('ready'),
+        nodeAnswer('ready', 'building'),
+        nodeAnswer('ready'),
+      ),
+      onChange: vi.fn(),
+      schedule,
+    });
+    await flush();
+    expect(runs[0]?.ms).toBe(5000);
+    // A build shows up while nothing else ran: the next read is a second away.
+    runs[0]?.run();
+    await flush();
+    expect(runs[1]?.ms).toBe(1000);
+    // The build is done: back to five seconds.
+    runs[1]?.run();
+    await flush();
+    expect(runs[2]?.ms).toBe(5000);
+  });
+
+  it('reads again while the preview node starts or a build runs, and waits five seconds once the node is ready', async () => {
+    const { schedule, runs } = manualSchedule();
+    const onChange = vi.fn<(status: PublishStatus) => void>();
+    startStatusPolling({
+      fetchImpl: fetchAnswering(
+        nodeAnswer('starting'),
+        nodeAnswer('ready', 'building'),
+        nodeAnswer('ready'),
+      ),
+      onChange,
+      schedule,
+    });
+    await flush();
+    expect(runs).toHaveLength(1);
+    expect(onChange).toHaveBeenLastCalledWith({
+      state: 'idle',
+      error: null,
+      upstreamBuildFailed: null,
+      node: 'starting',
+      build: 'idle',
+    });
+
+    // The node is ready but a build runs: the next read still comes, and reports the new build state.
+    runs[0]?.run();
+    await flush();
+    expect(runs).toHaveLength(2);
+    expect(onChange).toHaveBeenLastCalledWith({
+      state: 'idle',
+      error: null,
+      upstreamBuildFailed: null,
+      node: 'ready',
+      build: 'building',
+    });
+
+    // Neither the node nor the build is changing: the next read waits five seconds.
+    runs[1]?.run();
+    await flush();
+    expect(onChange).toHaveBeenLastCalledWith({
+      state: 'idle',
+      error: null,
+      upstreamBuildFailed: null,
+      node: 'ready',
+      build: 'idle',
+    });
+    expect(runs).toHaveLength(3);
+    expect(runs[2]?.ms).toBe(5000);
+  });
+
+  it('keeps polling through a read that fails while a publish runs, and waits the idle interval after a read that finds none', async () => {
     const { schedule, runs } = manualSchedule();
     const onChange = vi.fn<(status: PublishStatus) => void>();
     startStatusPolling({
@@ -246,7 +410,8 @@ describe('startStatusPolling', () => {
       error: null,
       upstreamBuildFailed: null,
     });
-    expect(runs).toHaveLength(2);
+    expect(runs).toHaveLength(3);
+    expect(runs[2]?.ms).toBe(5000);
   });
 
   it('stop cancels the read that waits to run', async () => {

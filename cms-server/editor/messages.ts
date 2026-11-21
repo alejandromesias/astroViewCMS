@@ -2,7 +2,7 @@
 // which the page colors, and a field when it belongs next to one document's form. The module names no DOM type.
 import type { ErrorFields, PublishBody, SaveBody } from 'cms-contract';
 import type { ApiFailure, CodedFailure } from './api.ts';
-import type { PublishStatus } from './status.ts';
+import { type PublishStatus, previewNotReadyText } from './status.ts';
 
 type MessageLevel = 'ok' | 'warning' | 'error';
 
@@ -286,9 +286,11 @@ function codedPublishMessages(failure: CodedFailure): Message[] {
   }
 }
 
-/** The messages of the publish state the status reports: a publish running, the last publish that failed, and an upstream build error. */
+/** The messages of the publish state the status reports: a publish running, the last publish that failed, an upstream build error, and the preview node not ready (why Save is off). */
 export function statusMessages(status: PublishStatus): Message[] {
   const messages: Message[] = [];
+  const notReady = previewNotReadyText(status.node);
+  if (notReady !== '') messages.push(at('warning', notReady));
   if (status.state === 'publishing')
     messages.push(
       at(

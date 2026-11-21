@@ -44,6 +44,8 @@ import {
 } from './messages.ts';
 import {
   type PublishStatus,
+  previewChanging,
+  previewNotReadyText,
   publishStatusOf,
   startStatusPolling,
   withoutFailedPublish,
@@ -142,12 +144,13 @@ interface DocumentView {
  * the iframe, sends the overlay built from the forms to the bridge as you
  * type, shows render results, and handles draft image uploads. `win` and
  * `fetchImpl` are parameters so tests can pass fakes. Resolves once the
- * starting overlay is in and the preview is open (or refused).
+ * starting overlay is in and the preview is open (or refused). It resolves to `stop`, which ends the status poll and removes the
+ * document and window listeners this editor added.
  */
 export async function startEditor(
   win: Window = window,
   fetchImpl: typeof fetch = win.fetch.bind(win),
-): Promise<void> {
+): Promise<() => void> {
   const doc = win.document;
   const byId = <T extends HTMLElement>(id: string) =>
     doc.getElementById(id) as T;
@@ -738,11 +741,15 @@ export async function startEditor(
   let publishing = false;
   /** True while GET /api/status reports a publish running. */
   let publishRunning = false;
+  /** The preview node's state as GET /api/status last reported it; undefined before a report with a node part. */
+  let previewNode: PublishStatus['node'];
 
-  /** Sets Save and Publish. Both are off while a publish runs (the drafts stay as they are), and Save is off during its own requests. */
+  /** Sets Save and Publish. Both are off while a publish runs (the drafts stay as they are), and Save is off during its own requests. Save is also off while the preview node is not ready: the preview refuses a save then, and its tooltip says why. */
   function refreshButtons() {
     const busy = publishing || publishRunning;
-    saveButton.disabled = busy || saving;
+    const notReady = previewNotReadyText(previewNode);
+    saveButton.disabled = busy || saving || notReady !== '';
+    saveButton.title = notReady;
     publishButton.disabled = busy;
   }
 
@@ -816,9 +823,9 @@ export async function startEditor(
   /** The stop of the status poll while one runs, or undefined. At most one poll runs. */
   let stopPoll: (() => void) | undefined;
 
-  /** Starts the poll of GET /api/status, unless one runs. The poll ends itself once a read reports no publish running. */
-  function startPoll() {
-    if (stopPoll !== undefined) return;
+  /** Starts the poll of GET /api/status, unless one runs or the page is hidden. The poll reads at once, then every second while something runs and every 5 s while nothing does. `busy` is the state the caller last saw. */
+  function startPoll(busy = false) {
+    if (stopPoll !== undefined || doc.visibilityState === 'hidden') return;
     stopPoll = startStatusPolling({
       fetchImpl,
       onChange: onPublishStatus,
@@ -826,11 +833,22 @@ export async function startEditor(
       onRead: (status) => {
         if (status.state === 'publishing') lastPublishFailed = false;
       },
-      onEnd: () => {
-        stopPoll = undefined;
-      },
+      initiallyBusy: busy,
     });
   }
+
+  /** Ends the poll, if one runs. The next start reads the status at once. */
+  function endPoll() {
+    stopPoll?.();
+    stopPoll = undefined;
+  }
+
+  // A hidden page is not polled. When it is visible again, the poll starts and reads at once.
+  const onVisibility = () => {
+    if (doc.visibilityState === 'hidden') endPoll();
+    else startPoll();
+  };
+  doc.addEventListener('visibilitychange', onVisibility);
 
   /** Shows the publish state the status reports and sets the buttons. Called each time the reported state changes. */
   function onPublishStatus(status: PublishStatus) {
@@ -838,10 +856,9 @@ export async function startEditor(
     if (status.state === 'publishing') lastPublishFailed = false;
     const shown = lastPublishFailed ? withoutFailedPublish(status) : status;
     publishRunning = shown.state === 'publishing';
+    previewNode = shown.node;
     refreshButtons();
     showLines(publishStatus, statusMessages(shown));
-    // A publish that runs (this page's, or another tab's) is polled until it ends.
-    if (publishRunning) startPoll();
   }
 
   /** Publishes the saved changes. Publish is off while it runs. Its answer is shown next to the button; after a commit the changes list is read again. */
@@ -863,8 +880,17 @@ export async function startEditor(
         showLines(publishResult, publishFailureMessages(answer.failure));
       }
       // The publish may have cleared a failed state or an upstream build error: read the status now, not at the next reload.
+      // The poll is ended first, so a read it sent earlier cannot answer after this one.
+      endPoll();
       const status = await getStatus(fetchImpl);
-      if (status.ok) onPublishStatus(publishStatusOf(status.body));
+      let busy = false;
+      if (status.ok) {
+        const shown = publishStatusOf(status.body);
+        onPublishStatus(shown);
+        busy = shown.state === 'publishing' || previewChanging(shown);
+      }
+      // The poll starts again from here: at the busy interval if the status is busy, after its idle wait otherwise.
+      startPoll(busy);
     } finally {
       publishing = false;
       refreshButtons();
@@ -873,7 +899,7 @@ export async function startEditor(
 
   // ---- messages from the bridge: only from the iframe, from the preview origin, well-formed
 
-  win.addEventListener('message', (event) => {
+  const onMessage = (event: MessageEvent) => {
     if (
       previewOrigin === undefined ||
       event.source !== iframe.contentWindow ||
@@ -914,7 +940,8 @@ export async function startEditor(
         'error',
       );
     }
-  });
+  };
+  win.addEventListener('message', onMessage);
 
   // ---- draft image upload ----------------------------------------------
 
@@ -960,6 +987,11 @@ export async function startEditor(
   // Reads the publish state now (a page reloaded during a publish keeps the buttons off, and a failed publish keeps its error),
   // then again each second while a publish runs (status.ts).
   startPoll();
+  return () => {
+    endPoll();
+    doc.removeEventListener('visibilitychange', onVisibility);
+    win.removeEventListener('message', onMessage);
+  };
 }
 
 // The page's script starts the editor once its markup is in place. Tests import
