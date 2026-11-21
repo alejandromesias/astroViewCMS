@@ -6,6 +6,7 @@ import {
   previewChanging,
   previewNotReadyText,
   publishStatusOf,
+  STATUS_IDLE_POLL_MS,
   STATUS_POLL_MS,
   startStatusPolling,
 } from './status.ts';
@@ -293,10 +294,11 @@ describe('startStatusPolling', () => {
       schedule,
     });
     await flush();
+    expect(STATUS_IDLE_POLL_MS).toBe(5000);
     expect(onChange).toHaveBeenCalledOnce();
     expect(schedule).toHaveBeenCalledExactlyOnceWith(
       expect.any(Function),
-      5000,
+      STATUS_IDLE_POLL_MS,
     );
   });
 
