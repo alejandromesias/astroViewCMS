@@ -160,13 +160,14 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 |---|---|---|
 | 11 | 2.14m `[ci]`, then 2.14d, then 2.11c (after 2.14d). Beside them: 2.10k, 2.13d, 2.12a `[build]`, then 2.13e `[build]` | 2.12a, 2.13e |
 | 12 | 2.14e (code) first, then 2.11d. 2.10e is split into 2.10l `[build]` and then 2.10m `[build]` (2.10e stays as their umbrella; the table was approved, U2). 2.12d `[user]` as soon as 2.11d merges | 2.10l, 2.10m |
-| 13 | 2.10f `[build]`, 2.12b `[build]`, 2.14a `[build]`. Beside them: 2.14e spike `[user]`, 2.14f `[ci]`, 2.14g `[ci]`, 2.14j, and any fixes from 2.12d | 2.10f, 2.12b, 2.14a |
+| 13 | 2.10f `[build]`, then 2.10m-1 `[build]` (after 2.10f), 2.12b `[build]`, 2.14a `[build]`. Beside them: 2.14e spike `[user]`, 2.14f `[ci]`, 2.14g `[ci]`, 2.14n `[ci]`, 2.14j, and the fixes from 2.12d (2.12d-1, 2.12d-2 `[build]`) | 2.10f, 2.10m-1, 2.12b, 2.14a, 2.12d-1, 2.12d-2 |
 | 14 (close) | 2.14c `[build]` first, then 2.12c `[user]`, 2.13a `[build]`, 2.13b, decisions U3 to U7, then the phase close (section 7) | 2.14c, 2.13a |
 
 ```text
  wave 11  2.14m   2.14d ──▶ 2.11c ─────────┐     2.10k ─────┐    2.13d    2.12a ─▶ 2.13e
  wave 12          2.14e (code)       2.11d ◀┘──▶ 2.12d [user]   2.10l ─▶ 2.10m [build] ◀┘ (umbrella: 2.10e)
- wave 13  2.10f ──▶ 2.12b      2.14a ─▶ (U3)     2.14e spike   2.14f  2.14g  2.14j
+ wave 13  2.10f ──▶ 2.12b      2.14a ─▶ (U3)     2.14e spike   2.14f  2.14g  2.14j  2.14n
+          2.10f ──▶ 2.10m-1   2.12d-1  2.12d-2
  wave 14  2.14c ──▶ 2.12c [user]   2.13a   2.13b   U3..U7   ──▶ phase close
 ```
 
@@ -310,11 +311,11 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
   - Move `PublishAnswer` into `cms-contract` (left open by 2.14d). Add `409 publish-in-progress` to the generated per-route table of `PUT /api/changes` and to PHASE-2-DESIGN 5.9 (done in that file, 2026-11-18).
   - The event-order harness: injected git, build and clock, the curated scenarios of the state table that need no candidate build, and the seeded random runs.
   - **Done when:** the refusals above hold on the 2.10d flow, the gate reopens after every answer, the harness is green, and `PublishAnswer` lives in `cms-contract`.
-  - Follow-up (not in 2.10l): preview-contract has 5 files with module-level zod schemas. Stryker's `ignoreStatic: true` marks their static mutants `Ignored`, so the gate never judges them. Fix: set `ignoreStatic: false` for the preview-contract triage, as done for cms-contract in 2.10l, then kill the survivors. Left out of 2.10l so the change does not start judging static mutants in a second CI group in the same PR.
+  - Follow-up (not in 2.10l; now **2.14n**, wave 13): preview-contract has 5 files with module-level zod schemas. Stryker's `ignoreStatic: true` marks their static mutants `Ignored`, so the gate never judges them. Fix: set `ignoreStatic: false` for the preview-contract triage, as done for cms-contract in 2.10l, then kill the survivors. Left out of 2.10l so the change does not start judging static mutants in a second CI group in the same PR.
   - **Result:** PR #60, merge `3810f0b` (head `de5ceb8`). Closed; 2.10m is still open. On `fdea523`, mutation-diff passed (overall 94.75, floor 75) and `cms-contract/src/answers.ts` was 51 of 51 killed. Fast gates and e2e passed. Reviewed by Reviewer-11.18 over four rounds, and by Codex (no findings on `fdea523`).
     - **Built:** `sync/publish-gate.ts` (`begin`, `end`, `saveStop`, `clearFailed`, `pollMayRun`, `beforePush` and `afterPush`); saves and poll ticks check the gate before and under the repo lock; the publish flow in `sync/publish.ts`; `PublishAnswer` moved to `cms-contract`; the event-order harness in `sync/publish-events.test.ts` (curated scenarios, seeded runs, a restart event).
     - **Decisions:** a save during a publish answers `409 publish-in-progress` and writes nothing; a poll tick is skipped; a second publish answers `409 publish-in-progress`. A failed reset after an accepted push is logged and the answer stays `200`. A `cms/work` move before the push answers `500 publish-failed` and pushes nothing; a move during the push answers `500`, with the commit on the remote and the save left on `cms/work`. The 2.10d publish test changed from `503` to `409 publish-in-progress` for a save during a publish.
-    - **Open:** the server does not yet emit `409 remote-moved`, `424 build-failed` or `buildCheckSkipped` (2.10f). `preview-contract` has the `ignoreStatic` blind spot (follow-up above). Harness gaps: lock timeouts are not in the seeds, and a restart during a publish is not covered.
+    - **Open:** the server does not yet emit `409 remote-moved`, `424 build-failed` or `buildCheckSkipped` (2.10f). `preview-contract` has the `ignoreStatic` blind spot (2.14n). Harness gaps: lock timeouts are not in the seeds, and a restart during a publish is not covered (both 2.10m-1).
     - **Implication:** 2.10m rebases on this, and `publish.ts` and `status.ts` change there.
 - **2.10m: the candidate build** `[build]`.
   - The snapshot `{ C, S }` and the candidate build in a worktree under `.cms/<site>/` with a name pattern the start-up sweep can match.
@@ -328,13 +329,13 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
     - **Built:** `buildCandidate`, `adopt` (in `finishing`, under the lock, through the swap path) and `discard` in `preview/bundle-lifecycle.ts`; the candidate builds in a worktree named `build-<bundleId>`, which the start-up sweep removes when stale; `sync/publish.ts` builds with no lock held, pushes under the lock, adopts, and runs the protocol check after the release; `decideBuild` is wired in (`always`, `never`, `auto`).
     - **Decisions:** a push race after a build answers `409 remote-moved` and is not retried; a lock timeout at the push after a build answers `503 busy` and discards the candidate; an origin read that fails before the swap refuses the candidate; an adopt that throws after the swap keeps its bundle, which the collection keeps until the state write names it.
     - **Implication:** the server now emits `409 publish-in-progress` (2.10l), `409 remote-moved` and `424 build-failed` (2.10m). `buildCheckSkipped` is still not emitted (2.10f).
-    - **Open:** `buildCheckSkipped` (2.10f). Two clearing checks of the new keep logic survive mutation (`bundle-lifecycle.ts` lines 386 and 583); the interleaving they guard is not tested. The keep window of `serveBundle` has no test of its own. The state table is confirmed by the user (2026-11-19); the curated scenarios of the table run in the harness. Lock timeouts are scripted in three curated scenarios; the seeded runs were not re-checked. `run.ts` 300 to 306 (`--bundle` stubs) is NoCoverage, out of scope.
+    - **Open:** `buildCheckSkipped` (2.10f). The test gaps below are 2.10m-1. Two clearing checks of the new keep logic survive mutation (`bundle-lifecycle.ts` lines 386 and 583); the interleaving they guard is not tested. The keep window of `serveBundle` has no test of its own. The state table is confirmed by the user (2026-11-19); the curated scenarios of the table run in the harness. Lock timeouts are scripted in three curated scenarios; the seeded runs were not re-checked. `run.ts` 300 to 306 (`--bundle` stubs) is NoCoverage, out of scope.
 - **Smoke for 2.12c:** a save during a publish and a failed build, with `buildCheck: always`. 2.12d runs as planned, with `buildCheck: never`, which does not exercise the candidate build.
 
 The scope below is the whole of 2.10e, to be split between the two tasks as above.
 
 - **Carried in:** move `PublishAnswer` into `cms-contract` (left open by 2.14d). Goes to 2.10l.
-- **Optional, no owner:** the test for an invalid `build-time.json` in `read.test.ts` (open from 2.10k). Do it in the next task that touches `sync/build-check.ts`.
+- **Optional test for an invalid `build-time.json` in `read.test.ts`** (open from 2.10k): owned by 2.10f (see its brief).
 
 1. **The state table, before any code (U2).**
    - The states: `idle`, `syncing`, `validating`, `squashing`, `building`, `pushing`, `reconciling`, `failed`.
@@ -346,7 +347,7 @@ The scope below is the whole of 2.10e, to be split between the two tasks as abov
      3. The bundle that serves is never ahead of what was pushed.
      4. At most one publish runs.
      5. No document is published twice as a change.
-     6. From the squash to the push, `cms/work` HEAD is `S` (phase 2 only; design 1 drops it).
+     6. Per attempt: from the squash to the push, `cms/work` HEAD is `S` (phase 2 only; design 1 drops it).
    - **The architect drafted the table (2026-11-18): [Proposals/2.10e-STATE-TABLE.md](Proposals/2.10e-STATE-TABLE.md).** The user approved it with D-a to D-f as recommended (U2, 2026-11-18), and confirmed it (2026-11-19, with the 2.10m merge). The builder checks it against the code and flags any cell that does not hold. It moves into `CMS-SERVER.md` in 2.13b.
 2. **The flow (design 3, decided 2026-11-18; the full table is in [Proposals/2.10e-STATE-TABLE.md](Proposals/2.10e-STATE-TABLE.md)):**
    1. The publish click closes the **publish gate**: from now until the answer, a save answers `409 publish-in-progress` and a poll tick is skipped. `cms/work` cannot move.
@@ -425,6 +426,7 @@ The scope below is the whole of 2.10e, to be split between the two tasks as abov
 
 #### 2.10f Upstream that doesn't build — after 2.10e · `[build]`
 
+- **Carried in:** the optional test for an invalid `build-time.json` in `read.test.ts` (open from 2.10k). Do it here, since this task touches `sync/build-check.ts`.
 - Sync builds `cms/work` HEAD after the re-apply. On a failure it builds the `origin/<branch>` tip once, to tell whose failure it is:
   - if the tip fails too, record `upstreamBuildFailed { sha, firstError }` (a type change in `preview/status.ts`, its setter and its tests);
   - if the tip passes, the changeset is at fault, and that is reported instead.
@@ -432,6 +434,16 @@ The scope below is the whole of 2.10e, to be split between the two tasks as abov
 - **If U1 is yes:** while `upstreamBuildFailed` is set, the build check is skipped and the answer and the status say `buildCheckSkipped: 'upstream-broken'`. The error-text comparison is dropped.
 - The optional origin-tip build at start-up moves to phase 4.
 - **Done when:** a developer pushes a broken component, and the CMS user still publishes a content edit and is told that the check was skipped and why. `[build]`
+
+#### 2.10m-1 Publish hardening tests — after 2.10f · `[build]`
+
+Tests only, no new behaviour. The Open items of 2.10l and 2.10m:
+
+- Kill or justify the two surviving mutants at `bundle-lifecycle.ts` lines 386 and 583, with a test of the interleaving they guard.
+- A test of its own for the keep window of `serveBundle`.
+- Lock timeouts in the seeded runs of the event-order harness (today only three curated scenarios script them).
+- A restart during a publish.
+- **Done when:** each item has a test, `bundle-lifecycle.ts` and the harness stay at or above the floor, and no source file changed except to make a test possible (named in the PR).
 
 #### 2.12b Done-when tests — after 2.10f, 2.11d · `[build]`
 
@@ -474,6 +486,12 @@ The scope below is the whole of 2.10e, to be split between the two tasks as abov
 - Check that every route gets the site's state through one object, and that one middleware sets an `actor` (today a constant with `git.author`) that saves and publishes take the author from.
 - Change the code only if either is missing.
 - **Done when:** the check is written in the PR. If code changed, no behaviour changed and the existing tests pass untouched.
+
+#### 2.14n `preview-contract` static mutants — `[ci]`, tests only, parallel with the rest (from 2.10l)
+
+- `preview-contract` has 5 files with module-level zod schemas. Stryker's `ignoreStatic: true` marks their static mutants `Ignored`, so the gate never judges them.
+- Set `ignoreStatic: false` for the `preview-contract` triage, as done for `cms-contract` in 2.10l, then kill the survivors.
+- **Done when:** the `preview-contract` mutation group judges static mutants, and its survivors are killed or justified, at or above the floor.
 
 #### 2.12d-1 Save right after a publish is refused — from 2.12d · `[build]`
 
