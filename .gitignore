@@ -5,6 +5,8 @@ node_modules/
 
 # generated reports
 reports/
+# Vitest's JSON report folder
+.vitest/
 
 # cms-server: working copies and bundles, and the temp folders its tests create
 .cms/
