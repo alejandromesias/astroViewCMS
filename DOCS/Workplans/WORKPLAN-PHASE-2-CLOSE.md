@@ -162,8 +162,8 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 |---|---|---|
 | 11 | 2.14m `[ci]`, then 2.14d, then 2.11c (after 2.14d). Beside them: 2.10k, 2.13d, 2.12a `[build]`, then 2.13e `[build]` | 2.12a, 2.13e |
 | 12 | 2.14e (code) first, then 2.11d. 2.10e is split into 2.10l `[build]` and then 2.10m `[build]` (2.10e stays as their umbrella; the table was approved, U2). 2.12d `[user]` as soon as 2.11d merges | 2.10l, 2.10m |
-| 13 | 2.10f `[build]`, then 2.12d-1 `[build]` (its first step can start beside 2.10f; it merges after), then 2.10m-1 `[build]`, then 2.12b `[build]`, 2.14a `[build]`. Beside them: 2.12d-2 `[build]`, 2.12d-3 `[build]` (after 2.12d-1), 2.14e spike `[user]`, 2.14f `[ci]`, 2.14g `[ci]`, 2.14n `[ci]`, 2.14j | 2.10f, 2.12d-1, 2.10m-1, 2.12b, 2.14a, 2.12d-2, 2.12d-3 |
-| 14 (close) | 2.14c `[build]` first, then 2.12c `[user]`, 2.13a `[build]`, 2.13b, decisions U3 to U7, then the phase close (section 7) | 2.14c, 2.13a |
+| 13 | 2.10f `[build]`, then 2.12d-1 `[build]` (its first step can start beside 2.10f; it merges after), then 2.10m-1 `[build]`, then 2.12b `[build]`, 2.14a `[build]` (closed), then 2.14a-1, 2.14a-2 `[build]` and 2.14a-3 `[build]` (from 2.14a). Beside them: 2.12d-2 `[build]`, 2.12d-3 `[build]` (after 2.12d-1), 2.14e spike `[user]`, 2.14f `[ci]`, 2.14g `[ci]`, 2.14n `[ci]`, 2.14j | 2.10f, 2.12d-1, 2.10m-1, 2.12b, 2.14a, 2.14a-1, 2.14a-2, 2.14a-3, 2.12d-2, 2.12d-3 |
+| 14 (close) | 2.14c `[build]` first, then 2.12c `[user]`, 2.13a `[build]`, 2.14a-4 `[user]` (after 2.14a-1 to 2.14a-3 merge, before 2.13b), 2.13b, decisions U3 to U7, then the phase close (section 7) | 2.14c, 2.13a |
 
 ```text
  wave 11  2.14m   2.14d ──▶ 2.11c ─────────┐     2.10k ─────┐    2.13d    2.12a ─▶ 2.13e
@@ -185,7 +185,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 | `preview/status.ts` | 2.10l, then 2.10m, then 2.10f (the `upstreamBuildFailed` type change, which also edits `cms-contract/src/answers.ts` and `cms-server/editor/status.ts`, `messages.ts`), then 2.12d-1 (`cms-server/editor/status.ts`), then 2.12d-3 |
 | `preview-contract/src/` | 2.10k (the validate answer), 2.13d (`schema.ts`), 2.14c. A task that changes `schema.ts` before 2.13d merges must bring it to 80 |
 | `cms-server/editor/` | 2.11c, then 2.11d |
-| `preview-render-server/src/` | 2.12a and 2.13d (`bundle.ts`): 2.13d waits for 2.12a's merge if 2.12a touches `bundle.ts`. 2.14c is last (`integration.ts`, the schema pass) |
+| `preview-render-server/src/` | 2.12a and 2.13d (`bundle.ts`): 2.13d waits for 2.12a's merge if 2.12a touches `bundle.ts`. 2.14a-1 and 2.14a-2 (`integration.ts`, `bundle.json`) must both merge before 2.14c. 2.14c is last (`integration.ts`, the schema pass) |
 | Tool configs (`biome.json`, `knip.json`, `stryker*.json`, depcruise, `scripts/check.ts`) | 2.14d if it adds a package, and 2.12a. Whichever starts second rebases |
 
 ## 6. Tasks
@@ -472,7 +472,28 @@ Order in the `[build]` slot: 2.10f, then 2.12d-1, then 2.10m-1 (architect, 2026-
   - (d) a real bug.
 - **Where (architect, 2026-11-20):** the scaffolding stays outside the repo, in `C:\Users\aleja\DesignWork\2.14a-spike\`, as for the 2.12d run. The failure table is a new doc, `DOCS/Workplans/Proposals/2.14a-SECOND-SITE.md`, linked from this task's Result. Ask the user once for the path to their own site; if there is none, skip that part and say so in the Result. **Pending (2026-11-20): the user will provide the path to a site of their own on Astro 7 (expected 2026-11-21).** It does not block the start of wave 13: 2.14a is late in the `[build]` order, and the own-site part is optional.
 - **Done when:** this plan links a table of failures by cause, each with the smallest fix, and the list of what a site must satisfy today. The scaffolding is thrown away.
-- **Result:** the table is `DOCS/Workplans/Proposals/2.14a-SECOND-SITE.md` (pushed `6b7e772`). Closed; nothing fixed. Template installed Astro 7.4.13; the build ran on the workspace copy, 7.4.12. Scaffold, CMS start, save and publish passed through the HTTP API; the first build failed (F1) and needed two temporary patches (not committed). The editor did not get past the document list, because `/` returns 500 (F6). Nine failures: (a) 2, (b) 0, (c) 2 blocking and 1 warning, (d) 4. Blocking for a site: F3 (a bundle with no `documents.json` is reported `ok`), F6 (`Astro.site` is not passed to the render container), F9 (a restart serves the invalid bundle). Not run: the user's own Astro 7 site (path not given), editor edit, save and publish through the UI, pages other than `/`. The scaffolding is deleted. The failures are not yet tasks.
+- **Result:** the table is `DOCS/Workplans/Proposals/2.14a-SECOND-SITE.md` (pushed `6b7e772`). Closed; nothing fixed. Template installed Astro 7.4.13; the build ran on the workspace copy, 7.4.12. Scaffold, CMS start, save and publish passed through the HTTP API; the first build failed (F1) and needed two temporary patches (not committed). The editor did not get past the document list, because `/` returns 500 (F6). Nine failures: (a) 2, (b) 0, (c) 2 blocking and 1 warning, (d) 4. Blocking for a site: F3 (a bundle with no `documents.json` is reported `ok`), F6 (`Astro.site` is not passed to the render container), F9 (a restart serves the invalid bundle). Not run: the user's own Astro 7 site (path not given), editor edit, save and publish through the UI, pages other than `/`. The scaffolding is deleted.
+- **Verdict (architect, 2026-11-21):** closed as it stands; the own-site part was optional and would only hit F6 again. F6 is 2.14a-1; F3 and F9 are 2.14a-2; F7 is 2.14a-3; F1 is an input to U3 (if U3 picks A, the workspace carries the official blog template's packages, and `@astrojs/rss` is added then); F5 is housekeeping (`npx playwright install chromium`, to be stated in 2.12b's run instructions); F2 and F4 are documented site requirements (F2 fails loudly once F3 is fixed); F8 is an accepted limit under U3 option A and goes away with option B (phase 4). The "what a site must satisfy today" list stays in the proposal, a dated record left unchanged, until 2.13b rewrites it in the quick start after the fixes: items 3, 5 and 10 drop out with F3 and F6, items 8 and 9 (API shapes) move to `CMS-SERVER.md`'s routes table. SYSTEM-DESIGN gets only the principle, with the U3 decision: the site's packages and its config live inside the workspace.
+
+#### 2.14a-1 `site` reaches the render container — from 2.14a (F6) · `[build]`, last in the `[build]` slot
+
+- At build time the integration records the Astro config's `site` in `bundle.json` as an optional field. `runtime.ts` passes it to `AstroContainer.create` through `astroConfig`. When `site` is unset, behaviour stays as it is today.
+- Do not add `base`; that stays with 2.14k in phase 3.
+- Shared files: `integration.ts` and `bundle.json`; must merge before 2.14c.
+- **Done when:** a test fixture page that reads `Astro.site` renders, and a bundle without `site` still renders.
+
+#### 2.14a-2 A build without its manifest fails; a restart rebuilds an invalid bundle — from 2.14a (F3, F9) · `[build]`, beside 2.14a-1
+
+- The build fails when `documents.json` is not written. The error names the cause, for example the missing `buildTimeFields` file.
+- At start, if the bundle named in the state is invalid, the CMS asks for a build.
+- Shared files: `integration.ts`; must merge before 2.14c.
+- **Done when:** there is a test for each of the two behaviours.
+
+#### 2.14a-3 Render errors reach the CMS log — from 2.14a (F7) · `[build]`, parallel (cms-server only)
+
+- The supervisor forwards the preview node's stderr lines to the CMS log as they arrive, at warn level, keeping the existing tail buffer.
+- Cap the length of each line so a looping error cannot flood the log.
+- **Done when:** a test shows a stderr line reaches the log at warn level, and an over-long line is cut.
 
 #### 2.14e item 4 Same-site cookie spike — `[user]`
 
@@ -555,6 +576,13 @@ Order in the `[build]` slot: 2.10f, then 2.12d-1, then 2.10m-1 (architect, 2026-
 - Measure the re-apply time on the 200-post sample, and the swap time from a finished build to the new node serving.
 - Measure the rss after a publish, to complete 2.13e.
 - **Done when:** section 8 has values, each with its date and method.
+
+#### 2.14a-4 Re-run the second site — after 2.14a-1 to 2.14a-3 · `[user]`
+
+- Re-run the blog template through the editor UI: edit, save, publish, and at least one page other than `/`.
+- Run the user's own Astro 7 site if the path has been given by then. If not, record it as skipped.
+- Its new findings update the table in `DOCS/Workplans/Proposals/2.14a-SECOND-SITE.md`.
+- **Done when:** the user confirms the run and the table is updated.
 
 #### 2.13b Documents — after 2.12b
 
