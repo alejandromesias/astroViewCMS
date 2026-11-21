@@ -114,13 +114,15 @@ export function createSync({
         // The working copy changed, so the index built from it is stale (the next delete rebuilds it).
         guard.invalidate();
         status.setRenamed(renamed);
-        // `cms/work` moved to the re-applied tip, so the changeset is counted again (2.12d-3).
-        status.invalidateChangeset();
       } else {
         tip = await tx.revParse(WORK_REF);
       }
     } catch (error: unknown) {
       return failed(redact(messageOf(error)));
+    } finally {
+      // `moveWork` moves `cms/work` before its last two ref deletes, so a re-apply that throws may still have moved it:
+      // the changeset is counted again on that path too (2.12d-3).
+      if (fetched.reapply) status.invalidateChangeset();
     }
     if (fetched.change === 'code') trigger('sync-code');
     status.setLastSync(now().toISOString());

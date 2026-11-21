@@ -641,6 +641,26 @@ describe('the sync routine, with fakes', () => {
     expect(trigger).not.toHaveBeenCalled();
   });
 
+  it('a re-apply that throws after moving cms/work still invalidates the changeset (2.12d-3)', async () => {
+    const tx = txOf({
+      fetch: vi.fn(
+        async (): Promise<FetchResult> => ({
+          ok: true,
+          upstream: 'upstream-sha',
+          reapply: true,
+          change: 'content-only',
+          paths: [],
+        }),
+      ),
+      reapply: vi.fn(async (): Promise<ReapplyResult> => {
+        throw new Error('update-ref -d failed');
+      }),
+    });
+    const { sync, status } = syncOver(tx, repoOf(tx).repo);
+    expect((await sync.syncLocked(tx)).kind).toBe('failed');
+    expect(status.invalidateChangeset).toHaveBeenCalledTimes(1);
+  });
+
   it('a sync with no re-apply does not invalidate the changeset (cms/work did not move, 2.12d-3)', async () => {
     const tx = txOf();
     const { sync, status } = syncOver(tx, repoOf(tx).repo);
