@@ -255,7 +255,8 @@ export default function previewRenderServer(
             languages: collectLanguages(site.root, store, site.extraLanguages),
           });
         } catch (error) {
-          logger.warn(`documents.json not written: ${errorMessage(error)}`);
+          // Without documents.json the bundle is invalid (F3), so the build fails here and names the cause.
+          throw new Error(`documents.json not written: ${errorMessage(error)}`);
         }
       },
     },

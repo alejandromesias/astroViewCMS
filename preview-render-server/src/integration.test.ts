@@ -417,15 +417,40 @@ describe('previewRenderServer hooks', () => {
     ]);
   });
 
-  it('warns instead of failing when the manifests cannot be written', () => {
-    const warn = vi.fn();
+  it('fails the build when the manifests cannot be written, and names the cause', () => {
     const blocked = path.join(tmp, 'blocked');
     fs.writeFileSync(blocked, '');
-    hooksOf({ ...hookSite, manifestDir: path.join(blocked, 'manifest') })[
-      'astro:build:done'
-    ]!({ logger: { warn } });
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('documents.json not written'),
+    expect(() =>
+      hooksOf({ ...hookSite, manifestDir: path.join(blocked, 'manifest') })[
+        'astro:build:done'
+      ]!({ logger: { warn: vi.fn() } }),
+    ).toThrow(/^documents\.json not written: \S/);
+  });
+
+  it('fails the build, naming the file, when a buildTimeFields file is missing', () => {
+    const cacheDir = path.join(tmp, 'missing-file-cache');
+    fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(cacheDir, 'data-store.json'),
+      stringify(new Map()),
+    );
+    const integration = hooksOf({
+      ...hookSite,
+      buildTimeFields: { 'data:src/config/config.json': ['name'] },
+    });
+    integration['astro:config:done']!({
+      config: {
+        cacheDir: new URL(`file:///${posix(cacheDir)}/`),
+        base: '/',
+        trailingSlash: 'ignore',
+      },
+    });
+    expect(() =>
+      integration['astro:build:done']!({ logger: { warn: vi.fn() } }),
+    ).toThrow(
+      new Error(
+        `documents.json not written: ENOENT: no such file or directory, open '${path.join(root, 'src/config/config.json')}'`,
+      ),
     );
   });
 });
@@ -1091,9 +1116,8 @@ describe('previewRenderServer build hooks', () => {
       ...out,
       manifestDir: blocked,
     }).hooks as unknown as Record<string, (o: object) => unknown>;
-    broken['astro:build:done']!({ logger: { warn } });
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringMatching(/^documents\.json not written: \S/),
+    expect(() => broken['astro:build:done']!({ logger: { warn } })).toThrow(
+      /^documents\.json not written: \S/,
     );
   });
 });
