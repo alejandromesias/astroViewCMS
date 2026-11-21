@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseRenderRequest, renderRequestSchema } from './envelope.ts';
 
 // The same cases as preview-render-server/src/render/envelope.test.ts (the
-// renderer's own check). Keep the two tables in step.
+// renderer's own check). Keep the two tables in step. No test checks that they
+// do: the exact-message tests below pin this copy's messages only, so a message
+// changed on one side passes both suites unless the other side is updated too.
 const message = (body: unknown) => {
   const result = parseRenderRequest(body);
   return result.ok ? undefined : result.message;
@@ -119,6 +121,15 @@ describe('parseRenderRequest: exact messages and every image format', () => {
     expect(
       message({ documents: {}, media: { 'x.png': { ...entry, url: '' } } }),
     ).toBe('"media" entry "x.png": "url" must be a string');
+  });
+
+  it('accepts a one-character url', () => {
+    const media = { 'x.png': { ...entry, url: 'x' } };
+    expect(parseRenderRequest({ documents: {}, media })).toEqual({
+      ok: true,
+      documents: {},
+      media,
+    });
   });
 
   it('lists every accepted format when the format is refused', () => {
