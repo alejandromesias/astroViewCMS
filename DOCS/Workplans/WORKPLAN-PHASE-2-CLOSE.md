@@ -41,7 +41,7 @@ Phase 2 builds `cms-server` for one site: read, save, preview from the saved sta
 | Editor | 2.11a, 2.11b, 2.11e | The test editor served on the CMS origin, its data sources, and its mutation scope (`editor.ts` 97.21%) |
 | CI and process | 2.1k to 2.1t | Fast gates, e2e, `mutation-diff`, sharded `mutation-full`, nightly, weekly Windows, security scans, ruleset, worktree tooling, docs straight to `main` |
 | Wave 11 (so far) | 2.14m, 2.14d, 2.10k, 2.11c, 2.12a, 2.13d | osv audit off docs-only pushes. `cms-contract` wire schemas and error codes. The pure `auto` build-check function. Save, conflicts, the changes list and the editor's API client. The test editor's stopgap routes removed (2.12a). The three files under 80 (2.13d) |
-| Wave 12 (2.12d open) | 2.14e, 2.11d, 2.10l, 2.10m | The `Origin` guard on write routes and the start-up origin warning (2.14e). The editor's Publish button, status polling and the run guide (2.11d). The publish gate and the design 3 refusals, `PublishAnswer` in `cms-contract` (2.10l). The candidate build, `adopt` and `discard`, `decideBuild` wired in (2.10m) |
+| Wave 12 (closed) | 2.14e, 2.11d, 2.10l, 2.10m | The `Origin` guard on write routes and the start-up origin warning (2.14e). The editor's Publish button, status polling and the run guide (2.11d). The publish gate and the design 3 refusals, `PublishAnswer` in `cms-contract` (2.10l). The candidate build, `adopt` and `discard`, `decideBuild` wired in (2.10m) |
 
 ### 1.3 Decisions to carry
 
@@ -293,7 +293,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 
 ### Wave 12
 
-**Status (2026-11-19):** 2.14e (PR #58), 2.11d (PR #59), 2.10l (PR #60) and 2.10m (PR #61, merge `bef52af`) are merged. 2.10e is closed. Wave 12 closes when the user confirms 2.12d `[user]`, its only open item.
+**Closed (2026-11-20).** 2.14e (PR #58), 2.11d (PR #59), 2.10l (PR #60) and 2.10m (PR #61, merge `bef52af`) are merged. 2.10e is closed. 2.12d was run and confirmed by the user, and its notes are sorted into wave 13 as 2.12d-1 and 2.12d-2.
 
 #### 2.10e Build check and snapshot publish — after 2.10k, 2.14d, 2.9a · umbrella of 2.10l and 2.10m
 
@@ -413,7 +413,7 @@ The scope below is the whole of 2.10e, to be split between the two tasks as abov
 
 #### 2.12d First manual run — after 2.11d · `[user]` (was 2.12c-1)
 
-**Status (2026-11-19):** unblocked. 2.11d (#59), 2.10l (#60) and 2.10m (#61) are merged, and the run guide is in `DOCS/Guidelines/RUN-CMS-SERVER.md`. The save-during-publish step now applies. Not run yet: no record of the user's run.
+**Status (2026-11-20):** run by the user against `throwAwayRepoGH` (private, no deploy), `buildCheck: never`. Steps 1 to 5 went as expected: start, editor, one save, one publish, and the remote-moved conflict. Two notes, both now wave 13 tasks: 2.12d-1 (save refused right after a publish) and 2.12d-2 (the editor on `127.0.0.1`). Step 6 cannot be run as written, because Save is disabled during a publish; 2.12c covers `409 publish-in-progress` with `buildCheck: always`. The notes file is outside the repo (`C:\Users\aleja\DesignWork\2.12d-run\notes.md`). Notes sorted and the run confirmed by the user (2026-11-20): done.
 
 - Against a throwaway GitHub repo with no deploy attached, following the run guide, with `buildCheck: never`.
 - One save, one publish, and one conflict made on purpose: push a change to a saved document from another clone, then publish. If 2.10l has merged, also save during a publish. It runs as soon as 2.11d merges and does not wait for 2.10l or 2.10m; the candidate build and the failed-build case are covered in 2.12c.
@@ -474,6 +474,20 @@ The scope below is the whole of 2.10e, to be split between the two tasks as abov
 - Check that every route gets the site's state through one object, and that one middleware sets an `actor` (today a constant with `git.author`) that saves and publishes take the author from.
 - Change the code only if either is missing.
 - **Done when:** the check is written in the PR. If code changed, no behaviour changed and the existing tests pass untouched.
+
+#### 2.12d-1 Save right after a publish is refused — from 2.12d · `[build]`
+
+- **Seen:** twice in the run (cms.log 03:33:45Z and 03:35:30Z), a save 0.6 to 1.8 s after `Build finished` answered "The preview node did not answer, so nothing was saved. Try again once it is ready." The log has the warn `the preview node did not check the save`. Nothing was lost, and a retry worked.
+- **Likely cause (not confirmed):** Save is enabled again when the publish ends, while the preview node is still swapping onto the new bundle.
+- **First step:** find the window in `bundle-lifecycle.ts` and the editor's status handling, and reproduce it in a test.
+- **Done when:** a save after a publish either succeeds, or Save stays off until the preview node is ready.
+
+#### 2.12d-2 Editor on a non-CMS origin shows nothing — from 2.12d · `[build]`
+
+- **Seen:** on `http://127.0.0.1:4400/` the editor stays on "Waiting for the page...", the document list never loads, the preview pane shows a broken-page icon, and no log line explains it. The run guide says the editor reads but cannot save there.
+- **Likely cause (not confirmed):** the preview trusts only `origins.cms` as the parent origin (`editorOrigins`, kept in 2.12a).
+- **First step:** decide the intent: a visible message that names `origins.cms`, or reads that work with saves refused. Then fix the code or the run guide.
+- **Done when:** opening the editor on the wrong origin says what to open instead, and a test covers it.
 
 ### Wave 14 (close)
 
