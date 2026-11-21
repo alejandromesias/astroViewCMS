@@ -9,6 +9,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { previewConfigSchema } from 'preview-contract';
 import type { Secrets } from '../config/secrets.ts';
+import { type Logger, logger } from '../log.ts';
 // The shared allowlist of child environments (WORKPLAN 2.9c): the node's set is the one without the build's extras.
 import { childEnvironment as inheritedEnvironment } from './child-env.ts';
 
@@ -34,6 +35,8 @@ export interface NodeChild {
 export interface SpawnOptions {
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv;
+  /** Gets each chunk of the child's stderr as it arrives. */
+  readonly onStderr: (chunk: string) => void;
 }
 
 export interface SupervisorOptions {
@@ -67,6 +70,8 @@ export interface SupervisorOptions {
   readonly pollMs?: number;
   /** The time between SIGTERM and SIGKILL. Default 5 s. */
   readonly graceMs?: number;
+  /** Where the node's stderr lines go, at warn level. Default: the cms-server logger. */
+  readonly log?: Logger;
 }
 
 type NodeState = 'stopped' | 'starting' | 'ready' | 'restarting' | 'failed';
@@ -121,6 +126,8 @@ const STABLE_MS = 60_000;
 const MAX_DELAY_MS = 30_000;
 const READ_TIMEOUT_MS = 2_000;
 const STDERR_KEPT = 4_000;
+// The most characters of one stderr line that reach the log. The rest of the line is dropped.
+const STDERR_LINE_MAX = 1_000;
 const STOPPED_RESULT: StartResult = {
   ok: false,
   error: 'The node was stopped before it was ready',
@@ -178,6 +185,7 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
   const readyTimeoutMs = options.readyTimeoutMs ?? 20_000;
   const pollMs = options.pollMs ?? 200;
   const graceMs = options.graceMs ?? 5_000;
+  const log = options.log ?? logger;
 
   let state: NodeState = 'stopped';
   let target: BundleRef | undefined;
@@ -192,12 +200,14 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
   /** Spawns the node for `bundle`, then polls it until it answers the bundleId,
    *  exits, or the readiness timeout passes. */
   async function launch(bundle: BundleRef): Promise<Attempt> {
+    const forwarder = createStderrForwarder(log);
     const spawned = spawnNode(
       process.execPath,
       [startScript, siteConfig, '--out', bundle.dir],
       {
         cwd,
         env: childEnvironment(parentEnv, { port, site, editorOrigin, secrets }),
+        onStderr: forwarder.write,
       },
     );
     child = spawned;
@@ -205,6 +215,8 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
     let exit = undefined as ExitInfo | undefined;
     void spawned.exited.then((info) => {
       exit = info;
+      // The stderr is complete now. A last line with no newline is logged here.
+      forwarder.end();
     });
     const deadline = now() + readyTimeoutMs;
     for (;;) {
@@ -415,8 +427,34 @@ function exitMessage(exit: ExitInfo): string {
     : `The preview node exited (${how}): ${lastLine}`;
 }
 
-/** The real child process. Its stdout is drained, its stderr kept at the end. Its stdin is a pipe that
- *  stays open while this process lives: the child exits when it closes (stdin-exit.ts, WORKPLAN 2.1i). */
+/** Logs a child's stderr one line at a time, as it arrives. A chunk may end inside a line: that part waits
+ *  for the rest. A line keeps its first STDERR_LINE_MAX characters, and the rest of it is dropped, so a line
+ *  with no newline cannot grow without bound. `end` logs the open line, if there is one. */
+function createStderrForwarder(log: Logger): {
+  write(chunk: string): void;
+  end(): void;
+} {
+  let line = '';
+  const flush = (): void => {
+    log.warn('The preview node wrote to stderr', { line });
+    line = '';
+  };
+  return {
+    write(chunk: string): void {
+      for (const [index, part] of chunk.split('\n').entries()) {
+        if (index > 0) flush();
+        line = `${line}${part}`.slice(0, STDERR_LINE_MAX);
+      }
+    },
+    end(): void {
+      if (line !== '') flush();
+    },
+  };
+}
+
+/** The real child process. Its stdout is drained, its stderr kept at the end and handed to `onStderr` as
+ *  it arrives. Its stdin is a pipe that stays open while this process lives: the child exits when it
+ *  closes (stdin-exit.ts, WORKPLAN 2.1i). */
 function defaultSpawn(
   command: string,
   args: readonly string[],
@@ -429,8 +467,11 @@ function defaultSpawn(
   });
   let stderr = '';
   proc.stdout.resume();
-  proc.stderr.on('data', (chunk: Buffer) => {
-    stderr = `${stderr}${chunk.toString('utf8')}`.slice(-STDERR_KEPT);
+  // Decoded by the stream, so a character split across two chunks is not garbled.
+  proc.stderr.setEncoding('utf8');
+  proc.stderr.on('data', (chunk: string) => {
+    stderr = `${stderr}${chunk}`.slice(-STDERR_KEPT);
+    options.onStderr(chunk);
   });
   const exited = new Promise<ExitInfo>((resolve) => {
     proc.once('error', (error) =>

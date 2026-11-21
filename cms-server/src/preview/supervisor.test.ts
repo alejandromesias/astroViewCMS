@@ -4,6 +4,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { makeTestRoot, removeTestRoot } from '../../test/helpers/git.ts';
+import type { Logger } from '../log.ts';
 import {
   type BundleRef,
   childEnvironment,
@@ -66,6 +67,7 @@ class FakeChild implements NodeChild {
   exitedNow = false;
   private readonly world: World;
   private readonly ignoresTerm: boolean;
+  private readonly onStderr: (chunk: string) => void;
   private settle: (info: ExitInfo) => void = () => undefined;
 
   constructor(
@@ -82,6 +84,7 @@ class FakeChild implements NodeChild {
     this.args = args;
     this.cwd = options.cwd;
     this.env = options.env;
+    this.onStderr = options.onStderr;
     this.dir = args[3] ?? '';
     this.ignoresTerm = ignoresTerm;
     this.exited = new Promise<ExitInfo>((resolve) => {
@@ -100,6 +103,11 @@ class FakeChild implements NodeChild {
     if (this.exitedNow) return;
     this.exitedNow = true;
     this.settle(info);
+  }
+
+  /** The node writes `text` to its stderr. */
+  emitStderr(text: string): void {
+    this.onStderr(text);
   }
 }
 
@@ -185,6 +193,11 @@ function make(
   });
 }
 
+/** A logger whose calls are spies. */
+function spyLog() {
+  return { info: vi.fn(), warn: vi.fn(), error: vi.fn() } satisfies Logger;
+}
+
 function childAt(world: World, index: number): FakeChild {
   const child = world.children[index];
   if (child === undefined) throw new Error(`no node number ${index}`);
@@ -257,6 +270,7 @@ function writeFakeStart(root: string): string {
       '  });',
       'const listen = () => server.listen(Number(process.env.PORT), process.env.HOST);',
       "if (bundleId === 'noisy') process.stdout.write('x'.repeat(2 ** 21), listen);",
+      "else if (bundleId === 'chatty') process.stderr.write('render failed\\n' + 'c'.repeat(1500) + '\\n', listen);",
       'else listen();',
       '',
     ].join('\n'),
@@ -1116,6 +1130,144 @@ describe('createSupervisor with the real defaults: output of the node', () => {
         `The preview node exited (code 3, signal none): ${'b'.repeat(4_000)}`,
       );
       expect(await starting).toEqual({ ok: true });
+    } finally {
+      await supervisor.stop();
+      await removeTestRoot(root);
+    }
+  }, 15_000);
+});
+
+// The message of every line of the node's stderr in the log.
+const STDERR_LOG = 'The preview node wrote to stderr';
+
+describe('createSupervisor: the stderr of the node goes to the log', () => {
+  it('logs a stderr line at warn level, and nothing at info or error', async () => {
+    const fake = rig();
+    const log = spyLog();
+    const supervisor = make(fake, { log });
+    await supervisor.start(A);
+    childAt(fake.world, 0).emitStderr('render failed\n');
+    expect(log.warn.mock.calls).toEqual([
+      [STDERR_LOG, { line: 'render failed' }],
+    ]);
+    expect(log.info).not.toHaveBeenCalled();
+    expect(log.error).not.toHaveBeenCalled();
+  });
+
+  it('waits for the newline of a line that comes in two chunks', async () => {
+    const fake = rig();
+    const log = spyLog();
+    const supervisor = make(fake, { log });
+    await supervisor.start(A);
+    const node = childAt(fake.world, 0);
+    node.emitStderr('render ');
+    expect(log.warn).not.toHaveBeenCalled();
+    node.emitStderr('failed\nnext');
+    expect(log.warn.mock.calls).toEqual([
+      [STDERR_LOG, { line: 'render failed' }],
+    ]);
+  });
+
+  it('logs the last line when the node exits, even with no newline after it', async () => {
+    const fake = rig();
+    const log = spyLog();
+    const supervisor = make(fake, { log });
+    await supervisor.start(A);
+    const node = childAt(fake.world, 0);
+    node.emitStderr('done\nlast words');
+    node.exit({ code: 1, signal: null, stderr: '' });
+    await flush();
+    expect(log.warn.mock.calls).toEqual([
+      [STDERR_LOG, { line: 'done' }],
+      [STDERR_LOG, { line: 'last words' }],
+    ]);
+  });
+
+  it('logs nothing more at the exit when the last line ended with a newline', async () => {
+    const fake = rig();
+    const log = spyLog();
+    const supervisor = make(fake, { log });
+    await supervisor.start(A);
+    const node = childAt(fake.world, 0);
+    node.emitStderr('done\n');
+    node.exit({ code: 1, signal: null, stderr: '' });
+    await flush();
+    expect(log.warn.mock.calls).toEqual([[STDERR_LOG, { line: 'done' }]]);
+  });
+
+  it('cuts a line longer than 1000 characters to its first 1000, and keeps a line of exactly 1000', async () => {
+    const fake = rig();
+    const log = spyLog();
+    const supervisor = make(fake, { log });
+    await supervisor.start(A);
+    childAt(fake.world, 0).emitStderr(
+      `${'x'.repeat(1_000)}\n${'y'.repeat(1_001)}\n`,
+    );
+    expect(log.warn.mock.calls).toEqual([
+      [STDERR_LOG, { line: 'x'.repeat(1_000) }],
+      [STDERR_LOG, { line: 'y'.repeat(1_000) }],
+    ]);
+  });
+
+  it('cuts a long line that comes in several chunks, and logs the next line in full', async () => {
+    const fake = rig();
+    const log = spyLog();
+    const supervisor = make(fake, { log });
+    await supervisor.start(A);
+    const node = childAt(fake.world, 0);
+    node.emitStderr('a'.repeat(600));
+    node.emitStderr(`${'a'.repeat(600)}\nnext\n`);
+    expect(log.warn.mock.calls).toEqual([
+      [STDERR_LOG, { line: 'a'.repeat(1_000) }],
+      [STDERR_LOG, { line: 'next' }],
+    ]);
+  });
+
+  it('writes the line to the cms-server logger when no log is given: one warn line on stderr', async () => {
+    const write = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+    try {
+      const fake = rig();
+      const supervisor = make(fake);
+      await supervisor.start(A);
+      childAt(fake.world, 0).emitStderr('render failed\n');
+      expect(write).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(String(write.mock.calls[0]?.[0]))).toEqual({
+        time: expect.any(String),
+        level: 'warn',
+        message: STDERR_LOG,
+        line: 'render failed',
+      });
+    } finally {
+      write.mockRestore();
+    }
+  });
+});
+
+describe('createSupervisor with the real defaults: the stderr of the node', () => {
+  it('logs each stderr line of a real node at warn level, and cuts a line over 1000 characters', async () => {
+    const root = await makeTestRoot();
+    const port = await freePort();
+    const log = spyLog();
+    const supervisor = createSupervisor({
+      ...BASE,
+      port,
+      startScript: writeFakeStart(root),
+      log,
+    });
+    try {
+      expect(
+        await supervisor.start({
+          bundleId: 'chatty',
+          dir: path.join(root, 'bundles', 'chatty'),
+        }),
+      ).toEqual({ ok: true });
+      await eventually(() => log.warn.mock.calls.length === 2);
+      expect(log.warn.mock.calls).toEqual([
+        [STDERR_LOG, { line: 'render failed' }],
+        [STDERR_LOG, { line: 'c'.repeat(1_000) }],
+      ]);
     } finally {
       await supervisor.stop();
       await removeTestRoot(root);
