@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PROTOCOL_VERSION } from 'preview-protocol';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildTimeNote,
   limitNote,
@@ -152,6 +152,9 @@ function showPage(state: DocumentVisibilityState) {
   document.dispatchEvent(new Event('visibilitychange'));
 }
 
+/** The stops of the editors the tests started; afterEach ends them, so no poll outlives its test. */
+const stops: Array<() => void> = [];
+
 /** Starts the editor on a fake CMS API; resolves once its startup has run. */
 async function setup({
   search = '',
@@ -202,7 +205,7 @@ async function setup({
     }
     return new Response(null, { status: 404 });
   });
-  await startEditor(window, fetch);
+  stops.push(await startEditor(window, fetch));
 
   // Messages come from the preview origin by default, as the bridge sends them.
   const fromPage = (
@@ -287,6 +290,9 @@ const edit = (textarea: HTMLTextAreaElement, text: string) => {
 let editor: Awaited<ReturnType<typeof setup>>;
 beforeEach(async () => {
   editor = await setup();
+});
+afterEach(() => {
+  for (const stop of stops.splice(0)) stop();
 });
 
 describe('loading the page', () => {
@@ -2870,10 +2876,17 @@ describe('publishing', () => {
       );
       expect(saveControl().disabled).toBe(true);
       expect(publishButton().disabled).toBe(false);
+      // The reason is visible text, and Save names it as its description.
+      expect(publishStatus().textContent).toBe('Preview is starting');
+      expect(publishStatus().hidden).toBe(false);
+      expect(saveControl().getAttribute('aria-describedby')).toBe(
+        'publish-status',
+      );
       // The next read, a second later, finds the node ready and stops.
       await vi.advanceTimersByTimeAsync(1000);
       expect(saveControl().disabled).toBe(false);
       expect(saveControl().title).toBe('');
+      expect(publishStatus().hidden).toBe(true);
     } finally {
       vi.useRealTimers();
     }

@@ -730,4 +730,26 @@ describe('statusMessages', () => {
       },
     ]);
   });
+
+  it('shows why Save is off while the preview node is not ready', () => {
+    expect(
+      statusMessages({
+        state: 'idle',
+        error: null,
+        upstreamBuildFailed: null,
+        node: 'restarting',
+      }),
+    ).toEqual([{ level: 'warning', text: 'Preview is restarting' }]);
+  });
+
+  it('shows nothing for a ready preview node', () => {
+    expect(
+      statusMessages({
+        state: 'idle',
+        error: null,
+        upstreamBuildFailed: null,
+        node: 'ready',
+      }),
+    ).toEqual([]);
+  });
 });

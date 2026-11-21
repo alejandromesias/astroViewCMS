@@ -32,7 +32,7 @@ type BuildState = NonNullable<StatusAnswerBody['build']>['state'];
 /** How many milliseconds pass between two reads while a publish runs or the preview changes. */
 export const STATUS_POLL_MS = 1000;
 
-/** How many milliseconds pass between two reads while nothing runs. A build shows up in a read before the node leaves ready. */
+/** How many milliseconds pass between two reads while nothing runs. A build-driven swap shows in a read before the node leaves ready; a crash restart has no build signal, so its first read can come this long after it starts. */
 export const STATUS_IDLE_POLL_MS = 5000;
 
 /** The part of a status answer the publish controls read. A status without a publish part gives no state. */

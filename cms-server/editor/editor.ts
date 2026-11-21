@@ -144,12 +144,13 @@ interface DocumentView {
  * the iframe, sends the overlay built from the forms to the bridge as you
  * type, shows render results, and handles draft image uploads. `win` and
  * `fetchImpl` are parameters so tests can pass fakes. Resolves once the
- * starting overlay is in and the preview is open (or refused).
+ * starting overlay is in and the preview is open (or refused). It resolves to `stop`, which ends the status poll and the listeners
+ * this editor added.
  */
 export async function startEditor(
   win: Window = window,
   fetchImpl: typeof fetch = win.fetch.bind(win),
-): Promise<void> {
+): Promise<() => void> {
   const doc = win.document;
   const byId = <T extends HTMLElement>(id: string) =>
     doc.getElementById(id) as T;
@@ -824,7 +825,7 @@ export async function startEditor(
 
   /** Starts the poll of GET /api/status, unless one runs or the page is hidden. The poll reads at once, then every second while something runs and every 5 s while nothing does. `busy` is the state the caller last saw. */
   function startPoll(busy = false) {
-    if (stopPoll !== undefined || document.visibilityState === 'hidden') return;
+    if (stopPoll !== undefined || doc.visibilityState === 'hidden') return;
     stopPoll = startStatusPolling({
       fetchImpl,
       onChange: onPublishStatus,
@@ -843,10 +844,11 @@ export async function startEditor(
   }
 
   // A hidden page is not polled. When it is visible again, the poll starts and reads at once.
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') endPoll();
+  const onVisibility = () => {
+    if (doc.visibilityState === 'hidden') endPoll();
     else startPoll();
-  });
+  };
+  doc.addEventListener('visibilitychange', onVisibility);
 
   /** Shows the publish state the status reports and sets the buttons. Called each time the reported state changes. */
   function onPublishStatus(status: PublishStatus) {
@@ -897,7 +899,7 @@ export async function startEditor(
 
   // ---- messages from the bridge: only from the iframe, from the preview origin, well-formed
 
-  win.addEventListener('message', (event) => {
+  const onMessage = (event: MessageEvent) => {
     if (
       previewOrigin === undefined ||
       event.source !== iframe.contentWindow ||
@@ -938,7 +940,8 @@ export async function startEditor(
         'error',
       );
     }
-  });
+  };
+  win.addEventListener('message', onMessage);
 
   // ---- draft image upload ----------------------------------------------
 
@@ -984,6 +987,11 @@ export async function startEditor(
   // Reads the publish state now (a page reloaded during a publish keeps the buttons off, and a failed publish keeps its error),
   // then again each second while a publish runs (status.ts).
   startPoll();
+  return () => {
+    endPoll();
+    doc.removeEventListener('visibilitychange', onVisibility);
+    win.removeEventListener('message', onMessage);
+  };
 }
 
 // The page's script starts the editor once its markup is in place. Tests import
