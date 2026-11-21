@@ -1,7 +1,7 @@
 // The status of cms-server's preview (WORKPLAN 2.9c, PHASE-2-DESIGN 5.6): what GET /api/status reports beyond the bundle.
 // The lifecycle sets the build, swap and protocol fields. The sync, upstream and publish fields are set by 2.10g, 2.10f
-// and 2.10d through the setters. The node state is read from the supervisor, and the changeset size from the repo,
-// on each snapshot.
+// and 2.10d through the setters. The node state is read from the supervisor on each snapshot. The changeset size is read
+// from the repo once, then kept until an event that can change it calls `invalidateChangeset` (2.12d-3).
 import type { StatusBody } from 'cms-contract';
 import type { RenamedDocument } from '../documents/reapply.ts';
 import type { Supervisor } from './supervisor.ts';
@@ -50,9 +50,14 @@ export interface Status extends StatusSource {
   setPublish(state: PublishState, error?: string | null): void;
   /** The renamed documents of the last re-apply, as `setRenamed` set them (2.10d: the publish answer carries them). */
   getRenamed(): readonly RenamedDocument[];
+  /**
+   * Marks the changeset size stale, so the next snapshot counts it again (2.12d-3). A save, a publish, and a sync that
+   * fetched new commits or re-applied call it, after the change to `cms/work` or `origin` they make.
+   */
+  invalidateChangeset(): void;
 }
 
-/** The options of the holder. `builder` is `off` with --bundle. `node` and `changedPaths` are read on each snapshot. */
+/** The options of the holder. `builder` is `off` with --bundle. `node` is read on each snapshot; `changedPaths` runs only when the count is stale. */
 export interface StatusOptions {
   readonly builder: 'on' | 'off';
   readonly node: () => ReturnType<Supervisor['status']>;
@@ -88,12 +93,23 @@ export function createStatus(options: StatusOptions): Status {
     upstreamBuildFailed: null,
     publish: { state: 'idle', error: null },
   };
-  // The changeset size: the paths `cms/work` changes from origin, or null when git cannot count them.
-  const changesetSize = (): Promise<number | null> =>
-    changedPaths().then(
+  // The changeset size: the paths `cms/work` changes from origin, or null when git cannot count them. It is counted once and
+  // kept (2.12d-3), as the promise, so a read that starts while one is in flight shares it. A failed count is not kept.
+  let changeset: Promise<number | null> | undefined;
+  const countChangeset = (): Promise<number | null> => {
+    const count: Promise<number | null> = changedPaths().then(
       (paths) => paths.length,
-      () => null,
+      () => {
+        if (changeset === count) changeset = undefined;
+        return null;
+      },
     );
+    return count;
+  };
+  const changesetSize = (): Promise<number | null> => {
+    changeset ??= countChangeset();
+    return changeset;
+  };
   return {
     setBuildState(state) {
       values.buildState = state;
@@ -127,6 +143,9 @@ export function createStatus(options: StatusOptions): Status {
     },
     getRenamed() {
       return values.renamed;
+    },
+    invalidateChangeset() {
+      changeset = undefined;
     },
     async snapshot() {
       const current = node();

@@ -177,6 +177,7 @@ function statusSpy() {
     setLastSync: vi.fn(),
     setSyncError: vi.fn(),
     setRenamed: vi.fn(),
+    invalidateChangeset: vi.fn(),
   };
 }
 
@@ -635,8 +636,70 @@ describe('the sync routine, with fakes', () => {
     expect(tx.reapply).toHaveBeenCalledWith('upstream-sha', expect.anything());
     expect(guard.invalidate).toHaveBeenCalledTimes(1);
     expect(status.setRenamed).toHaveBeenCalledWith(renamed);
+    expect(status.invalidateChangeset).toHaveBeenCalledTimes(1);
     expect(status.setSyncError).toHaveBeenCalledWith(null);
     expect(trigger).not.toHaveBeenCalled();
+  });
+
+  it('a re-apply that throws after moving cms/work still invalidates the changeset (2.12d-3)', async () => {
+    const tx = txOf({
+      fetch: vi.fn(
+        async (): Promise<FetchResult> => ({
+          ok: true,
+          upstream: 'upstream-sha',
+          reapply: true,
+          change: 'content-only',
+          paths: [],
+        }),
+      ),
+      reapply: vi.fn(async (): Promise<ReapplyResult> => {
+        throw new Error('update-ref -d failed');
+      }),
+    });
+    const { sync, status } = syncOver(tx, repoOf(tx).repo);
+    expect((await sync.syncLocked(tx)).kind).toBe('failed');
+    expect(status.invalidateChangeset).toHaveBeenCalledTimes(1);
+  });
+
+  it('a sync with no re-apply does not invalidate the changeset (cms/work did not move, 2.12d-3)', async () => {
+    const tx = txOf();
+    const { sync, status } = syncOver(tx, repoOf(tx).repo);
+    expect((await sync.syncLocked(tx)).kind).toBe('synced');
+    expect(status.invalidateChangeset).not.toHaveBeenCalled();
+  });
+
+  it('syncNow invalidates the changeset when origin moved, and not while it reads the same tip (2.12d-3)', async () => {
+    const tx = txOf();
+    const { repo } = repoOf(tx);
+    const { sync, status } = syncOver(tx, repo);
+    expect((await sync.syncNow()).kind).toBe('synced');
+    expect(status.invalidateChangeset).toHaveBeenCalledTimes(1);
+    expect(await sync.syncNow()).toStrictEqual({ kind: 'unchanged' });
+    expect(status.invalidateChangeset).toHaveBeenCalledTimes(1);
+  });
+
+  it('syncNow invalidates the changeset when origin moved but the lock was skipped (2.12d-3)', async () => {
+    const tx = txOf();
+    const origin = {
+      current: { ok: true, upstream: 'sha-9' } as FetchOriginResult,
+    };
+    const { repo } = repoOf(tx, origin);
+    const gate = { pollMayRun: vi.fn(() => true) };
+    const status = statusSpy();
+    const sync = createSync({
+      repo,
+      bundles: { current: vi.fn(async () => null) },
+      guard: { invalidate: vi.fn() },
+      status,
+      trigger: vi.fn(),
+      gate,
+      now: () => NOW,
+    });
+    // The gate closes after the probe: the tick is skipped under the lock, and the status was still counted again.
+    gate.pollMayRun.mockReturnValueOnce(true).mockReturnValueOnce(false);
+    expect(await sync.syncNow()).toStrictEqual({ kind: 'skipped' });
+    expect(status.invalidateChangeset).toHaveBeenCalledTimes(1);
+    expect(tx.fetch).not.toHaveBeenCalled();
   });
 
   it('a code change asks for a sync-code build, once', async () => {

@@ -47,7 +47,10 @@ interface SyncDeps {
   readonly repo: Pick<Repo, 'locked' | 'fetchOrigin'>;
   readonly bundles: BundleStore;
   readonly guard: Pick<DeleteGuard, 'invalidate'>;
-  readonly status: Pick<Status, 'setLastSync' | 'setSyncError' | 'setRenamed'>;
+  readonly status: Pick<
+    Status,
+    'setLastSync' | 'setSyncError' | 'setRenamed' | 'invalidateChangeset'
+  >;
   /**
    * Asks for a build of `cms/work` for `reason`. It is called without waiting: the build takes the repo lock itself, so it
    * runs once the sync (or the publish that holds the lock) is done.
@@ -116,6 +119,10 @@ export function createSync({
       }
     } catch (error: unknown) {
       return failed(redact(messageOf(error)));
+    } finally {
+      // `moveWork` moves `cms/work` before its last two ref deletes, so a re-apply that throws may still have moved it:
+      // the changeset is counted again on that path too (2.12d-3).
+      if (fetched.reapply) status.invalidateChangeset();
     }
     if (fetched.change === 'code') trigger('sync-code');
     status.setLastSync(now().toISOString());
@@ -140,6 +147,8 @@ export function createSync({
       status.setSyncError(null);
       return { kind: 'unchanged' };
     }
+    // Origin moved, so the changeset (`cms/work` against origin) is counted again, even if the lock below is skipped (2.12d-3).
+    status.invalidateChangeset();
     try {
       const outcome = await repo.locked(
         'sync',

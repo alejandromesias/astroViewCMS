@@ -17,10 +17,10 @@ import { directoryBundleSource } from '../bundle/source.ts';
 import { GitError } from '../git/exec.ts';
 import { LockTimeoutError } from '../git/mutex.ts';
 import type { Repo } from '../git/ops.ts';
+import { createStatus } from '../preview/status.ts';
 import { createReferenceIndex } from '../references/reference-index.ts';
 import type { DeleteGuard, PreviewClient } from '../save/context.ts';
 import { createDeleteGuard } from '../save/delete-guard.ts';
-import { createStatus } from '../preview/status.ts';
 import { createPublishGate, type PublishGate } from '../sync/publish-gate.ts';
 import { MAX_BODY_BYTES, registerChangeRoutes } from './changes-routes.ts';
 
@@ -162,6 +162,7 @@ async function saveApp(
     saveStop: () => undefined,
     clearFailed: () => undefined,
   },
+  onCommit?: () => void,
 ): Promise<{ app: Hono; siteFolder: string; repoDir: string }> {
   const root = await makeTestRoot();
   folders.push(root);
@@ -176,7 +177,7 @@ async function saveApp(
     bundle: directoryBundleSource(bundle ?? (await bundleFolder())),
     workingCopy: state.siteFolder,
     repo: saves,
-    save: { config, preview, guard, onRebuild, gate },
+    save: { config, preview, guard, onRebuild, gate, onCommit },
   });
   return { app, siteFolder: state.siteFolder, repoDir: state.repoDir };
 }
@@ -314,6 +315,23 @@ describe('PUT /api/changes', () => {
     expect((await git(repoDir, ['log', '-1', '--format=%B'])).trim()).toBe(
       'CMS save: 1 document(s)\n\nmodified authors/ana-torres',
     );
+  });
+
+  it('calls onCommit once for a committed save, and not for a refused one (2.12d-3)', async () => {
+    const onCommit = vi.fn();
+    const { app, siteFolder } = await saveApp(
+      previewSays(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      onCommit,
+    );
+    expect((await put(app, 'not json')).status).toBe(400);
+    expect(onCommit).not.toHaveBeenCalled();
+    const before = await readFile(join(siteFolder, ANA), 'utf8');
+    expect((await put(app, anaUpdate(before, 'Ana T.'))).status).toBe(200);
+    expect(onCommit).toHaveBeenCalledTimes(1);
   });
 
   it('saves two documents in one commit', async () => {

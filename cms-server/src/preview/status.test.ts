@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createStatus, type StatusOptions } from './status.ts';
 import type { Supervisor } from './supervisor.ts';
 
@@ -54,7 +54,7 @@ describe('the status snapshot', () => {
     expect((await status.snapshot()).changesetSize).toBeNull();
   });
 
-  it('reads the node and the changeset on each snapshot, not once', async () => {
+  it('reads the node on each snapshot, and the changeset only after an event (2.12d-3)', async () => {
     let node: ReturnType<Supervisor['status']> = READY;
     let paths: { path: string }[] = [];
     const status = createStatus(
@@ -68,8 +68,80 @@ describe('the status snapshot', () => {
     paths = [{ path: 'c.md' }];
     expect(await status.snapshot()).toMatchObject({
       node: { state: 'restarting', bundleId: null, error: null },
-      changesetSize: 1,
+      changesetSize: 0,
     });
+    status.invalidateChangeset();
+    expect((await status.snapshot()).changesetSize).toBe(1);
+  });
+});
+
+describe('the changeset size, counted once until an event (2.12d-3)', () => {
+  it('repeated reads with no event in between run changedPaths once', async () => {
+    const changedPaths = vi.fn(() =>
+      Promise.resolve([{ path: 'a.md' }, { path: 'b.md' }]),
+    );
+    const status = createStatus(optionsOf({ changedPaths }));
+    expect((await status.snapshot()).changesetSize).toBe(2);
+    expect((await status.snapshot()).changesetSize).toBe(2);
+    expect((await status.snapshot()).changesetSize).toBe(2);
+    expect(changedPaths).toHaveBeenCalledTimes(1);
+  });
+
+  it('after invalidateChangeset, the next read counts again, and the one after that does not', async () => {
+    let paths: { path: string }[] = [{ path: 'a.md' }];
+    const changedPaths = vi.fn(() => Promise.resolve(paths));
+    const status = createStatus(optionsOf({ changedPaths }));
+    expect((await status.snapshot()).changesetSize).toBe(1);
+    paths = [{ path: 'a.md' }, { path: 'b.md' }];
+    expect((await status.snapshot()).changesetSize).toBe(1);
+    status.invalidateChangeset();
+    expect((await status.snapshot()).changesetSize).toBe(2);
+    expect((await status.snapshot()).changesetSize).toBe(2);
+    expect(changedPaths).toHaveBeenCalledTimes(2);
+  });
+
+  it('a count still in flight when the event comes does not answer the reads after it', async () => {
+    let calls = 0;
+    let resolveFirst: (paths: readonly unknown[]) => void = () => undefined;
+    const status = createStatus(
+      optionsOf({
+        changedPaths: () => {
+          calls += 1;
+          if (calls === 1)
+            return new Promise<readonly unknown[]>((resolve) => {
+              resolveFirst = resolve;
+            });
+          return Promise.resolve([{ path: 'a.md' }, { path: 'b.md' }]);
+        },
+      }),
+    );
+    const stale = status.snapshot();
+    status.invalidateChangeset();
+    expect((await status.snapshot()).changesetSize).toBe(2);
+    resolveFirst([{ path: 'a.md' }]);
+    expect((await stale).changesetSize).toBe(1);
+    expect((await status.snapshot()).changesetSize).toBe(2);
+    expect(calls).toBe(2);
+  });
+
+  it('a count that git fails on is null for that read, and the next read counts again', async () => {
+    let calls = 0;
+    let fail = true;
+    const status = createStatus(
+      optionsOf({
+        changedPaths: () => {
+          calls += 1;
+          return fail
+            ? Promise.reject(new Error('git failed'))
+            : Promise.resolve([{ path: 'a.md' }]);
+        },
+      }),
+    );
+    expect((await status.snapshot()).changesetSize).toBeNull();
+    fail = false;
+    expect((await status.snapshot()).changesetSize).toBe(1);
+    expect((await status.snapshot()).changesetSize).toBe(1);
+    expect(calls).toBe(2);
   });
 });
 

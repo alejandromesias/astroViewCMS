@@ -306,6 +306,7 @@ describe('run', () => {
             }),
             guard: expect.any(Object) as DeleteGuard,
             onRebuild: expect.any(Function) as () => void,
+            onCommit: expect.any(Function) as () => void,
             gate: expect.any(Object),
           },
           publish: {
