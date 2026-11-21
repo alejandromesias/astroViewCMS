@@ -580,7 +580,10 @@ Order in the `[build]` slot: 2.10f, then 2.12d-1, then 2.10m-1 (architect, 2026-
 #### 2.14a-4 Re-run the second site — after 2.14a-1 to 2.14a-3 · `[user]`
 
 - Re-run the blog template through the editor UI: edit, save, publish, and at least one page other than `/`.
-- Run the user's own Astro 7 site if the path has been given by then. If not, record it as skipped.
+- Run the user's own Astro 7 site, `C:UsersalejaDesignWorkCMSProjectatrowindCMSTest` (path given 2026-11-21). Read-only look by the architect: the AstroWind template (`@arthelokyo/astrowind` 1.0.0-beta.66), Astro ^7.3.1, Tailwind v4 through `@tailwindcss/vite`, `output: 'static'`. `site` is set by its own integration (`vendor/integration`) from `src/config.yaml`, so it exercises 2.14a-1.
+  - Expect many F1-class failures: the workspace very likely lacks tailwindcss, `@tailwindcss/vite`, `@tailwindcss/typography`, `astro-icon` with `@iconify-json/*`, `@astrojs/partytown`, `astro-compress`, `astro-seo`, the `astro-embed` packages, `unpic`, `limax`, `lodash.merge`, `reading-time`, `js-yaml` and `@astrojs/rss`. It is the real test for U3 option A. Record each missing package as a finding; do not add it.
+  - It has custom remark and rehype plugins (`src/utils/frontmatter`), and its content collections use glob loaders with deep optional metadata schemas: a check for 2.14c.
+  - **Never publish to its `origin`** (`git@github.com:alejandromesias/atrowindCMSTest.git`, branch `main`, the user's real repo). Clone it into a local bare repo under the spike folder and point the CMS at that, as with the blog template. Do not change the user's working copy.
 - Its new findings update the table in `DOCS/Workplans/Proposals/2.14a-SECOND-SITE.md`.
 - **Done when:** the user confirms the run and the table is updated.
 
