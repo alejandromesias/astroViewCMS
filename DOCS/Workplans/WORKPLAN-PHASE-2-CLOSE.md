@@ -501,6 +501,7 @@ Order in the `[build]` slot: 2.10f, then 2.12d-1, then 2.10m-1 (architect, 2026-
 - `preview-contract` has 5 files with module-level zod schemas. Stryker's `ignoreStatic: true` marks their static mutants `Ignored`, so the gate never judges them.
 - Set `ignoreStatic: false` for the `preview-contract` triage, as done for `cms-contract` in 2.10l, then kill the survivors.
 - **Done when:** the `preview-contract` mutation group judges static mutants, and its survivors are killed or justified, at or above the floor.
+- **Result:** PR #66, merge `d2b61ad` (head `93ff453`). Closed (2026-11-21). `ignoreStatic: false` in `stryker.contract.config.mjs`, with tests in `envelope.test.ts`, `manifest.test.ts` and `bundle.test.ts`, and a one-character url test. Stryker, preview-contract (9 files): overall 91.49 -> 97.52; every file above 80. Survivors and the no-coverage mutant are judged, not killed: `envelope.ts:55`, `:51` (the `{}` error option, equivalent under Zod 4), `:78` (unreachable through the public API), `revision.ts:59`, `token.ts:59` (unreachable) and `token.ts:93` (equivalent). The reasons are in the PR body. The renderer's copy of the messages is not checked against this one; the note is in the `envelope.test.ts` header. The score is from the run at `e254473`; it was not rerun at `93ff453`.
 
 #### 2.12d-1 Save right after a publish is refused — from 2.12d · `[build]`
 
