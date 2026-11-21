@@ -502,6 +502,17 @@ describe('createPublish: what it answers', () => {
     expect(trigger).toHaveBeenCalledWith('publish');
   });
 
+  it('counts the changeset again after every publish that runs, whatever its answer (2.12d-3)', async () => {
+    const pushed = rig();
+    const pushedSpy = vi.spyOn(pushed.status, 'invalidateChangeset');
+    await pushed.publish();
+    expect(pushedSpy).toHaveBeenCalledTimes(1);
+    const refused = rig({ bundle: 'none' });
+    const refusedSpy = vi.spyOn(refused.status, 'invalidateChangeset');
+    expect((await refused.publish()).status).toBe(503);
+    expect(refusedSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('answers 200 with commit null for an empty changeset after the sync, resets cms/work to the origin tip and builds nothing', async () => {
     const { publish, events, tx, trigger, builds, status, preview } = rig({
       hasSavedChanges: false,

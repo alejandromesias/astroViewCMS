@@ -83,7 +83,10 @@ export interface PublishDeps {
   readonly guard: Pick<DeleteGuard, 'recheck' | 'invalidate'>;
   /** The sync under a lock the caller holds (`createSync(...).syncLocked`, 2.10c). */
   readonly syncLocked: (tx: SyncTx) => Promise<SyncOutcome>;
-  readonly status: Pick<Status, 'setPublish' | 'setRenamed' | 'getRenamed'>;
+  readonly status: Pick<
+    Status,
+    'setPublish' | 'setRenamed' | 'getRenamed' | 'invalidateChangeset'
+  >;
   readonly builds: Builds;
   /** The publish gate (2.10l): closed from the click to the answer, so saves and poll ticks are refused meanwhile. */
   readonly gate: PublishGate;
@@ -592,6 +595,8 @@ export function createPublish({
         });
       return apiError(failure.code, { message: failure.message });
     } finally {
+      // A publish pushes and may reset `cms/work`, so the changeset is counted again on every path (2.12d-3).
+      status.invalidateChangeset();
       // Reopened once the answer is decided, on every path, so the gate reopens after every answer (2.10l).
       gate.end();
     }

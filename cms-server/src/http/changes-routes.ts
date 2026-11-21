@@ -45,6 +45,11 @@ export interface SaveRouteDeps {
    * as started (2.10d). Not awaited.
    */
   readonly onRebuild?: (() => void) | undefined;
+  /**
+   * Called after each committed save, under the repo lock (an after-commit hook), so the status counts the changeset again
+   * (2.12d-3). Not called for a save that is refused or fails.
+   */
+  readonly onCommit?: (() => void) | undefined;
 }
 
 /** What the change routes read. PUT is registered only when `save` is given. */
@@ -93,6 +98,9 @@ export function registerChangeRoutes(app: Hono, deps: ChangeRouteDeps): void {
     const rebuildAfterCommit: AfterCommitHook = async (ctx) => {
       if (ctx.rebuild) save.onRebuild?.();
     };
+    const commitAfterCommit: AfterCommitHook = async () => {
+      save.onCommit?.();
+    };
     app.put('/api/changes', async (c) => {
       const request = c.req.raw;
       const rejection = rejectUnlessContentType(request, JSON_CONTENT_TYPE);
@@ -130,7 +138,7 @@ export function registerChangeRoutes(app: Hono, deps: ChangeRouteDeps): void {
             log,
             guard,
             gate: save.gate,
-            afterCommit: [rebuildAfterCommit],
+            afterCommit: [rebuildAfterCommit, commitAfterCommit],
           },
           deps.repo,
         );

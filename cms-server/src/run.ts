@@ -340,6 +340,8 @@ export async function run(
       guard,
       onRebuild,
       gate,
+      // A committed save changes `cms/work`, so the status counts the changeset again (2.12d-3).
+      onCommit: () => status.invalidateChangeset(),
     },
     // POST /api/publish (2.10d).
     publish: { publish },
