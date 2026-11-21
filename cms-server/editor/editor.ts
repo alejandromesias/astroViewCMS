@@ -44,6 +44,8 @@ import {
 } from './messages.ts';
 import {
   type PublishStatus,
+  previewChanging,
+  previewNotReadyText,
   publishStatusOf,
   startStatusPolling,
   withoutFailedPublish,
@@ -738,11 +740,15 @@ export async function startEditor(
   let publishing = false;
   /** True while GET /api/status reports a publish running. */
   let publishRunning = false;
+  /** The preview node's state as GET /api/status last reported it; undefined before a report with a node part. */
+  let previewNode: PublishStatus['node'];
 
-  /** Sets Save and Publish. Both are off while a publish runs (the drafts stay as they are), and Save is off during its own requests. */
+  /** Sets Save and Publish. Both are off while a publish runs (the drafts stay as they are), and Save is off during its own requests. Save is also off while the preview node is not ready: the preview refuses a save then, and its tooltip says why. */
   function refreshButtons() {
     const busy = publishing || publishRunning;
-    saveButton.disabled = busy || saving;
+    const notReady = previewNotReadyText(previewNode);
+    saveButton.disabled = busy || saving || notReady !== '';
+    saveButton.title = notReady;
     publishButton.disabled = busy;
   }
 
@@ -816,9 +822,9 @@ export async function startEditor(
   /** The stop of the status poll while one runs, or undefined. At most one poll runs. */
   let stopPoll: (() => void) | undefined;
 
-  /** Starts the poll of GET /api/status, unless one runs. The poll ends itself once a read reports no publish running. */
+  /** Starts the poll of GET /api/status, unless one runs or the page is hidden. The poll reads at once, then every second while something runs and every 5 s while nothing does. */
   function startPoll() {
-    if (stopPoll !== undefined) return;
+    if (stopPoll !== undefined || document.visibilityState === 'hidden') return;
     stopPoll = startStatusPolling({
       fetchImpl,
       onChange: onPublishStatus,
@@ -826,11 +832,20 @@ export async function startEditor(
       onRead: (status) => {
         if (status.state === 'publishing') lastPublishFailed = false;
       },
-      onEnd: () => {
-        stopPoll = undefined;
-      },
     });
   }
+
+  /** Ends the poll, if one runs. The next start reads the status at once. */
+  function endPoll() {
+    stopPoll?.();
+    stopPoll = undefined;
+  }
+
+  // A hidden page is not polled. When it is visible again, the poll starts and reads at once.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') endPoll();
+    else startPoll();
+  });
 
   /** Shows the publish state the status reports and sets the buttons. Called each time the reported state changes. */
   function onPublishStatus(status: PublishStatus) {
@@ -838,10 +853,9 @@ export async function startEditor(
     if (status.state === 'publishing') lastPublishFailed = false;
     const shown = lastPublishFailed ? withoutFailedPublish(status) : status;
     publishRunning = shown.state === 'publishing';
+    previewNode = shown.node;
     refreshButtons();
     showLines(publishStatus, statusMessages(shown));
-    // A publish that runs (this page's, or another tab's) is polled until it ends.
-    if (publishRunning) startPoll();
   }
 
   /** Publishes the saved changes. Publish is off while it runs. Its answer is shown next to the button; after a commit the changes list is read again. */
@@ -864,7 +878,15 @@ export async function startEditor(
       }
       // The publish may have cleared a failed state or an upstream build error: read the status now, not at the next reload.
       const status = await getStatus(fetchImpl);
-      if (status.ok) onPublishStatus(publishStatusOf(status.body));
+      if (status.ok) {
+        const shown = publishStatusOf(status.body);
+        onPublishStatus(shown);
+        // A publish or a build may run now: the poll restarts, so it reads at the busy interval from here on, not after its idle wait.
+        if (shown.state === 'publishing' || previewChanging(shown)) {
+          endPoll();
+          startPoll();
+        }
+      }
     } finally {
       publishing = false;
       refreshButtons();
