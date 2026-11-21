@@ -489,6 +489,7 @@ Order in the `[build]` slot: 2.10f, then 2.12d-1, then 2.10m-1 (architect, 2026-
 
 - A weekly job on `macos-latest`, mirroring `windows.yml` exactly: `npm ci`, then `npm run coverage`, plus `cms-server/test/e2e/start.e2e.test.ts` under its e2e config. The full unit run costs nothing on a public repo and avoids picking files by guesswork (architect, 2026-11-20).
 - **Done when:** the job is green once, or its failures are tasks.
+- **Result:** PR #69, merge `2fbe012`. Run `44947329709` (manual dispatch on main, 2026-11-21): `unit tests and start e2e on macOS` passed. Green once, so no failure tasks. The job runs weekly on Wednesdays (`41 6 * * 3`).
 
 #### 2.14j Site context and actor seam — check first (A10)
 
@@ -526,7 +527,7 @@ Order in the `[build]` slot: 2.10f, then 2.12d-1, then 2.10m-1 (architect, 2026-
 - **Not the fix:** a longer idle interval. The 5 s idle poll catches a sync-code build only because the build runs about 8 s before the swap; a small site builds faster (architect, 2026-11-21). Stopping idle reads after a quiet period is also out: the idle page is the case the poll is for.
 - **Fix:** `preview/status.ts` keeps the last `changesetSize` and recomputes it only after an event that can change it: a save, a publish (pushed or reset), or a sync that fetched new commits. Idle reads then serve it from memory, with no git process.
 - **Done when:** a test shows repeated status reads with no event in between run `changedPaths()` once, and that each of the three events makes the next read recompute it.
-- **Result:** PR #70, head `b13505f`, not merged yet. Checks pass on that head: fast gates, e2e and browser, CodeQL, osv-scanner, and mutation on changed files (overall 94.33, floor 75; every file at or above the per-file floor of 80: `status.ts` 97.37, `publish.ts` 97.20, `sync.ts` 95.89, `changes-routes.ts` 96.00, `run.ts` 88.79). Review fixes in `b13505f`: the `onCommit` expectation in `run.test.ts`, and the changeset invalidation moved to a `finally` in `sync.ts`, so a re-apply that throws after moving `cms/work` still invalidates. Open: `guard.invalidate()` has the same placement and is not fixed (follow-up). Done when the user merges PR #70.
+- **Result:** PR #70, merged as `46c0c3a` (head `b13505f`, 2026-11-21). Checks passed on that head: fast gates, e2e and browser, CodeQL, osv-scanner, and mutation on changed files (overall 94.33, floor 75; every file at or above the per-file floor of 80: `status.ts` 97.37, `publish.ts` 97.20, `sync.ts` 95.89, `changes-routes.ts` 96.00, `run.ts` 88.79). Review fixes in `b13505f`: the `onCommit` expectation in `run.test.ts`, and the changeset invalidation moved to a `finally` in `sync.ts`, so a re-apply that throws after moving `cms/work` still invalidates. Open: `guard.invalidate()` has the same placement and is not fixed (follow-up). Done.
 
 ### Wave 14 (close)
 
