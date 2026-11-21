@@ -34,3 +34,25 @@ describe('bundleJsonSchema', () => {
     ).toBe(false);
   });
 });
+
+describe('bundleJsonSchema: the siteCommit hash', () => {
+  it.each([
+    ['40 hex characters', 'a'.repeat(40)],
+    ['64 hex characters', 'a'.repeat(64)],
+  ])('accepts a siteCommit of %s', (_name, siteCommit) => {
+    expect(
+      bundleJsonSchema.parse({ ...bundleOf(), siteCommit }).siteCommit,
+    ).toBe(siteCommit);
+  });
+
+  it.each([
+    ['a letter before the hash', `z${'a'.repeat(40)}`],
+    ['a letter after the hash', `${'a'.repeat(40)}z`],
+    ['65 hex characters', 'a'.repeat(65)],
+    ['39 hex characters', 'a'.repeat(39)],
+  ])('refuses a siteCommit with %s', (_name, siteCommit) => {
+    expect(
+      bundleJsonSchema.safeParse({ ...bundleOf(), siteCommit }).success,
+    ).toBe(false);
+  });
+});
