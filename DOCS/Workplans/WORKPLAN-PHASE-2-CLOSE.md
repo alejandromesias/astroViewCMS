@@ -488,12 +488,14 @@ Order in the `[build]` slot: 2.10f, then 2.12d-1, then 2.10m-1 (architect, 2026-
 - At start, if the bundle named in the state is invalid, the CMS asks for a build.
 - Shared files: `integration.ts`; must merge before 2.14c.
 - **Done when:** there is a test for each of the two behaviours.
+- **Result:** PR #72, head `24d7908`, open, not merged. All required checks pass. `integration.ts` throws `documents.json not written: <cause>` when the manifest cannot be written. At start, `bundle-lifecycle.ts` checks the state's bundle through a new `readFiles` option; a missing or invalid file logs a warning and builds with the new reason `invalid-bundle`. A `bundle.json` that cannot be read stays on the protocol check. Stryker on changed files (CI): `bundle-lifecycle.ts` 91.09, `integration.ts` 86.90, both above the floor of 80. Not verified: a real Astro build with a missing `buildTimeFields` file, and a real preview node started on an invalid bundle. Done when the user merges PR #72.
 
 #### 2.14a-3 Render errors reach the CMS log — from 2.14a (F7) · `[build]`, parallel (cms-server only)
 
 - The supervisor forwards the preview node's stderr lines to the CMS log as they arrive, at warn level, keeping the existing tail buffer.
 - Cap the length of each line so a looping error cannot flood the log.
 - **Done when:** a test shows a stderr line reaches the log at warn level, and an over-long line is cut.
+- **Result:** PR #73, head `49029d3`, open, not merged. All required checks pass. `supervisor.ts` logs each preview-node stderr line at warn level as it arrives (a partial line waits for its newline; an open line is logged at exit), keeps the first 1000 characters of a line, and leaves the 4000-byte tail as it was. stderr is decoded as UTF-8 with `setEncoding`. Stryker on changed files (CI): `supervisor.ts` 95.10. The real-node test ran locally on Windows and in CI only. Done when the user merges PR #73.
 
 #### 2.14e item 4 Same-site cookie spike — `[user]`
 
