@@ -314,6 +314,7 @@ describe('run', () => {
           activity: { touch: expect.any(Function) as () => void },
           overlay: { mediaFolder: 'src/assets/uploads', log: h.log },
           previewUrl: {
+            cmsOrigin: CMS_ORIGIN,
             origin: PREVIEW_ORIGIN,
             site: 'sample-site',
             tokenSecret: SECRETS.previewTokenSecret,

@@ -41,7 +41,7 @@ The account must be able to push to the branch. For a GitHub remote, a failed si
 - Another config file: `node src/main.ts <path-to-config>` in `cms-server`. Do not add `-- ../cms.config.ts` to `npm start`: the config would be given twice, and the start refuses the second argument.
 - `--bundle <folder>` serves a bundle that is already built. The builder is then off, and no build follows a save or publish.
 
-Open the editor at exactly `origins.cms` (for example `http://cms.localhost:4400/`). Writes carry the page's `Origin`, and the server refuses one that is not `origins.cms` (2.14e), so the editor opened on `127.0.0.1` or `localhost` can read but not save. Add `?page=/some/path` to choose the page the preview shows.
+Open the editor at exactly `origins.cms` (for example `http://cms.localhost:4400/`). The preview frames only `origins.cms`, so the editor opened on `127.0.0.1` or `localhost` shows a message that names `origins.cms` and does not open the preview; the document list stays empty there. Saves are refused too: writes carry the page's `Origin`, and the server refuses one that is not `origins.cms` (2.14e). Add `?page=/some/path` to choose the page the preview shows.
 
 Secrets: `PREVIEW_TOKEN_SECRET` and `PREVIEW_INTERNAL_SECRET` (64 hex digits each) come from the environment when set. Otherwise they are created once in `.cms/<site>/secrets.json`, so a restart keeps the sessions.
 

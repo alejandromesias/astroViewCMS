@@ -312,6 +312,11 @@ describe('loading the page', () => {
   it.each([
     [400, 'invalid-path', 'path must start with /'],
     [503, 'preview-unavailable', 'the renderer is not running'],
+    [
+      403,
+      'cross-origin',
+      'This page is not origins.cms. Open the editor at http://cms.localhost:4400/ instead: the preview shows only on that origin, and saves are refused here.',
+    ],
   ])(
     'shows a refused preview (%i) with its message, and does not load the iframe',
     async (status, error, message) => {
