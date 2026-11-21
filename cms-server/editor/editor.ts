@@ -144,8 +144,8 @@ interface DocumentView {
  * the iframe, sends the overlay built from the forms to the bridge as you
  * type, shows render results, and handles draft image uploads. `win` and
  * `fetchImpl` are parameters so tests can pass fakes. Resolves once the
- * starting overlay is in and the preview is open (or refused). It resolves to `stop`, which ends the status poll and the listeners
- * this editor added.
+ * starting overlay is in and the preview is open (or refused). It resolves to `stop`, which ends the status poll and removes the
+ * document and window listeners this editor added.
  */
 export async function startEditor(
   win: Window = window,
