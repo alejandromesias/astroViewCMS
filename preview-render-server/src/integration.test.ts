@@ -336,6 +336,42 @@ describe('previewRenderServer hooks', () => {
     });
   });
 
+  it('records the site of the Astro config in bundle.json, when the site sets one', () => {
+    const integration = previewRenderServer(hookSite, 'site-bundle')
+      .hooks as unknown as Record<string, Hook>;
+    integration['astro:config:done']!({
+      config: {
+        cacheDir: new URL(`file:///${posix(path.join(tmp, 'no-cache'))}/`),
+        base: '/',
+        trailingSlash: 'ignore',
+        site: 'https://example.com/',
+      },
+    });
+    integration['astro:build:done']!({ logger: { warn: vi.fn() } });
+    expect(manifest('bundle.json')).toStrictEqual({
+      bundleId: 'site-bundle',
+      siteCommit: null,
+      protocolVersion: PROTOCOL_VERSION,
+      astroVersion: astroVersion(),
+      builtAt: expect.any(String),
+      site: 'https://example.com/',
+    });
+  });
+
+  it('leaves site out of bundle.json when the Astro config has none', () => {
+    const integration = previewRenderServer(hookSite, 'no-site-bundle')
+      .hooks as unknown as Record<string, Hook>;
+    integration['astro:config:done']!({
+      config: {
+        cacheDir: new URL(`file:///${posix(path.join(tmp, 'no-cache'))}/`),
+        base: '/',
+        trailingSlash: 'ignore',
+      },
+    });
+    integration['astro:build:done']!({ logger: { warn: vi.fn() } });
+    expect(manifest('bundle.json')).not.toHaveProperty('site');
+  });
+
   it('lists the images under src/ in path order, relative to the site root', () => {
     const integration = hooksOf(hookSite);
     integration['astro:build:done']!({ logger: { warn: vi.fn() } });

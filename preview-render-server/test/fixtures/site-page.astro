@@ -1,0 +1,6 @@
+---
+// Reads Astro.site the way the stock BaseHead does (F6): without a site, the
+// URL constructor throws "Invalid URL".
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
+---
+<link rel="canonical" href={canonical} />

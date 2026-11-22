@@ -35,6 +35,24 @@ describe('bundleJsonSchema', () => {
   });
 });
 
+describe('bundleJsonSchema: the optional site', () => {
+  it('accepts a record with a site, and one without', () => {
+    const withSite = { ...bundleOf(), site: 'https://example.com/' };
+    expect(bundleJsonSchema.parse(withSite)).toEqual(withSite);
+    expect(bundleJsonSchema.parse(bundleOf())).not.toHaveProperty('site');
+  });
+
+  it.each([
+    ['site is a number', 42],
+    ['site is null', null],
+    ['site is an object', { href: 'https://example.com/' }],
+  ])('refuses a record where %s', (_name, site) => {
+    expect(bundleJsonSchema.safeParse({ ...bundleOf(), site }).success).toBe(
+      false,
+    );
+  });
+});
+
 describe('bundleJsonSchema: the siteCommit hash', () => {
   it.each([
     ['40 hex characters', 'a'.repeat(40)],

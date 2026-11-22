@@ -14,6 +14,7 @@ import type { HandlerDeps } from './handlers.ts';
 import { islandResolver } from './islands.ts';
 import type { PageModule } from './render-page.ts';
 import { renderPage } from './render-page.ts';
+import { containerSiteOptions } from './site.ts';
 
 // Written by the build before the server starts and never changed after.
 const cache = new Map<string, unknown>();
@@ -33,13 +34,15 @@ function readManifest<T>(name: string): T | undefined {
 // One container for the process, with the renderers the site's integrations
 // registered (React, MDX, ...): without them hydrated components fail with
 // NoMatchingRenderer. `resolve` points the islands at the built chunks (D6).
-// Renders don't share state.
+// Renders don't share state. The site's `site` comes from bundle.json, so
+// Astro.site is set when the site has one (see site.ts, F6).
 let container: Promise<AstroContainer> | undefined;
 const resolve = islandResolver(manifest.entryModules, urlRules.base);
 const getContainer = () =>
   (container ??= AstroContainer.create({
     renderers: renderers as never,
     resolve: async (specifier) => resolve(specifier),
+    ...containerSiteOptions(readManifest<unknown>('bundle.json')),
   }));
 
 export const deps: HandlerDeps = {

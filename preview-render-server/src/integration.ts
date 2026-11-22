@@ -70,6 +70,8 @@ export default function previewRenderServer(
   // Where the build keeps its content data store.
   let cacheDir = path.join(site.root, 'node_modules', '.astro');
   let urlRules = { base: '/', trailingSlash: 'ignore' };
+  // The Astro config's `site`, recorded in bundle.json only when the site sets one.
+  let astroSite: string | undefined;
 
   return {
     name: 'preview-render-server',
@@ -198,6 +200,7 @@ export default function previewRenderServer(
       'astro:config:done': ({ config }) => {
         cacheDir = fileURLToPath(config.cacheDir);
         urlRules = { base: config.base, trailingSlash: config.trailingSlash };
+        astroSite = config.site;
       },
       'astro:routes:resolved': ({ routes }) => {
         routesManifest = shapeRoutes(routes, site.root);
@@ -212,6 +215,7 @@ export default function previewRenderServer(
             protocolVersion: PROTOCOL_VERSION,
             astroVersion: astroVersion(),
             builtAt: new Date().toISOString(),
+            ...(astroSite === undefined ? {} : { site: astroSite }),
           };
           writeManifest(site, 'bundle.json', bundle);
           writeManifest(site, 'images.json', imageManifest(site.root));
