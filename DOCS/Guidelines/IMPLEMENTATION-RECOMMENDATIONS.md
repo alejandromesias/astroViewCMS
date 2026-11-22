@@ -44,7 +44,26 @@ Mutation testing showed that some code cannot be checked by any test. For exampl
 - Return values or throw errors with exact messages instead of only writing to the log. If a log line matters, its arguments are part of the contract.
 - Values computed once at module load (static constants) are hard to test under the Vitest runner. Keep logic out of module-level code where you can.
 
-## 6. Before you finish a feature
+## 6. Identify and treat secrets
+
+A review of the stderr forwarder (2.14a-3) found that the preview node holds `PREVIEW_TOKEN_SECRET` and `PREVIEW_INTERNAL_SECRET` in its environment, and that new code wrote its output to a log file verbatim. The log's own redaction only knows URL credentials (`://user:pass@`, `redact` in `git/exec.ts`), so it would not have caught either value. The rule: any new path that writes text you did not build yourself to a log, an error message, a response or a file is a path a secret can leave through.
+
+**Identify.** A value is a secret if leaking it lets someone act as the CMS or the user. Check three places:
+- The settings: every field of `secrets` in the config, and any value read from the environment under a name with `TOKEN`, `SECRET`, `KEY`, `PASSWORD` or `CREDENTIAL`.
+- What you pass to a child process: read `childEnvironment` (`preview/supervisor.ts`) for the exact set. Whatever you put in a child's environment, the child can print.
+- Text that carries one: a remote URL with credentials, an `Authorization` header, a cookie, a git error that echoes its arguments.
+
+**Treat.**
+- Redact by value, not by pattern. For a secret you hold, replace every occurrence of the value (`replaceAll`, skipping an empty value) with `***`. A regex guesses at the shape and misses a value that has none.
+- Redact before you cut. If the text is truncated (a line cap, a tail buffer), redact the full text and cut after, or hold back the longest secret length less one character. Cutting first can leave a prefix of the secret in the output.
+- Redact at the point where the text leaves your code (the logger call, the error constructor, the response writer), not at the source. A new writer then has to redact too, and a test can show it does.
+- Redact text that crosses chunk boundaries after you have joined it: a secret can arrive in two reads.
+- Do not log, return or serialize a secret itself. Log that it is set, or its length, never its value. Never put one in a URL, a query string or a file in the repo, and never in the output of a test that CI keeps.
+- Pass a secret to a child only if the child needs it, and say in a comment why.
+
+**Test.** For each writer that handles text you did not build: one test where the text contains each secret and the output does not, one where a secret is split across two chunks or sits across the cut, and one for the empty value. The test must use a value that does not occur in its other fixtures (a test string of `'a'` characters matched a token made of `'a'` characters and was redacted by mistake).
+
+## 7. Before you finish a feature
 
 - [ ] Every lookup with a user-supplied key uses `Map`, `Object.hasOwn` or `Object.fromEntries`.
 - [ ] Every value from `JSON.parse` or the network has its type checked before use.
@@ -52,8 +71,9 @@ Mutation testing showed that some code cannot be checked by any test. For exampl
 - [ ] Text scanners skip string literals.
 - [ ] Each guard and branch has an effect a test can see.
 - [ ] Injected dependencies keep a real default.
+- [ ] Every writer of text you did not build (log, error, response, file) redacts each secret value, after joining chunks and before cutting, and has a test for it.
 
-## 7. How to run a task
+## 8. How to run a task
 
 Before you start, read [DOCS/README.md](../README.md) section 2 (working rules: one branch and worktree per task, pull request, merge commit, push rarely, watching the pipeline, no local Stryker) and [CI-PIPELINE.md](CI-PIPELINE.md) (the checks and how to read them). They are the source of truth; this file does not repeat them.
 
