@@ -200,7 +200,10 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
   /** Spawns the node for `bundle`, then polls it until it answers the bundleId,
    *  exits, or the readiness timeout passes. */
   async function launch(bundle: BundleRef): Promise<Attempt> {
-    const forwarder = createStderrForwarder(log);
+    const forwarder = createStderrForwarder(log, [
+      secrets.previewTokenSecret,
+      secrets.previewInternalSecret,
+    ]);
     const spawned = spawnNode(
       process.execPath,
       [startScript, siteConfig, '--out', bundle.dir],
@@ -429,21 +432,38 @@ function exitMessage(exit: ExitInfo): string {
 
 /** Logs a child's stderr one line at a time, as it arrives. A chunk may end inside a line: that part waits
  *  for the rest. A line keeps its first STDERR_LINE_MAX characters, and the rest of it is dropped, so a line
- *  with no newline cannot grow without bound. `end` logs the open line, if there is one. */
-function createStderrForwarder(log: Logger): {
+ *  with no newline cannot grow without bound. An empty line is not logged. Every occurrence of a value in
+ *  `secrets` is replaced by `***` before the line is logged: the node holds them in its environment, and the
+ *  log file is kept. The line is held longer than STDERR_LINE_MAX by the longest secret less one character,
+ *  and cut after the replacement, so a secret that crosses the cut is never logged in part. `end` logs the
+ *  open line, if there is one. */
+function createStderrForwarder(
+  log: Logger,
+  secrets: readonly string[],
+): {
   write(chunk: string): void;
   end(): void;
 } {
+  const known = secrets.filter((secret) => secret !== '');
+  const held = STDERR_LINE_MAX + Math.max(0, ...known.map((s) => s.length - 1));
   let line = '';
   const flush = (): void => {
-    log.warn('The preview node wrote to stderr', { line });
+    const redacted = known.reduce(
+      (text, secret) => text.replaceAll(secret, '***'),
+      line,
+    );
     line = '';
+    if (redacted !== '') {
+      log.warn('The preview node wrote to stderr', {
+        line: redacted.slice(0, STDERR_LINE_MAX),
+      });
+    }
   };
   return {
     write(chunk: string): void {
       for (const [index, part] of chunk.split('\n').entries()) {
         if (index > 0) flush();
-        line = `${line}${part}`.slice(0, STDERR_LINE_MAX);
+        line = `${line}${part}`.slice(0, held);
       }
     },
     end(): void {

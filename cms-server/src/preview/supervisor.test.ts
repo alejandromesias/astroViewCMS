@@ -1215,12 +1215,47 @@ describe('createSupervisor: the stderr of the node goes to the log', () => {
     const supervisor = make(fake, { log });
     await supervisor.start(A);
     const node = childAt(fake.world, 0);
-    node.emitStderr('a'.repeat(600));
-    node.emitStderr(`${'a'.repeat(600)}\nnext\n`);
+    node.emitStderr('c'.repeat(600));
+    node.emitStderr(`${'c'.repeat(600)}\nnext\n`);
     expect(log.warn.mock.calls).toEqual([
-      [STDERR_LOG, { line: 'a'.repeat(1_000) }],
+      [STDERR_LOG, { line: 'c'.repeat(1_000) }],
       [STDERR_LOG, { line: 'next' }],
     ]);
+  });
+
+  it('replaces each of the two secrets in a logged line, wherever they fall', async () => {
+    const fake = rig();
+    const log = spyLog();
+    const supervisor = make(fake, { log });
+    await supervisor.start(A);
+    const node = childAt(fake.world, 0);
+    node.emitStderr(`token=${TOKEN} and ${INTERNAL}\n`);
+    node.emitStderr(`split ${TOKEN.slice(0, 5)}`);
+    node.emitStderr(`${TOKEN.slice(5)} ${TOKEN}\n`);
+    expect(log.warn.mock.calls).toEqual([
+      [STDERR_LOG, { line: 'token=*** and ***' }],
+      [STDERR_LOG, { line: 'split *** ***' }],
+    ]);
+  });
+
+  it('never logs part of a secret that crosses the 1000-character cut', async () => {
+    const fake = rig();
+    const log = spyLog();
+    const supervisor = make(fake, { log });
+    await supervisor.start(A);
+    childAt(fake.world, 0).emitStderr(`${'z'.repeat(997)}${TOKEN}\n`);
+    expect(log.warn.mock.calls).toEqual([
+      [STDERR_LOG, { line: `${'z'.repeat(997)}***` }],
+    ]);
+  });
+
+  it('does not log an empty line', async () => {
+    const fake = rig();
+    const log = spyLog();
+    const supervisor = make(fake, { log });
+    await supervisor.start(A);
+    childAt(fake.world, 0).emitStderr('\n\nreal\n\n');
+    expect(log.warn.mock.calls).toEqual([[STDERR_LOG, { line: 'real' }]]);
   });
 
   it('writes the line to the cms-server logger when no log is given: one warn line on stderr', async () => {
