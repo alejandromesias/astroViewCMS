@@ -1539,6 +1539,24 @@ describe('the upstream check of a sync-code build (2.10f)', () => {
     expect(rig.status.getUpstreamBuildFailed()).toBe(null);
   });
 
+  it('a candidate whose swap fails leaves the upstream failure set', async () => {
+    const rig = await rigOf({
+      state: oldState(),
+      swap: () =>
+        Promise.resolve({ ok: false, error: 'node down', rolledBack: true }),
+    });
+    rig.status.setUpstreamBuildFailed(FAILURE);
+    const built = await rig.lifecycle.buildCandidate(CAND);
+    if (built.kind !== 'built')
+      throw new Error(`the candidate did not build: ${built.error}`);
+    expect(
+      await rig.lifecycle.adopt(built.candidate, {
+        revParse: async () => BASE,
+      }),
+    ).toBe(false);
+    expect(rig.status.getUpstreamBuildFailed()).toStrictEqual(FAILURE);
+  });
+
   it('a candidate that is not adopted because origin cannot be read leaves the upstream failure set', async () => {
     const rig = await rigOf({ state: oldState() });
     rig.status.setUpstreamBuildFailed(FAILURE);
