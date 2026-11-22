@@ -7,7 +7,9 @@ import { z } from 'zod';
  *  `.`, `..` and separators are refused. build.ts checks --bundle-id with it. */
 export const bundleIdPattern = /^[A-Za-z0-9][\w.-]*$/;
 
-/** The whole of bundle.json. `siteCommit` is null outside a git checkout. */
+/** The whole of bundle.json. `siteCommit` is null outside a git checkout.
+ *  `site` is the Astro config's `site`, written only when the site sets one
+ *  (WORKPLAN 2.14a-1); the render node gives it to Astro.site. */
 export const bundleJsonSchema = z.strictObject({
   bundleId: z.string().regex(bundleIdPattern),
   siteCommit: z
@@ -17,6 +19,7 @@ export const bundleJsonSchema = z.strictObject({
   protocolVersion: z.number().int().positive(),
   astroVersion: z.string().min(1),
   builtAt: z.iso.datetime(),
+  site: z.string().optional(),
 });
 
 /** bundle.json, as the parsed value gives it. */
