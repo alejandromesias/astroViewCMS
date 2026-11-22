@@ -24,11 +24,14 @@ function answerWith(body: unknown, status = 200): Answer {
   };
 }
 
+/** The upstream build failure of a status answer (2.10f): the origin commit that does not build, and its first error. */
+const UPSTREAM = { sha: 'a1b2c3d4e5f6', firstError: 'Unexpected token' };
+
 /** A status answer with the publish part and the upstream build error. */
 function statusAnswer(
   state: 'idle' | 'publishing' | 'failed',
   error: string | null = null,
-  upstreamBuildFailed: string | null = null,
+  upstreamBuildFailed: typeof UPSTREAM | null = null,
 ): Answer {
   // `bundle` is required by statusAnswerSchema (null without a bundle), so the fixture names it.
   return answerWith({
@@ -78,14 +81,14 @@ describe('publishStatusOf', () => {
       publish: { state: 'failed', error: 'Push refused' },
       errors: {
         protocolMismatch: null,
-        upstreamBuildFailed: 'Unexpected token',
+        upstreamBuildFailed: UPSTREAM,
         swap: null,
       },
     };
     expect(publishStatusOf(body)).toEqual({
       state: 'failed',
       error: 'Push refused',
-      upstreamBuildFailed: 'Unexpected token',
+      upstreamBuildFailed: UPSTREAM,
     });
   });
 
@@ -234,7 +237,7 @@ describe('startStatusPolling', () => {
     startStatusPolling({
       fetchImpl: fetchAnswering(
         statusAnswer('publishing'),
-        statusAnswer('publishing', null, 'Unexpected token'),
+        statusAnswer('publishing', null, UPSTREAM),
       ),
       onChange,
       schedule,
@@ -245,7 +248,7 @@ describe('startStatusPolling', () => {
     expect(onChange).toHaveBeenLastCalledWith({
       state: 'publishing',
       error: null,
-      upstreamBuildFailed: 'Unexpected token',
+      upstreamBuildFailed: UPSTREAM,
     });
     expect(onChange).toHaveBeenCalledTimes(2);
   });

@@ -299,7 +299,10 @@ describe('syncNow on a real clone (2.10c, both paths of the done-when)', () => {
       upstream: await fixture.repo.revParse('origin/main'),
     });
     expect(trigger).toHaveBeenCalledTimes(1);
-    expect(trigger).toHaveBeenCalledWith('sync-code');
+    expect(trigger).toHaveBeenCalledWith(
+      'sync-code',
+      await fixture.repo.revParse('origin/main'),
+    );
 
     served = storeOf(nextDir);
     expect(await guard.recheck(await recheckOf(fixture, served))).toStrictEqual(
@@ -717,7 +720,8 @@ describe('the sync routine, with fakes', () => {
     const { sync, trigger } = syncOver(tx, repoOf(tx).repo);
     await sync.syncLocked(tx);
     expect(trigger).toHaveBeenCalledTimes(1);
-    expect(trigger).toHaveBeenCalledWith('sync-code');
+    // The build names the origin tip this sync integrated, so the upstream failure it records is that tip's (2.10f).
+    expect(trigger).toHaveBeenCalledWith('sync-code', 'upstream-sha');
   });
 
   it('without a re-apply it keeps the renamed list of the status, and uses the head of cms/work', async () => {

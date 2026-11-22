@@ -24,7 +24,7 @@ import type {
   CandidateOutcome,
 } from '../preview/bundle-lifecycle.ts';
 import { PreviewUnavailableError } from '../preview/client.ts';
-import { createStatus } from '../preview/status.ts';
+import { createStatus, type Status } from '../preview/status.ts';
 import type { PreviewClient, SaveAnswer } from '../save/context.ts';
 import { createDeleteGuard } from '../save/delete-guard.ts';
 import { saveChanges } from '../save/pipeline.ts';
@@ -46,8 +46,8 @@ type Point =
   | 'push'
   | 'finish';
 
-/** The build check the world's publish runs with: `always` builds the candidate, `never` builds nothing (2.10k). */
-type BuildCheck = 'always' | 'never';
+/** The build check the world's publish runs with: `always` builds the candidate, `auto` builds for a reason, `never` builds nothing (2.10k). */
+type BuildCheck = 'always' | 'auto' | 'never';
 
 const SAVE_REFUSED = {
   status: 409,
@@ -114,6 +114,8 @@ class Model {
   landed: string[] = [];
   /** Adoptions of a commit the remote had not accepted yet. Always empty (2.10m). */
   adoptedBeforePush: string[] = [];
+  /** The commits a publish asked to build as a candidate (2.10m). A publish under a broken upstream builds none (2.10f). */
+  candidateBuilds: string[] = [];
   private readonly counts = new Map<string, number>();
 
   name(prefix: string): string {
@@ -258,6 +260,7 @@ function rig(builderOn = true, buildCheck: BuildCheck = 'never') {
     },
     // The candidate builds at its point; the bundle it makes is not modelled, so an adoption is a record only (2.10m).
     buildCandidate: async (commit: string): Promise<CandidateOutcome> => {
+      m.candidateBuilds.push(commit);
       await at('building');
       if (m.buildFails)
         return { kind: 'failed', error: 'src/pages/a.astro: boom' };
@@ -299,6 +302,7 @@ function rig(builderOn = true, buildCheck: BuildCheck = 'never') {
     readonly gate: PublishGate;
     readonly sync: ReturnType<typeof createSync>;
     readonly publish: () => Promise<PublishAnswer>;
+    readonly status: Status;
   } {
     const status = createStatus({
       builder: 'on',
@@ -346,7 +350,7 @@ function rig(builderOn = true, buildCheck: BuildCheck = 'never') {
       },
       readChangeset: async () => m.changeset(),
     });
-    return { gate, sync, publish };
+    return { gate, sync, publish, status };
   }
 
   let current = world();
@@ -1047,6 +1051,72 @@ describe('publish event order: curated scenarios (2.10l)', () => {
     expect(d.origin()).toStrictEqual({ tip: 'c1', docs: { a: '1' } });
     expect(d.m.overpushes).toBe(0);
     d.check('after the restart');
+  });
+});
+
+// The upstream code does not build (2.10f, U1): the sync's origin-tip build recorded the failure. The publish skips its build
+// check, validates as before, pushes, and says so; the failure stays set (only a passing build clears it).
+describe('publish event order: a broken upstream (2.10f)', () => {
+  // The origin tip the model starts on, as the failed build named it.
+  const BROKEN = { sha: 'o0', firstError: 'src/x.astro: boom' };
+
+  it.each<BuildCheck>(['always', 'auto'])(
+    'with %s, a publish under a broken upstream answers 200 with buildCheckSkipped, builds no candidate, and keeps the failure',
+    async (buildCheck) => {
+      const d = driver(buildCheck);
+      d.world().status.setUpstreamBuildFailed(BROKEN);
+      await d.save('a', '1');
+      expect(await d.click()).toStrictEqual({
+        status: 200,
+        body: {
+          commit: 'c1',
+          overwritten: [],
+          renamed: [],
+          buildCheckSkipped: 'upstream-broken',
+        },
+      });
+      expect(d.origin()).toStrictEqual({ tip: 'c1', docs: { a: '1' } });
+      expect(d.m.candidateBuilds).toStrictEqual([]);
+      expect(
+        (await d.world().status.snapshot()).errors.upstreamBuildFailed,
+        'the failure is kept after the publish',
+      ).toStrictEqual(BROKEN);
+      d.check('after the skipped check');
+    },
+  );
+
+  it('validation still runs under the skip: a value the node refuses answers 422 and pushes nothing', async () => {
+    const d = driver('always');
+    d.world().status.setUpstreamBuildFailed(BROKEN);
+    await d.save('a', '1');
+    // The node refuses the values only now, so the save above was accepted and the publish has a changeset to check.
+    d.m.invalid = true;
+    const before = d.origin();
+    expect(await d.click()).toMatchObject({
+      status: 422,
+      body: { error: 'invalid' },
+    });
+    expect(d.origin()).toStrictEqual(before);
+    expect(d.m.candidateBuilds).toStrictEqual([]);
+    d.check('after the refused values');
+  });
+
+  it('once the upstream builds again, the next publish runs its check: the candidate is built and the answer says nothing', async () => {
+    const d = driver('always');
+    d.world().status.setUpstreamBuildFailed(BROKEN);
+    await d.save('a', '1');
+    expect(await d.click()).toMatchObject({
+      status: 200,
+      body: { buildCheckSkipped: 'upstream-broken' },
+    });
+    d.world().status.setUpstreamBuildFailed(null);
+    await d.save('b', '2');
+    expect(await d.click()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c2', overwritten: [], renamed: [] },
+    });
+    expect(d.m.candidateBuilds).toStrictEqual(['c2']);
+    d.check('after the check runs again');
   });
 });
 

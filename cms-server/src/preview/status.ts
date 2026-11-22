@@ -9,6 +9,11 @@ import type { Supervisor } from './supervisor.ts';
 /** Where the builder stands: `off` with --bundle, otherwise idle, building, or failed (the last build failed). */
 type BuildState = 'off' | 'idle' | 'building' | 'failed';
 
+/** The upstream build failure (2.10f): the origin tip that does not build, and its first error. */
+type UpstreamBuildFailure = NonNullable<
+  StatusBody['errors']['upstreamBuildFailed']
+>;
+
 /** The publish state (2.10d): idle, publishing, or failed (the last publish failed). */
 type PublishState = 'idle' | 'publishing' | 'failed';
 
@@ -44,8 +49,13 @@ export interface Status extends StatusSource {
   setSyncError(text: string | null): void;
   /** Sets the renamed documents of the last re-apply (2.10c, 2.10j). */
   setRenamed(renamed: readonly RenamedDocument[]): void;
-  /** Sets the upstream build failure (2.10f), or clears it with null. */
-  setUpstreamBuildFailed(text: string | null): void;
+  /**
+   * Sets the upstream build failure (2.10f), or clears it with null. The lifecycle records it from the sync's origin-tip
+   * build, and clears it on a passing build of a commit that holds the current origin tip, or on an adopted candidate.
+   */
+  setUpstreamBuildFailed(failure: UpstreamBuildFailure | null): void;
+  /** The upstream build failure as `setUpstreamBuildFailed` set it (2.10f): the publish skips its build check while it is set. */
+  getUpstreamBuildFailed(): UpstreamBuildFailure | null;
   /** Sets the publish state (2.10d). `error` is the message of a failed publish; it is cleared (null) by default. */
   setPublish(state: PublishState, error?: string | null): void;
   /** The renamed documents of the last re-apply, as `setRenamed` set them (2.10d: the publish answer carries them). */
@@ -74,7 +84,7 @@ interface Values {
   lastSync: string | null;
   syncError: string | null;
   renamed: readonly RenamedDocument[];
-  upstreamBuildFailed: string | null;
+  upstreamBuildFailed: UpstreamBuildFailure | null;
   publish: PublishStatus;
 }
 
@@ -135,8 +145,11 @@ export function createStatus(options: StatusOptions): Status {
     setRenamed(renamed) {
       values.renamed = renamed;
     },
-    setUpstreamBuildFailed(text) {
-      values.upstreamBuildFailed = text;
+    setUpstreamBuildFailed(failure) {
+      values.upstreamBuildFailed = failure;
+    },
+    getUpstreamBuildFailed() {
+      return values.upstreamBuildFailed;
     },
     setPublish(state, error = null) {
       values.publish = { state, error };

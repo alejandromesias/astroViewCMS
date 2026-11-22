@@ -23,7 +23,7 @@ import { directoryBundleSource } from '../bundle/source.ts';
 import { type BundleStore, createBundleStore } from '../bundle/store.ts';
 import { type CmsConfig, parseConfig } from '../config/schema.ts';
 import type { Logger } from '../log.ts';
-import { type ExecFn, realExec } from './exec.ts';
+import { type ExecFn, GitError, realExec } from './exec.ts';
 import { createMutex, type Mutex } from './mutex.ts';
 import {
   type ChangedPath,
@@ -420,6 +420,30 @@ describe('openRepo: bytes, merge base and trailers', () => {
     await expect(repo.revParse('refs/heads/no-such-branch')).rejects.toThrow(
       /rev-parse/,
     );
+  });
+
+  it('isAncestor holds for a commit and its ancestors, not for a descendant or an unrelated commit, and throws for a commit the clone lacks (2.10f)', async () => {
+    const fixture = await fixtureIn(await newRoot(), 'site');
+    const repo = repoOf(fixture);
+    const dir = fixture.state.repoDir;
+    const work = (await git(dir, ['rev-parse', 'refs/heads/cms/work'])).trim();
+    const tree = (await git(dir, ['rev-parse', `${work}^{tree}`])).trim();
+    // A child of cms/work, and a commit with no parent: the two commits that are not an ancestor of cms/work's head.
+    const child = (
+      await git(dir, ['commit-tree', tree, '-p', work, '-m', 'child'])
+    ).trim();
+    const unrelated = (
+      await git(dir, ['commit-tree', tree, '-m', 'unrelated'])
+    ).trim();
+    await repo.locked('check', async (tx) => {
+      expect(await tx.isAncestor(work, work)).toBe(true);
+      expect(await tx.isAncestor(work, child)).toBe(true);
+      expect(await tx.isAncestor(child, work)).toBe(false);
+      expect(await tx.isAncestor(unrelated, work)).toBe(false);
+      await expect(tx.isAncestor('a'.repeat(40), work)).rejects.toBeInstanceOf(
+        GitError,
+      );
+    });
   });
 
   it('overwrittenSince reads the CMS-Overwrote trailers of the saves that origin lacks, and the newest value wins', async () => {

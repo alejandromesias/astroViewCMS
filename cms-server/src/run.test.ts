@@ -1087,16 +1087,19 @@ describe('run: sync and publish on a real clone', () => {
       const pushed = await pushAna(real, otherRoot);
       // The first call starts the loop; its sync one interval later finds the change and asks for one build of the new HEAD.
       await fetchLocal(`${base}/api/status`);
-      await vi.waitFor(() => expect(real.builder).toHaveBeenCalledTimes(2), {
+      await vi.waitFor(() => expect(real.builder).toHaveBeenCalledTimes(3), {
         timeout: 5_000,
       });
+      // The new HEAD's build fails too (the builder fails every build here), so the origin tip, the same commit, is built once
+      // after it, to tell whose failure it is (2.10f). The commit that failed first is not built again.
       expect(builds.mock.calls.map(([job]) => job.commit)).toEqual([
         failed,
+        pushed,
         pushed,
       ]);
       // Origin does not move again, so the loop asks for no more builds.
       await new Promise((resolve) => setTimeout(resolve, 1_500));
-      expect(real.builder).toHaveBeenCalledTimes(2);
+      expect(real.builder).toHaveBeenCalledTimes(3);
     } finally {
       await real.stop();
       await removeTestRoot(otherRoot);
@@ -1124,22 +1127,24 @@ describe('run: sync and publish on a real clone', () => {
     }
   });
 
-  it('a content-only upstream change with no node serving: the poll asks for one build of the new HEAD (2.10g)', async () => {
+  it('a content-only upstream change with no node serving: the poll asks for one build of the new HEAD, then the origin tip once after it fails (2.10g, 2.10f)', async () => {
     const real = await started('seeded', 1, 'stopped');
     const otherRoot = await makeTestRoot();
     try {
       const base = `http://127.0.0.1:${portOfServer(real.running.server)}`;
       const pushed = await pushAna(real, otherRoot);
       await fetchLocal(`${base}/api/status`);
-      await vi.waitFor(() => expect(real.builder).toHaveBeenCalledTimes(1), {
+      await vi.waitFor(() => expect(real.builder).toHaveBeenCalledTimes(2), {
         timeout: 5_000,
       });
+      // The builder fails every build here, so the new HEAD's build fails and the origin tip, the same commit with no saves,
+      // is built once after it, to tell whose failure it is (2.10f).
       expect(
         vi.mocked(real.builder).mock.calls.map(([job]) => job.commit),
-      ).toEqual([pushed]);
+      ).toEqual([pushed, pushed]);
       // Origin does not move again, so the loop asks for no more builds.
       await new Promise((resolve) => setTimeout(resolve, 1_500));
-      expect(real.builder).toHaveBeenCalledTimes(1);
+      expect(real.builder).toHaveBeenCalledTimes(2);
     } finally {
       await real.stop();
       await removeTestRoot(otherRoot);
@@ -1266,6 +1271,26 @@ describe('run: sync and publish on a real clone', () => {
     try {
       await saveAna(real);
       const before = await remoteHead(real);
+      // The origin tip builds, so the upstream is not broken (2.10f): the check runs, and the candidate is the build that fails.
+      const tip = (
+        await git(real.clone.state.repoDir, ['rev-parse', 'origin/main'])
+      ).trim();
+      vi.mocked(real.builder).mockImplementation(
+        async (job: BuildJob): Promise<BuildResult> =>
+          job.commit === tip
+            ? {
+                bundleId: job.bundleId,
+                dir: job.bundleId,
+                ok: true,
+                firstError: null,
+              }
+            : {
+                bundleId: job.bundleId,
+                dir: job.bundleId,
+                ok: false,
+                firstError: { file: null, message: 'no build in this test' },
+              },
+      );
       const appDeps = vi.mocked(real.h.deps.startServer).mock.calls[0]?.[0];
       expect(await appDeps?.publish?.publish()).toStrictEqual({
         status: 424,

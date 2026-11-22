@@ -41,7 +41,11 @@ import {
   mediaMapOf,
   previewUnavailableStop,
 } from '../save/validate.ts';
-import { type BuildDecision, decideBuild } from './build-check.ts';
+import {
+  type BuildDecision,
+  type BuildSkip,
+  decideBuild,
+} from './build-check.ts';
 import type { PublishGate } from './publish-gate.ts';
 import type { SyncOutcome, SyncTx } from './sync.ts';
 
@@ -85,7 +89,11 @@ export interface PublishDeps {
   readonly syncLocked: (tx: SyncTx) => Promise<SyncOutcome>;
   readonly status: Pick<
     Status,
-    'setPublish' | 'setRenamed' | 'getRenamed' | 'invalidateChangeset'
+    | 'setPublish'
+    | 'setRenamed'
+    | 'getRenamed'
+    | 'invalidateChangeset'
+    | 'getUpstreamBuildFailed'
   >;
   readonly builds: Builds;
   /** The publish gate (2.10l): closed from the click to the answer, so saves and poll ticks are refused meanwhile. */
@@ -261,24 +269,24 @@ export function createPublish({
     if (builds.busy()) return { kind: 'answer', answer: buildInProgress };
     const first = await prepare();
     if ('status' in first) return { kind: 'answer', answer: first };
-    // 2.10f: when the build of the new upstream code failed, the node still serves the last good bundle, and this
-    // validation must run against it and report `upstreamBuildFailed`. That path is not built here.
+    // Validation runs in every case, also while the upstream code does not build (2.10f): the node serves the last good bundle.
     const checked = await validate(first.changeset);
     if (checked.stop !== undefined)
       return { kind: 'answer', answer: checked.stop };
-    if (!(await buildDecided(first, checked.errors, sync)))
-      return pushWithoutBuild(tx, first);
+    const decision = await buildDecided(first, checked.errors, sync);
+    if (!decision.build) return pushWithoutBuild(tx, first, decision.skipped);
     return squashCandidate(tx, first);
   }
 
   // Whether the build check builds the candidate (2.10m). With no builder nothing builds. `always` and `never` answer alone,
-  // and `auto` reads the changeset, the values at the merge base, the node's errors and the sync, recomputed now.
+  // and `auto` reads the changeset, the values at the merge base, the node's errors and the sync, recomputed now. While the
+  // upstream code does not build (`upstreamBuildFailed`, 2.10f), the check is skipped, and the decision says so.
   async function buildDecided(
     prepared: Prepared,
     errors: readonly FieldError[],
     sync: Synced,
-  ): Promise<boolean> {
-    if (!builderOn) return false;
+  ): Promise<BuildDecision> {
+    if (!builderOn) return { build: false };
     // The values at the merge base are read for `auto` only: `always` and `never` do not compare them, so they read nothing.
     const before =
       config.publish.buildCheck === 'auto'
@@ -288,8 +296,9 @@ export function createPublish({
             changeset: prepared.changeset,
           })
         : new Map<string, unknown>();
-    const decision: BuildDecision = decideBuild({
+    return decideBuild({
       mode: config.publish.buildCheck,
+      upstreamBroken: status.getUpstreamBuildFailed() !== null,
       changeset: prepared.changeset,
       bundled: prepared.bundle.documents,
       before,
@@ -297,7 +306,6 @@ export function createPublish({
       sync,
       configured: prepared.bundle.buildTimeFields,
     });
-    return decision.build;
   }
 
   // The build path, under the lock: `S` is `cms/work` as it is now, and `C` is its squash. `cms/work` does not move, so `S`
@@ -327,12 +335,15 @@ export function createPublish({
 
   // The 2.10d path, for a publish whose first decision is no build: squash, push, and on a refused push sync, check and push
   // again (up to three retries). Each retry re-decides the build (2.10m): when the changed changeset now builds, that attempt
-  // is the candidate instead, so a race after it answers `remote-moved` and is not retried.
+  // is the candidate instead, so a race after it answers `remote-moved` and is not retried. `skipped` is the skip of the
+  // decision that this push rests on (2.10f): the answer carries it.
   async function pushWithoutBuild(
     tx: RepoTx,
     first: Prepared,
+    skipped: BuildSkip | undefined,
   ): Promise<Decided> {
     let prepared: Prepared = first;
+    let check = skipped;
     for (let retry = 0; retry <= MAX_RETRIES; retry += 1) {
       if (retry > 0) {
         // The remote moved: fetch it, re-apply the saves on it, and look at the changeset again (the sync may have
@@ -350,8 +361,9 @@ export function createPublish({
         const checked = await validate(again.changeset);
         if (checked.stop !== undefined)
           return { kind: 'answer', answer: checked.stop };
-        if (await buildDecided(again, checked.errors, outcome))
-          return squashCandidate(tx, again);
+        const decision = await buildDecided(again, checked.errors, outcome);
+        if (decision.build) return squashCandidate(tx, again);
+        check = decision.skipped;
         prepared = again;
       }
       const { message, overwritten } = publishMessage(prepared.changeset);
@@ -390,7 +402,15 @@ export function createPublish({
         });
         return {
           kind: 'answer',
-          answer: { status: 200, body: { commit, overwritten, renamed } },
+          answer: {
+            status: 200,
+            body: {
+              commit,
+              overwritten,
+              renamed,
+              ...(check === undefined ? {} : { buildCheckSkipped: check }),
+            },
+          },
         };
       }
       if (!pushed.race)

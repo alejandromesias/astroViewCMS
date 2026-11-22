@@ -70,6 +70,7 @@ const refinement = (key: string): FieldError => ({
 function decide(overrides: Partial<BuildCheckInput> = {}): BuildDecision {
   return decideBuild({
     mode: 'auto',
+    upstreamBroken: false,
     changeset: changeset([]),
     bundled: new Map(),
     before: new Map(),
@@ -108,6 +109,48 @@ function everyTrigger(): Partial<BuildCheckInput> {
     sync: synced('code'),
   };
 }
+
+// U1 (2.10f): while the upstream code does not build, the check is skipped under `auto` and `always`, whatever the changeset holds.
+describe('decideBuild, while the upstream code does not build (2.10f)', () => {
+  it.each(['auto', 'always'] as const)(
+    'skips the check under %s, and says so, for a changeset with every trigger',
+    (mode) => {
+      expect(
+        decide({ mode, upstreamBroken: true, ...everyTrigger() }),
+      ).toStrictEqual({ build: false, skipped: 'upstream-broken' });
+    },
+  );
+
+  it('skips under auto for a changeset with no reason to build: the skip covers every reason', () => {
+    expect(decide({ upstreamBroken: true })).toStrictEqual({
+      build: false,
+      skipped: 'upstream-broken',
+    });
+  });
+
+  it('skips under always for a changeset with no reason to build', () => {
+    expect(decide({ mode: 'always', upstreamBroken: true })).toStrictEqual({
+      build: false,
+      skipped: 'upstream-broken',
+    });
+  });
+
+  it('has nothing to skip under never: no build, and no skip', () => {
+    expect(
+      decide({ mode: 'never', upstreamBroken: true, ...everyTrigger() }),
+    ).toStrictEqual({ build: false });
+  });
+
+  it('checks the changeset again once the upstream code builds', () => {
+    expect(decide({ mode: 'always', upstreamBroken: false })).toStrictEqual({
+      build: true,
+    });
+    expect(decide({ upstreamBroken: false, ...everyTrigger() })).toStrictEqual({
+      build: true,
+      reason: 'mdx-body',
+    });
+  });
+});
 
 describe('decideBuild, the mode', () => {
   it('builds with no reason under always, whatever the changeset holds', () => {

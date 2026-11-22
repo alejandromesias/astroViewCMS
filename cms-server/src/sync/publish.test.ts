@@ -1535,6 +1535,54 @@ const squashedEvents = (): string[] => [
   'unlock',
 ];
 
+describe('createPublish: the upstream build check (2.10f)', () => {
+  // The upstream failure the status holds while the origin tip does not build.
+  const UPSTREAM = { sha: 'a'.repeat(40), firstError: 'src/x.astro: boom' };
+
+  it.each(['always', 'auto'] as const)(
+    'under %s, skips the build check while the upstream code does not build: 200 with buildCheckSkipped, and no candidate',
+    async (buildCheck) => {
+      const { publish, status, builds, preview } = rig({ buildCheck });
+      status.setUpstreamBuildFailed(UPSTREAM);
+      expect(await publish()).toStrictEqual({
+        status: 200,
+        body: {
+          commit: 'c1',
+          overwritten: [],
+          renamed: [],
+          buildCheckSkipped: 'upstream-broken',
+        },
+      });
+      expect(builds.buildCandidate).not.toHaveBeenCalled();
+      // Validation still runs against the last good bundle.
+      expect(preview.validate).toHaveBeenCalled();
+      expect(
+        (await status.snapshot()).errors.upstreamBuildFailed,
+      ).toStrictEqual(UPSTREAM);
+    },
+  );
+
+  it('under never there is no build check to skip, so the answer says nothing about it', async () => {
+    const { publish, status } = rig({ buildCheck: 'never' });
+    status.setUpstreamBuildFailed(UPSTREAM);
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    });
+  });
+
+  it('once the upstream failure is cleared, the check builds the candidate again, and the answer says nothing', async () => {
+    const { publish, status, builds } = rig({ buildCheck: 'always' });
+    status.setUpstreamBuildFailed(UPSTREAM);
+    status.setUpstreamBuildFailed(null);
+    expect(await publish()).toStrictEqual({
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    });
+    expect(builds.buildCandidate).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('createPublish: the candidate build (2.10m)', () => {
   it('builds the candidate with no lock held, pushes it under a lock, adopts it, and checks it after the lock is released', async () => {
     const { publish, events, status, trigger, builds } = rig({

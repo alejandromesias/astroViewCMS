@@ -144,6 +144,11 @@ export interface RepoTx {
   /** The full sha that `ref` names (`git rev-parse --verify`). A missing ref throws. The trigger reads `cms/work` this way under the lock (2.9c-B). */
   revParse(ref: string): Promise<string>;
   /**
+   * Whether `ancestor` is `descendant` or one of its ancestors (2.10f: a passing build clears the upstream failure only when
+   * it holds origin's tip). Exit 1 of `merge-base --is-ancestor` is "no"; any other failure, such as an unknown commit, throws.
+   */
+  isAncestor(ancestor: string, descendant: string): Promise<boolean>;
+  /**
    * Whether the tree of `cms/work` differs from the tree of the commit it sits on (the merge base with
    * `origin/<branch>`), which is what a publish would push (2.10d). After a sync that base is the origin tip, so a save
    * that was later reverted to the upstream values counts as no change.
@@ -250,6 +255,22 @@ export function openRepo({
   async function revParse(ref: string): Promise<string> {
     assertRef(ref);
     return (await git(['rev-parse', '--verify', ref])).trim();
+  }
+
+  // Whether `ancestor` is `descendant` or one of its ancestors (2.10f). Exit 1 is the answer "no"; any other failure throws.
+  async function isAncestor(
+    ancestor: string,
+    descendant: string,
+  ): Promise<boolean> {
+    assertRef(ancestor);
+    assertRef(descendant);
+    try {
+      await git(['merge-base', '--is-ancestor', ancestor, descendant]);
+      return true;
+    } catch (error: unknown) {
+      if (error instanceof GitError && error.exitCode === 1) return false;
+      throw error;
+    }
   }
 
   // The paths that differ between the bundle's commit and `origin/<branch>`, repo-relative. The whole repo is
@@ -498,6 +519,7 @@ export function openRepo({
   const tx: RepoTx = {
     reapply,
     revParse,
+    isAncestor,
     async hasSavedChanges() {
       const { tree, baseTree } = await publishTrees();
       return tree !== baseTree;

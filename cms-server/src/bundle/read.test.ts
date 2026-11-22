@@ -178,4 +178,25 @@ describe('readBundle: build-time.json', () => {
     const bundle = await readBundle(FIXTURE_BUNDLE, identityOf());
     expect(bundle.buildTimeFields).toBeUndefined();
   });
+
+  // Carried into 2.10f (open from 2.10k): an invalid build-time.json refuses the bundle, and names its file. It is not read as
+  // "no build-time fields", which would let a changeset that needs a build pass the check.
+  it.each([
+    ['is not JSON', '{', 'build-time.json: is not valid JSON'],
+    [
+      'has a field list that is not an array',
+      '{"site/main":"site.base_url"}',
+      'build-time.json at site/main: Invalid input: expected array, received string',
+    ],
+  ])(
+    'refuses a build-time.json that %s, and names the file',
+    async (_case, text, message) => {
+      const dir = await bundleFolder({ 'build-time.json': text });
+      await expect(readBundle(dir, identityOf())).rejects.toMatchObject({
+        name: 'BundleError',
+        file: 'build-time.json',
+        message,
+      });
+    },
+  );
 });

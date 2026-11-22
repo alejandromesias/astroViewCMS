@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { createStatus, type StatusOptions } from './status.ts';
 import type { Supervisor } from './supervisor.ts';
 
+/** An upstream build failure: the origin commit that does not build, and its first error (2.10f). */
+const UPSTREAM = { sha: 'a'.repeat(40), firstError: 'src/a.astro: boom' };
+
 /** A node that is ready on `b-1`, with no error. */
 const READY: ReturnType<Supervisor['status']> = {
   state: 'ready',
@@ -155,7 +158,7 @@ describe('the setters', () => {
     status.setProtocolMismatch('Bundle b-1 speaks protocol 1');
     status.setLastSync('2026-11-09T10:00:00.000Z');
     status.setSyncError('fetch failed');
-    status.setUpstreamBuildFailed('upstream does not build');
+    status.setUpstreamBuildFailed(UPSTREAM);
     status.setPublish('failed', 'The remote refused the push');
     expect(await status.snapshot()).toStrictEqual({
       builder: 'on',
@@ -172,7 +175,7 @@ describe('the setters', () => {
       publish: { state: 'failed', error: 'The remote refused the push' },
       errors: {
         protocolMismatch: 'Bundle b-1 speaks protocol 1',
-        upstreamBuildFailed: 'upstream does not build',
+        upstreamBuildFailed: UPSTREAM,
         swap: 'node down',
       },
     });
@@ -201,7 +204,7 @@ describe('the setters', () => {
     status.setProtocolMismatch('x');
     status.setLastSync('x');
     status.setSyncError('x');
-    status.setUpstreamBuildFailed('x');
+    status.setUpstreamBuildFailed(UPSTREAM);
     status.setPublish('failed', 'x');
     status.setBuildError(null);
     status.setFailedCommit(null);
@@ -245,6 +248,18 @@ describe('the setters', () => {
     const renamed = [{ key: 'blog/a', from: 'a.md', to: 'b.md' }];
     status.setRenamed(renamed);
     expect(status.getRenamed()).toStrictEqual(renamed);
+  });
+
+  it('the upstream build failure is the commit and its first error, and getUpstreamBuildFailed answers it (2.10f)', async () => {
+    const status = createStatus(optionsOf());
+    expect(status.getUpstreamBuildFailed()).toBe(null);
+    status.setUpstreamBuildFailed(UPSTREAM);
+    expect(status.getUpstreamBuildFailed()).toStrictEqual(UPSTREAM);
+    expect((await status.snapshot()).errors.upstreamBuildFailed).toStrictEqual(
+      UPSTREAM,
+    );
+    status.setUpstreamBuildFailed(null);
+    expect(status.getUpstreamBuildFailed()).toBe(null);
   });
 
   it('the build state can go from failed back to idle', async () => {

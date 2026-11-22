@@ -9,14 +9,19 @@ import { type FetchLike, getStatus } from './api.ts';
 /** The publish state of the server: idle, publishing, or failed (its last publish). */
 type PublishState = NonNullable<StatusAnswerBody['publish']>['state'];
 
+/** The upstream build failure (2.10f): the origin commit that does not build, and its first error. */
+type UpstreamBuildFailure = NonNullable<
+  NonNullable<StatusAnswerBody['errors']>['upstreamBuildFailed']
+>;
+
 /** The part of the status the publish controls show. */
 export interface PublishStatus {
   /** `publish.state`; undefined when the status has no publish part (the server does not publish). */
   readonly state: PublishState | undefined;
   /** `publish.error`: the message of the last publish that failed, or null. */
   readonly error: string | null;
-  /** `errors.upstreamBuildFailed`: the build error of the upstream code, or null. */
-  readonly upstreamBuildFailed: string | null;
+  /** `errors.upstreamBuildFailed`: the origin commit that does not build and its first error, or null. */
+  readonly upstreamBuildFailed: UpstreamBuildFailure | null;
   /** `node.state`: the preview node's state; undefined when the status has no node part. */
   readonly node?: NodeState | undefined;
   /** `build.state`: the state of the build; undefined when the status has no build part. */

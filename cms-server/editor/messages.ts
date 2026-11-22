@@ -311,7 +311,7 @@ export function statusMessages(status: PublishStatus): Message[] {
     messages.push(
       at(
         'warning',
-        `The upstream code does not build: ${status.upstreamBuildFailed}`,
+        `The upstream code does not build (commit ${status.upstreamBuildFailed.sha.slice(0, 7)}): ${status.upstreamBuildFailed.firstError}`,
       ),
     );
   return messages;

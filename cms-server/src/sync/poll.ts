@@ -19,8 +19,8 @@ const MAX_BACKOFF_MS = 10 * 60 * 1000;
 export interface PollDeps {
   readonly syncNow: () => Promise<SyncNowOutcome>;
   readonly status: Pick<Status, 'setSyncError'>;
-  /** Asks for a build of `cms/work` HEAD. It is called without waiting, as the sync's own trigger is. */
-  readonly trigger: (reason: 'sync-code') => void;
+  /** Asks for a build of `cms/work` HEAD, naming the origin tip the sync integrated (2.10f). It is called without waiting, as the sync's own trigger is. */
+  readonly trigger: (reason: 'sync-code', upstream: string) => void;
   /** True while a node serves the bundle. While none does, a sync that finds a content-only change asks for a build. */
   readonly nodeServes: () => boolean;
   /** The time between two syncs, in milliseconds (`syncIntervalSeconds`). */
@@ -116,7 +116,7 @@ export function createPollLoop({
     switch (outcome.kind) {
       case 'synced':
         if (outcome.change === 'content-only' && !nodeServes())
-          trigger('sync-code');
+          trigger('sync-code', outcome.upstream);
         failures = 0;
         return;
       case 'unchanged':
