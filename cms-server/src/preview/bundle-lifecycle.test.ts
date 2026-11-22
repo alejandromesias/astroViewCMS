@@ -116,17 +116,30 @@ function fakeSupervisor(answers: {
   };
 }
 
-/** A state store in memory, whose `set` is a spy. */
+/**
+ * A state store in memory, whose `set` is a spy. A write applies at once. `holdWrite` makes the next write that has no hold
+ * settle only when the function it returns is called (2.10m-1: a write still in flight while another swap runs).
+ */
 function memoryStore(initial: PreviewState) {
   let state = initial;
+  const holds: Promise<void>[] = [];
   return {
     get: (): PreviewState => state,
     set: vi.fn((next: PreviewState) => {
       state = next;
-      return Promise.resolve();
+      return holds.shift() ?? Promise.resolve();
     }),
+    holdWrite(): () => void {
+      let release: () => void = () => undefined;
+      holds.push(
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+      );
+      return () => release();
+    },
     keptBundles: (): ReadonlySet<string> => new Set<string>(),
-  } satisfies StateStore & { set: unknown };
+  } satisfies StateStore & { set: unknown; holdWrite: () => () => void };
 }
 
 /**
@@ -1186,6 +1199,81 @@ describe('the bundles a pending swap keeps from collection (2.9c review)', () =>
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe('the keep window of serveBundle and adopt (2.10m-1)', () => {
+  it('a bundle is kept while its swap runs and while its state write is pending, and not once the write settles', async () => {
+    let releaseSwap: (answer: SwapAnswer) => void = () => undefined;
+    const rig = await rigOf({
+      swap: () =>
+        new Promise<SwapAnswer>((resolve) => {
+          releaseSwap = resolve;
+        }),
+    });
+    const releaseWrite = rig.store.holdWrite();
+    const served = rig.lifecycle.trigger('publish');
+    await settle();
+    expect([...rig.lifecycle.pendingSwaps()]).toStrictEqual(['b-1']);
+    releaseSwap({ ok: true });
+    await settle();
+    // Swapped, but no state write names b-1 yet: the window of serveBundle keeps it.
+    expect([...rig.lifecycle.pendingSwaps()]).toStrictEqual(['b-1']);
+    releaseWrite();
+    expect(await served).toStrictEqual({ kind: 'served', bundleId: 'b-1' });
+    expect([...rig.lifecycle.pendingSwaps()]).toStrictEqual([]);
+  });
+
+  it('a state write that fails after the swap keeps the bundle, and the trigger answers build-failed with the write error', async () => {
+    const rig = await rigOf();
+    rig.store.set.mockRejectedValueOnce(new Error('state write failed'));
+    expect(await rig.lifecycle.trigger('publish')).toStrictEqual({
+      kind: 'build-failed',
+      error: 'state write failed',
+    });
+    expect([...rig.lifecycle.pendingSwaps()]).toStrictEqual(['b-1']);
+  });
+
+  it("a serveBundle write that settles after a later swap keeps that swap's bundle, which no write names yet", async () => {
+    const rig = await rigOf();
+    // b-1 swaps and its write is held. A second head then swaps b-2 while that write is still in flight.
+    const releaseFirstWrite = rig.store.holdWrite();
+    const first = rig.lifecycle.trigger('publish');
+    await settle();
+    const releaseSecondWrite = rig.store.holdWrite();
+    rig.moveHead('d'.repeat(40));
+    const second = rig.lifecycle.trigger('save-rebuild');
+    await settle();
+    expect(rig.supervisor.swap).toHaveBeenCalledTimes(2);
+    releaseFirstWrite();
+    expect(await first).toStrictEqual({ kind: 'served', bundleId: 'b-1' });
+    // b-1's write settled after b-2 was swapped: b-2 is what the node serves, and no write names it yet.
+    expect([...rig.lifecycle.pendingSwaps()]).toStrictEqual(['b-2']);
+    releaseSecondWrite();
+    expect(await second).toStrictEqual({ kind: 'served', bundleId: 'b-2' });
+    expect([...rig.lifecycle.pendingSwaps()]).toStrictEqual([]);
+  });
+
+  it("an adopt whose write settles after a later swap keeps that swap's bundle, which no write names yet", async () => {
+    const rig = await rigOf();
+    const outcome = await rig.lifecycle.buildCandidate('c'.repeat(40));
+    if (outcome.kind !== 'built')
+      throw new Error(`the candidate did not build: ${outcome.error}`);
+    const releaseAdoptWrite = rig.store.holdWrite();
+    const adopting = rig.lifecycle.adopt(outcome.candidate, {
+      revParse: async () => BASE,
+    });
+    await settle();
+    const releaseTriggerWrite = rig.store.holdWrite();
+    rig.moveHead('d'.repeat(40));
+    const second = rig.lifecycle.trigger('save-rebuild');
+    await settle();
+    releaseAdoptWrite();
+    expect(await adopting).toBe(true);
+    expect([...rig.lifecycle.pendingSwaps()]).toStrictEqual(['b-2']);
+    releaseTriggerWrite();
+    expect(await second).toStrictEqual({ kind: 'served', bundleId: 'b-2' });
+    expect([...rig.lifecycle.pendingSwaps()]).toStrictEqual([]);
   });
 });
 
