@@ -1538,6 +1538,20 @@ describe('the upstream check of a sync-code build (2.10f)', () => {
     ).toBe(true);
     expect(rig.status.getUpstreamBuildFailed()).toBe(null);
   });
+
+  it('a candidate that is not adopted because origin cannot be read leaves the upstream failure set', async () => {
+    const rig = await rigOf({ state: oldState() });
+    rig.status.setUpstreamBuildFailed(FAILURE);
+    const built = await rig.lifecycle.buildCandidate(CAND);
+    if (built.kind !== 'built')
+      throw new Error(`the candidate did not build: ${built.error}`);
+    expect(
+      await rig.lifecycle.adopt(built.candidate, {
+        revParse: () => Promise.reject(new Error('origin cannot be read')),
+      }),
+    ).toBe(false);
+    expect(rig.status.getUpstreamBuildFailed()).toStrictEqual(FAILURE);
+  });
 });
 
 describe('the candidate build (2.10m)', () => {

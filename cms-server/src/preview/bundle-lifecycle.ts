@@ -623,9 +623,6 @@ export function createBundleLifecycle(
     candidate: Candidate,
     tx: Pick<RepoTx, 'revParse'>,
   ): Promise<boolean> {
-    // Only a candidate that passed its build and was pushed reaches here: it sits on the origin tip it was pushed on, so the
-    // upstream failure of that tip, if one is set, is over (2.10f).
-    status.setUpstreamBuildFailed(null);
     // A read that fails before the swap leaves the node on its bundle, so the candidate is refused, not unknown (2.10m).
     let base: string;
     try {
@@ -644,6 +641,10 @@ export function createBundleLifecycle(
     };
     const swap = await swapOnto(candidate.bundleId, candidate.dir);
     if (swap.kind !== 'ok') return false;
+    // Only a candidate that passed its build and was pushed reaches here: it sits on the origin tip it was pushed on, so the
+    // upstream failure of that tip, if one is set, is over (2.10f). Cleared after the swap: a read or swap that fails leaves the
+    // node on its old bundle, and the status keeps saying that upstream does not build.
+    status.setUpstreamBuildFailed(null);
     // The node serves a candidate that built and swapped, so the errors of earlier builds and swaps no longer apply (as buildAndServe).
     lastBuildFailed = false;
     status.setBuildError(null);
