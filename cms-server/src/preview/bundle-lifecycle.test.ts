@@ -1,5 +1,6 @@
 import {
   copyFile,
+  cp,
   mkdir,
   mkdtemp,
   readdir,
@@ -13,6 +14,7 @@ import { type BundleJson, bundleJsonSchema } from 'preview-contract';
 import { PROTOCOL_VERSION } from 'preview-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FIXTURE_BUNDLE } from '../../test/helpers/bundle.ts';
+import { BundleError } from '../bundle/read.ts';
 import type { BundleRef } from '../bundle/source.ts';
 import type { RepoTx } from '../git/ops.ts';
 import type { Logger } from '../log.ts';
@@ -186,6 +188,8 @@ interface RigOptions {
   readonly reader?: 'fake' | 'real';
   /** Replaces the fake reader with `readBundle`. Ignored with `reader: 'real'`. */
   readonly readBundle?: LifecycleOptions['readBundle'];
+  /** Replaces the file reader of the start-up check. Not given: the lifecycle's own reader, which reads the folder. */
+  readonly readFiles?: LifecycleOptions['readFiles'];
   readonly bundlesDir?: string;
   /** Holds every read of the repo until it resolves, so a test can stop the lifecycle while a read is pending. */
   readonly gate?: Promise<void>;
@@ -233,6 +237,7 @@ async function rigOf(options: RigOptions = {}) {
       options.reader === 'real'
         ? undefined
         : (options.readBundle ?? fakeReader),
+    readFiles: options.readFiles,
     newBundleId: () => {
       made += 1;
       return `b-${made}`;
@@ -556,6 +561,77 @@ describe('start-up', () => {
       'The preview node did not start',
       { bundle: OLD, error: 'boom' },
     );
+  });
+
+  it('asks for a build when a file of the state bundle is invalid, and serves that build', async () => {
+    const rig = await rigOf({
+      state: oldState(),
+      readFiles: () =>
+        Promise.reject(new BundleError('documents.json', 'is missing')),
+    });
+    await rig.lifecycle.start();
+    expect(rig.log.warn).toHaveBeenCalledWith(
+      'The bundle the state names is invalid, so a build is asked for',
+      { bundle: OLD, error: 'documents.json: is missing' },
+    );
+    expect(rig.log.info).toHaveBeenCalledWith('A build was asked for', {
+      reason: 'invalid-bundle',
+    });
+    expect(rig.build.mock.calls).toStrictEqual([
+      [{ commit: HEAD, bundleId: 'b-1' }],
+    ]);
+    expect(rig.supervisor.swap.mock.calls).toStrictEqual([
+      [{ bundleId: 'b-1', dir: path.join(BUNDLES, 'b-1') }],
+    ]);
+    expect(rig.store.get().current).toStrictEqual(entry('b-1'));
+  });
+
+  it('leaves a bundle.json that cannot be read to the protocol check, which asks for its own rebuild', async () => {
+    const rig = await rigOf({
+      state: oldState(),
+      versions: new Map<string, number | null>([[OLD, null]]),
+      readFiles: () =>
+        Promise.reject(new BundleError('bundle.json', 'is not valid JSON')),
+    });
+    await rig.lifecycle.start();
+    expect(rig.log.info.mock.calls).toStrictEqual([
+      ['A build was asked for', { reason: 'protocol-mismatch' }],
+    ]);
+  });
+
+  it('reads the files of the state bundle from its folder by default: a folder with no documents.json is asked for a build', async () => {
+    const bundles = await mkdtemp(path.join(tmpdir(), 'lifecycle-start-'));
+    try {
+      const manifest = path.join(bundles, OLD, 'manifest');
+      await cp(FIXTURE_BUNDLE, manifest, { recursive: true });
+      await rm(path.join(manifest, 'documents.json'));
+      const rig = await rigOf({ state: oldState(), bundlesDir: bundles });
+      await rig.lifecycle.start();
+      expect(rig.log.warn).toHaveBeenCalledWith(
+        'The bundle the state names is invalid, so a build is asked for',
+        { bundle: OLD, error: 'documents.json: is missing' },
+      );
+      expect(rig.build).toHaveBeenCalledTimes(1);
+    } finally {
+      await rm(bundles, { recursive: true, force: true });
+    }
+  });
+
+  it('serves a complete bundle folder at start, with no build', async () => {
+    const bundles = await mkdtemp(path.join(tmpdir(), 'lifecycle-start-'));
+    try {
+      await cp(FIXTURE_BUNDLE, path.join(bundles, OLD, 'manifest'), {
+        recursive: true,
+      });
+      const rig = await rigOf({ state: oldState(), bundlesDir: bundles });
+      await rig.lifecycle.start();
+      expect(rig.build).not.toHaveBeenCalled();
+      expect(rig.supervisor.start.mock.calls).toStrictEqual([
+        [{ bundleId: OLD, dir: path.join(bundles, OLD) }],
+      ]);
+    } finally {
+      await rm(bundles, { recursive: true, force: true });
+    }
   });
 });
 

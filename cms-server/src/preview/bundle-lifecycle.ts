@@ -7,6 +7,7 @@
 // a restart is the retry (2.9c-B recovery rule).
 import { join } from 'node:path';
 import { PROTOCOL_VERSION } from 'preview-protocol';
+import { BundleError, readBundle as readBundleFolder } from '../bundle/read.ts';
 import {
   type BundleRef,
   bundleManifestDir,
@@ -32,7 +33,8 @@ export type TriggerReason =
   | 'save-rebuild'
   | 'protocol-mismatch'
   | 'sync-code'
-  | 'publish';
+  | 'publish'
+  | 'invalid-bundle';
 
 /** How a trigger ended. `swap-failed` says whether the supervisor rolled back to the bundle it served before. */
 type TriggerOutcome =
@@ -94,6 +96,11 @@ export interface LifecycleOptions {
   readonly readBundle?:
     | ((manifestDir: string) => Promise<BundleRef | null>)
     | undefined;
+  /**
+   * Reads every file of a bundle folder as the CMS serves it, and rejects with the first error (bundle/read.ts). A bundle.json
+   * that is missing or invalid is not counted here: the protocol check reports it. Default: the bundle reader.
+   */
+  readonly readFiles?: ((manifestDir: string) => Promise<void>) | undefined;
   /** The id of each new bundle, as the build runner takes it. Default: a random UUID. */
   readonly newBundleId?: (() => string) | undefined;
 }
@@ -151,6 +158,7 @@ export function createBundleLifecycle(
     bundlesDir,
     log,
     readBundle = (manifestDir) => directoryBundleSource(manifestDir).current(),
+    readFiles = readFilesOf,
     newBundleId,
   } = options;
   let stopped = false;
@@ -242,6 +250,19 @@ export function createBundleLifecycle(
         bundle: current.bundleId,
         error: started.error,
       });
+    }
+    // A bundle with a missing or invalid file is replaced by a build, not checked for protocol (2.14a-2, F9).
+    const problem = await filesProblem(current.bundleId);
+    if (problem !== null) {
+      log.warn(
+        'The bundle the state names is invalid, so a build is asked for',
+        {
+          bundle: current.bundleId,
+          error: problem,
+        },
+      );
+      await runBuild('invalid-bundle', undefined);
+      return;
     }
     await checkProtocol(current);
   }
@@ -489,6 +510,21 @@ export function createBundleLifecycle(
       : `Bundle ${bundleId} speaks protocol ${built}, and the server speaks protocol ${PROTOCOL_VERSION}`;
   }
 
+  /**
+   * The reason the files of a bundle cannot be read as the CMS reads them, or null when they can. A bundle.json that is
+   * missing or invalid is no reason here: checkProtocol reports it, and rebuilds it once.
+   */
+  async function filesProblem(bundleId: string): Promise<string | null> {
+    try {
+      await readFiles(bundleManifestDir(bundlesDir, bundleId));
+      return null;
+    } catch (error: unknown) {
+      if (error instanceof BundleError && error.file === 'bundle.json')
+        return null;
+      return messageOf(error);
+    }
+  }
+
   /** The bundles a collection keeps now, as a copy taken at the call (see the interface). A collection reads it when it runs. */
   function pendingSwaps(): ReadonlySet<string> {
     const kept = new Set(swapsPending);
@@ -631,6 +667,15 @@ export function createBundleLifecycle(
     afterAdopt,
     discard,
   };
+}
+
+/**
+ * Reads a manifest folder's files as the CMS serves it: bundle.json, then the others with it (bundle/read.ts). A folder
+ * without bundle.json has nothing to read here, so it resolves.
+ */
+async function readFilesOf(manifestDir: string): Promise<void> {
+  const ref = await directoryBundleSource(manifestDir).current();
+  if (ref !== null) await readBundleFolder(manifestDir, ref.identity);
 }
 
 /** The text of a failed build's first error: its message, with the file it names when there is one. */
