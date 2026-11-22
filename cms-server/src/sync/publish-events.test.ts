@@ -1090,8 +1090,6 @@ describe('publish event order: curated scenarios (2.10l)', () => {
   });
 });
 
-// The upstream code does not build (2.10f, U1): the sync's origin-tip build recorded the failure. The publish skips its build
-// check, validates as before, pushes, and says so; the failure stays set (only a passing build clears it).
 describe('publish event order: a restart during a publish (2.10m-1)', () => {
   // The next publish after a restart, by the point the old process stopped at. Before the squash, the next squash is the
   // first (`c1`). After it, the squashed commit was never pushed, so the next one is `c2`. At `finish` the commit is on the
@@ -1127,6 +1125,8 @@ describe('publish event order: a restart during a publish (2.10m-1)', () => {
   );
 });
 
+// The upstream code does not build (2.10f, U1): the sync's origin-tip build recorded the failure. The publish skips its build
+// check, validates as before, pushes, and says so; the failure stays set (only a passing build clears it).
 describe('publish event order: a broken upstream (2.10f)', () => {
   // The origin tip the model starts on, as the failed build named it.
   const BROKEN = { sha: 'o0', firstError: 'src/x.astro: boom' };
