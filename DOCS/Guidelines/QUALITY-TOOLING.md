@@ -151,6 +151,7 @@ build in CI; see [CI-PIPELINE.md](CI-PIPELINE.md)). "Report" means the output ne
 | Unit tests, all | `cd preview-render-server && ../node_modules/.bin/vitest run` | ~5 s (1039 tests, 35 files) |
 | e2e and budgets | `cd preview-render-server && ../node_modules/.bin/vitest run --config vitest.e2e.config.ts` | ~46 s (94 tests, 14 files; measured 2026-11-02: 46.0 to 46.7 s; the budget file runs last, alone, see *Render latency* under [How each tool is applied here](#how-each-tool-is-applied-here)) |
 | Browser tests | `npm run test:browser -w preview-render-server` (one file: append `-- <file>`) | ~32 s (10 files, 25 tests; measured 2026-11-02: 31.0 to 33.4 s) |
+| Browser tests, cms-server | `npm run test:browser -w cms-server` (Chromium on `cms.localhost` drives the editor and its preview iframe on `preview.localhost`; one file: append `-- <file>`) | ~91 s (1 file, 2 tests, measured 2026-11-22; includes the sample-site build of the global setup) |
 | Memory of one preview process (manual) | `npm run measure:memory` (see [Memory metric](#memory-metric)) | ~21 s |
 | Memory of cms-server (manual) | `npm run measure:cms-memory` (see [Memory metric](#memory-metric)) | ~2.5 min |
 | Audit | `npm run audit` (needs `osv-scanner`, see below) | ~3 s |
