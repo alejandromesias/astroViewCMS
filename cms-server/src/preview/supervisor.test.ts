@@ -255,7 +255,7 @@ function writeFakeStart(root: string): string {
       "const marker = path.join(process.cwd(), bundleId + '.crashed');",
       "if ((bundleId === 'crash' || bundleId === 'loud') && !fs.existsSync(marker)) {",
       "  fs.writeFileSync(marker, '');",
-      "  fs.writeSync(2, bundleId === 'loud' ? 'a'.repeat(6000) + '\\n' + 'b'.repeat(6000) : 'boom');",
+      "  fs.writeSync(2, bundleId === 'loud' ? 'c'.repeat(6000) + '\\n' + 'd'.repeat(6000) : 'boom');",
       '  process.exit(3);',
       '}',
       'const server = http',
@@ -1056,6 +1056,24 @@ describe('createSupervisor: the message of an exit', () => {
       { code: 2, signal: null, stderr: '  \n ' },
       'The preview node exited (code 2, signal none)',
     ],
+    [
+      'both secrets replaced in the last line',
+      {
+        code: 1,
+        signal: null,
+        stderr: `noise\nfatal ${TOKEN} then ${INTERNAL}\n`,
+      },
+      'The preview node exited (code 1, signal none): fatal *** then ***',
+    ],
+    [
+      'the start of a tail that was cut inside a secret dropped',
+      {
+        code: 1,
+        signal: null,
+        stderr: `${TOKEN.slice(40)}${'z'.repeat(4_000)}`,
+      },
+      `The preview node exited (code 1, signal none): ${'z'.repeat(4_000)}`,
+    ],
   ] as const)('gives %s', async (_name, exit, expected) => {
     const fake = rig({ dies: () => ({ ...exit }) });
     expect(await make(fake).start(A)).toEqual({ ok: false, error: expected });
@@ -1127,7 +1145,7 @@ describe('createSupervisor with the real defaults: output of the node', () => {
       });
       await eventually(() => supervisor.status().state === 'restarting');
       expect(supervisor.status().error).toBe(
-        `The preview node exited (code 3, signal none): ${'b'.repeat(4_000)}`,
+        `The preview node exited (code 3, signal none): ${'d'.repeat(4_000)}`,
       );
       expect(await starting).toEqual({ ok: true });
     } finally {
@@ -1236,6 +1254,19 @@ describe('createSupervisor: the stderr of the node goes to the log', () => {
       [STDERR_LOG, { line: 'token=*** and ***' }],
       [STDERR_LOG, { line: 'split *** ***' }],
     ]);
+  });
+
+  it('never logs part of a secret that starts at the cut, even after an earlier secret was replaced', async () => {
+    const fake = rig();
+    const log = spyLog();
+    const supervisor = make(fake, { log });
+    await supervisor.start(A);
+    childAt(fake.world, 0).emitStderr(`${TOKEN}${'x'.repeat(980)}${TOKEN}\n`);
+    expect(log.warn.mock.calls).toHaveLength(1);
+    const [, fields] = log.warn.mock.calls[0] ?? [];
+    const logged = (fields as { line: string }).line;
+    expect(logged).toMatch(/^\*\*\*x+$/);
+    expect(logged).not.toContain('a');
   });
 
   it('never logs part of a secret that crosses the 1000-character cut', async () => {

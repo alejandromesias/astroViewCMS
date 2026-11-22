@@ -186,6 +186,11 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
   const pollMs = options.pollMs ?? 200;
   const graceMs = options.graceMs ?? 5_000;
   const log = options.log ?? logger;
+  // The node holds both secrets in its environment, so its output is redacted wherever it reaches the log.
+  const redactor = createRedactor([
+    secrets.previewTokenSecret,
+    secrets.previewInternalSecret,
+  ]);
 
   let state: NodeState = 'stopped';
   let target: BundleRef | undefined;
@@ -200,10 +205,7 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
   /** Spawns the node for `bundle`, then polls it until it answers the bundleId,
    *  exits, or the readiness timeout passes. */
   async function launch(bundle: BundleRef): Promise<Attempt> {
-    const forwarder = createStderrForwarder(log, [
-      secrets.previewTokenSecret,
-      secrets.previewInternalSecret,
-    ]);
+    const forwarder = createStderrForwarder(log, redactor);
     const spawned = spawnNode(
       process.execPath,
       [startScript, siteConfig, '--out', bundle.dir],
@@ -251,7 +253,7 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
     return {
       kind: 'failed',
       child: spawned,
-      error: exitMessage(exit),
+      error: exitMessage(exit, redactor),
       fatal: false,
     };
   }
@@ -327,7 +329,7 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
         if (gen !== generation) return;
         // A node that stayed up for a minute has earned a fresh count.
         if (now() - readyAt >= STABLE_MS) failures = 0;
-        lastError = exitMessage(exit);
+        lastError = exitMessage(exit, redactor);
       } else {
         await stopChild(attempt.child);
         if (gen !== generation) {
@@ -422,40 +424,82 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
   };
 }
 
-function exitMessage(exit: ExitInfo): string {
+/** Replaces every occurrence of a secret value by `***`. `overhang` is the length of the longest secret less
+ *  one: a secret cut by the end of a text can leave up to that many characters of itself, after the replacement.
+ *  An empty value is ignored. */
+interface Redactor {
+  readonly overhang: number;
+  redact(text: string): string;
+  /** Drops the start of `text` when it is the end of a secret: for a text whose beginning was cut off. */
+  dropCutStart(text: string): string;
+}
+
+function createRedactor(secrets: readonly string[]): Redactor {
+  const known = secrets.filter((secret) => secret !== '');
+  return {
+    overhang: Math.max(0, ...known.map((secret) => secret.length - 1)),
+    redact: (text) =>
+      known.reduce((acc, secret) => acc.replaceAll(secret, '***'), text),
+    dropCutStart: (text) => {
+      const cut = Math.max(
+        0,
+        ...known.map((secret) => {
+          for (let size = secret.length - 1; size > 0; size -= 1) {
+            if (text.startsWith(secret.slice(secret.length - size)))
+              return size;
+          }
+          return 0;
+        }),
+      );
+      return text.slice(cut);
+    },
+  };
+}
+
+/** The exit message, with the last line of the node's stderr tail. The line is redacted: it reaches the log
+ *  through the lifecycle's error. A tail that was cut at its start can begin inside a secret, so when it has
+ *  no newline of its own, a start that is the end of a secret is dropped. */
+function exitMessage(exit: ExitInfo, redactor: Redactor): string {
   const how = `code ${exit.code ?? 'none'}, signal ${exit.signal ?? 'none'}`;
-  const lastLine = exit.stderr.trim().split('\n').at(-1) ?? '';
-  return lastLine === ''
+  const trimmed = exit.stderr.trim();
+  const lastLine = trimmed.split('\n').at(-1) ?? '';
+  const cutAtStart =
+    exit.stderr.length >= STDERR_KEPT && lastLine === trimmed
+      ? redactor.dropCutStart(lastLine)
+      : lastLine;
+  const safe = redactor.redact(cutAtStart);
+  return safe === ''
     ? `The preview node exited (${how})`
-    : `The preview node exited (${how}): ${lastLine}`;
+    : `The preview node exited (${how}): ${safe}`;
 }
 
 /** Logs a child's stderr one line at a time, as it arrives. A chunk may end inside a line: that part waits
  *  for the rest. A line keeps its first STDERR_LINE_MAX characters, and the rest of it is dropped, so a line
- *  with no newline cannot grow without bound. An empty line is not logged. Every occurrence of a value in
- *  `secrets` is replaced by `***` before the line is logged: the node holds them in its environment, and the
- *  log file is kept. The line is held longer than STDERR_LINE_MAX by the longest secret less one character,
- *  and cut after the replacement, so a secret that crosses the cut is never logged in part. `end` logs the
+ *  with no newline cannot grow without bound. An empty line is not logged. Secrets are redacted before the
+ *  line is logged. The line is held longer than STDERR_LINE_MAX by `overhang` and cut after the replacement.
+ *  When the held text was full, the line was cut inside the held text, so the last `overhang` characters of
+ *  the redacted text are dropped before the cut: they can be the start of a secret that did not fit, and
+ *  replacing an earlier secret shortens the text, which would move that start under the cut. `end` logs the
  *  open line, if there is one. */
 function createStderrForwarder(
   log: Logger,
-  secrets: readonly string[],
+  redactor: Redactor,
 ): {
   write(chunk: string): void;
   end(): void;
 } {
-  const known = secrets.filter((secret) => secret !== '');
-  const held = STDERR_LINE_MAX + Math.max(0, ...known.map((s) => s.length - 1));
+  const held = STDERR_LINE_MAX + redactor.overhang;
   let line = '';
   const flush = (): void => {
-    const redacted = known.reduce(
-      (text, secret) => text.replaceAll(secret, '***'),
-      line,
-    );
+    const redacted = redactor.redact(line);
+    const full = line.length >= held;
     line = '';
-    if (redacted !== '') {
+    const text = full
+      ? redacted.slice(0, Math.max(0, redacted.length - redactor.overhang))
+      : redacted;
+    if (text !== '') {
       log.warn('The preview node wrote to stderr', {
-        line: redacted.slice(0, STDERR_LINE_MAX),
+        line: text.slice(0, STDERR_LINE_MAX),
       });
     }
   };
