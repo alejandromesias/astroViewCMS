@@ -9,6 +9,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { previewConfigSchema } from 'preview-contract';
 import type { Secrets } from '../config/secrets.ts';
+import { type Logger, logger } from '../log.ts';
 // The shared allowlist of child environments (WORKPLAN 2.9c): the node's set is the one without the build's extras.
 import { childEnvironment as inheritedEnvironment } from './child-env.ts';
 
@@ -34,6 +35,8 @@ export interface NodeChild {
 export interface SpawnOptions {
   readonly cwd: string;
   readonly env: NodeJS.ProcessEnv;
+  /** Gets each chunk of the child's stderr as it arrives. */
+  readonly onStderr: (chunk: string) => void;
 }
 
 export interface SupervisorOptions {
@@ -67,6 +70,8 @@ export interface SupervisorOptions {
   readonly pollMs?: number;
   /** The time between SIGTERM and SIGKILL. Default 5 s. */
   readonly graceMs?: number;
+  /** Where the node's stderr lines go, at warn level. Default: the cms-server logger. */
+  readonly log?: Logger;
 }
 
 type NodeState = 'stopped' | 'starting' | 'ready' | 'restarting' | 'failed';
@@ -121,6 +126,8 @@ const STABLE_MS = 60_000;
 const MAX_DELAY_MS = 30_000;
 const READ_TIMEOUT_MS = 2_000;
 const STDERR_KEPT = 4_000;
+// The most characters of one stderr line that reach the log. The rest of the line is dropped.
+const STDERR_LINE_MAX = 1_000;
 const STOPPED_RESULT: StartResult = {
   ok: false,
   error: 'The node was stopped before it was ready',
@@ -178,6 +185,12 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
   const readyTimeoutMs = options.readyTimeoutMs ?? 20_000;
   const pollMs = options.pollMs ?? 200;
   const graceMs = options.graceMs ?? 5_000;
+  const log = options.log ?? logger;
+  // The node holds both secrets in its environment, so its output is redacted wherever it reaches the log.
+  const redactor = createRedactor([
+    secrets.previewTokenSecret,
+    secrets.previewInternalSecret,
+  ]);
 
   let state: NodeState = 'stopped';
   let target: BundleRef | undefined;
@@ -192,12 +205,14 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
   /** Spawns the node for `bundle`, then polls it until it answers the bundleId,
    *  exits, or the readiness timeout passes. */
   async function launch(bundle: BundleRef): Promise<Attempt> {
+    const forwarder = createStderrForwarder(log, redactor);
     const spawned = spawnNode(
       process.execPath,
       [startScript, siteConfig, '--out', bundle.dir],
       {
         cwd,
         env: childEnvironment(parentEnv, { port, site, editorOrigin, secrets }),
+        onStderr: forwarder.write,
       },
     );
     child = spawned;
@@ -205,6 +220,8 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
     let exit = undefined as ExitInfo | undefined;
     void spawned.exited.then((info) => {
       exit = info;
+      // The stderr is complete now. A last line with no newline is logged here.
+      forwarder.end();
     });
     const deadline = now() + readyTimeoutMs;
     for (;;) {
@@ -236,7 +253,7 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
     return {
       kind: 'failed',
       child: spawned,
-      error: exitMessage(exit),
+      error: exitMessage(exit, redactor),
       fatal: false,
     };
   }
@@ -312,7 +329,7 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
         if (gen !== generation) return;
         // A node that stayed up for a minute has earned a fresh count.
         if (now() - readyAt >= STABLE_MS) failures = 0;
-        lastError = exitMessage(exit);
+        lastError = exitMessage(exit, redactor);
       } else {
         await stopChild(attempt.child);
         if (gen !== generation) {
@@ -407,16 +424,101 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
   };
 }
 
-function exitMessage(exit: ExitInfo): string {
-  const how = `code ${exit.code ?? 'none'}, signal ${exit.signal ?? 'none'}`;
-  const lastLine = exit.stderr.trim().split('\n').at(-1) ?? '';
-  return lastLine === ''
-    ? `The preview node exited (${how})`
-    : `The preview node exited (${how}): ${lastLine}`;
+/** Replaces every occurrence of a secret value by `***`. `overhang` is the length of the longest secret less
+ *  one: a secret cut by the end of a text can leave up to that many characters of itself, after the replacement.
+ *  An empty value is ignored. */
+interface Redactor {
+  readonly overhang: number;
+  redact(text: string): string;
+  /** Drops the start of `text` when it is the end of a secret: for a text whose beginning was cut off. */
+  dropCutStart(text: string): string;
 }
 
-/** The real child process. Its stdout is drained, its stderr kept at the end. Its stdin is a pipe that
- *  stays open while this process lives: the child exits when it closes (stdin-exit.ts, WORKPLAN 2.1i). */
+function createRedactor(secrets: readonly string[]): Redactor {
+  const known = secrets.filter((secret) => secret !== '');
+  return {
+    overhang: Math.max(0, ...known.map((secret) => secret.length - 1)),
+    redact: (text) =>
+      known.reduce((acc, secret) => acc.replaceAll(secret, '***'), text),
+    dropCutStart: (text) => {
+      const cut = Math.max(
+        0,
+        ...known.map((secret) => {
+          for (let size = secret.length - 1; size > 0; size -= 1) {
+            if (text.startsWith(secret.slice(secret.length - size)))
+              return size;
+          }
+          return 0;
+        }),
+      );
+      return text.slice(cut);
+    },
+  };
+}
+
+/** The exit message, with the last line of the node's stderr tail. The line is redacted: it reaches the log
+ *  through the lifecycle's error. A tail that was cut at its start can begin inside a secret, so when it has
+ *  no newline of its own, a start that is the end of a secret is dropped. */
+function exitMessage(exit: ExitInfo, redactor: Redactor): string {
+  const how = `code ${exit.code ?? 'none'}, signal ${exit.signal ?? 'none'}`;
+  const trimmed = exit.stderr.trim();
+  const lastLine = trimmed.split('\n').at(-1) ?? '';
+  const cutAtStart =
+    exit.stderr.length >= STDERR_KEPT && lastLine === trimmed
+      ? redactor.dropCutStart(lastLine)
+      : lastLine;
+  const safe = redactor.redact(cutAtStart);
+  return safe === ''
+    ? `The preview node exited (${how})`
+    : `The preview node exited (${how}): ${safe}`;
+}
+
+/** Logs a child's stderr one line at a time, as it arrives. A chunk may end inside a line: that part waits
+ *  for the rest. A line keeps its first STDERR_LINE_MAX characters, and the rest of it is dropped, so a line
+ *  with no newline cannot grow without bound. An empty line is not logged. Secrets are redacted before the
+ *  line is logged. The line is held longer than STDERR_LINE_MAX by `overhang` and cut after the replacement.
+ *  When the held text was full, the line was cut inside the held text, so the last `overhang` characters of
+ *  the redacted text are dropped before the cut: they can be the start of a secret that did not fit, and
+ *  replacing an earlier secret shortens the text, which would move that start under the cut. `end` logs the
+ *  open line, if there is one. */
+function createStderrForwarder(
+  log: Logger,
+  redactor: Redactor,
+): {
+  write(chunk: string): void;
+  end(): void;
+} {
+  const held = STDERR_LINE_MAX + redactor.overhang;
+  let line = '';
+  const flush = (): void => {
+    const redacted = redactor.redact(line);
+    const full = line.length >= held;
+    line = '';
+    const text = full
+      ? redacted.slice(0, Math.max(0, redacted.length - redactor.overhang))
+      : redacted;
+    if (text !== '') {
+      log.warn('The preview node wrote to stderr', {
+        line: text.slice(0, STDERR_LINE_MAX),
+      });
+    }
+  };
+  return {
+    write(chunk: string): void {
+      for (const [index, part] of chunk.split('\n').entries()) {
+        if (index > 0) flush();
+        line = `${line}${part}`.slice(0, held);
+      }
+    },
+    end(): void {
+      if (line !== '') flush();
+    },
+  };
+}
+
+/** The real child process. Its stdout is drained, its stderr kept at the end and handed to `onStderr` as
+ *  it arrives. Its stdin is a pipe that stays open while this process lives: the child exits when it
+ *  closes (stdin-exit.ts, WORKPLAN 2.1i). */
 function defaultSpawn(
   command: string,
   args: readonly string[],
@@ -429,8 +531,11 @@ function defaultSpawn(
   });
   let stderr = '';
   proc.stdout.resume();
-  proc.stderr.on('data', (chunk: Buffer) => {
-    stderr = `${stderr}${chunk.toString('utf8')}`.slice(-STDERR_KEPT);
+  // Decoded by the stream, so a character split across two chunks is not garbled.
+  proc.stderr.setEncoding('utf8');
+  proc.stderr.on('data', (chunk: string) => {
+    stderr = `${stderr}${chunk}`.slice(-STDERR_KEPT);
+    options.onStderr(chunk);
   });
   const exited = new Promise<ExitInfo>((resolve) => {
     proc.once('error', (error) =>
