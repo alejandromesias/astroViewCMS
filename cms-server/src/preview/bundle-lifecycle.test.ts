@@ -138,14 +138,25 @@ function fakeRepo(gate: Promise<void> = Promise.resolve()) {
   const reads: string[] = [];
   let upstream = BASE;
   let head = HEAD;
+  // The fake's history, one parent per commit: `HEAD` is a save made on `BASE`, as on a synced upstream (2.10f).
+  const parents = new Map<string, string>([[HEAD, BASE]]);
   const repo: LifecycleRepo = {
     locked: (holder, work) => {
       locks.push(holder);
-      const tx: Pick<RepoTx, 'revParse'> = {
+      const tx: Pick<RepoTx, 'revParse' | 'isAncestor'> = {
         revParse: async (ref) => {
           await gate;
           reads.push(ref);
           return ref === 'origin/main' ? upstream : head;
+        },
+        isAncestor: async (ancestor, descendant) => {
+          for (
+            let commit: string | undefined = descendant;
+            commit !== undefined;
+            commit = parents.get(commit)
+          )
+            if (commit === ancestor) return true;
+          return false;
         },
       };
       return work(tx);
@@ -269,7 +280,9 @@ const oldState = (): PreviewState => ({
 
 /** Waits a macrotask, so the promises the test started have run as far as they can. */
 function settle(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 5));
+  // 20 ms, not 5: under a loaded run the queued triggers need more than a few timer ticks to reach the runner (2.10f's
+  // check reads one more value under the lock).
+  return new Promise((resolve) => setTimeout(resolve, 20));
 }
 
 const mismatchOf = (bundleId: string, speaks: number) =>
@@ -1372,6 +1385,158 @@ describe('busy and waitForIdle (2.10d)', () => {
     release(0);
     await pending;
     await expect(Promise.all(waiters)).resolves.toStrictEqual([true, true]);
+  });
+});
+
+describe('the upstream check of a sync-code build (2.10f)', () => {
+  // The commit of a candidate of the adopt test, and the origin tip a sync moved to after it integrated BASE.
+  const CAND = 'c'.repeat(40);
+  const MOVED = 'f'.repeat(40);
+  // The upstream failure of BASE, as the check records it.
+  const FAILURE = { sha: BASE, firstError: 'src/x.astro: upstream boom' };
+
+  // The builder of the tests: `cms/work` (HEAD) fails with "cms/work boom"; the origin tip (BASE) fails with "upstream boom"
+  // when `tip` says so, and builds otherwise.
+  const headFails =
+    (tip: 'fails' | 'builds') =>
+    (job: BuildJob): Promise<BuildResult> => {
+      if (job.commit === HEAD)
+        return failedBuild('cms/work boom', 'src/a.astro')(job);
+      if (tip === 'fails')
+        return failedBuild('upstream boom', 'src/x.astro')(job);
+      return okBuild(job);
+    };
+
+  it('a failed sync-code build whose origin tip fails too records the tip, its sha and its first error, and swaps nothing', async () => {
+    const rig = await rigOf({ state: oldState(), build: headFails('fails') });
+    expect(await rig.lifecycle.trigger('sync-code', BASE)).toStrictEqual({
+      kind: 'build-failed',
+      error: 'src/a.astro: cms/work boom',
+    });
+    expect(rig.build.mock.calls).toStrictEqual([
+      [{ commit: HEAD, bundleId: 'b-1' }],
+      [{ commit: BASE, bundleId: 'b-2' }],
+    ]);
+    expect(rig.status.getUpstreamBuildFailed()).toStrictEqual(FAILURE);
+    expect(
+      (await rig.status.snapshot()).errors.upstreamBuildFailed,
+    ).toStrictEqual(FAILURE);
+    expect(rig.supervisor.swap).not.toHaveBeenCalled();
+    expect(rig.store.set).not.toHaveBeenCalled();
+  });
+
+  it('a failed sync-code build whose origin tip builds means the changeset is at fault: nothing upstream is recorded', async () => {
+    const rig = await rigOf({ state: oldState(), build: headFails('builds') });
+    expect(await rig.lifecycle.trigger('sync-code', BASE)).toStrictEqual({
+      kind: 'build-failed',
+      error: 'src/a.astro: cms/work boom',
+    });
+    expect(rig.status.getUpstreamBuildFailed()).toBe(null);
+    expect((await rig.status.snapshot()).build.error).toBe(
+      'src/a.astro: cms/work boom',
+    );
+  });
+
+  it('the origin tip candidate is discarded even when it passes', async () => {
+    removals.failure = new Error('the folder is still there');
+    try {
+      const rig = await rigOf({
+        state: oldState(),
+        build: headFails('builds'),
+      });
+      await rig.lifecycle.trigger('sync-code', BASE);
+      // The discard is attempted (its removal fails here, and the failure is logged with the candidate's bundle id).
+      expect(rig.log.warn).toHaveBeenCalledWith(
+        'Could not remove the candidate bundle',
+        { bundleId: 'b-2', error: 'the folder is still there' },
+      );
+    } finally {
+      removals.failure = undefined;
+    }
+  });
+
+  it('a sync-code build that passes clears the upstream failure while origin still reads the tip the sync integrated', async () => {
+    const rig = await rigOf({ state: oldState() });
+    rig.status.setUpstreamBuildFailed(FAILURE);
+    expect(await rig.lifecycle.trigger('sync-code', BASE)).toStrictEqual({
+      kind: 'served',
+      bundleId: 'b-1',
+    });
+    expect(rig.status.getUpstreamBuildFailed()).toBe(null);
+  });
+
+  it('a sync-code build that passes keeps the upstream failure when origin has moved on since the sync', async () => {
+    const rig = await rigOf({ state: oldState() });
+    rig.status.setUpstreamBuildFailed(FAILURE);
+    rig.moveUpstream(MOVED);
+    expect(await rig.lifecycle.trigger('sync-code', BASE)).toStrictEqual({
+      kind: 'served',
+      bundleId: 'b-1',
+    });
+    expect(rig.status.getUpstreamBuildFailed()).toStrictEqual(FAILURE);
+  });
+
+  it.each(['save-rebuild', 'publish'] as const)(
+    'a passing %s build clears the upstream failure when its head holds the current origin tip (2.10f)',
+    async (reason) => {
+      const rig = await rigOf({ state: oldState() });
+      rig.status.setUpstreamBuildFailed(FAILURE);
+      // Origin reads the commit cms/work is on: the head holds the tip, whatever the trigger.
+      rig.moveUpstream(HEAD);
+      expect(await rig.lifecycle.trigger(reason)).toStrictEqual({
+        kind: 'served',
+        bundleId: 'b-1',
+      });
+      expect(rig.status.getUpstreamBuildFailed()).toBe(null);
+    },
+  );
+
+  it('a passing build whose head does not hold the origin tip keeps the upstream failure, whatever the trigger (2.10f)', async () => {
+    const rig = await rigOf({ state: oldState() });
+    rig.status.setUpstreamBuildFailed(FAILURE);
+    rig.moveUpstream(MOVED);
+    expect(await rig.lifecycle.trigger('save-rebuild')).toStrictEqual({
+      kind: 'served',
+      bundleId: 'b-1',
+    });
+    expect(rig.status.getUpstreamBuildFailed()).toStrictEqual(FAILURE);
+  });
+
+  it('a failed build keeps the upstream failure, even when its head holds the origin tip (2.10f)', async () => {
+    const rig = await rigOf({
+      state: oldState(),
+      build: failedBuild('cms/work boom', 'src/a.astro'),
+    });
+    rig.status.setUpstreamBuildFailed(FAILURE);
+    rig.moveUpstream(HEAD);
+    await rig.lifecycle.trigger('save-rebuild');
+    expect(rig.status.getUpstreamBuildFailed()).toStrictEqual(FAILURE);
+  });
+
+  it.each(['save-rebuild', 'sync-code'] as const)(
+    'a failed %s build that names no origin tip builds no origin tip',
+    async (reason) => {
+      const rig = await rigOf({ state: oldState(), build: headFails('fails') });
+      await rig.lifecycle.trigger(reason);
+      expect(rig.build.mock.calls).toStrictEqual([
+        [{ commit: HEAD, bundleId: 'b-1' }],
+      ]);
+      expect(rig.status.getUpstreamBuildFailed()).toBe(null);
+    },
+  );
+
+  it('adopting a pushed candidate clears the upstream failure: the candidate passed its build on the tip it was pushed on', async () => {
+    const rig = await rigOf({ state: oldState() });
+    rig.status.setUpstreamBuildFailed(FAILURE);
+    const built = await rig.lifecycle.buildCandidate(CAND);
+    if (built.kind !== 'built')
+      throw new Error(`the candidate did not build: ${built.error}`);
+    expect(
+      await rig.lifecycle.adopt(built.candidate, {
+        revParse: async () => BASE,
+      }),
+    ).toBe(true);
+    expect(rig.status.getUpstreamBuildFailed()).toBe(null);
   });
 });
 

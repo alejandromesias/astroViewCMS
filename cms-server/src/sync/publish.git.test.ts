@@ -576,7 +576,7 @@ describe('publish when the remote moves during the push (R3, R4)', () => {
     expect(rig.pushes()).toBe(1);
     // The remote is the developer's, and the sync of the retry asked for the rebuild of the new code.
     expect(await rig.remoteHead()).toBe(devCommit);
-    expect(rig.trigger).toHaveBeenCalledWith('sync-code');
+    expect(rig.trigger).toHaveBeenCalledWith('sync-code', devCommit);
     expect(rig.trigger).not.toHaveBeenCalledWith('publish');
     // Nothing is lost: the save is still on cms/work, re-applied on the developer's commit.
     await expect(rig.repo.changedPaths()).resolves.toStrictEqual([

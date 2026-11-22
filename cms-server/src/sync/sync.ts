@@ -52,10 +52,11 @@ interface SyncDeps {
     'setLastSync' | 'setSyncError' | 'setRenamed' | 'invalidateChangeset'
   >;
   /**
-   * Asks for a build of `cms/work` for `reason`. It is called without waiting: the build takes the repo lock itself, so it
-   * runs once the sync (or the publish that holds the lock) is done.
+   * Asks for a build of `cms/work` for `reason`, and names the origin tip this sync integrated (`upstream`, 2.10f). It is
+   * called without waiting: the build takes the repo lock itself, so it runs once the sync (or the publish that holds the
+   * lock) is done.
    */
-  readonly trigger: (reason: 'sync-code') => void;
+  readonly trigger: (reason: 'sync-code', upstream: string) => void;
   /** The publish gate (2.10l): a tick that meets it closed is skipped, before the fetch and again under the lock. */
   readonly gate: Pick<PublishGate, 'pollMayRun'>;
   /** The clock of `lastSync`. The default is the real one. */
@@ -124,7 +125,7 @@ export function createSync({
       // the changeset is counted again on that path too (2.12d-3).
       if (fetched.reapply) status.invalidateChangeset();
     }
-    if (fetched.change === 'code') trigger('sync-code');
+    if (fetched.change === 'code') trigger('sync-code', fetched.upstream);
     status.setLastSync(now().toISOString());
     status.setSyncError(null);
     return {

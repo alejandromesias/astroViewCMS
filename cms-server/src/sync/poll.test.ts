@@ -377,7 +377,8 @@ describe('createPollLoop', () => {
       loop.touch();
       await vi.advanceTimersByTimeAsync(INTERVAL_MS);
       expect(trigger).toHaveBeenCalledTimes(builds);
-      if (builds === 1) expect(trigger).toHaveBeenCalledWith('sync-code');
+      if (builds === 1)
+        expect(trigger).toHaveBeenCalledWith('sync-code', 'tip');
     },
   );
 

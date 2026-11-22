@@ -255,10 +255,10 @@ export async function run(
   // The sync routine (2.10c). Its `sync-code` trigger is the lifecycle's, read when it fires; with --bundle there is no
   // lifecycle, so the trigger is only logged.
   const bundles = createBundleStore(source);
-  const syncTrigger = (reason: 'sync-code'): void => {
+  const syncTrigger = (reason: 'sync-code', upstream: string): void => {
     if (lifecycle === undefined)
       deps.logger.info('A sync found a code change, but the builder is off');
-    else void lifecycle.trigger(reason);
+    else void lifecycle.trigger(reason, upstream);
   };
   const sync = createSync({
     repo: openedRepo,

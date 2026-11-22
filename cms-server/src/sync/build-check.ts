@@ -23,16 +23,22 @@ type BuildReason =
   | 'upstream-code'
   | 'unknown';
 
+/** Why a check that would build is skipped (2.10f, U1): the upstream code does not build, so the candidate would not either. */
+export type BuildSkip = 'upstream-broken';
+
 /**
- * The decision. Under `auto` a build has its reason. `always` builds without one, since it does not read the changeset.
+ * The decision. Under `auto` a build has its reason. `always` builds without one, since it does not read the changeset. A
+ * check skipped for upstream (`skipped`) builds nothing, and says so.
  */
 export type BuildDecision =
-  | { readonly build: false }
+  | { readonly build: false; readonly skipped?: BuildSkip }
   | { readonly build: true; readonly reason?: BuildReason };
 
 /** The inputs of the decision. Plain data: the caller reads all of it. */
 export interface BuildCheckInput {
   readonly mode: BuildCheckMode;
+  /** Whether the upstream code is known not to build (`upstreamBuildFailed` is set). Under `auto` or `always` the check is skipped then. */
+  readonly upstreamBroken: boolean;
   /** The changed documents the publish would push, and the records of those the bundle does not hold. */
   readonly changeset: Changeset;
   /** The bundle's document records, by key: their format and build-time fields. */
@@ -54,8 +60,10 @@ export interface BuildCheckInput {
  * document that cannot be read or has no record) builds as `unknown`. Otherwise nothing is built.
  */
 export function decideBuild(input: BuildCheckInput): BuildDecision {
-  if (input.mode === 'always') return { build: true };
   if (input.mode === 'never') return { build: false };
+  // U1 (2.10f): the upstream code does not build, so a build would fail whatever the changeset holds: the check is skipped.
+  if (input.upstreamBroken) return { build: false, skipped: 'upstream-broken' };
+  if (input.mode === 'always') return { build: true };
   const reason = autoReason(input);
   return reason === undefined ? { build: false } : { build: true, reason };
 }

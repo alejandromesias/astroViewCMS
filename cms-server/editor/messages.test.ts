@@ -716,17 +716,20 @@ describe('statusMessages', () => {
     ).toEqual([{ level: 'error', text: 'The last publish failed.' }]);
   });
 
-  it('warns about an upstream build error', () => {
+  it('warns about an upstream build error, with the commit that does not build (2.10f)', () => {
     expect(
       statusMessages({
         state: 'idle',
         error: null,
-        upstreamBuildFailed: 'Unexpected token',
+        upstreamBuildFailed: {
+          sha: 'a1b2c3d4e5f6',
+          firstError: 'Unexpected token',
+        },
       }),
     ).toEqual([
       {
         level: 'warning',
-        text: 'The upstream code does not build: Unexpected token',
+        text: 'The upstream code does not build (commit a1b2c3d): Unexpected token',
       },
     ]);
   });

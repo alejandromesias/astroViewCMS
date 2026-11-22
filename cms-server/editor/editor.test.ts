@@ -3223,7 +3223,10 @@ describe('publishing', () => {
           publish: { state: 'failed', error: 'The remote refused the push' },
           errors: {
             ...errors,
-            upstreamBuildFailed: 'Build failed in src/x.tsx',
+            upstreamBuildFailed: {
+              sha: 'a1b2c3d4e5f6',
+              firstError: 'Build failed in src/x.tsx',
+            },
           },
         }),
       ],
@@ -3240,13 +3243,16 @@ describe('publishing', () => {
     );
     await vi.waitFor(() =>
       expect(publishStatus().textContent).toBe(
-        'The upstream code does not build: Build failed in src/x.tsx',
+        'The upstream code does not build (commit a1b2c3d): Build failed in src/x.tsx',
       ),
     );
     expect(publishResult().dataset.state).toBe('error');
   });
 
-  /** A `GET /api/status` answer with the publish state, its error, and the upstream build error (or none). */
+  /**
+   * A `GET /api/status` answer with the publish state, its error, and the upstream build error (or none). The error is its
+   * first error; the commit that does not build is a fixed sha (2.10f).
+   */
   const statusResponse = (
     state: 'idle' | 'publishing' | 'failed',
     error: string | null = null,
@@ -3255,7 +3261,14 @@ describe('publishing', () => {
     Response.json({
       bundle: null,
       publish: { state, error },
-      errors: { protocolMismatch: null, swap: null, upstreamBuildFailed },
+      errors: {
+        protocolMismatch: null,
+        swap: null,
+        upstreamBuildFailed:
+          upstreamBuildFailed === null
+            ? null
+            : { sha: 'a1b2c3d4e5f6', firstError: upstreamBuildFailed },
+      },
     });
 
   it("keeps the failed text out of the status line when a later poll reads failed after this page's publish", async () => {
@@ -3299,14 +3312,14 @@ describe('publishing', () => {
       );
       await vi.waitFor(() =>
         expect(publishStatus().textContent).toBe(
-          'The upstream code does not build: Build failed in src/x.tsx',
+          'The upstream code does not build (commit a1b2c3d): Build failed in src/x.tsx',
         ),
       );
       // After a failed publish nothing runs, so the next poll read waits the idle five seconds; it reads failed, with a newer upstream error.
       await vi.advanceTimersByTimeAsync(5000);
       await vi.waitFor(() =>
         expect(publishStatus().textContent).toBe(
-          'The upstream code does not build: Build failed in src/y.tsx',
+          'The upstream code does not build (commit a1b2c3d): Build failed in src/y.tsx',
         ),
       );
     } finally {
@@ -3364,7 +3377,7 @@ describe('publishing', () => {
       publishButton().click();
       await vi.waitFor(() =>
         expect(publishStatus().textContent).toContain(
-          'The upstream code does not build: Build failed in src/x.tsx',
+          'The upstream code does not build (commit a1b2c3d): Build failed in src/x.tsx',
         ),
       );
       expect(publishButton().disabled).toBe(true);

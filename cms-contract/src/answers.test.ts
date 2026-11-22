@@ -252,10 +252,44 @@ describe('answer schemas refuse what the routes never send', () => {
     ],
     ['errors with no keys', { errors: {} }],
     ['a bundle with no id', { bundle: { siteCommit: null } }],
+    [
+      'an upstream build failure as text (the shape before 2.10f)',
+      {
+        errors: {
+          protocolMismatch: null,
+          upstreamBuildFailed: 'Unexpected token',
+          swap: null,
+        },
+      },
+    ],
+    [
+      'an upstream build failure with no first error',
+      {
+        errors: {
+          protocolMismatch: null,
+          upstreamBuildFailed: { sha: 'a1b2c3d' },
+          swap: null,
+        },
+      },
+    ],
   ])('refuses a status with %s', (_case, part) => {
     expect(
       statusAnswerSchema.safeParse({ ...statusBody(), ...part }).success,
     ).toBe(false);
+  });
+
+  // 2.10f: the upstream build failure names the commit that does not build, and its first error.
+  it('takes an upstream build failure with its sha and first error (2.10f)', () => {
+    const failure = { sha: 'a1b2c3d', firstError: 'src/x.astro: boom' };
+    const parsed = statusAnswerSchema.parse({
+      ...statusBody(),
+      errors: {
+        protocolMismatch: null,
+        upstreamBuildFailed: failure,
+        swap: null,
+      },
+    });
+    expect(parsed.errors?.upstreamBuildFailed).toStrictEqual(failure);
   });
 });
 

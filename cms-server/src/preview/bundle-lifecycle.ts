@@ -76,7 +76,7 @@ export type CandidateOutcome =
 export interface LifecycleRepo {
   locked<T>(
     holder: string,
-    work: (tx: Pick<RepoTx, 'revParse'>) => Promise<T>,
+    work: (tx: Pick<RepoTx, 'revParse' | 'isAncestor'>) => Promise<T>,
   ): Promise<T>;
 }
 
@@ -109,8 +109,11 @@ export interface LifecycleOptions {
 export interface BundleLifecycle {
   /** Start-up: starts the node on the current bundle and checks it, or builds the first bundle when there is none. */
   start(): Promise<void>;
-  /** Builds `cms/work` HEAD for `reason`, then serves it. Resolves with how it ended; it does not reject. */
-  trigger(reason: TriggerReason): Promise<TriggerOutcome>;
+  /**
+   * Builds `cms/work` HEAD for `reason`, then serves it. Resolves with how it ended; it does not reject. A `sync-code` names
+   * the origin tip its sync integrated (`upstream`): when that build fails, the tip is built once to tell whose fault it is (2.10f).
+   */
+  trigger(reason: TriggerReason, upstream?: string): Promise<TriggerOutcome>;
   /** Stops the lifecycle: no new build starts, and the build in flight is killed. */
   stop(): Promise<void>;
   /**
@@ -268,8 +271,11 @@ export function createBundleLifecycle(
   }
 
   /** A trigger: builds `cms/work` HEAD for `reason`, then serves it. */
-  function trigger(reason: TriggerReason): Promise<TriggerOutcome> {
-    return runBuild(reason, undefined);
+  function trigger(
+    reason: TriggerReason,
+    upstream?: string,
+  ): Promise<TriggerOutcome> {
+    return runBuild(reason, undefined, upstream);
   }
 
   /**
@@ -289,10 +295,11 @@ export function createBundleLifecycle(
   async function runBuild(
     reason: TriggerReason,
     inherited: number | undefined,
+    upstream?: string,
   ): Promise<TriggerOutcome> {
     inFlight += 1;
     status.setBuildState('building');
-    const work = buildAndServe(reason, inherited);
+    const work = buildAndServe(reason, inherited, upstream);
     working.add(work);
     try {
       const outcome = await work;
@@ -318,14 +325,16 @@ export function createBundleLifecycle(
   async function buildAndServe(
     reason: TriggerReason,
     inherited: number | undefined,
+    upstream: string | undefined,
   ): Promise<TriggerOutcome> {
     if (stopped) return { kind: 'stopped' };
     log.info('A build was asked for', { reason });
     try {
-      const pair = await repo.locked('build head', async (tx) => ({
-        head: await tx.revParse(WORK_REF),
-        base: await tx.revParse(upstreamRef),
-      }));
+      const pair = await repo.locked('build head', async (tx) => {
+        const head = await tx.revParse(WORK_REF);
+        const base = await tx.revParse(upstreamRef);
+        return { head, base, holdsTip: await tx.isAncestor(base, head) };
+      });
       baseOfCommit.set(pair.head, pair.base);
       // A candidate adopted for this commit, on this base, already serves it: the trigger has nothing to build (2.10m). A
       // protocol rebuild (`inherited` set) is never answered from it: the adopted bundle is the one that does not match.
@@ -338,13 +347,39 @@ export function createBundleLifecycle(
       )
         return { kind: 'served', bundleId: adopted.bundleId };
       const result = await runner.request(pair.head);
-      if (!result.ok) return buildFailed(buildErrorText(result.firstError));
+      if (!result.ok) {
+        if (upstream !== undefined) await checkUpstream(upstream, pair.base);
+        return buildFailed(buildErrorText(result.firstError));
+      }
       lastBuildFailed = false;
       status.setBuildError(null);
+      // A passing build of a commit that holds origin's tip clears the upstream failure, whatever the trigger (2.10f). A tip
+      // that moved on after the head was made is not held, so the next sync's build decides.
+      if (pair.holdsTip) status.setUpstreamBuildFailed(null);
       return await serveOnce(result, inherited);
     } catch (error: unknown) {
       return buildFailed(messageOf(error));
     }
+  }
+
+  /**
+   * After a failed `sync-code` build, builds the origin tip the sync integrated, once (2.10f). A tip that fails is the
+   * upstream's fault, and is recorded with its first error. A tip that builds means the changeset is at fault, so the
+   * failure of `cms/work` stands alone, and a flag is cleared while origin still reads that tip. The candidate is always
+   * discarded. Nothing is recorded once stop() has come.
+   */
+  async function checkUpstream(
+    upstream: string,
+    current: string,
+  ): Promise<void> {
+    const tip = await buildCandidate(upstream);
+    if (tip.kind === 'built') {
+      await discard(tip.candidate);
+      if (current === upstream) status.setUpstreamBuildFailed(null);
+      return;
+    }
+    if (!stopped)
+      status.setUpstreamBuildFailed({ sha: upstream, firstError: tip.error });
   }
 
   /** Records a failed build's error in the status, and returns its outcome. The node keeps serving what it served. */
@@ -588,6 +623,9 @@ export function createBundleLifecycle(
     candidate: Candidate,
     tx: Pick<RepoTx, 'revParse'>,
   ): Promise<boolean> {
+    // Only a candidate that passed its build and was pushed reaches here: it sits on the origin tip it was pushed on, so the
+    // upstream failure of that tip, if one is set, is over (2.10f).
+    status.setUpstreamBuildFailed(null);
     // A read that fails before the swap leaves the node on its bundle, so the candidate is refused, not unknown (2.10m).
     let base: string;
     try {

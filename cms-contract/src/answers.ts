@@ -95,7 +95,10 @@ export const statusBodySchema = z.object({
   }),
   errors: z.object({
     protocolMismatch: z.string().nullable(),
-    upstreamBuildFailed: z.string().nullable(),
+    // 2.10f: the origin tip that does not build, and its first error (the shape of PublishFailure's firstError), or null.
+    upstreamBuildFailed: z
+      .object({ sha: z.string(), firstError: z.string() })
+      .nullable(),
     swap: z.string().nullable(),
   }),
 });
