@@ -10,7 +10,7 @@ import type { Supervisor } from './supervisor.ts';
 type BuildState = 'off' | 'idle' | 'building' | 'failed';
 
 /** The upstream build failure (2.10f): the origin tip that does not build, and its first error. */
-export type UpstreamBuildFailure = NonNullable<
+type UpstreamBuildFailure = NonNullable<
   StatusBody['errors']['upstreamBuildFailed']
 >;
 
