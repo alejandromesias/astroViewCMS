@@ -81,6 +81,12 @@ const E2E: Step[] = [
     command: 'npm run test:browser -w preview-render-server',
     kind: 'gate',
   },
+  // cms-server's browser files (WORKPLAN 2.12b): Chromium on cms.localhost drives the editor and its preview iframe.
+  {
+    name: 'cms-server browser',
+    command: 'npm run test:browser -w cms-server',
+    kind: 'gate',
+  },
 ];
 
 // The changed files of the branch (against origin/main), each scored by its Stryker group (WORKPLAN 2.1l). Commit

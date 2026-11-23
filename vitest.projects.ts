@@ -32,8 +32,8 @@ export const UNIT_PROJECTS: TestProjectConfiguration[] = [
       name: 'cms-server',
       root: 'cms-server',
       include: ['src/**/*.test.ts', 'test/**/*.test.ts', 'editor/**/*.test.ts'],
-      // The end-to-end files run from cms-server's vitest.e2e.config.ts (test:e2e).
-      exclude: [...configDefaults.exclude, 'test/e2e/**'],
+      // The end-to-end files run from cms-server's vitest.e2e.config.ts (test:e2e), the browser files from vitest.browser.config.ts (test:browser).
+      exclude: [...configDefaults.exclude, 'test/e2e/**', 'test/browser/**'],
     },
   },
   {
