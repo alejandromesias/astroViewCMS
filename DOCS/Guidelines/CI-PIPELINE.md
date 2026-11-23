@@ -19,6 +19,9 @@ in section 9.
 | | | `merge` | judges the whole run, keeps the per-file baseline | 15 min |
 | `mutation-branch.yml` | by hand only (`workflow_dispatch`, inputs `ref` and `base`) | `mutation` | Stryker on the files one pushed branch changed against `base` (default `main`), then the judgement of `mutation-diff`. No pull request needed | 240 min |
 | `windows.yml` | weekly, Monday 05:23 UTC, by hand | `unit` | `npm run coverage` on `windows-latest` (not a gate) | 40 min |
+| `macos.yml` | weekly, Wednesday 06:41 UTC, by hand | `unit` | `npm run coverage` and the start e2e test on `macos-latest`, mirroring `windows.yml` (2.14g, not a gate) | 40 min |
+| `astro-canary.yml` | weekly, Thursday 04:53 UTC, by hand | `canary` (matrix: `latest`, `7.4.4-beta.0`) | cms-server and preview e2e and the browser suite on each Astro version; each leg installs that version in every workspace that declares `astro` (2.14f, 2.14f-2, not a gate) | 40 min per leg |
+| | | `report` (only when a leg fails) | comments on the open `astro-canary` issue, or opens it; never one issue per run | 10 min |
 | `nightly.yml` | nightly 02:37 UTC, by hand | `measure` | memory of one preview process and the listing-route tripwire, printed to artifacts (not a gate, `continue-on-error`) | 45 min |
 | `security.yml` | push to `main` (not a push that only changes `DOCS/`), weekly, by hand | `codeql`, `osv-sarif` | CodeQL for JavaScript and TypeScript; osv-scanner results as SARIF in the Security tab (reports). The weekly run also runs `npm run audit` as a gate (2.14m) | 30 min, 10 min |
 

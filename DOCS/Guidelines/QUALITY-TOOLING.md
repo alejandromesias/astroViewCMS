@@ -211,6 +211,10 @@ behaves the same on Windows and a Linux CI). Flags go after `--` and combine:
 
 Example: `npm run check -- --e2e --mutation`. An unknown flag exits with code 2.
 
+The browser suites (`--e2e` runs both packages') need the Playwright Chromium
+build. Install it once per machine, before the first `--e2e` run:
+`npx playwright install chromium`.
+
 The `depcruise` step enforces the import rules listed in the [annex](#annex-dependency-cruiser-rules).
 
 - Tools run one after another (memory is low) and their output streams live.
@@ -418,6 +422,10 @@ computed styles, and the editor-origin check.
   `npm run test:browser -w preview-render-server -- morph.browser.test.ts`.
 - **Gate:** the `browser` step of `npm run check -- --e2e`, after e2e and the
   budgets.
+- **cms-server browser project:** `cms-server/test/browser/`, run by
+  `npm run test:browser -w cms-server` (`vitest.browser.config.ts`, the same
+  Playwright and Chromium, so the install above covers it). The same `browser`
+  step runs it. It drives the editor and the preview together.
 - **Out of the coverage floors and Stryker on purpose.** The root
   `vitest.config.ts` includes only each package's `src/`, so the coverage run
   never reaches `test/browser/`. Stryker mutates only `src/` and runs through

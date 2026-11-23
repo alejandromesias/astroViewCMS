@@ -91,6 +91,9 @@ These are the rules builders keep needing. Each is in the log under the task nam
 | H5 | **`run.test.ts` first-start flake:** one unexplained failure, then green after an explicit 5 s timeout. If it fails again, it becomes a task | watch |
 | H6 | **PR #62, `.vitest/` ignored:** done 2026-11-21, merge `3c3d00e`. Adds `.vitest/` to `.gitignore`; the JSON report folder blocked clean commits | done |
 | H7 | **PR #63, dependency group bump:** done 2026-11-21, merge `6431732`. Dependabot's minor and patch group (15 updates, including Biome 2.6.8, vitest 5.1.1 and playwright 1.65.1). No code change | done |
+| H8 | **Untraced failure, watch:** `syncNow on a real clone (a)` times out at 30 s on this machine, and on main too. Not traced. If it fails in CI or repeats, it becomes a task | watch |
+| H9 | **Untraced failure, watch:** `preview-server.e2e.test.ts` "renders /elements as the prerendered page does" failed once and passed on the rerun (PR #75). Not traced. If it repeats, it becomes a task | watch |
+| H10 | **knip on this machine, watch:** knip crashes locally with an oxc-parser allocation failure (low memory; CI passes it). Confirm in CI, or on a machine with more memory | watch |
 
 ## 2. Working rules (short form)
 
@@ -580,6 +583,7 @@ Order in the `[build]` slot: 2.10f, then 2.12d-1, then 2.10m-1 (architect, 2026-
 
 - Against a throwaway GitHub repo with no deploy attached, with `buildCheck: auto`: one save and one publish, plus a publish that triggers a build.
 - Also, from the 2.10e split (2026-11-18): with `buildCheck: always`, a save during a publish (`409 publish-in-progress`) and a build that fails (`424`, nothing pushed).
+- Also rerun 2.12d step 6 (a save right after a publish, fixed by 2.12d-1) in this run, not as a separate run.
 - **Done when:** the user confirms it, and anything surprising is a task or a phase 3 entry.
 
 #### 2.13a Measurements — after 2.12b · `[build]`
@@ -597,7 +601,7 @@ Order in the `[build]` slot: 2.10f, then 2.12d-1, then 2.10m-1 (architect, 2026-
   - It has custom remark and rehype plugins (`src/utils/frontmatter`), and its content collections use glob loaders with deep optional metadata schemas: a check for 2.14c.
   - **It is a test repo, made for this run** (user, 2026-11-21): run it as a normal working repo. Point the CMS at its GitHub remote (`git@github.com:alejandromesias/atrowindCMSTest.git`, branch `main`); saves and publishes go to it like a real site. Auth is the machine's SSH key (run guide, section 3). The CMS works in its own clone under `.cms/`, not in `C:UsersalejaDesignWorkCMSProjectatrowindCMSTest`, so after a publish the user's folder is behind origin: say so in the Result; the user pulls when they want.
 - Its new findings update the table in `DOCS/Workplans/Proposals/2.14a-SECOND-SITE.md`.
-- **Done when:** the user confirms the run and the table is updated.
+- **Done when:** the user confirms the run and the table is updated, and the run has checked, on a real built site, a layout that reads `Astro.site` (2.14a-1) and a build that fails without `documents.json` (2.14a-2). Neither was verified on a real site.
 
 #### 2.13b Documents — after 2.12b
 
@@ -650,3 +654,6 @@ Phase 2 is closed when all of these hold:
 | Document identity across upstream renames (A18) | Phase 3 backlog |
 | Saves accepted during a publish build, re-applied onto the candidate after the push (2.10e design 1) | Phase 4 or 5, with several editors or server drafts. The seam is `sync/publish-gate.ts`; SYSTEM-DESIGN section 4, "Publish and saves" |
 | D2's plugin setting, and the restricted MDX renderer | Phase 3 proposal, decision 1 |
+| The actor seam (2.14j check, part b): one middleware sets `actor` as a constant from `git.author`, and save and publish take the author from it, with no behaviour change. Estimate 60 to 80 lines with tests (about 48 production). The check is `DOCS/Workplans/Proposals/2.14j-SITE-CONTEXT-CHECK.md` | Phase 3 |
+| Backlog from 2.14j: the parsed bundle is cached in four stores, with no single owner | Phase 3 backlog |
+| Backlog from 2.14j: the module-level `queues` Map in `media/metadata.ts:42`, keyed by file path (no collision today) | Phase 3 backlog |
