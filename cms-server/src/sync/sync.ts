@@ -112,8 +112,6 @@ export function createSync({
         const result = await tx.reapply(fetched.upstream, bundles);
         tip = result.tip;
         renamed = result.renamed;
-        // The working copy changed, so the index built from it is stale (the next delete rebuilds it).
-        guard.invalidate();
         status.setRenamed(renamed);
       } else {
         tip = await tx.revParse(WORK_REF);
@@ -122,8 +120,12 @@ export function createSync({
       return failed(redact(messageOf(error)));
     } finally {
       // `moveWork` moves `cms/work` before its last two ref deletes, so a re-apply that throws may still have moved it:
-      // the changeset is counted again on that path too (2.12d-3).
-      if (fetched.reapply) status.invalidateChangeset();
+      // the changeset is counted again, and the guard's index rebuilt, on that path too (2.12d-3).
+      if (fetched.reapply) {
+        status.invalidateChangeset();
+        // The working copy changed, so the index built from it is stale (the next delete rebuilds it).
+        guard.invalidate();
+      }
     }
     if (fetched.change === 'code') trigger('sync-code', fetched.upstream);
     status.setLastSync(now().toISOString());

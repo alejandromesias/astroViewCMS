@@ -602,7 +602,8 @@ describe('the sync routine, with fakes', () => {
     );
     expect(status.setLastSync).not.toHaveBeenCalled();
     expect(status.setRenamed).not.toHaveBeenCalled();
-    expect(guard.invalidate).not.toHaveBeenCalled();
+    // The re-apply may have moved cms/work before it threw, so the guard's index is stale on this path too (2.12d-3).
+    expect(guard.invalidate).toHaveBeenCalledTimes(1);
     expect(trigger).not.toHaveBeenCalled();
   });
 
@@ -662,6 +663,26 @@ describe('the sync routine, with fakes', () => {
     const { sync, status } = syncOver(tx, repoOf(tx).repo);
     expect((await sync.syncLocked(tx)).kind).toBe('failed');
     expect(status.invalidateChangeset).toHaveBeenCalledTimes(1);
+  });
+
+  it('a re-apply that throws after moving cms/work still invalidates the guard (2.12d-3)', async () => {
+    const tx = txOf({
+      fetch: vi.fn(
+        async (): Promise<FetchResult> => ({
+          ok: true,
+          upstream: 'upstream-sha',
+          reapply: true,
+          change: 'content-only',
+          paths: [],
+        }),
+      ),
+      reapply: vi.fn(async (): Promise<ReapplyResult> => {
+        throw new Error('update-ref -d failed');
+      }),
+    });
+    const { sync, guard } = syncOver(tx, repoOf(tx).repo);
+    expect((await sync.syncLocked(tx)).kind).toBe('failed');
+    expect(guard.invalidate).toHaveBeenCalledTimes(1);
   });
 
   it('a sync with no re-apply does not invalidate the changeset (cms/work did not move, 2.12d-3)', async () => {
