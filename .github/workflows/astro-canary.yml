@@ -35,7 +35,8 @@ jobs:
       - name: Install Chromium for the browser suite
         run: npx playwright install --with-deps chromium
       # The workspaces whose package.json declares astro, found by grep. One npm call for all of them: a call per
-      # workspace would undo the earlier install, because --no-save keeps nothing.
+      # workspace would undo the earlier install, because --no-save keeps nothing. --include-workspace-root also
+      # installs it at the root: @astrojs/node is hoisted there, and without a root copy its `import 'astro'` fails.
       - name: Install astro@${{ matrix.astro }} in each workspace that declares it
         env:
           ASTRO_VERSION: ${{ matrix.astro }}
@@ -45,7 +46,7 @@ jobs:
             if grep -q '"astro":' "$f"; then ws+=("--workspace=$(basename "$(dirname "$f")")"); fi
           done
           test "${#ws[@]}" -gt 0
-          npm install "astro@$ASTRO_VERSION" --no-save "${ws[@]}"
+          npm install "astro@$ASTRO_VERSION" --no-save --include-workspace-root "${ws[@]}"
       # Each suite keeps Vitest's output (the failure diagnostics) in e2e-output/. shell: bash sets pipefail, so a failing
       # suite still fails the step through tee.
       - name: cms-server end-to-end
