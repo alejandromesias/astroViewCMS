@@ -25,6 +25,7 @@ import type {
 } from '../preview/bundle-lifecycle.ts';
 import { PreviewUnavailableError } from '../preview/client.ts';
 import { createStatus, type Status } from '../preview/status.ts';
+import { busyStop } from '../save/busy.ts';
 import type { PreviewClient, SaveAnswer } from '../save/context.ts';
 import { createDeleteGuard } from '../save/delete-guard.ts';
 import { saveChanges } from '../save/pipeline.ts';
@@ -360,6 +361,7 @@ function rig(builderOn = true, buildCheck: BuildCheck = 'never') {
     world: () => current,
     logged: () => logged,
     paused: () => pause !== undefined,
+    pausedAt: (): Point | undefined => pause?.point,
     hold(points: readonly Point[]): void {
       holds = new Set(points);
     },
@@ -414,7 +416,12 @@ function rig(builderOn = true, buildCheck: BuildCheck = 'never') {
             },
           ],
         },
-      );
+      ).catch((error: unknown) => {
+        // The route's answer for a lock that stayed busy (changes-routes.ts): 503 busy, and the save wrote nothing.
+        const busy = busyStop(error);
+        if (busy === undefined) throw error;
+        return busy;
+      });
     },
     poll(): Promise<SyncNowOutcome> {
       return current.sync.syncNow();
@@ -436,6 +443,7 @@ function allowed(answer: PublishAnswer): boolean {
   return [
     'publish-in-progress',
     'build-in-progress',
+    'busy',
     'preview-unavailable',
     'push-rejected',
     'invalid',
@@ -486,6 +494,7 @@ function driver(buildCheck: BuildCheck = 'never') {
     m,
     world: r.world,
     paused: r.paused,
+    pausedAt: r.pausedAt,
     hold: r.hold,
     clearHolds: r.clearHolds,
     unpause: r.unpause,
@@ -557,6 +566,33 @@ function driver(buildCheck: BuildCheck = 'never') {
           'skipped',
         );
       return outcome;
+    },
+    // A lock held by someone else while one request queues on it, and the queued waits then time out (2.10m-1). A publish
+    // paused between its unlocked points (`wait`, `building`) resumes into the push, which queues on the same lock. The
+    // caller checks that the lock is free first. Each queued request answers as a timeout does; the lock is then released.
+    async lockTimeout(
+      request: 'save' | 'poll' | 'click',
+      key: string,
+      value: string,
+    ): Promise<void> {
+      const unlock = r.holdLock();
+      const queued: Promise<unknown> =
+        request === 'save'
+          ? this.save(key, value)
+          : request === 'poll'
+            ? r.poll()
+            : click();
+      r.unpause();
+      await this.flush();
+      r.expireLockWaits();
+      // A tick that finds origin unchanged takes no lock and answers `unchanged`; one that finds a move queues and is skipped.
+      if (request === 'poll')
+        expect(['skipped', 'unchanged']).toContain(
+          ((await queued) as SyncNowOutcome).kind,
+        );
+      else await queued;
+      unlock();
+      await waitUntil(() => !inFlight || r.paused());
     },
     // Lets the queued work reach its lock (a save or a poll is issued before the click, and waits there).
     async flush(): Promise<void> {
@@ -1054,6 +1090,41 @@ describe('publish event order: curated scenarios (2.10l)', () => {
   });
 });
 
+describe('publish event order: a restart during a publish (2.10m-1)', () => {
+  // The next publish after a restart, by the point the old process stopped at. Before the squash, the next squash is the
+  // first (`c1`). After it, the squashed commit was never pushed, so the next one is `c2`. At `finish` the commit is on the
+  // remote already, so the next publish finds nothing new (invariant 5). A candidate the old process built is not modelled:
+  // the start-up sweep removes it (sweep.ts).
+  it.each<[Point, string | null, string]>([
+    ['fetch', 'c1', 'c1'],
+    ['validate', 'c1', 'c1'],
+    ['wait', 'c1', 'c1'],
+    ['squashed', 'c2', 'c2'],
+    ['building', 'c2', 'c2'],
+    ['push', 'c2', 'c2'],
+    ['finish', null, 'c1'],
+  ])(
+    'a restart while the publish is paused at %s: the save is kept, and the next publish answers %s and leaves the remote at %s',
+    async (point, commit, tip) => {
+      const d = driver('always');
+      await d.save('a', '1');
+      await d.start([point]);
+      expect(d.paused(), `paused at ${point}`).toBe(true);
+      d.restart();
+      expect(d.isInFlight()).toBe(false);
+      expect(d.world().gate.pollMayRun()).toBe(true);
+      expect(d.m.saved.get('a')).toBe('1');
+      expect(await d.click()).toStrictEqual({
+        status: 200,
+        body: { commit, overwritten: [], renamed: [] },
+      });
+      expect(d.origin()).toStrictEqual({ tip, docs: { a: '1' } });
+      expect(d.m.overpushes).toBe(0);
+      d.check(`after a restart at ${point}`);
+    },
+  );
+});
+
 // The upstream code does not build (2.10f, U1): the sync's origin-tip build recorded the failure. The publish skips its build
 // check, validates as before, pushes, and says so; the failure stays set (only a passing build clears it).
 describe('publish event order: a broken upstream (2.10f)', () => {
@@ -1158,41 +1229,50 @@ describe('publish event order: seeded random runs (2.10l)', () => {
     for (let step = 1; step <= length; step += 1) {
       const roll = random();
       let event: string;
-      if (roll < 0.3) {
+      if (roll < 0.25) {
         const key = pick(random, KEYS);
         event = `save ${key}`;
         await d.save(key, `v${step}`);
-      } else if (roll < 0.45) {
+      } else if (roll < 0.35) {
         event = 'poll';
         await d.poll();
-      } else if (roll < 0.6) {
+      } else if (roll < 0.5) {
         const points = POINTS.filter(() => random() < 0.4);
         event = `publish holding [${points.join(',')}]`;
         await d.start(points);
-      } else if (roll < 0.7) {
+      } else if (roll < 0.6) {
         event = 'release';
         await d.release();
-      } else if (roll < 0.85) {
+      } else if (roll < 0.75) {
         const key = pick(random, KEYS);
         event = `remote ${key}`;
         d.m.originTip = d.m.name('o');
         d.m.originDocs = new Map(d.m.originDocs).set(key, `r${step}`);
         d.m.originCode = false;
-      } else if (roll < 0.92) {
+      } else if (roll < 0.82) {
         event = 'remote code';
         d.m.originTip = d.m.name('o');
         d.m.originCode = true;
-      } else if (roll < 0.95) {
+      } else if (roll < 0.85) {
         event = 'node toggles';
         d.m.nodeDown = !d.m.nodeDown;
-      } else if (roll < 0.97) {
+      } else if (roll < 0.87) {
         event = 'invalid toggles';
         d.m.invalid = !d.m.invalid;
-      } else if (d.isInFlight()) {
-        // A restart is only modelled between publishes: the harness cannot stop a publish that is paused in the middle.
-        event = 'restart skipped (a publish runs)';
+      } else if (roll < 0.93) {
+        const request = pick(random, ['save', 'poll', 'click'] as const);
+        const key = pick(random, KEYS);
+        // The lock is free when no publish runs, or when the paused one waits at an unlocked point (2.10m-1).
+        const point = d.pausedAt();
+        if (!d.isInFlight() || point === 'wait' || point === 'building') {
+          event = `lock held, ${request} times out`;
+          await d.lockTimeout(request, key, `v${step}`);
+        } else {
+          event = 'lock timeout skipped (a publish holds the lock)';
+        }
       } else {
-        event = 'restart';
+        // A restart may land on a publish that is paused: the process stops, and that publish never answers (2.10m-1).
+        event = d.isInFlight() ? 'restart during a publish' : 'restart';
         d.restart();
       }
       trail.push(event);
