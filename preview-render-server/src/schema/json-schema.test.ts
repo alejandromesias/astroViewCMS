@@ -110,6 +110,7 @@ describe('shapeSchemas: dates and discriminated unions (2.14c)', () => {
         schema: z.object({
           d: z.date().nullable(),
           e: z.coerce.date().nullable(),
+          f: z.date().optional().nullable(),
         }),
       },
     });
@@ -121,6 +122,7 @@ describe('shapeSchemas: dates and discriminated unions (2.14c)', () => {
     };
     expect(props.d).toStrictEqual(nullableDate);
     expect(props.e).toStrictEqual(nullableDate);
+    expect(props.f).toStrictEqual(nullableDate);
   });
 
   it('marks a discriminated union with its key, and each branch with its constant', () => {

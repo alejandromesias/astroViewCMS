@@ -42,6 +42,15 @@ export function shapeSchemas(
   );
 }
 
+/** Whether a schema is a date, looking through one optional() (`z.date().optional()` is still a date). */
+function isDateSchema(schema: z.core.$ZodType): boolean {
+  const def = schema._zod.def;
+  if (def.type === 'optional') {
+    return isDateSchema((def as z.core.$ZodOptionalDef).innerType);
+  }
+  return def.type === 'date';
+}
+
 /** Adds the markers Zod's export leaves out (WORKPLAN 2.14c). A date, from `z.date()` or `z.coerce.date()`, exports as
  *  `{ type: 'string', cms: 'date' }` with no `format`. A `z.discriminatedUnion` names its key in `cmsDiscriminator`; a
  *  plain `z.union` gets no such key, so `cms` stays a string everywhere. */
@@ -55,7 +64,8 @@ const addCmsMarkers: NonNullable<z.core.ToJSONSchemaParams['override']> = ({
     jsonSchema.cms = 'date';
   }
   // A nullable date exports as anyOf [date, null]; the marker goes on the wrapper too, so the field still reads as a date.
-  if (def.type === 'nullable' && def.innerType._zod.def.type === 'date') {
+  // An optional() between the two (`z.date().optional().nullable()`) does not change that.
+  if (def.type === 'nullable' && isDateSchema(def.innerType)) {
     jsonSchema.cms = 'date';
   }
   // Only a discriminated union has the key; a plain union has none (Zod omits it), so the `in` test alone decides.
