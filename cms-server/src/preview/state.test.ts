@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Logger } from '../log.ts';
+import { type Logger, logger } from '../log.ts';
 import {
   createStateStore,
   decodeState,
@@ -95,6 +95,34 @@ describe('decodeState and encodeState', () => {
       'an attempt count that is a string',
       '{"current":null,"lastGood":null,"protocolAttempts":{"x":"1"}}',
     ],
+    [
+      'a bundle entry with an empty baseCommit',
+      '{"current":{"bundleId":"x","baseCommit":""},"lastGood":null,"protocolAttempts":{}}',
+    ],
+    [
+      'a state with no protocolAttempts key',
+      '{"current":null,"lastGood":null}',
+    ],
+    [
+      'a protocolAttempts that is a number',
+      '{"current":null,"lastGood":null,"protocolAttempts":5}',
+    ],
+    [
+      'a protocolAttempts that is an empty string',
+      '{"current":null,"lastGood":null,"protocolAttempts":""}',
+    ],
+    [
+      'a protocolAttempts that is true',
+      '{"current":null,"lastGood":null,"protocolAttempts":true}',
+    ],
+    [
+      'a protocolAttempts that is null',
+      '{"current":null,"lastGood":null,"protocolAttempts":null}',
+    ],
+    [
+      'a protocolAttempts that is an array',
+      '{"current":null,"lastGood":null,"protocolAttempts":[3]}',
+    ],
   ])('rejects %s', (_label, text) => {
     expect(decodeState(text)).toBeNull();
   });
@@ -150,7 +178,7 @@ describe('readState', () => {
     expect(await readState(file, log)).toStrictEqual(emptyState());
     expect(log.warn).toHaveBeenCalledWith(
       'Could not read the preview state, so it starts empty',
-      { file, error: expect.stringContaining('EISDIR') },
+      { file, error: expect.stringMatching(/^EISDIR: /) },
     );
   });
 
@@ -274,5 +302,97 @@ describe('createStateStore', () => {
       spyLog(),
     );
     expect([...store.keptBundles()]).toStrictEqual(['b-2']);
+  });
+});
+
+describe('decodeState: the attempt count bounds', () => {
+  it('accepts an attempt count of zero', () => {
+    expect(
+      decodeState(
+        '{"current":null,"lastGood":null,"protocolAttempts":{"b-1":0}}',
+      ),
+    ).toStrictEqual({
+      current: null,
+      lastGood: null,
+      protocolAttempts: new Map([['b-1', 0]]),
+    });
+  });
+});
+
+describe('createStateStore: what set() settles on, and the kept bundles', () => {
+  it('resolves once the snapshot is written, so an awaited set() has landed', async () => {
+    const landed: string[] = [];
+    const write = async (_file: string, text: string): Promise<void> => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      landed.push(text);
+    };
+    const store = createStateStore(
+      path.join(dir, 'state.json'),
+      emptyState(),
+      spyLog(),
+      write,
+    );
+    await store.set(servedState());
+    expect(landed).toStrictEqual([encodeState(servedState())]);
+  });
+
+  it('keeps the bundles of the state last set, not those of the initial state', async () => {
+    const store = createStateStore(
+      path.join(dir, 'state.json'),
+      servedState(),
+      spyLog(),
+    );
+    await store.set({
+      current: null,
+      lastGood: TWO,
+      protocolAttempts: new Map(),
+    });
+    expect([...store.keptBundles()]).toStrictEqual(['b-2']);
+    await store.set(emptyState());
+    expect(store.keptBundles().size).toBe(0);
+  });
+
+  it('logs a write that throws a value which is not an Error, as its text', async () => {
+    const file = path.join(dir, 'state.json');
+    const log = spyLog();
+    const store = createStateStore(file, emptyState(), log, async () => {
+      throw 42;
+    });
+    await store.set(servedState());
+    expect(log.error).toHaveBeenCalledWith(
+      'Could not write the preview state',
+      {
+        file,
+        error: '42',
+      },
+    );
+  });
+});
+
+describe('readState and createStateStore: the default logger', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('logs a corrupt state file to the cms-server logger when none is given', async () => {
+    const file = path.join(dir, 'state.json');
+    await writeFile(file, '{"current": ');
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    expect(await readState(file)).toStrictEqual(emptyState());
+    expect(warn).toHaveBeenCalledWith(
+      'The preview state is corrupt, so it starts empty',
+      { file },
+    );
+  });
+
+  it('logs a failed write to the cms-server logger when none is given', async () => {
+    const file = path.join(dir, 'state.json');
+    await mkdir(file);
+    const error = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+    await createStateStore(file, emptyState()).set(servedState());
+    expect(error).toHaveBeenCalledWith('Could not write the preview state', {
+      file,
+      error: expect.any(String),
+    });
   });
 });

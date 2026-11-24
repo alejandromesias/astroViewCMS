@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { PublishAnswer } from 'cms-contract';
 import { revisionOf } from 'preview-contract';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createTestApp, fakeAppDeps } from '../../test/helpers/app-deps.ts';
@@ -13,6 +14,16 @@ import { previewSays } from '../../test/helpers/save-context.ts';
 import { type BundleSource, directoryBundleSource } from '../bundle/source.ts';
 import type { Repo } from '../git/ops.ts';
 import { createApp } from './app.ts';
+import { registerOverlayRoutes } from './overlay-routes.ts';
+
+// The overlay routes are spied on, so a test can read the arguments createApp gives them. The spy runs the real function.
+vi.mock('./overlay-routes.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./overlay-routes.ts')>();
+  return {
+    ...actual,
+    registerOverlayRoutes: vi.fn(actual.registerOverlayRoutes),
+  };
+});
 
 // A bundle source with no bundle: a registered bundle route answers 503 `no-bundle`, an unregistered one 404 `not_found`.
 const noBundle: BundleSource = { current: async () => null };
@@ -378,5 +389,69 @@ describe('PUT /api/changes from a rebinding Host', () => {
     expect(await readFile(join(siteFolder, ANA), 'utf8')).toContain(
       'Ana Rebound',
     );
+  });
+});
+
+// The routes createApp registers beside the editor's: the media upload, the publish, and the overlay's arguments.
+describe('createApp: the media, publish and overlay routes', () => {
+  it('registers POST /api/media, which answers its own refusal of a type that is not an image', async () => {
+    const response = await createTestApp(fakeAppDeps()).request('/api/media', {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain' },
+      body: 'not an image',
+    });
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe('Not Found');
+  });
+
+  it('registers POST /api/publish only with its dep, and answers what the publish answers', async () => {
+    const init = {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    };
+    const without = await createTestApp(fakeAppDeps()).request(
+      '/api/publish',
+      init,
+    );
+    expect(without.status).toBe(404);
+    expect(await without.json()).toStrictEqual({ error: 'not_found' });
+
+    const answer: PublishAnswer = {
+      status: 200,
+      body: { commit: 'c1', overwritten: [], renamed: [] },
+    };
+    const publish = vi.fn(async () => answer);
+    const response = await createTestApp({
+      ...fakeAppDeps(),
+      publish: { publish },
+    }).request('/api/publish', init);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toStrictEqual({
+      commit: 'c1',
+      overwritten: [],
+      renamed: [],
+    });
+    expect(publish).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives the overlay route its bundle, repo, working copy, media and log', () => {
+    const deps = fakeAppDeps();
+    const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    createApp({
+      ...deps,
+      bundle: noBundle,
+      workingCopy: WORKING_COPY,
+      repo,
+      overlay: { mediaFolder: 'src/assets/uploads', log },
+    });
+    expect(registerOverlayRoutes).toHaveBeenLastCalledWith(expect.anything(), {
+      source: noBundle,
+      repo,
+      siteFolder: WORKING_COPY,
+      media: deps.media,
+      mediaFolder: 'src/assets/uploads',
+      log,
+    });
   });
 });
