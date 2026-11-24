@@ -3,7 +3,7 @@
 // Object.hasOwn, and a `$ref` is resolved only into the root's `$defs`.
 
 /** The kinds a field can have, in the order the done-when test lists them. */
-export const NODE_KINDS = [
+const NODE_KINDS = [
   'string',
   'number',
   'boolean',
