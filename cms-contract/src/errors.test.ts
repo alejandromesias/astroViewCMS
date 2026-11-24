@@ -159,3 +159,65 @@ describe('apiError', () => {
     expect(refusedByTypes).toHaveLength(2);
   });
 });
+
+describe('field schemas', () => {
+  // The paths that a body fails on, in order. An empty list means the body is valid.
+  function issuePaths(code: ErrorCode, body: unknown): string[] {
+    const result = errorTable[code].fields.safeParse(body);
+    return result.success
+      ? []
+      : result.error.issues.map((issue) => issue.path.join('.'));
+  }
+
+  it('needs the message of a message-only code', () => {
+    expect(issuePaths('busy', {})).toEqual(['message']);
+    expect(issuePaths('busy', { message: 'busy' })).toEqual([]);
+  });
+
+  it('needs the documents of a conflict, as a list', () => {
+    expect(issuePaths('conflict', {})).toEqual(['documents']);
+    expect(issuePaths('conflict', { documents: 'a/b' })).toEqual(['documents']);
+  });
+
+  it('needs the document and the referrers of a refused delete', () => {
+    expect(issuePaths('referenced-by', { referrers: ['a/c'] })).toEqual([
+      'document',
+    ]);
+    expect(issuePaths('referenced-by', { document: 'a/b' })).toEqual([
+      'referrers',
+    ]);
+    expect(
+      issuePaths('referenced-by', { document: 'a/b', referrers: [1] }),
+    ).toEqual(['referrers.0']);
+  });
+
+  it('takes needsDeveloper as true, and refuses false', () => {
+    const refused = { document: 'a/b', referrers: [] };
+    expect(
+      issuePaths('referenced-by', { ...refused, needsDeveloper: true }),
+    ).toEqual([]);
+    expect(
+      issuePaths('referenced-by', { ...refused, needsDeveloper: false }),
+    ).toEqual(['needsDeveloper']);
+  });
+
+  it('needs the errors of an invalid body, as a list', () => {
+    expect(issuePaths('invalid', {})).toEqual(['errors']);
+  });
+
+  it('needs both the message and the first error of a failed build', () => {
+    expect(issuePaths('build-failed', { message: 'build' })).toEqual([
+      'firstError',
+    ]);
+    expect(issuePaths('build-failed', { firstError: 'MDX parse' })).toEqual([
+      'message',
+    ]);
+  });
+
+  it('returns the lists frozen, as readonly says', () => {
+    const conflict = errorTable.conflict.fields.parse(SAMPLE_FIELDS.conflict);
+    const invalid = errorTable.invalid.fields.parse(SAMPLE_FIELDS.invalid);
+    expect(Object.isFrozen(conflict.documents)).toBe(true);
+    expect(Object.isFrozen(invalid.errors)).toBe(true);
+  });
+});
