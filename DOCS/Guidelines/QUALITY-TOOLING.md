@@ -50,7 +50,8 @@ tests for it; the full unit suite is for a person running the checks.
 | Budget tests | bridge size, render latency, memory growth | tests | gate | local `--e2e`, CI `e2e` |
 | Browser tests | the preview in a real Chromium: hydration, morphing, styles, editor origins | `preview-render-server/vitest.browser.config.ts` | gate | local `--e2e`, CI `e2e` |
 | Memory metric | rss and private memory of one preview process, idle, after warm-up, after renders | `scripts/measure-memory.mjs` | neither (a number to record) | local |
-| Memory of cms-server | rss and private memory of the cms-server process, at rest and after 50 saves | `scripts/measure-cms-memory.mjs` | neither (a number to record) | local |
+| Memory of cms-server | rss and private memory of the cms-server process, at rest and after 50 saves | `scripts/measure-cms-memory.mjs` | budget: fails above 200 MB rss after 50 saves (R8, 2.13a) | local; CI `windows` weekly job |
+| Publish timing of cms-server | publish latency per `buildCheck` mode, swap time, rss after publishes (a local remote) | `scripts/measure-cms-publish.mjs` | neither (a number to record, section 8 of the work plan) | local |
 | Stryker | whether the tests catch changes to the code | `stryker.config.json`, `stryker.<group>.config.mjs`, `.mutation-waivers.json` | gate (75 changed set, 80 per changed file) | CI `mutation-diff` (in parallel with `fast` and `e2e`), CI `mutation-full` (13 shards, skipped on a quiet night), CI `mutation-branch` (by hand); local only as an exception |
 
 "Gate" means a failure should stop a change from landing (and fails the

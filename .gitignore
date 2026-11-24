@@ -15,8 +15,9 @@ reports/
 # the local dev remote (a bare repo seeded from sample-site) and the config that points at it (WORKPLAN 2.1i)
 .dev/
 cms.config.ts
-# written and deleted by measure:cms-memory (2.13e)
+# written and deleted by measure:cms-memory (2.13e) and measure:cms-publish (2.13a)
 cms-memory.config.ts
+cms-publish-measure.config.ts
 
 # TypeScript incremental cache (sample-site tsconfig)
 *.tsbuildinfo

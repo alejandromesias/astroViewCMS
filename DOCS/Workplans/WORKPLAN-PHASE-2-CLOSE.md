@@ -656,10 +656,10 @@ Phase 2 is closed when all of these hold:
 | | Value | Date, method |
 |---|---|---|
 | `cms-server` rss at rest, and after a session of saves (2.13e) | rss 128.0 MB at rest (127.4 to 128.8), 157.1 MB after 50 saves (156.5 to 157.9); private 73.7 MB and 102.4 MB | 2026-11-17, `npm run measure:cms-memory`: sample-site bundle with `--bundle`, a local bare repo, three runs, mean and range. Rss is the working set, private is the OS private working set |
-| `cms-server` rss after a publish (2.13a) | | |
-| Publish latency: `buildCheck` `never`, `auto` without a trigger, `always` | | |
-| Re-apply time, 200-post sample | | |
-| Swap time, build done to new node serving | | |
+| `cms-server` rss after a publish (2.13a) | never 132.8 MB, auto 139.1 MB, always 139.9 MB (after three publishes each) | 2026-11-24, `scripts/measure-cms-publish.mjs`, same run as the rows below; rss is the working set of cms-server |
+| Publish latency: `buildCheck` `never`, `auto` without a trigger, `always` | never: 1.3 s (no build), 14.0 s and 14.7 s (a build finished inside the publish). auto: 1.6 s (no build), 17.0 s and 16.8 s (same). always: 16.2 s, 16.4 s and 16.1 s (each publish runs its candidate build, about 13 s) | 2026-11-24, `scripts/measure-cms-publish.mjs`: real builder, sample-site, a local bare remote, one cms-server per mode, three publishes each, each after a content save. Wall time of `POST /api/publish`. A local remote leaves out network time. Under `never` a build still runs after a publish; `never` skips only the check |
+| Re-apply time, 200-post sample | not measured | Open (2.13a). No route times a re-apply, and this run has no 200-post site. Needs a harness that times the re-apply step |
+| Swap time, build done to new node serving | never 1.54 s and 1.75 s; auto 2.19 s and 1.67 s; always none (the candidate build checks and is not served) | 2026-11-24, same run: from the `Build finished` log line to the first `/api/status` sample with the node `ready` on that bundle, polled every 25 ms |
 
 ## 9. Moved out of phase 2
 
