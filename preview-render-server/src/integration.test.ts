@@ -542,7 +542,14 @@ const runSetup = async (target: ResolvedSiteConfig) => {
     updateConfig,
   });
   const plugins = updateConfig.mock.calls[0]![0].vite!.plugins as Plugin[];
-  return { integration, hooks, injectRoute, injectScript, plugins };
+  return {
+    integration,
+    hooks,
+    injectRoute,
+    injectScript,
+    plugins,
+    updateConfig,
+  };
 };
 
 describe('findAstroConfig', () => {
@@ -1216,5 +1223,109 @@ describe('previewRenderServer build hooks', () => {
     expect(() => broken['astro:build:done']!({ logger: { warn } })).toThrow(
       /^documents\.json not written: \S/,
     );
+  });
+});
+
+// -- Mutation-testing survivors of 2.14c (the changed files, run 45393921648) -----
+
+describe('previewRenderServer survivors (2.14c)', () => {
+  /** A hooks object with the config Astro would give, and an empty cache folder. */
+  const hooksFor = (target: ResolvedSiteConfig) => {
+    const cache = path.join(tmp, `survivor-cache-${extraCount++}`);
+    fs.mkdirSync(cache, { recursive: true });
+    const hooks = previewRenderServer(target).hooks as unknown as Record<
+      string,
+      (options: object) => unknown
+    >;
+    hooks['astro:config:done']!({
+      config: {
+        cacheDir: new URL(`file:///${posix(cache)}/`),
+        base: '/',
+        trailingSlash: 'ignore',
+      },
+    });
+    return hooks;
+  };
+  const jsonIn = (dir: string, name: string) =>
+    JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')) as unknown;
+
+  it('switches off the Astro clean-up of outDir, which clearBundle owns', async () => {
+    const { updateConfig } = await runSetup({ ...site, ...outputs() });
+    expect(updateConfig.mock.calls[0]![0].vite.build).toStrictEqual({
+      emptyOutDir: false,
+    });
+  });
+
+  it('serves the default URL rules until Astro has resolved its config', async () => {
+    const { plugins } = await runSetup({ ...site, ...outputs() });
+    const source = hook(plugins[0]!, 'load').call({}, RESOLVED_ID) as string;
+    expect(source).toContain(
+      'export const urlRules = {"base":"/","trailingSlash":"ignore"};',
+    );
+  });
+
+  it('enforces the region wrappers plugin before the others', async () => {
+    const { plugins } = await runSetup({ ...site, ...outputs() });
+    expect(
+      plugins.find(
+        (plugin) => plugin.name === 'preview-render-server:region-wrappers',
+      ),
+    ).toMatchObject({ enforce: 'pre' });
+  });
+
+  it('warns with the file names when bundle.json, images.json or schema.json cannot be written', () => {
+    const out = outputs();
+    fs.mkdirSync(path.dirname(out.manifestDir), { recursive: true });
+    // A file where the manifest folder should be: every manifest write fails.
+    fs.writeFileSync(out.manifestDir, '');
+    const warn = vi.fn();
+    const hooks = hooksFor({ ...site, ...out });
+    expect(() => hooks['astro:build:done']!({ logger: { warn } })).toThrow(
+      /^documents\.json not written: \S/,
+    );
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /^bundle\.json, images\.json or schema\.json not written: \S/,
+      ),
+    );
+  });
+
+  it('writes an empty build-time.json for a site with no buildTimeFields', () => {
+    const out = outputs();
+    hooksFor({ ...site, ...out })['astro:build:done']!({
+      logger: { warn: vi.fn() },
+    });
+    expect(jsonIn(out.manifestDir, 'build-time.json')).toStrictEqual({});
+  });
+
+  it('writes an empty images.json for a site with no src folder', () => {
+    const root = path.join(tmp, `no-src-${extraCount++}`);
+    fs.mkdirSync(root, { recursive: true });
+    const out = outputs();
+    hooksFor({ ...site, ...out, root })['astro:build:done']!({
+      logger: { warn: vi.fn() },
+    });
+    expect(jsonIn(out.manifestDir, 'images.json')).toStrictEqual([]);
+  });
+
+  it('lists only the images under src/, sorted by path', () => {
+    const root = path.join(tmp, `src-only-${extraCount++}`);
+    for (const file of [
+      'src/zz.png',
+      'src/aa/b.png',
+      'src/mm.png',
+      'public/logo.png',
+    ]) {
+      fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+      fs.writeFileSync(path.join(root, file), '');
+    }
+    const out = outputs();
+    hooksFor({ ...site, ...out, root })['astro:build:done']!({
+      logger: { warn: vi.fn() },
+    });
+    const paths = (
+      jsonIn(out.manifestDir, 'images.json') as Array<{ path: string }>
+    ).map((record) => record.path);
+    expect(paths).toStrictEqual(['src/aa/b.png', 'src/mm.png', 'src/zz.png']);
   });
 });

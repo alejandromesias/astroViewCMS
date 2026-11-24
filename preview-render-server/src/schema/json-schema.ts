@@ -54,11 +54,8 @@ const addCmsMarkers: NonNullable<z.core.ToJSONSchemaParams['override']> = ({
     jsonSchema.type = 'string';
     jsonSchema.cms = 'date';
   }
-  if (
-    def.type === 'union' &&
-    'discriminator' in def &&
-    typeof def.discriminator === 'string'
-  ) {
+  // Only a discriminated union has the key; a plain union has none (Zod omits it), so the `in` test alone decides.
+  if (def.type === 'union' && 'discriminator' in def) {
     jsonSchema.cmsDiscriminator = def.discriminator;
   }
 };

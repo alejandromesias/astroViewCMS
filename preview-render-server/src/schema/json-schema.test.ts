@@ -146,6 +146,7 @@ describe('shapeSchemas: dates and discriminated unions (2.14c)', () => {
     const value = (out.c!.schema as { properties: { value: object } })
       .properties.value;
     expect(value).not.toHaveProperty('cmsDiscriminator');
+    expect(Object.keys(value)).not.toContain('cmsDiscriminator');
     expect(value).not.toHaveProperty('cms');
   });
 });
