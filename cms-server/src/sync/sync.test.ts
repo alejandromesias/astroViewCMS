@@ -77,7 +77,7 @@ async function fixtureIn(): Promise<Fixture> {
 
 // The bundle.json of a bundle with this id and siteCommit.
 function bundleJson(bundleId: string, siteCommit: string): string {
-  return `${JSON.stringify({ bundleId, siteCommit, protocolVersion: 2, astroVersion: '7.4.2', builtAt: '2026-11-04T03:42:22.323Z' }, null, 2)}\n`;
+  return `${JSON.stringify({ bundleId, siteCommit, protocolVersion: 2, schemaVersion: 2, astroVersion: '7.4.2', builtAt: '2026-11-04T03:42:22.323Z' }, null, 2)}\n`;
 }
 
 // The text of a site file as it is in the working copy now.

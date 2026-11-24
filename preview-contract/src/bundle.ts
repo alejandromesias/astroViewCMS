@@ -17,6 +17,9 @@ export const bundleJsonSchema = z.strictObject({
     .regex(/^[0-9a-f]{40,64}$/)
     .nullable(),
   protocolVersion: z.number().int().positive(),
+  /** The schema.json version the build wrote (SCHEMA_VERSION). Optional here so the parser reads an older bundle;
+   *  cms-server checks it against SCHEMA_VERSION. */
+  schemaVersion: z.number().int().positive().optional(),
   astroVersion: z.string().min(1),
   builtAt: z.iso.datetime(),
   site: z.string().optional(),

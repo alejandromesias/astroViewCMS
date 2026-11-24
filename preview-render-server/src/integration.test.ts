@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stringify } from 'devalue';
-import { bundleJsonSchema } from 'preview-contract';
+import { bundleJsonSchema, SCHEMA_VERSION } from 'preview-contract';
 import { PROTOCOL_VERSION } from 'preview-protocol';
 import type { Plugin } from 'vite';
 import { afterAll, describe, expect, it, vi } from 'vitest';
@@ -323,7 +323,7 @@ describe('previewRenderServer hooks', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('writes bundle.json with the bundle id, the protocol version and no commit outside git', () => {
+  it('writes bundle.json with the bundle id, the protocol and schema versions and no commit outside git', () => {
     const integration = previewRenderServer(hookSite, 'test-bundle')
       .hooks as unknown as Record<string, Hook>;
     integration['astro:build:done']!({ logger: { warn: vi.fn() } });
@@ -331,6 +331,7 @@ describe('previewRenderServer hooks', () => {
       bundleId: 'test-bundle',
       siteCommit: null,
       protocolVersion: PROTOCOL_VERSION,
+      schemaVersion: SCHEMA_VERSION,
       astroVersion: astroVersion(),
       builtAt: expect.any(String),
     });
@@ -352,6 +353,7 @@ describe('previewRenderServer hooks', () => {
       bundleId: 'site-bundle',
       siteCommit: null,
       protocolVersion: PROTOCOL_VERSION,
+      schemaVersion: SCHEMA_VERSION,
       astroVersion: astroVersion(),
       builtAt: expect.any(String),
       site: 'https://example.com/',
@@ -1025,6 +1027,65 @@ describe('previewRenderServer setup', () => {
         },
       },
     });
+  });
+
+  it('copies each UI hint onto the field it names in schema.json, through a union and an array item', async () => {
+    const out = outputs();
+    const { hooks } = await runSetup({
+      ...site,
+      ...out,
+      root: path.join(fixtures, 'schema-site'),
+      regions: {},
+      uiHints: {
+        'posts.blocks[].body': { widget: 'markdown' },
+        'authors.name': { label: 'Full name', hidden: true },
+      },
+    });
+    hooks['astro:build:done']!({ logger: { warn: vi.fn() } });
+    const schema = JSON.parse(
+      fs.readFileSync(path.join(out.manifestDir, 'schema.json'), 'utf8'),
+    ) as {
+      authors: { schema: { properties: Record<string, unknown> } };
+      posts: {
+        schema: {
+          properties: {
+            blocks: { items: { oneOf: Array<{ properties: object }> } };
+          };
+        };
+      };
+    };
+    expect(schema.authors.schema.properties.name).toStrictEqual({
+      type: 'string',
+      ui: { label: 'Full name', hidden: true },
+    });
+    const [quote, text] = schema.posts.schema.properties.blocks.items.oneOf;
+    expect(quote!.properties).not.toHaveProperty('body');
+    expect(text!.properties).toHaveProperty('body', {
+      type: 'string',
+      ui: { widget: 'markdown' },
+    });
+  });
+
+  it('fails the build when a UI hint names no field of the content config', async () => {
+    await expect(
+      runSetup({
+        ...site,
+        ...outputs(),
+        root: path.join(fixtures, 'schema-site'),
+        regions: {},
+        uiHints: { 'posts.missing': { label: 'Nope' } },
+      }),
+    ).rejects.toThrow(new Error('ui hint "posts.missing" matches no field'));
+  });
+
+  it('fails the build when a UI hint is set on a site without a content config', async () => {
+    await expect(
+      runSetup({
+        ...site,
+        ...outputs(),
+        uiHints: { 'posts.title': { label: 'Title' } },
+      }),
+    ).rejects.toThrow(new Error('ui hint "posts.title" matches no field'));
   });
 
   it('warns about a readOnlyCollections name the build lacks, and only that one', async () => {

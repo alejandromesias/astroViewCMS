@@ -2,10 +2,11 @@
 // `cms/work` to a SHA under the repo lock, builds that SHA through the build runner (outside the lock, one build at a
 // time), and swaps the node onto the new bundle. A failed swap keeps the failed bundle out of the state, and the last good
 // bundle is started again when the supervisor did not roll back itself. After each served bundle the protocol check
-// compares its bundle.json with PROTOCOL_VERSION: the first mismatch of a chain rebuilds once, and the new bundle carries
-// the count, so a mismatch on it is only reported. A commit whose build failed is not built again by the same lifecycle:
+// compares its bundle.json with PROTOCOL_VERSION and SCHEMA_VERSION: the first mismatch of a chain rebuilds once, and the
+// new bundle carries the count, so a mismatch on it is only reported. A commit whose build failed is not built again by the same lifecycle:
 // a restart is the retry (2.9c-B recovery rule).
 import { join } from 'node:path';
+import { SCHEMA_VERSION } from 'preview-contract';
 import { PROTOCOL_VERSION } from 'preview-protocol';
 import { BundleError, readBundle as readBundleFolder } from '../bundle/read.ts';
 import {
@@ -526,8 +527,8 @@ export function createBundleLifecycle(
   }
 
   /**
-   * The reason a bundle does not match the protocol, or null when it matches. A bundle with no bundle.json (built before
-   * the protocol versions) counts as a mismatch, and so does a bundle.json that cannot be read.
+   * The reason a bundle does not match the protocol or the schema version, or null when it matches. A bundle with no
+   * bundle.json (built before the protocol versions) counts as a mismatch, and so does a bundle.json that cannot be read.
    */
   async function protocolProblem(bundleId: string): Promise<string | null> {
     let ref: BundleRef | null;
@@ -540,9 +541,10 @@ export function createBundleLifecycle(
       return `Bundle ${bundleId} has no bundle.json, so it was built before the protocol versions. The server speaks protocol ${PROTOCOL_VERSION}`;
     }
     const built = ref.identity.protocolVersion;
-    return built === PROTOCOL_VERSION
-      ? null
-      : `Bundle ${bundleId} speaks protocol ${built}, and the server speaks protocol ${PROTOCOL_VERSION}`;
+    if (built !== PROTOCOL_VERSION) {
+      return `Bundle ${bundleId} speaks protocol ${built}, and the server speaks protocol ${PROTOCOL_VERSION}`;
+    }
+    return schemaProblem(bundleId, ref.identity.schemaVersion);
   }
 
   /**
@@ -723,6 +725,20 @@ function buildErrorText(error: BuildError | null): string {
   return error.file === null
     ? error.message
     : `${error.file}: ${error.message}`;
+}
+
+/**
+ * The reason a bundle's schema.json version is not the server's, or null when it is. A bundle.json with no schemaVersion
+ * (built before schema version 2) counts as a mismatch, with its own message.
+ */
+function schemaProblem(
+  bundleId: string,
+  built: number | undefined,
+): string | null {
+  if (built === SCHEMA_VERSION) return null;
+  return built === undefined
+    ? `Bundle ${bundleId} has no schema version, and the server expects schema version ${SCHEMA_VERSION}`
+    : `Bundle ${bundleId} has schema version ${built}, and the server expects schema version ${SCHEMA_VERSION}`;
 }
 
 function messageOf(error: unknown): string {

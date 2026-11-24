@@ -21,10 +21,12 @@ describe('directoryBundleSource', () => {
       dir: FIXTURE_BUNDLE,
       identity: {
         bundleId: 'fixture-2026-11-03',
-        siteCommit: '4523c67c55284f8bd3ae1b61caa6d5501ccc77ab',
+        siteCommit: 'a0bf7e8438f4130dd891ec14a5f479a99e29580c',
         protocolVersion: 2,
-        astroVersion: '7.4.2',
-        builtAt: '2026-11-04T03:42:22.323Z',
+        schemaVersion: 2,
+        astroVersion: '7.4.12',
+        builtAt: '2026-11-24T11:56:31.747Z',
+        site: 'https://bigspring-light-astro.vercel.app',
       },
     });
   });
@@ -49,6 +51,7 @@ describe('directoryBundleSource', () => {
         bundleId: 'second-build',
         siteCommit: null,
         protocolVersion: 2,
+        schemaVersion: 2,
         astroVersion: '7.4.2',
         builtAt: '2026-11-02T09:00:00.000Z',
       }),
