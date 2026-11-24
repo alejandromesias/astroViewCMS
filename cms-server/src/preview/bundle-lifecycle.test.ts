@@ -700,7 +700,7 @@ describe('the protocol check', () => {
       noBundleJson('b-2'),
     );
     expect(rig.log.warn).toHaveBeenCalledWith(
-      'The bundle does not match the protocol, so it is rebuilt once',
+      'The bundle does not match the protocol or the schema version, so it is rebuilt once',
       { bundle: 'b-1', problem: noBundleJson('b-1') },
     );
   });
@@ -746,7 +746,7 @@ describe('the protocol check', () => {
     await rig.lifecycle.trigger('publish');
     expect(rig.build).toHaveBeenCalledTimes(2);
     expect(rig.log.warn).toHaveBeenCalledWith(
-      'The bundle does not match the protocol, so it is rebuilt once',
+      'The bundle does not match the protocol or the schema version, so it is rebuilt once',
       {
         bundle: 'b-1',
         problem: 'Bundle b-1 has a bundle.json that cannot be read: bad json',
@@ -830,7 +830,7 @@ describe('the schema version of a bundle (2.14c): the protocol path, with its ow
       noSchemaVersion('b-2'),
     );
     expect(rig.log.warn).toHaveBeenCalledWith(
-      'The bundle does not match the protocol, so it is rebuilt once',
+      'The bundle does not match the protocol or the schema version, so it is rebuilt once',
       { bundle: 'b-1', problem: noSchemaVersion('b-1') },
     );
   });
@@ -843,7 +843,7 @@ describe('the schema version of a bundle (2.14c): the protocol path, with its ow
     expect(rig.build).toHaveBeenCalledTimes(2);
     expect((await rig.status.snapshot()).errors.protocolMismatch).toBeNull();
     expect(rig.log.warn).toHaveBeenCalledWith(
-      'The bundle does not match the protocol, so it is rebuilt once',
+      'The bundle does not match the protocol or the schema version, so it is rebuilt once',
       { bundle: 'b-1', problem: schemaMismatchOf('b-1', 1) },
     );
   });
@@ -857,7 +857,7 @@ describe('the schema version of a bundle (2.14c): the protocol path, with its ow
     });
     await rig.lifecycle.trigger('publish');
     expect(rig.log.warn).toHaveBeenCalledWith(
-      'The bundle does not match the protocol, so it is rebuilt once',
+      'The bundle does not match the protocol or the schema version, so it is rebuilt once',
       {
         bundle: 'b-1',
         problem: `Bundle b-1 speaks protocol 1, and the server speaks protocol ${PROTOCOL_VERSION}`,

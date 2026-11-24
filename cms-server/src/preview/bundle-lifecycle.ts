@@ -519,10 +519,13 @@ export function createBundleLifecycle(
       next,
     );
     await state.set({ ...state.get(), protocolAttempts: attempts });
-    log.warn('The bundle does not match the protocol, so it is rebuilt once', {
-      bundle: entry.bundleId,
-      problem,
-    });
+    log.warn(
+      'The bundle does not match the protocol or the schema version, so it is rebuilt once',
+      {
+        bundle: entry.bundleId,
+        problem,
+      },
+    );
     await runBuild('protocol-mismatch', next);
   }
 

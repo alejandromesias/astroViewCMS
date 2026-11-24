@@ -35,6 +35,15 @@ export function applyUiHints(
       entry !== undefined && isNode(entry.schema) && parsed !== undefined
         ? applyAt(entry.schema, parsed.steps, hint)
         : undefined;
+    if (
+      parsed !== undefined &&
+      entry?.schema === undefined &&
+      entry?.error !== undefined
+    ) {
+      throw new Error(
+        `ui hint "${key}" cannot be checked: the schema of "${parsed.collection}" did not export (${entry.error})`,
+      );
+    }
     if (parsed === undefined || entry === undefined || applied === undefined) {
       throw new Error(`ui hint "${key}" matches no field`);
     }

@@ -54,6 +54,10 @@ const addCmsMarkers: NonNullable<z.core.ToJSONSchemaParams['override']> = ({
     jsonSchema.type = 'string';
     jsonSchema.cms = 'date';
   }
+  // A nullable date exports as anyOf [date, null]; the marker goes on the wrapper too, so the field still reads as a date.
+  if (def.type === 'nullable' && def.innerType._zod.def.type === 'date') {
+    jsonSchema.cms = 'date';
+  }
   // Only a discriminated union has the key; a plain union has none (Zod omits it), so the `in` test alone decides.
   if (def.type === 'union' && 'discriminator' in def) {
     jsonSchema.cmsDiscriminator = def.discriminator;

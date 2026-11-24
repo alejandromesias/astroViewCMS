@@ -221,6 +221,19 @@ describe('applyUiHints', () => {
     ).toThrow(new Error('ui hint "blog.title" matches no field'));
   });
 
+  it('names the export error, not "matches no field", when the collection schema did not export', () => {
+    expect(() =>
+      applyUiHints(
+        { blog: { error: 'Zod cannot export it' } },
+        { 'blog.title': { label: 'x' } },
+      ),
+    ).toThrow(
+      new Error(
+        'ui hint "blog.title" cannot be checked: the schema of "blog" did not export (Zod cannot export it)',
+      ),
+    );
+  });
+
   it('does not follow a $ref to a field below it, so a path through one fails the build', () => {
     const schemas: Record<string, CollectionSchema> = {
       blog: {

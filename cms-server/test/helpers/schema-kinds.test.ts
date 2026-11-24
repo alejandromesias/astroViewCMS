@@ -7,7 +7,6 @@ import {
   type FieldKind,
   fieldKinds,
   kindOf,
-  NODE_KINDS,
   type NodeKind,
 } from './schema-kinds.ts';
 
@@ -151,10 +150,19 @@ describe('the sample bundle', () => {
     expect(fields.filter((field) => field.kind === 'unknown')).toStrictEqual(
       [],
     );
+    // The kinds the sample uses, exactly. A kind the sample starts to use (enum, say) is added here with its field.
     expect(new Set(fields.map((field) => field.kind))).toStrictEqual(
-      new Set<NodeKind>(
-        NODE_KINDS.filter((kind) => kind !== 'enum' && kind !== 'unknown'),
-      ),
+      new Set<NodeKind>([
+        'string',
+        'number',
+        'boolean',
+        'date',
+        'image',
+        'reference',
+        'object',
+        'array',
+        'union',
+      ]),
     );
   });
 

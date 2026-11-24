@@ -103,6 +103,26 @@ describe('shapeSchemas: dates and discriminated unions (2.14c)', () => {
     });
   });
 
+  it('marks a nullable date on its wrapper too, so the field still reads as a date', () => {
+    const out = shapeSchemas({
+      c: {
+        loader: undefined,
+        schema: z.object({
+          d: z.date().nullable(),
+          e: z.coerce.date().nullable(),
+        }),
+      },
+    });
+    const props = (out.c!.schema as { properties: Record<string, unknown> })
+      .properties;
+    const nullableDate = {
+      anyOf: [{ type: 'string', cms: 'date' }, { type: 'null' }],
+      cms: 'date',
+    };
+    expect(props.d).toStrictEqual(nullableDate);
+    expect(props.e).toStrictEqual(nullableDate);
+  });
+
   it('marks a discriminated union with its key, and each branch with its constant', () => {
     const out = shapeSchemas({
       c: {
