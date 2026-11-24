@@ -51,7 +51,7 @@ tests for it; the full unit suite is for a person running the checks.
 | Browser tests | the preview in a real Chromium: hydration, morphing, styles, editor origins | `preview-render-server/vitest.browser.config.ts` | gate | local `--e2e`, CI `e2e` |
 | Memory metric | rss and private memory of one preview process, idle, after warm-up, after renders | `scripts/measure-memory.mjs` | neither (a number to record) | local |
 | Memory of cms-server | rss and private memory of the cms-server process, at rest and after 50 saves | `scripts/measure-cms-memory.mjs` | budget: fails above 200 MB rss after 50 saves (R8, 2.13a) | local; CI `windows` weekly job |
-| Publish timing of cms-server | publish latency per `buildCheck` mode, swap time, rss after publishes (a local remote) | `scripts/measure-cms-publish.mjs` | neither (a number to record, section 8 of the work plan) | local |
+| Publish timing of cms-server | publish latency per `buildCheck` mode, rebuild and swap times, highest rss and commit charge after publishes (a local remote) | `scripts/measure-cms-publish.mjs` | neither (a number to record, section 8 of the work plan) | local, by hand before a phase close or after a change to publish, build or swap; not in CI (shared runners are too noisy to compare timings, architect 2026-11-24) |
 | Stryker | whether the tests catch changes to the code | `stryker.config.json`, `stryker.<group>.config.mjs`, `.mutation-waivers.json` | gate (75 changed set, 80 per changed file) | CI `mutation-diff` (in parallel with `fast` and `e2e`), CI `mutation-full` (13 shards, skipped on a quiet night), CI `mutation-branch` (by hand); local only as an exception |
 
 "Gate" means a failure should stop a change from landing (and fails the
@@ -155,6 +155,7 @@ build in CI; see [CI-PIPELINE.md](CI-PIPELINE.md)). "Report" means the output ne
 | Browser tests, cms-server | `npm run test:browser -w cms-server` (Chromium on `cms.localhost` drives the editor and its preview iframe on `preview.localhost`; one file: append `-- <file>`) | ~91 s (1 file, 2 tests, measured 2026-11-22; includes the sample-site build of the global setup) |
 | Memory of one preview process (manual) | `npm run measure:memory` (see [Memory metric](#memory-metric)) | ~21 s |
 | Memory of cms-server (manual) | `npm run measure:cms-memory` (see [Memory metric](#memory-metric)) | ~2.5 min |
+| Publish timing of cms-server (manual) | `npm run measure:cms-publish`, by hand only (not in CI): before a phase close, or after a change to publish, build or swap | ~6 min |
 | Audit | `npm run audit` (needs `osv-scanner`, see below) | ~3 s |
 | Knip | `npm run knip` | ~2 s |
 | dependency-cruiser | `npm run depcruise` (rules: [Annex](#annex-dependency-cruiser-rules)) | ~3 s |
