@@ -127,7 +127,8 @@ the whole repo use `mutation-full` (section 4), which runs on `main`.
 
    A changed file with no valid mutant is listed as "no mutants" and does not
    fail. With no changed `src` file the job passes with an empty table. On
-   `main` the changed set is always empty.
+   `main` the changed set is always empty. There is no per-package Stryker gate:
+one pooled threshold, decided by U7 (user, 2026-11-23).
 
 **Waivers.** `.mutation-waivers.json` is an array of
 `{ "file", "floor", "reason", "task" }`. `floor` is under 80 (it lowers one

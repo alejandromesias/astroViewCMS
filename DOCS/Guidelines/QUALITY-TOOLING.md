@@ -325,6 +325,9 @@ that behaviour down).
   from there. Earlier values: `break` 85 (2026-10-29), 90 (2026-10-31).
   It is a ratchet: raise it when the score rises; lower it only
   with a reason in the commit.
+- **Per-package gates: none (decision U7, user, 2026-11-23).** One pooled
+  threshold: `break` 75 on the whole run, and the per-file 80 on the changed
+  files in `mutation-diff`. The coverage floors stay per package (above).
 - **Report:** open `reports/mutation/mutation.html` in a browser. Filter by
   file, then by status (Survived, NoCoverage); each survivor shows the original
   and the changed code. `reports/` is gitignored.

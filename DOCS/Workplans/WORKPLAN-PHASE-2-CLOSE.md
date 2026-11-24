@@ -1,6 +1,6 @@
 # Work plan for closing phase 2
 
-Written 2026-11-16, with waves 1 to 10 closed and `main` at `7dd6bff`. Wave 11 closed (2026-11-18): 2.14m, 2.14d, 2.10k, 2.11c, 2.13d and 2.12a are merged, and `main` is at `18e1831`. Status: **approved by the user, 2026-11-16 (U0), with U1 answered yes (slim 2.10f).** It is the live plan for the rest of phase 2. Three documents are folded into it:
+Written 2026-11-16, with waves 1 to 10 closed and `main` at `7dd6bff`. Wave 11 closed (2026-11-18): 2.14m, 2.14d, 2.10k, 2.11c, 2.13d and 2.12a are merged, and `main` is at `18e1831`. Wave 12 closed (2026-11-20). Wave 13 closed (2026-11-24): tag `wave-13-closed` on `28f61b9`. 2.14c is merged (PR #86, `6e959b0`). Status: **approved by the user, 2026-11-16 (U0), with U1 answered yes (slim 2.10f).** It is the live plan for the rest of phase 2. Three documents are folded into it:
 
 - the open tasks of [WORKPLAN-PHASE-2.md](WORKPLAN-PHASE-2.md) (2.10e onwards);
 - [WAVES-11-14-REWRITE.md](Proposals/WAVES-11-14-REWRITE.md);
@@ -69,6 +69,7 @@ These are the rules builders keep needing. Each is in the log under the task nam
 
 - Wave 10 `mutation-full` (run `43491378803`, `da5388b`): **94.15%** overall.
 - Were under 80 since wave 6: `preview-contract/src/schema.ts` 57.14, `preview-render-server/src/bundle.ts` 45.00, `preview-render-server/src/overlay/errors.ts` 57.14. 2.13d (#54) cleared them: local Stryker on `bundle.ts` now kills 40 of 40 (its two survivors are killed by a pinned git call, not waived). `schema.ts` and `errors.ts` measured 100 locally before the fix. Wave 11 `mutation-full` (run `44241325913`, on `5a75e14`): overall 94.15% (floor 75); `schema.ts` 100 (14 of 14), `bundle.ts` 100 (40 of 40), `errors.ts` 100 (7 of 7). No file is under 80.
+- Wave 13 `mutation-full` (run `45333348683`, on `28f61b9`, 2026-11-24): **94.43%** overall, no file under 80. It also covers wave 12 (never tagged). PRs #82 to #85 (2.13f to 2.13i, mutation survivors, test only) merged at 05:25 UTC, before the run.
 - CI and security are green on `7dd6bff`. Nightly runs are green on ten scheduled runs in a row (2026-11-09 to 2026-11-18); see H1.
 
 ### 1.5 Accepted limits (carried, not tasks)
@@ -572,6 +573,8 @@ Order in the `[build]` slot: 2.10f, then 2.12d-1, then 2.10m-1 (architect, 2026-
 
 **Order (architect, user-approved 2026-11-23).** (1) The docs update with the answers below goes to `main`. (2) The wave 13 close comes first: the user starts `mutation-full` on `main` at `154cebf`; when it is green, tag `wave-13-closed` and note here that the run also covers wave 12, which was never tagged. Wave 14 code starts only after that. (3) 2.14c, then 2.13a. 2.12c and 2.14a-4 are user tasks and wait for 2.14c.
 
+**Wave 13 closed (2026-11-24).** Steps (1) and (2) are done: the docs went to `main`, and the `mutation-full` run on `28f61b9` is green (see section 1.4). 2.14c is merged (PR #86). 2.13c is done. Next: 2.13a.
+
 #### 2.14c `schema.json` v2 for forms — first in the wave · `[build]` (A3)
 
 Detail added 2026-11-23 (architect, approved by the user).
@@ -590,6 +593,7 @@ Detail added 2026-11-23 (architect, approved by the user).
 - **Node kinds** for the done-when test: `string, number, boolean, enum, date, image, reference, object, array, union, unknown`. A `z.record` or anything else the sample does not use classifies as `unknown`; no kind is added for it. The classifier is a test helper only; phase 3 owns the form model.
 - **Done when:** `schema.json` and `bundle.json` of the fixture bundle are regenerated; a test walks every field of every editable sample document and finds a known node kind or an explicit `unknown`; `blog.date` exports the marker; changed files meet the floor.
 - If the wave runs long, this task moves to the start of phase 3. No phase 2 row depends on it.
+- **Result:** PR #86, merge `6e959b0` (head `7eecb49`). Closed (2026-11-24). `SCHEMA_VERSION = 2` in `preview-contract`; a bundle with no or another `schemaVersion` takes the protocol-mismatch path (one rebuild, then an error). Dates and nullable dates carry `cms: 'date'`; a `z.discriminatedUnion` carries `cmsDiscriminator`, a plain `z.union` does not. Sample hints: `blog.description` textarea, `blog.image` public-image, `landing.blocks[].title` label. The node-kind test (helper `schema-kinds.ts`) finds a known kind for every editable sample field; the four `data:` documents are the explicit `unknown`. Mutation on `3885fe3`, before the review fixes (not rerun): `json-schema.ts` 90.32, `integration.ts` 93.02; the `json-schema.ts` survivors are equivalent. CI on `7eecb49`: all 7 checks passed. Reviewer-11.18 approved at `ad1e050`; `7eecb49` only removes an export (knip). Open: `ui-hints.ts` is 87.61, below 90, not raised (waiting for the user).
 
 #### 2.12c Final acceptance — after 2.12b, 2.14c · `[user]`
 
@@ -633,6 +637,7 @@ Detail added 2026-11-23 (architect, approved by the user).
 
 - The coverage floors and the Stryker thresholds are decided. Only the per-package question is left.
 - **Done when:** U7 is answered, and CI-PIPELINE.md and QUALITY-TOOLING.md say what was decided.
+- **Result:** done 2026-11-24, docs only, straight to `main` (no PR). U7 answered: one pooled threshold (`break` 75 on the Stryker run, per-file 80 on the changed files), no per-package gate. QUALITY-TOOLING.md (Stryker floor) and CI-PIPELINE.md (judgement) say so.
 
 ## 7. Phase close checklist
 
