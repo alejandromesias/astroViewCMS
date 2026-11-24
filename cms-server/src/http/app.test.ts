@@ -454,4 +454,15 @@ describe('createApp: the media, publish and overlay routes', () => {
       log,
     });
   });
+
+  it('does not register the overlay route without a repo, even with the bundle, the working copy and the overlay dep', async () => {
+    const response = await createTestApp({
+      ...fakeAppDeps(),
+      bundle: noBundle,
+      workingCopy: WORKING_COPY,
+      overlay: { mediaFolder: 'src/assets/uploads' },
+    }).request('/api/overlay');
+    expect(response.status).toBe(404);
+    expect(await response.json()).toStrictEqual({ error: 'not_found' });
+  });
 });
