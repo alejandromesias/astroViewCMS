@@ -148,12 +148,13 @@ The proposals miss five things, and this plan adds them:
 | U0 | Approve this plan | **approved 2026-11-16** | — |
 | U1 | **Slim 2.10f:** while `upstreamBuildFailed` is set, skip the build check and say so (`buildCheckSkipped: 'upstream-broken'`), instead of comparing error text | before 2.14d is written (it adds the field) | **Yes, decided 2026-11-16** |
 | U2 | **2.10e state table:** review it before 2.10e's code starts. Drafted 2026-11-18 ([Proposals/2.10e-STATE-TABLE.md](Proposals/2.10e-STATE-TABLE.md)); design 3 decided (saves refused during a publish; design 1 deferred to phase 4 or 5). Approved 2026-11-18, D-a to D-f as recommended | wave 12 | — |
-| U3 | **How a site gets its dependencies** (2.14b): A, workspace only; B, the integration is a package installed into the site; C, hybrid | after 2.14a, wave 14 | A for the MVP and B as the target, stated in the quick start |
-| U4 | **Gates for UI code** (2.14i): logic modules under the mutation gate; views get type check, lint, coverage and browser tests | before phase 3 | Yes |
-| U5 | **Backup ref for saves** (`refs/cms/work`, pushed after a save and restored at start-up) | before phase 3; built in phase 4 | Yes, recorded in SYSTEM-DESIGN section 12 |
-| U6 | **Regions** (A13): freeze them (keep the code, add nothing to the sample) or mark two or three regions on the sample | at 2.13b | Freeze |
-| U7 | **Per-package mutation floors** (2.13c): keep one pooled threshold plus the per-file 80 on changed files, or add per-package gates | wave 14 | Keep pooled. Per-file `mutation-diff` already catches a weak file, and 2.13d clears the last three |
-| U8 | **Key format of the UI hints** in the site config (2.14c item 4) | in 2.14c's PR | As proposed (`'<collection>.<path>': { label, widget, hidden }`) |
+| U3 | **How a site gets its dependencies** (2.14b): A, workspace only; B, the integration is a package installed into the site; C, hybrid | after 2.14a, wave 14 | **Decided 2026-11-23 (user):** A for the MVP (the workspace provides the site's packages); B, the integration installed into the site, is the target, built in phase 4. The quick start (2.13b) states both |
+| U4 | **Gates for UI code** (2.14i): logic modules under the mutation gate; views get type check, lint, coverage and browser tests | before phase 3 | **Yes, decided 2026-11-23 (user)** |
+| U5 | **Backup ref for saves** (`refs/cms/work`, pushed after a save and restored at start-up) | before phase 3; built in phase 4 | **Yes, decided 2026-11-23 (user).** Recorded in SYSTEM-DESIGN section 12 (2.13b); built in phase 4 |
+| U6 | **Regions** (A13): freeze them (keep the code, add nothing to the sample) or mark two or three regions on the sample | at 2.13b | **Freeze, decided 2026-11-23 (user):** keep the code, add nothing to the sample |
+| U7 | **Per-package mutation floors** (2.13c): keep one pooled threshold plus the per-file 80 on changed files, or add per-package gates | wave 14 | **Keep pooled, decided 2026-11-23 (user):** one pooled threshold plus the per-file 80 on changed files |
+| U8 | **Key format of the UI hints** in the site config (2.14c item 4) | before 2.14c | **Decided 2026-11-23 (user):** `'<collection>.<path>': { label?, widget?, hidden? }`, with the path rules in 2.14c item 4 |
+| R8 | **Memory proof for row R8** (section 1.1): (A) the manual script; (B) a budget in the script, run weekly; (C) an e2e test on every check; (D) assert that growth levels off | before the phase close | **B, decided 2026-11-23 (user):** `measure:cms-memory` fails above 200 MB rss after 50 saves (157 MB on 2026-11-17) and runs in the weekly Windows or canary job. 2.13a carries it |
 
 The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to-focus, reload mode, editor language) are in [PHASE-3-DESIGN-PROPOSAL.md](../Designs/PHASE-3-DESIGN-PROPOSAL.md) section 10. They are asked when phase 3 starts, not here.
 
@@ -569,14 +570,25 @@ Order in the `[build]` slot: 2.10f, then 2.12d-1, then 2.10m-1 (architect, 2026-
 
 ### Wave 14 (close)
 
+**Order (architect, user-approved 2026-11-23).** (1) The docs update with the answers below goes to `main`. (2) The wave 13 close comes first: the user starts `mutation-full` on `main` at `154cebf`; when it is green, tag `wave-13-closed` and note here that the run also covers wave 12, which was never tagged. Wave 14 code starts only after that. (3) 2.14c, then 2.13a. 2.12c and 2.14a-4 are user tasks and wait for 2.14c.
+
 #### 2.14c `schema.json` v2 for forms — first in the wave · `[build]` (A3)
 
-1. **Dates** export `{ "type": "string", "cms": "date" }`.
-2. **Discriminated unions:** each `oneOf` carries `cms: { discriminator }`, and each branch its constant value.
+Detail added 2026-11-23 (architect, approved by the user).
+
+1. **Dates** export `{ "type": "string", "cms": "date" }`, with no `format` (a date or date-time input is phase 3's call). Dates are not stubbed, so the export uses the `override` hook of `z.toJSONSchema` on `def.type === 'date'`, which covers `z.date()` and `z.coerce.date()`. One test for each of the two forms.
+2. **Discriminated unions:** only a `z.discriminatedUnion` node carries `cmsDiscriminator: '<key>'`; a plain `z.union` does not. A separate key keeps `cms` a string everywhere. Each branch already carries its constant value (`const`), which Zod emits and `walk.ts` reads.
 3. **Optional, nullable and default** survive in nested fields and array items, with a test per case.
-4. **UI hints** come from the site config (U8) and are copied under `ui`. Every hint is optional.
-5. **Versioning:** `bundle.json` gets `schemaVersion: 2`, and `cms-server` treats a bundle without it as a protocol mismatch (one rebuild, then an error).
-- **Done when:** the fixture bundle is regenerated; a test walks every field of every editable sample document and finds a known node kind or an explicit `unknown`; `blog.date` exports the marker; changed files meet the floor.
+4. **UI hints** come from the site config (U8) and are optional:
+   - The config key is `'<collection>.<path>': { label?, widget?, hidden? }`. At build time each hint is copied as `ui` onto the field node it targets; `collectionSchemaJson` does not change.
+   - Paths are dot paths, and `[]` marks array items: `landing.blocks[].title`. A path through a union applies to every branch that has that field. Targeting a single branch is left to phase 3.
+   - `widget` is a closed enum: `text | textarea | markdown | public-image`.
+   - A hint whose path matches no field fails the build.
+   - `sample-site.config.ts` gets two or three hints, so the fixture and the e2e tests cover them.
+5. **Versioning:** `SCHEMA_VERSION = 2` lives in `preview-contract`, and `bundleJsonSchema` gets an optional `schemaVersion`, which the build writes. `cms-server` treats a bundle whose value is missing or different through the protocol-mismatch path (one rebuild, then an error), with its own status message. `PROTOCOL_VERSION` is not bumped (it also versions the postMessage protocol). An older CMS refusing such a bundle is fine; both ship from this repo. Update the `bundle.json` objects in the tests (for example `cms-server/test/helpers/save-context.ts`).
+6. **Fixture:** regenerate only `schema.json` and `bundle.json` of `cms-server/test/fixtures/bundle/` from a fresh sample-site build; add no script. First check that `bundle.json` holds no hashes or ids tied to the old `documents.json` or `routes.json`; if it does, keep those values.
+- **Node kinds** for the done-when test: `string, number, boolean, enum, date, image, reference, object, array, union, unknown`. A `z.record` or anything else the sample does not use classifies as `unknown`; no kind is added for it. The classifier is a test helper only; phase 3 owns the form model.
+- **Done when:** `schema.json` and `bundle.json` of the fixture bundle are regenerated; a test walks every field of every editable sample document and finds a known node kind or an explicit `unknown`; `blog.date` exports the marker; changed files meet the floor.
 - If the wave runs long, this task moves to the start of phase 3. No phase 2 row depends on it.
 
 #### 2.12c Final acceptance — after 2.12b, 2.14c · `[user]`
@@ -591,7 +603,9 @@ Order in the `[build]` slot: 2.10f, then 2.12d-1, then 2.10m-1 (architect, 2026-
 - Measure publish latency under `never`, `auto` without a trigger, and `always`.
 - Measure the re-apply time on the 200-post sample, and the swap time from a finished build to the new node serving.
 - Measure the rss after a publish, to complete 2.13e.
-- **Done when:** section 8 has values, each with its date and method.
+- **Method (architect, approved by the user 2026-11-23):** a new script `scripts/measure-cms-publish.mjs`, merged through a PR. Sample-site, the real builder (not `--bundle`), a local bare remote, three runs each, mean and range. It measures publish latency under `never`, `auto` with no trigger, and `always`; the swap time from `Build finished` to the node reporting `ready`; and the rss after a publish. The 200-post re-apply uses the generator of `measure-listing-routes.mjs --posts=200`. Section 8 records that a local remote leaves out network time.
+- **R8 budget (decision R8, option B):** `measure:cms-memory` fails above 200 MB rss after 50 saves, and the weekly Windows or canary job runs it.
+- **Done when:** section 8 has values, each with its date and method; the R8 budget is in `measure:cms-memory` and runs in a weekly job.
 
 #### 2.14a-4 Re-run the second site — after 2.14a-1 to 2.14a-3 · `[user]`
 
@@ -601,7 +615,7 @@ Order in the `[build]` slot: 2.10f, then 2.12d-1, then 2.10m-1 (architect, 2026-
   - It has custom remark and rehype plugins (`src/utils/frontmatter`), and its content collections use glob loaders with deep optional metadata schemas: a check for 2.14c.
   - **It is a test repo, made for this run** (user, 2026-11-21): run it as a normal working repo. Point the CMS at its GitHub remote (`git@github.com:alejandromesias/atrowindCMSTest.git`, branch `main`); saves and publishes go to it like a real site. Auth is the machine's SSH key (run guide, section 3). The CMS works in its own clone under `.cms/`, not in `C:UsersalejaDesignWorkCMSProjectatrowindCMSTest`, so after a publish the user's folder is behind origin: say so in the Result; the user pulls when they want.
 - Its new findings update the table in `DOCS/Workplans/Proposals/2.14a-SECOND-SITE.md`.
-- **Done when:** the user confirms the run and the table is updated, and the run has checked, on a real built site, a layout that reads `Astro.site` (2.14a-1) and a build that fails without `documents.json` (2.14a-2). Neither was verified on a real site.
+- **Done when:** the user confirms the run and the table is updated, and the run has checked, on a real built site, a layout that reads `Astro.site` (2.14a-1) and a build that fails without `documents.json` (2.14a-2). Neither was verified on a real site. Also: AstroWind's `schema.json` classifies with no unexpected `unknown` (the 2.14c node kinds); anything it finds becomes a follow-up task (architect, 2026-11-23).
 
 #### 2.13b Documents — after 2.12b
 
