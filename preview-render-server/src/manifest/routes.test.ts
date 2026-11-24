@@ -282,3 +282,54 @@ describe('default source reader', () => {
     }
   });
 });
+
+describe('shapeRoutes: survivors of the 2.13i run', () => {
+  const page = (pattern: string, params: string[]) => ({
+    pattern,
+    entrypoint: 'src/pages/x.astro',
+    type: 'page',
+    params,
+  });
+
+  it('leaves out exactly /__ and anything under it, but keeps /_ and __ without a leading slash', () => {
+    const shaped = shapeRoutes(
+      [
+        page('/__', []),
+        page('/__/deep', []),
+        page('/_one', []),
+        page('__two', []),
+      ],
+      root,
+      () => undefined,
+    );
+    expect(shaped.map((r) => r.pattern)).toEqual(['__two', '/_one']);
+  });
+
+  it('gives a static route dynamic false and hasStaticPaths false, even with getStaticPaths in its source', () => {
+    const [shaped] = shapeRoutes(
+      [page('/about', [])],
+      root,
+      () => 'export function getStaticPaths() {}',
+    );
+    expect(shaped!.dynamic).toBe(false);
+    expect(shaped!.hasStaticPaths).toBe(false);
+  });
+
+  it('reads the source only for dynamic routes', () => {
+    const readSource = vi.fn(() => 'export function getStaticPaths() {}');
+    shapeRoutes(
+      [page('/about', []), page('/[post]', ['post'])],
+      root,
+      readSource,
+    );
+    expect(readSource).toHaveBeenCalledTimes(1);
+    expect(readSource).toHaveBeenCalledWith(
+      path.resolve(root, 'src/pages/x.astro'),
+    );
+  });
+
+  it('gives hasStaticPaths false for a dynamic route whose source is empty', () => {
+    const [shaped] = shapeRoutes([page('/[post]', ['post'])], root, () => '');
+    expect(shaped!.hasStaticPaths).toBe(false);
+  });
+});
