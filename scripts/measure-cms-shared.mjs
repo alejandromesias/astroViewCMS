@@ -183,6 +183,17 @@ export async function waitForListening(
   throw new Error(`server did not listen within ${timeoutMs} ms:\n${output()}`);
 }
 
+/** Waits until /api/status names a bundle. Without one the status still answers 200, with `bundle: null`. */
+export async function waitForBundle(base, output, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const status = JSON.parse(await ask(`${base}/api/status`));
+    if (status.bundle !== null) return;
+    await sleep(200);
+  }
+  throw new Error(`cms-server did not load a bundle:\n${output()}`);
+}
+
 /** Waits until /api/status names a bundle and its node is ready. Without a bundle the status still answers 200. */
 export async function waitForReady(base, output, timeoutMs) {
   const deadline = Date.now() + timeoutMs;

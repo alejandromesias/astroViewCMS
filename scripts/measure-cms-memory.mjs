@@ -25,8 +25,8 @@ import {
   sleep,
   startCms,
   stop,
+  waitForBundle,
   waitForListening,
-  waitForReady,
 } from './measure-cms-shared.mjs';
 
 // The run writes this file and deletes it afterwards (claimConfigFile). previewSiteConfig is resolved from the config's
@@ -81,7 +81,7 @@ try {
   await waitForListening(cmsPort, server, output);
 
   const base = `http://127.0.0.1:${cmsPort}`;
-  await waitForReady(base, output, 30_000);
+  await waitForBundle(base, output, 30_000);
   await sleep(REST_MS);
   const rows = [
     await measure(`at rest, after ${REST_MS / 1000} s`, server.pid),
