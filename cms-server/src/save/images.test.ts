@@ -493,9 +493,10 @@ describe('rewriteStagedImages', () => {
     expect(await rewriteStagedImages(ctx)).toBeUndefined();
     expect(ctx.changes).toStrictEqual(sent);
     expect(log.warn).toHaveBeenCalledTimes(1);
-    expect(log.warn.mock.calls[0]?.[1]).toMatchObject({
-      document: 'authors/ana',
-    });
+    expect(log.warn).toHaveBeenCalledWith(
+      'the staged images of a document are skipped: its schema cannot be walked',
+      { document: 'authors/ana', reason: 'unresolved $ref "#/$defs/missing"' },
+    );
   });
 
   it('gives a ref that the renderer finds in mediaMapOf, from the media folder and the holding file', async () => {
@@ -526,5 +527,214 @@ describe('rewriteStagedImages', () => {
     expect(ctx.copies.map((copy) => copy.to)).toEqual([
       `${FOLDER}/${revisionOf(bytes)}.png`,
     ]);
+  });
+
+  it('rewrites only the image field of a document, and leaves a staging URL in a reference field alone', async () => {
+    const site = await siteWith({ a: 'bytes a' });
+    const bundle = bundleOf(
+      [],
+      new Map([
+        [
+          'authors',
+          {
+            loader: {
+              kind: 'glob',
+              pattern: '**/*.{json,yaml}',
+              base: 'src/content/authors',
+            },
+            schema: {
+              type: 'object',
+              properties: {
+                tag: { type: 'string', cms: 'reference' },
+                avatar: IMAGE,
+              },
+            },
+          },
+        ],
+      ]),
+    );
+    const ctx = ctxOf(
+      site.folder,
+      [update('authors/ana', { tag: site.url('a'), avatar: site.url('a') })],
+      { bundle },
+    );
+    expect(await rewriteStagedImages(ctx)).toBeUndefined();
+    expect(ctx.changes[0]?.data).toStrictEqual({
+      tag: site.url('a'),
+      avatar: `../../assets/uploads/${site.id('a').slice(0, 16)}.png`,
+    });
+  });
+
+  it('skips an image field whose value is not a string, and still rewrites the others', async () => {
+    const site = await siteWith({ a: 'bytes a' });
+    const ctx = ctxOf(site.folder, [
+      update('authors/ana', { avatar: 5, gallery: [site.url('a')] }),
+    ]);
+    expect(await rewriteStagedImages(ctx)).toBeUndefined();
+    expect(ctx.changes[0]?.data).toStrictEqual({
+      avatar: 5,
+      gallery: [`../../assets/uploads/${site.id('a').slice(0, 16)}.png`],
+    });
+  });
+
+  it.each([
+    [
+      'another origin',
+      (id: string) => `https://other.example/media/staging/${id}.png`,
+    ],
+    ['the prefix not at its start', (id: string) => `x${PREFIX}${id}.png`],
+  ])(
+    'leaves an image value with %s alone, with no error',
+    async (_label, urlOf) => {
+      const site = await siteWith({ a: 'bytes a' });
+      const sent = [update('authors/ana', { avatar: urlOf(site.id('a')) })];
+      const ctx = ctxOf(site.folder, sent);
+      expect(await rewriteStagedImages(ctx)).toBeUndefined();
+      expect(ctx.changes).toStrictEqual(sent);
+      expect(ctx.copies).toStrictEqual([]);
+    },
+  );
+
+  it('answers 422 staged-image-missing for a staged file that media.json does not list', async () => {
+    const site = await siteWith({ a: 'bytes a' });
+    await writeFile(join(site.folder, 'media.json'), JSON.stringify({}));
+    const sent = [create('authors/lee', { avatar: site.url('a') })];
+    const ctx = ctxOf(site.folder, sent);
+    expect(await rewriteStagedImages(ctx)).toStrictEqual({
+      status: 422,
+      body: {
+        error: 'invalid',
+        errors: [
+          {
+            key: 'authors/lee',
+            path: ['avatar'],
+            message:
+              'The uploaded image is not available any more. Upload it again.',
+            code: 'staged-image-missing',
+          },
+        ],
+      },
+    });
+    expect(ctx.changes).toBe(sent);
+  });
+
+  it('leaves a delete alone even when the change carries a staging URL', async () => {
+    const site = await siteWith({ a: 'bytes a' });
+    const sent = [
+      {
+        document: 'authors/ana',
+        baseRevision: 'r',
+        deleted: true,
+        data: { avatar: site.url('a') },
+      },
+    ];
+    const ctx = ctxOf(site.folder, sent);
+    expect(await rewriteStagedImages(ctx)).toBeUndefined();
+    expect(ctx.changes).toStrictEqual(sent);
+    expect(ctx.copies).toStrictEqual([]);
+  });
+
+  it('leaves a data: document alone, even when a collection of its prefix has an image field', async () => {
+    const site = await siteWith({ a: 'bytes a' });
+    const bundle = bundleOf(
+      [],
+      new Map([
+        [
+          'data:src',
+          {
+            loader: {
+              kind: 'glob',
+              pattern: '**/*.json',
+              base: 'src/config',
+            },
+            schema: {
+              type: 'object',
+              properties: { logo: IMAGE },
+            },
+          },
+        ],
+      ]),
+    );
+    const sent = [create('data:src/config/site.json', { logo: site.url('a') })];
+    const ctx = ctxOf(site.folder, sent, { bundle });
+    expect(await rewriteStagedImages(ctx)).toBeUndefined();
+    expect(ctx.changes).toStrictEqual(sent);
+    expect(ctx.copies).toStrictEqual([]);
+  });
+
+  it('rewrites an image that is the whole value of a document', async () => {
+    const site = await siteWith({ a: 'bytes a' });
+    const bundle = bundleOf(
+      [],
+      new Map([
+        [
+          'icons',
+          {
+            loader: {
+              kind: 'glob',
+              pattern: '**/*.json',
+              base: 'src/content/icons',
+            },
+            schema: IMAGE,
+          },
+        ],
+      ]),
+    );
+    const ctx = ctxOf(site.folder, [create('icons/lee', site.url('a'))], {
+      bundle,
+    });
+    expect(await rewriteStagedImages(ctx)).toBeUndefined();
+    expect(ctx.changes[0]?.data).toBe(
+      `../../assets/uploads/${site.id('a').slice(0, 16)}.png`,
+    );
+  });
+
+  it('does not walk a document with no schema, so it logs nothing', async () => {
+    const site = await siteWith({ a: 'bytes a' });
+    const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const ctx = ctxOf(
+      site.folder,
+      [update('nowhere/x', { avatar: site.url('a') })],
+      {
+        log,
+      },
+    );
+    expect(await rewriteStagedImages(ctx)).toBeUndefined();
+    expect(log.warn).not.toHaveBeenCalled();
+  });
+
+  it('rethrows a read error that is not a missing file', async () => {
+    const site = await siteWith({ a: 'bytes a' });
+    // A directory where the copy would go: reading it fails with EISDIR, not ENOENT.
+    await mkdir(join(site.folder, nameOf(site.id('a'))), { recursive: true });
+    const ctx = ctxOf(site.folder, [
+      update('authors/ana', { avatar: site.url('a') }),
+    ]);
+    await expect(rewriteStagedImages(ctx)).rejects.toMatchObject({
+      code: 'EISDIR',
+    });
+  });
+
+  it('names the path of a refused image in a Markdown document under data', async () => {
+    const site = await siteWith({});
+    const missing = `${PREFIX}${'e'.repeat(64)}.png`;
+    const ctx = ctxOf(site.folder, [
+      update('posts/first', { data: { cover: missing }, body: 'x' }),
+    ]);
+    expect(await rewriteStagedImages(ctx)).toStrictEqual({
+      status: 422,
+      body: {
+        error: 'invalid',
+        errors: [
+          {
+            key: 'posts/first',
+            path: ['data', 'cover'],
+            message:
+              'The uploaded image is not available any more. Upload it again.',
+            code: 'staged-image-missing',
+          },
+        ],
+      },
+    });
   });
 });
