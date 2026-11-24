@@ -105,6 +105,136 @@ describe('checkRevisions', () => {
         documents: [{ key: 'authors/ana', revision: null }],
       },
     });
+    expect(ctx.stored.has('authors/ana')).toBe(false);
+  });
+
+  it('answers 409 with a null revision for an update of a document the bundle does not hold', async () => {
+    const siteFolder = await tempWorkingCopy({ [ANA]: ANA_TEXT });
+    const ctx = saveContext({
+      siteFolder,
+      changes: [
+        {
+          document: 'authors/ana',
+          baseRevision: revisionOf(ANA_TEXT),
+          deleted: false,
+          data: { name: 'Ana Torres' },
+        },
+      ],
+    });
+    expect(await checkRevisions(ctx)).toStrictEqual({
+      status: 409,
+      body: {
+        error: 'conflict',
+        documents: [{ key: 'authors/ana', revision: null }],
+      },
+    });
+    expect(ctx.stored.has('authors/ana')).toBe(false);
+  });
+
+  it('answers 409 for a create (null base revision) of a document that already exists', async () => {
+    const siteFolder = await tempWorkingCopy({ [ANA]: ANA_TEXT });
+    const ctx = saveContext({
+      siteFolder,
+      bundle: bundleOf([documentOf('authors/ana', { file: ANA })]),
+      changes: [
+        {
+          document: 'authors/ana',
+          baseRevision: null,
+          deleted: false,
+          data: { name: 'Ana Torres' },
+        },
+      ],
+    });
+    expect(await checkRevisions(ctx)).toStrictEqual({
+      status: 409,
+      body: {
+        error: 'conflict',
+        documents: [
+          {
+            key: 'authors/ana',
+            revision: revisionOf(ANA_TEXT),
+            value: { name: 'Ana' },
+          },
+        ],
+      },
+    });
+  });
+
+  it('answers 409 without the value of a read-only document, and keeps none', async () => {
+    const siteFolder = await tempWorkingCopy({ [ANA]: ANA_TEXT });
+    const ctx = saveContext({
+      siteFolder,
+      bundle: bundleOf([
+        documentOf('authors/ana', { file: ANA, editable: false }),
+      ]),
+      changes: [
+        {
+          document: 'authors/ana',
+          baseRevision: 'old-revision',
+          deleted: false,
+          data: { name: 'Ana Torres' },
+        },
+      ],
+    });
+    expect(await checkRevisions(ctx)).toStrictEqual({
+      status: 409,
+      body: {
+        error: 'conflict',
+        documents: [{ key: 'authors/ana', revision: revisionOf(ANA_TEXT) }],
+      },
+    });
+    expect(ctx.stored.has('authors/ana')).toBe(false);
+  });
+
+  it('lists each stale document in the order of the changes, and leaves out one that matches', async () => {
+    const BO = 'src/content/authors/bo.json';
+    const BO_TEXT = '{"name":"Bo"}\n';
+    const siteFolder = await tempWorkingCopy({
+      [ANA]: ANA_TEXT,
+      [BO]: BO_TEXT,
+    });
+    const ctx = saveContext({
+      siteFolder,
+      bundle: bundleOf([
+        documentOf('authors/ana', { file: ANA }),
+        documentOf('authors/bo', { file: BO }),
+      ]),
+      changes: [
+        {
+          document: 'authors/ana',
+          baseRevision: 'old-revision',
+          deleted: false,
+          data: { name: 'Ana Torres' },
+        },
+        {
+          document: 'authors/bo',
+          baseRevision: revisionOf(BO_TEXT),
+          deleted: false,
+          data: { name: 'Bo Lin' },
+        },
+        {
+          document: 'authors/cy',
+          baseRevision: 'old-revision',
+          deleted: false,
+          data: { name: 'Cy' },
+        },
+      ],
+    });
+    expect(await checkRevisions(ctx)).toStrictEqual({
+      status: 409,
+      body: {
+        error: 'conflict',
+        documents: [
+          {
+            key: 'authors/ana',
+            revision: revisionOf(ANA_TEXT),
+            value: { name: 'Ana' },
+          },
+          { key: 'authors/cy', revision: null },
+        ],
+      },
+    });
+    expect(ctx.stored.get('authors/bo')).toStrictEqual({ name: 'Bo' });
   });
 
   it('sees a document that an earlier save created, so its second save is checked too', async () => {
