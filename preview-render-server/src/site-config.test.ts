@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   assertOutDirIsSafe,
   loadSiteConfig,
@@ -146,13 +146,41 @@ describe('loadSiteConfig', () => {
   });
 
   it('explains the usage when no file is given', async () => {
-    await expect(loadSiteConfig(undefined)).rejects.toThrow(/Usage/);
+    await expect(loadSiteConfig(undefined)).rejects.toThrow(
+      new Error('Usage: node src/<script>.ts <site config file>'),
+    );
+  });
+});
+
+describe('loadSiteConfig build folder from the environment', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('builds into PREVIEW_BUILD_DIR when no folder is passed', async () => {
+    const buildDir = path.resolve('/tmp/preview-env-build');
+    vi.stubEnv('PREVIEW_BUILD_DIR', buildDir);
+    const site = await loadSiteConfig(
+      path.resolve(import.meta.dirname, '../sites/sample-site.config.ts'),
+    );
+    expect(site.outDir).toBe(path.join(buildDir, 'sample-site'));
+  });
+
+  it('uses the default folder when PREVIEW_BUILD_DIR is empty', async () => {
+    vi.stubEnv('PREVIEW_BUILD_DIR', '');
+    const site = await loadSiteConfig(
+      path.resolve(import.meta.dirname, '../sites/sample-site.config.ts'),
+    );
+    expect(site.outDir).toBe(
+      path.resolve(import.meta.dirname, '../.build/sample-site'),
+    );
   });
 });
 
 describe('assertOutDirIsSafe', () => {
   const made: string[] = [];
   afterEach(() => {
+    vi.restoreAllMocks();
     for (const dir of made.splice(0)) {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -181,6 +209,27 @@ describe('assertOutDirIsSafe', () => {
   function refusal(outDir: string, reason: string): Error {
     return new Error(
       `Refusing to build into ${outDir}: ${reason}. A build clears this folder, so give it a folder of its own.`,
+    );
+  }
+
+  /** Runs `fn` with process.platform set to `platform`, then restores it. */
+  function withPlatform(platform: NodeJS.Platform, fn: () => void): void {
+    const original = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: platform });
+    try {
+      fn();
+    } finally {
+      if (original) Object.defineProperty(process, 'platform', original);
+    }
+  }
+
+  /** A site whose root `base/my-site` is not created, and whose output is `base/MY-SITE`. */
+  function caseOnlySite(base: string) {
+    return resolveSiteConfig(
+      { ...config, root: path.join(base, 'my-site') },
+      base,
+      path.join(base, '.build'),
+      { out: path.join(base, 'MY-SITE') },
     );
   }
 
@@ -273,6 +322,97 @@ describe('assertOutDirIsSafe', () => {
     fs.writeFileSync(path.join(build, 'server', 'old.mjs'), 'old');
     const site = siteWithOut(base, build);
     const work = path.join(base, 'work');
+    expect(() => assertOutDirIsSafe(site, work)).not.toThrow();
+  });
+
+  it('refuses a non-empty manifest folder that has no bundle.json', () => {
+    const base = tempBase();
+    const build = path.join(base, 'build');
+    fs.mkdirSync(path.join(build, 'manifest'), { recursive: true });
+    fs.writeFileSync(path.join(build, 'manifest', 'routes.json'), '[]');
+    const site = siteWithOut(base, build);
+    const work = path.join(base, 'work');
+    expect(() => assertOutDirIsSafe(site, work)).toThrow(
+      refusal(
+        site.outDir,
+        'it is not empty and has no bundle.json from an earlier build',
+      ),
+    );
+  });
+
+  it('refuses an output folder that differs from the site root only in letter case on Windows', () => {
+    const base = tempBase();
+    const site = caseOnlySite(base);
+    const work = path.join(base, 'work');
+    withPlatform('win32', () => {
+      expect(() => assertOutDirIsSafe(site, work)).toThrow(
+        refusal(site.outDir, 'it is the site root'),
+      );
+    });
+  });
+
+  // Node's win32 path functions ignore case whatever process.platform says, so
+  // this exact-case check needs POSIX paths (it runs in the Linux CI).
+  it.skipIf(process.platform === 'win32')(
+    'compares letter case exactly on other platforms',
+    () => {
+      const base = tempBase();
+      const site = caseOnlySite(base);
+      const work = path.join(base, 'work');
+      withPlatform('linux', () => {
+        expect(() => assertOutDirIsSafe(site, work)).not.toThrow();
+      });
+    },
+  );
+
+  it('refuses a link that points at the site root', () => {
+    const base = tempBase();
+    const root = path.join(base, 'my-site');
+    fs.mkdirSync(root);
+    const alias = path.join(base, 'alias');
+    fs.symlinkSync(root, alias, 'junction');
+    const site = resolveSiteConfig(
+      { ...config, root },
+      base,
+      path.join(base, '.build'),
+      { out: alias },
+    );
+    const work = path.join(base, 'work');
+    expect(() => assertOutDirIsSafe(site, work)).toThrow(
+      refusal(site.outDir, 'it is the site root'),
+    );
+  });
+
+  it('follows a link in the existing part of an output path that does not exist yet', () => {
+    const base = tempBase();
+    const root = path.join(base, 'my-site');
+    fs.mkdirSync(root);
+    const alias = path.join(base, 'alias');
+    fs.symlinkSync(root, alias, 'junction');
+    const site = resolveSiteConfig(
+      { ...config, root },
+      base,
+      path.join(base, '.build'),
+      { out: path.join(alias, 'nested') },
+    );
+    const work = path.join(root, 'nested', 'deeper');
+    expect(() => assertOutDirIsSafe(site, work)).toThrow(
+      refusal(site.outDir, 'it is the current folder or contains it'),
+    );
+  });
+
+  it('allows an output folder inside the site root', () => {
+    const base = tempBase();
+    const site = siteWithOut(base, path.join(base, 'my-site', 'build'));
+    const work = path.join(base, 'work');
+    expect(() => assertOutDirIsSafe(site, work)).not.toThrow();
+  });
+
+  it('does not treat an absolute path.relative result (another drive) as inside', () => {
+    const base = tempBase();
+    const site = siteWithOut(base, path.join(base, 'fresh'));
+    const work = path.join(base, 'work');
+    vi.spyOn(path, 'relative').mockReturnValue(path.resolve('/other-drive/x'));
     expect(() => assertOutDirIsSafe(site, work)).not.toThrow();
   });
 });

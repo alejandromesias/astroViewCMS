@@ -1,7 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { errorMessage } from './error-message.ts';
 
 describe('errorMessage', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it.each([
     ['an Error', new Error('boom'), 'boom'],
     ['a TypeError', new TypeError('bad type'), 'bad type'],
@@ -13,6 +17,11 @@ describe('errorMessage', () => {
     ['false', false, 'false'],
     ['a symbol', Symbol('s'), 'Symbol(s)'],
     ['a plain object', { code: 7 }, '[object Object]'],
+    [
+      'a plain object with a message',
+      { message: 'not an error' },
+      '[object Object]',
+    ],
     [
       'an object with its own toString',
       { toString: () => 'custom text' },
@@ -37,5 +46,13 @@ describe('errorMessage', () => {
     expect(errorMessage(Object.create(null))).toBe(
       'unknown error (the thrown value has no text form)',
     );
+  });
+
+  it('takes a string as it is, without calling String()', () => {
+    const realString = String;
+    const spy = vi.fn((value?: unknown) => realString(value));
+    vi.stubGlobal('String', spy);
+    expect(errorMessage('boom')).toBe('boom');
+    expect(spy).not.toHaveBeenCalled();
   });
 });
