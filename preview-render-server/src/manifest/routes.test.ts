@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { shapeRoutes } from './routes.ts';
 
 const root = path.resolve('/work/site');
@@ -161,6 +161,10 @@ describe('getStaticPaths detection', () => {
     'myexport function getStaticPaths() {}',
     'export var getStaticPaths = 1;',
     'export asyncfunction getStaticPaths() {}',
+    'export function getStaticPath() {}',
+    'exportfunction getStaticPaths() {}',
+    'export functiongetStaticPaths() {}',
+    'export async async function getStaticPaths() {}',
     '',
   ])('ignores %j', (source) => {
     expect(shapeOne('page', source)!.hasStaticPaths).toBe(false);
@@ -202,6 +206,19 @@ describe('route shaping details', () => {
     ).toEqual([]);
   });
 
+  it.each(['/[abcd]', '/...single]', '/[...single', '/[...-]'])(
+    'finds no rest parameter in %s',
+    (pattern) => {
+      expect(shapeOne('page', '', 'a.astro', pattern)!.restParams).toEqual([]);
+    },
+  );
+
+  it('gives forward slashes for a backslash entrypoint on every platform', () => {
+    expect(shapeOne('page', '', 'src\\pages\\win.astro')!.component).toBe(
+      'src/pages/win.astro',
+    );
+  });
+
   it('sorts all routes, not only a pair', () => {
     const sorted = shapeRoutes(
       ['/c', '/a', '/b'].map((pattern) => ({
@@ -234,5 +251,85 @@ describe('default source reader', () => {
       )[0];
     expect(shape('pages/[x].astro')!.hasStaticPaths).toBe(true);
     expect(shape('pages/missing.astro')!.hasStaticPaths).toBe(false);
+  });
+
+  it('reads the page as UTF-8 from its absolute path', () => {
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'routes-utf8-'));
+    try {
+      fs.writeFileSync(
+        path.join(folder, 'page.astro'),
+        'export const getStaticPaths = () => [];',
+      );
+      const spy = vi.spyOn(fs, 'readFileSync');
+      shapeRoutes(
+        [
+          {
+            pattern: '/[x]',
+            entrypoint: 'page.astro',
+            type: 'page',
+            params: ['x'],
+          },
+        ],
+        folder,
+      );
+      expect(spy).toHaveBeenCalledWith(
+        path.resolve(folder, 'page.astro'),
+        'utf8',
+      );
+    } finally {
+      vi.restoreAllMocks();
+      fs.rmSync(folder, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('shapeRoutes: survivors of the 2.13i run', () => {
+  const page = (pattern: string, params: string[]) => ({
+    pattern,
+    entrypoint: 'src/pages/x.astro',
+    type: 'page',
+    params,
+  });
+
+  it('leaves out exactly /__ and anything under it, but keeps /_ and __ without a leading slash', () => {
+    const shaped = shapeRoutes(
+      [
+        page('/__', []),
+        page('/__/deep', []),
+        page('/_one', []),
+        page('__two', []),
+      ],
+      root,
+      () => undefined,
+    );
+    expect(shaped.map((r) => r.pattern)).toEqual(['__two', '/_one']);
+  });
+
+  it('gives a static route dynamic false and hasStaticPaths false, even with getStaticPaths in its source', () => {
+    const [shaped] = shapeRoutes(
+      [page('/about', [])],
+      root,
+      () => 'export function getStaticPaths() {}',
+    );
+    expect(shaped!.dynamic).toBe(false);
+    expect(shaped!.hasStaticPaths).toBe(false);
+  });
+
+  it('reads the source only for dynamic routes', () => {
+    const readSource = vi.fn(() => 'export function getStaticPaths() {}');
+    shapeRoutes(
+      [page('/about', []), page('/[post]', ['post'])],
+      root,
+      readSource,
+    );
+    expect(readSource).toHaveBeenCalledTimes(1);
+    expect(readSource).toHaveBeenCalledWith(
+      path.resolve(root, 'src/pages/x.astro'),
+    );
+  });
+
+  it('gives hasStaticPaths false for a dynamic route whose source is empty', () => {
+    const [shaped] = shapeRoutes([page('/[post]', ['post'])], root, () => '');
+    expect(shaped!.hasStaticPaths).toBe(false);
   });
 });
