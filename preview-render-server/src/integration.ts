@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AstroIntegration } from 'astro';
 import type { BundleJson, ImageRecord } from 'preview-contract';
-import { revisionOf } from 'preview-contract';
+import { revisionOf, SCHEMA_VERSION } from 'preview-contract';
 import { PROTOCOL_VERSION } from 'preview-protocol';
 import type { Plugin } from 'vite';
 import { astroVersion, newBundleId, readSiteCommit } from './bundle.ts';
@@ -27,6 +27,7 @@ import {
   schemaStubs,
 } from './schema/config-bundle.ts';
 import { shapeSchemas } from './schema/json-schema.ts';
+import { applyUiHints } from './schema/ui-hints.ts';
 import type { ResolvedSiteConfig } from './types.ts';
 
 export const VIRTUAL_ID = 'virtual:preview-site';
@@ -192,6 +193,8 @@ export default function previewRenderServer(
           );
           schemaManifest = shapeSchemas(collections, site.readOnlyCollections);
         }
+        // The UI hints (WORKPLAN 2.14c) go onto the field nodes they name. A hint that names no field throws here, so the build fails.
+        schemaManifest = applyUiHints(schemaManifest ?? {}, site.uiHints ?? {});
       },
       // Clears the output of the previous build.
       'astro:build:start': () => {
@@ -213,6 +216,7 @@ export default function previewRenderServer(
             bundleId,
             siteCommit: readSiteCommit(site.root),
             protocolVersion: PROTOCOL_VERSION,
+            schemaVersion: SCHEMA_VERSION,
             astroVersion: astroVersion(),
             builtAt: new Date().toISOString(),
             ...(astroSite === undefined ? {} : { site: astroSite }),

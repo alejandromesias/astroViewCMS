@@ -6,6 +6,10 @@
 import { z } from 'zod';
 import { objectOf } from './json.ts';
 
+/** The shape version of schema.json (WORKPLAN 2.14c). The build writes it into bundle.json as `schemaVersion`;
+ *  cms-server rebuilds a bundle whose value is missing or different. Bump it when schema.json's shape changes. */
+export const SCHEMA_VERSION = 2;
+
 /** Where a collection's entries come from, as the stub `glob()` and `file()`
  *  loaders record them (`LoaderInfo` in schema/stubs-flavor1.ts). */
 export const loaderInfoSchema = z.object({

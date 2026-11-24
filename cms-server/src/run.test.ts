@@ -413,7 +413,7 @@ describe('run', () => {
         // The lifecycle's own read of the same bundle.json is a mismatch, so the protocol check rebuilds it once.
         await vi.waitFor(() =>
           expect(h.log.warn).toHaveBeenCalledWith(
-            'The bundle does not match the protocol, so it is rebuilt once',
+            'The bundle does not match the protocol or the schema version, so it is rebuilt once',
             {
               bundle: 'broken',
               problem: expect.stringContaining('cannot be read') as string,

@@ -24,5 +24,12 @@ export default {
   // so the editor must not list it (item 7).
   readOnlyCollections: ['fixtures'],
 
+  // UI hints for the CMS forms (WORKPLAN 2.14c). `[]` marks array items; the landing hint applies to every block type with a title.
+  uiHints: {
+    'blog.description': { widget: 'textarea' },
+    'blog.image': { widget: 'public-image' },
+    'landing.blocks[].title': { label: 'Heading' },
+  },
+
   port: 4401,
 } satisfies SiteConfig;

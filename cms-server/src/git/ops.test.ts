@@ -912,7 +912,7 @@ function syncDocuments(): Record<string, string | boolean>[] {
 // A store over a bundle whose bundle.json names `siteCommit` (null for none) and whose documents are the sync ones.
 async function bundleOf(siteCommit: string | null): Promise<BundleStore> {
   const dir = await bundleFolder({
-    'bundle.json': `${JSON.stringify({ bundleId: 'fixture-2026-11-03', siteCommit, protocolVersion: 2, astroVersion: '7.4.2', builtAt: '2026-11-04T03:42:22.323Z' }, null, 2)}\n`,
+    'bundle.json': `${JSON.stringify({ bundleId: 'fixture-2026-11-03', siteCommit, protocolVersion: 2, schemaVersion: 2, astroVersion: '7.4.2', builtAt: '2026-11-04T03:42:22.323Z' }, null, 2)}\n`,
     'documents.json': JSON.stringify(syncDocuments()),
   });
   return createBundleStore(directoryBundleSource(dir));
@@ -1081,6 +1081,7 @@ describe('openRepo: fetch', () => {
         bundleId: 'fixture-2026-11-03',
         siteCommit: '--output=poisoned',
         protocolVersion: 2,
+        schemaVersion: 2,
         astroVersion: '7.4.2',
         builtAt: '2026-11-04T03:42:22.323Z',
       },
@@ -1322,7 +1323,7 @@ async function reapplyBundles(
   documents: readonly object[] = REAPPLY_DOCUMENTS,
 ): Promise<BundleStore> {
   const dir = await bundleFolder({
-    'bundle.json': `${JSON.stringify({ bundleId: 'reapply-2026-11-08', siteCommit: null, protocolVersion: 2, astroVersion: '7.4.2', builtAt: '2026-11-08T00:00:00.000Z' }, null, 2)}\n`,
+    'bundle.json': `${JSON.stringify({ bundleId: 'reapply-2026-11-08', siteCommit: null, protocolVersion: 2, schemaVersion: 2, astroVersion: '7.4.2', builtAt: '2026-11-08T00:00:00.000Z' }, null, 2)}\n`,
     'documents.json': JSON.stringify(documents),
     'schema.json': JSON.stringify(REAPPLY_COLLECTIONS),
   });

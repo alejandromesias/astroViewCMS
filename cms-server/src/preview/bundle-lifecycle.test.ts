@@ -10,7 +10,11 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { type BundleJson, bundleJsonSchema } from 'preview-contract';
+import {
+  type BundleJson,
+  bundleJsonSchema,
+  SCHEMA_VERSION,
+} from 'preview-contract';
 import { PROTOCOL_VERSION } from 'preview-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FIXTURE_BUNDLE } from '../../test/helpers/bundle.ts';
@@ -190,10 +194,20 @@ function fakeRepo(gate: Promise<void> = Promise.resolve()) {
   };
 }
 
-/** The fixture's bundle.json, parsed, with its protocolVersion set to `protocolVersion`. */
-async function identityWith(protocolVersion: number): Promise<BundleJson> {
+/**
+ * The fixture's bundle.json, parsed, with its protocolVersion set to `protocolVersion`, and its schemaVersion set to
+ * `schemaVersion` (null: the bundle.json has none).
+ */
+async function identityWith(
+  protocolVersion: number,
+  schemaVersion: number | null = SCHEMA_VERSION,
+): Promise<BundleJson> {
   const text = await readFile(path.join(FIXTURE_BUNDLE, 'bundle.json'), 'utf8');
-  return { ...bundleJsonSchema.parse(JSON.parse(text)), protocolVersion };
+  return {
+    ...bundleJsonSchema.parse(JSON.parse(text)),
+    protocolVersion,
+    schemaVersion: schemaVersion ?? undefined,
+  };
 }
 
 /** The bundle id of a manifest folder: the folder above `manifest/`. */
@@ -686,7 +700,7 @@ describe('the protocol check', () => {
       noBundleJson('b-2'),
     );
     expect(rig.log.warn).toHaveBeenCalledWith(
-      'The bundle does not match the protocol, so it is rebuilt once',
+      'The bundle does not match the protocol or the schema version, so it is rebuilt once',
       { bundle: 'b-1', problem: noBundleJson('b-1') },
     );
   });
@@ -732,7 +746,7 @@ describe('the protocol check', () => {
     await rig.lifecycle.trigger('publish');
     expect(rig.build).toHaveBeenCalledTimes(2);
     expect(rig.log.warn).toHaveBeenCalledWith(
-      'The bundle does not match the protocol, so it is rebuilt once',
+      'The bundle does not match the protocol or the schema version, so it is rebuilt once',
       {
         bundle: 'b-1',
         problem: 'Bundle b-1 has a bundle.json that cannot be read: bad json',
@@ -784,6 +798,71 @@ describe('the protocol check', () => {
     } finally {
       await rm(bundles, { recursive: true, force: true });
     }
+  });
+});
+
+describe('the schema version of a bundle (2.14c): the protocol path, with its own message', () => {
+  const noSchemaVersion = (bundleId: string) =>
+    `Bundle ${bundleId} has no schema version, and the server expects schema version ${SCHEMA_VERSION}`;
+  const schemaMismatchOf = (bundleId: string, has: number) =>
+    `Bundle ${bundleId} has schema version ${has}, and the server expects schema version ${SCHEMA_VERSION}`;
+  /** A reader whose bundle.json holds the schemaVersion `schemaOf` gives its bundle (null: none). */
+  const readerWithSchema =
+    (
+      schemaOf: (bundleId: string) => number | null,
+    ): LifecycleOptions['readBundle'] =>
+    async (manifestDir) => ({
+      dir: manifestDir,
+      identity: await identityWith(
+        PROTOCOL_VERSION,
+        schemaOf(bundleIdOf(manifestDir)),
+      ),
+    });
+
+  it('a bundle with no schemaVersion is rebuilt once, then reported with its own message', async () => {
+    const rig = await rigOf({ readBundle: readerWithSchema(() => null) });
+    await rig.lifecycle.trigger('publish');
+    expect(rig.build.mock.calls).toStrictEqual([
+      [{ commit: HEAD, bundleId: 'b-1' }],
+      [{ commit: HEAD, bundleId: 'b-2' }],
+    ]);
+    expect((await rig.status.snapshot()).errors.protocolMismatch).toBe(
+      noSchemaVersion('b-2'),
+    );
+    expect(rig.log.warn).toHaveBeenCalledWith(
+      'The bundle does not match the protocol or the schema version, so it is rebuilt once',
+      { bundle: 'b-1', problem: noSchemaVersion('b-1') },
+    );
+  });
+
+  it('a bundle with a different schemaVersion is reported, and a rebuild that matches clears it', async () => {
+    const rig = await rigOf({
+      readBundle: readerWithSchema((id) => (id === 'b-1' ? 1 : SCHEMA_VERSION)),
+    });
+    await rig.lifecycle.trigger('publish');
+    expect(rig.build).toHaveBeenCalledTimes(2);
+    expect((await rig.status.snapshot()).errors.protocolMismatch).toBeNull();
+    expect(rig.log.warn).toHaveBeenCalledWith(
+      'The bundle does not match the protocol or the schema version, so it is rebuilt once',
+      { bundle: 'b-1', problem: schemaMismatchOf('b-1', 1) },
+    );
+  });
+
+  it('a protocolVersion that differs is reported before a schemaVersion that differs', async () => {
+    const rig = await rigOf({
+      readBundle: async (manifestDir) => ({
+        dir: manifestDir,
+        identity: await identityWith(1, 1),
+      }),
+    });
+    await rig.lifecycle.trigger('publish');
+    expect(rig.log.warn).toHaveBeenCalledWith(
+      'The bundle does not match the protocol or the schema version, so it is rebuilt once',
+      {
+        bundle: 'b-1',
+        problem: `Bundle b-1 speaks protocol 1, and the server speaks protocol ${PROTOCOL_VERSION}`,
+      },
+    );
   });
 });
 

@@ -53,6 +53,27 @@ describe('bundleJsonSchema: the optional site', () => {
   });
 });
 
+describe('bundleJsonSchema: the optional schemaVersion', () => {
+  it('accepts a record with a schemaVersion, and one without (an older bundle)', () => {
+    const withVersion = { ...bundleOf(), schemaVersion: 2 };
+    expect(bundleJsonSchema.parse(withVersion)).toEqual(withVersion);
+    expect(bundleJsonSchema.parse(bundleOf())).not.toHaveProperty(
+      'schemaVersion',
+    );
+  });
+
+  it.each([
+    ['schemaVersion is a string', { schemaVersion: '2' }],
+    ['schemaVersion is zero', { schemaVersion: 0 }],
+    ['schemaVersion is not whole', { schemaVersion: 1.5 }],
+    ['schemaVersion is null', { schemaVersion: null }],
+  ])('refuses a record where %s', (_name, change) => {
+    expect(
+      bundleJsonSchema.safeParse({ ...bundleOf(), ...change }).success,
+    ).toBe(false);
+  });
+});
+
 describe('bundleJsonSchema: the siteCommit hash', () => {
   it.each([
     ['40 hex characters', 'a'.repeat(40)],

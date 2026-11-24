@@ -286,7 +286,10 @@
         "order": {
           "type": "number"
         },
-        "since": {}
+        "since": {
+          "type": "string",
+          "cms": "date"
+        }
       },
       "required": [
         "name",
@@ -312,7 +315,10 @@
         "value": {
           "type": "string"
         },
-        "updated": {}
+        "updated": {
+          "type": "string",
+          "cms": "date"
+        }
       },
       "required": [
         "label",
@@ -349,7 +355,10 @@
                     "const": "banner"
                   },
                   "title": {
-                    "type": "string"
+                    "type": "string",
+                    "ui": {
+                      "label": "Heading"
+                    }
                   },
                   "content": {
                     "type": "string"
@@ -390,7 +399,10 @@
                     "const": "features"
                   },
                   "title": {
-                    "type": "string"
+                    "type": "string",
+                    "ui": {
+                      "label": "Heading"
+                    }
                   },
                   "items": {
                     "type": "array",
@@ -484,7 +496,10 @@
                     "const": "workflow"
                   },
                   "title": {
-                    "type": "string"
+                    "type": "string",
+                    "ui": {
+                      "label": "Heading"
+                    }
                   },
                   "description": {
                     "type": "string"
@@ -507,7 +522,10 @@
                     "const": "cta"
                   },
                   "title": {
-                    "type": "string"
+                    "type": "string",
+                    "ui": {
+                      "label": "Heading"
+                    }
                   },
                   "content": {
                     "type": "string"
@@ -550,7 +568,10 @@
                     "const": "pricing"
                   },
                   "title": {
-                    "type": "string"
+                    "type": "string",
+                    "ui": {
+                      "label": "Heading"
+                    }
                   },
                   "plans": {
                     "type": "array",
@@ -621,7 +642,10 @@
                     "const": "faq"
                   },
                   "title": {
-                    "type": "string"
+                    "type": "string",
+                    "ui": {
+                      "label": "Heading"
+                    }
                   },
                   "items": {
                     "type": "array",
@@ -656,7 +680,10 @@
                     "const": "highlight"
                   },
                   "title": {
-                    "type": "string"
+                    "type": "string",
+                    "ui": {
+                      "label": "Heading"
+                    }
                   },
                   "body": {
                     "type": "string"
@@ -676,7 +703,10 @@
                     "const": "partners"
                   },
                   "title": {
-                    "type": "string"
+                    "type": "string",
+                    "ui": {
+                      "label": "Heading"
+                    }
                   }
                 },
                 "required": [
@@ -692,7 +722,10 @@
                     "const": "stats"
                   },
                   "title": {
-                    "type": "string"
+                    "type": "string",
+                    "ui": {
+                      "label": "Heading"
+                    }
                   }
                 },
                 "required": [
@@ -708,7 +741,10 @@
                     "const": "testimonials"
                   },
                   "title": {
-                    "type": "string"
+                    "type": "string",
+                    "ui": {
+                      "label": "Heading"
+                    }
                   },
                   "items": {
                     "type": "array",
@@ -725,7 +761,8 @@
                   "items"
                 ]
               }
-            ]
+            ],
+            "cmsDiscriminator": "type"
           }
         }
       },
@@ -752,11 +789,20 @@
           "type": "string"
         },
         "description": {
-          "type": "string"
+          "type": "string",
+          "ui": {
+            "widget": "textarea"
+          }
         },
-        "date": {},
+        "date": {
+          "type": "string",
+          "cms": "date"
+        },
         "image": {
-          "type": "string"
+          "type": "string",
+          "ui": {
+            "widget": "public-image"
+          }
         },
         "cover": {
           "type": "string",

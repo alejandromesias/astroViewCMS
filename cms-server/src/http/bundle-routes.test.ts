@@ -72,7 +72,7 @@ describe('GET /api/status', () => {
     expect(await response.json()).toEqual({
       bundle: {
         bundleId: 'fixture-2026-11-03',
-        siteCommit: '4523c67c55284f8bd3ae1b61caa6d5501ccc77ab',
+        siteCommit: 'a0bf7e8438f4130dd891ec14a5f479a99e29580c',
       },
     });
   });
@@ -113,7 +113,7 @@ describe('GET /api/status with the preview status (2.9c)', () => {
     expect(body).toStrictEqual({
       bundle: {
         bundleId: 'fixture-2026-11-03',
-        siteCommit: '4523c67c55284f8bd3ae1b61caa6d5501ccc77ab',
+        siteCommit: 'a0bf7e8438f4130dd891ec14a5f479a99e29580c',
       },
       ...SNAPSHOT,
     });

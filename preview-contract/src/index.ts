@@ -31,6 +31,7 @@ export type { CollectionSchemaJson } from './schema.ts';
 export {
   collectionSchemaJson,
   loaderInfoSchema,
+  SCHEMA_VERSION,
   schemaJsonSchema,
 } from './schema.ts';
 export type {

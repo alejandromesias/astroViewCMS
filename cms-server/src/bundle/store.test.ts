@@ -14,6 +14,7 @@ const identityOf = (bundleId: string): BundleJson => ({
   bundleId,
   siteCommit: null,
   protocolVersion: 2,
+  schemaVersion: 2,
   astroVersion: '7.4.2',
   builtAt: '2026-11-01T10:00:00.000Z',
 });
