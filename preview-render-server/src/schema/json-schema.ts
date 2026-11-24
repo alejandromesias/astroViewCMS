@@ -19,7 +19,7 @@ export interface CollectionSchema {
  *  Dates and discriminated unions get their markers from `addCmsMarkers`. */
 export function shapeSchemas(
   collections: Record<string, CollectionInfo>,
-  readOnlyCollections: string[] = [],
+  readOnlyCollections?: readonly string[],
 ): Record<string, CollectionSchema> {
   const readOnly = new Set(readOnlyCollections);
   return Object.fromEntries(
