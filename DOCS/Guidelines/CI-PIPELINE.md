@@ -73,6 +73,13 @@ workflow (section 1) with `ref` (the branch) and `base` (a branch name on origin
 default `main`). It runs the steps below, with the changed set taken from
 `origin/<base>`.
 
+It also works for a branch that already has a pull request: it is a rerun of
+`mutation-diff` on demand, for example `gh workflow run mutation-branch.yml -f ref=<branch>`.
+The result does not appear on the pull request page. Read it with
+`gh run list --workflow mutation-branch.yml` or in the Actions tab. It takes no
+pull request number and has no `group` or `--all` option; for a whole group or
+the whole repo use `mutation-full` (section 4), which runs on `main`.
+
 `node scripts/stryker-changed.ts --run` (the `mutation-diff` job, and
 `npm run check -- --mutation` locally):
 
