@@ -7,7 +7,7 @@ interface RegionConfig {
 }
 
 /** The widgets a form field can ask for (WORKPLAN 2.14c). Closed: a hint names one of these. */
-export type UiWidget = 'text' | 'textarea' | 'markdown' | 'public-image';
+type UiWidget = 'text' | 'textarea' | 'markdown' | 'public-image';
 
 /** A UI hint for one field of a collection. Every part is optional; the hint is copied as `ui` onto the field's schema node. */
 export interface UiHint {
