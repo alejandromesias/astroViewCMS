@@ -278,4 +278,162 @@ describe('applyUiHints', () => {
       },
     });
   });
+
+  it('applies a path through anyOf to every branch that has the field, as through oneOf', () => {
+    const schemas: Record<string, CollectionSchema> = {
+      blog: {
+        schema: {
+          type: 'object',
+          properties: {
+            author: {
+              anyOf: [
+                { type: 'object', properties: { name: { type: 'string' } } },
+                { type: 'object', properties: { url: { type: 'string' } } },
+              ],
+            },
+          },
+        },
+      },
+    };
+    expect(
+      applyUiHints(schemas, { 'blog.author.name': { label: 'Name' } }),
+    ).toStrictEqual({
+      blog: {
+        schema: {
+          type: 'object',
+          properties: {
+            author: {
+              anyOf: [
+                {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string', ui: { label: 'Name' } },
+                  },
+                },
+                { type: 'object', properties: { url: { type: 'string' } } },
+              ],
+            },
+          },
+        },
+      },
+    });
+  });
+
+  it('leaves a union branch that is not an object as it is', () => {
+    const schemas: Record<string, CollectionSchema> = {
+      landing: {
+        schema: {
+          type: 'object',
+          properties: {
+            blocks: {
+              type: 'array',
+              items: {
+                oneOf: [
+                  true,
+                  null,
+                  { type: 'object', properties: { title: { type: 'string' } } },
+                ],
+              },
+            },
+          },
+        },
+      },
+    };
+    expect(
+      applyUiHints(schemas, { 'landing.blocks[].title': { label: 'Heading' } }),
+    ).toStrictEqual({
+      landing: {
+        schema: {
+          type: 'object',
+          properties: {
+            blocks: {
+              type: 'array',
+              items: {
+                oneOf: [
+                  true,
+                  null,
+                  {
+                    type: 'object',
+                    properties: {
+                      title: { type: 'string', ui: { label: 'Heading' } },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    });
+  });
+
+  it('fails for a path through array items that have no such field', () => {
+    const schemas: Record<string, CollectionSchema> = {
+      landing: {
+        schema: {
+          type: 'object',
+          properties: {
+            tags: { type: 'array', items: { type: 'string' } },
+          },
+        },
+      },
+    };
+    expect(() =>
+      applyUiHints(schemas, { 'landing.tags[].label': { label: 'x' } }),
+    ).toThrow(new Error('ui hint "landing.tags[].label" matches no field'));
+  });
+
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['an array', ['string']],
+  ])(
+    'does not take a property whose schema is %s as a field',
+    (_name, value) => {
+      const schemas: Record<string, CollectionSchema> = {
+        blog: { schema: { type: 'object', properties: { title: value } } },
+      };
+      expect(() =>
+        applyUiHints(schemas, { 'blog.title': { label: 'x' } }),
+      ).toThrow(new Error('ui hint "blog.title" matches no field'));
+    },
+  );
+
+  it('does not take a tuple (an array of items) as the items of []', () => {
+    const schemas: Record<string, CollectionSchema> = {
+      landing: {
+        schema: {
+          type: 'object',
+          properties: {
+            tags: { type: 'array', items: [{ type: 'string' }] },
+          },
+        },
+      },
+    };
+    expect(() =>
+      applyUiHints(schemas, { 'landing.tags[]': { label: 'x' } }),
+    ).toThrow(new Error('ui hint "landing.tags[]" matches no field'));
+  });
+
+  it('does not match a key with an empty collection to a collection named ""', () => {
+    const schemas: Record<string, CollectionSchema> = {
+      '': {
+        schema: { type: 'object', properties: { title: { type: 'string' } } },
+      },
+    };
+    expect(() => applyUiHints(schemas, { '.title': { label: 'x' } })).toThrow(
+      new Error('ui hint ".title" matches no field'),
+    );
+  });
+
+  it('does not match an empty path to a property named ""', () => {
+    const schemas: Record<string, CollectionSchema> = {
+      blog: {
+        schema: { type: 'object', properties: { '': { type: 'string' } } },
+      },
+    };
+    expect(() => applyUiHints(schemas, { 'blog.': { label: 'x' } })).toThrow(
+      new Error('ui hint "blog." matches no field'),
+    );
+  });
 });
