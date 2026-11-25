@@ -148,6 +148,28 @@ export function privateBytes(pid) {
   throw new Error(`private memory is not read on ${process.platform}`);
 }
 
+/**
+ * The commit charge of a process: on Windows PrivateMemorySize64, the private memory it has committed, which the OS does
+ * not trim the way it trims the working set. Null where it is not measured (the R8 budget is then not checked).
+ */
+export function commitBytes(pid) {
+  if (process.platform !== 'win32') return null;
+  const ps = spawnSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      `(Get-Process -Id ${pid}).PrivateMemorySize64`,
+    ],
+    { encoding: 'utf8' },
+  );
+  const bytes = Number.parseInt(ps.stdout.trim(), 10);
+  if (!Number.isFinite(bytes))
+    throw new Error(`no commit charge for ${pid}: ${ps.stderr}`);
+  return bytes;
+}
+
 export function freePort() {
   return new Promise((resolve, reject) => {
     const probe = net.createServer();

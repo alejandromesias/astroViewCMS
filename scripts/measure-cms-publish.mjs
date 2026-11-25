@@ -15,13 +15,13 @@
 // time at the end. `node scripts/measure-cms-publish.mjs auto` runs one mode; no argument runs all three.
 // /api/status is polled every POLL_MS from before each publish. A local remote leaves out network time (section 8 of
 // WORKPLAN-PHASE-2-CLOSE.md).
-import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
   ask,
   claimConfigFile,
+  commitBytes,
   configText,
   freePort,
   MB,
@@ -85,28 +85,6 @@ function describe(values) {
   if (values.length === 0) return 'none';
   const { mean, min, max } = summary(values);
   return `${mean} (${min} to ${max}, n ${values.length})`;
-}
-
-/** The commit charge of a process (Windows PrivateMemorySize64): the private memory it has committed. */
-function commitBytes(pid) {
-  if (process.platform !== 'win32')
-    throw new Error(
-      `commit charge is read on Windows only, not on ${process.platform}`,
-    );
-  const ps = spawnSync(
-    'powershell.exe',
-    [
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      `(Get-Process -Id ${pid}).PrivateMemorySize64`,
-    ],
-    { encoding: 'utf8' },
-  );
-  const bytes = Number.parseInt(ps.stdout.trim(), 10);
-  if (!Number.isFinite(bytes))
-    throw new Error(`no commit charge for ${pid}: ${ps.stderr}`);
-  return bytes;
 }
 
 /**
@@ -179,7 +157,11 @@ function detailOf(line) {
   return line.entry.reason === undefined ? '' : ` ${line.entry.reason}`;
 }
 
-/** The builds in log order, each paired with the request that asked for it (the first unpaired request). */
+/**
+ * The builds in log order, each paired with the first request not yet paired (first in, first out). The pairing
+ * assumes each request finishes: a request that never does (see `unfinished` in publishOnce) shifts the pairs after
+ * it, so the figures of that round are not reliable. Runs 5 and 6 had no unfinished request.
+ */
 function pairBuilds(lines) {
   const pending = [];
   const builds = [];

@@ -35,8 +35,9 @@ jobs:
           path: reports/coverage
           retention-days: 14
           if-no-files-found: ignore
-  # The memory budget of cms-server (decision R8, option B; WORKPLAN 2.13a): fails above 200 MB rss after 50 saves. Its own
-  # job, so a red unit run does not hide its result.
+  # The memory budget of cms-server (decision R8, option B; metric changed 2026-11-25 to commit charge; WORKPLAN 2.13a):
+  # fails when commit charge grows more than 30 MB from save 10 to save 50, or is over 450 MB at save 50. Its own job, so
+  # a red unit run does not hide its result.
   memory:
     name: cms-server memory budget on Windows
     runs-on: windows-latest
