@@ -167,9 +167,14 @@ async function main() {
       git(developer, ['push', 'origin', 'HEAD']);
     }
 
+    // The fetch says whether a re-apply is due. A round without one would time almost nothing, so it is refused.
     async function syncUpstream() {
       const sync = await repo.locked('sync', (tx) => tx.fetch(bundles));
       if (!sync.ok) throw new Error(sync.syncError.message);
+      if (!sync.reapply)
+        throw new Error(
+          'the fetch found no re-apply to time: this round is not a re-apply',
+        );
       return sync.upstream;
     }
 
