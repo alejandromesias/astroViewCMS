@@ -90,6 +90,7 @@ These are the rules builders keep needing. Each is in the log under the task nam
 | H3 | **osv-scanner ignore** `GHSA-g3hv-75wg-m249` expires 2026-12-15. An expired entry fails `npm run audit` | revisit 2026-12-01 |
 | H3b | **osv-scanner ignore** `GHSA-fc5q-39xc-vjpf` (picomatch) expires 2026-12-17. Check first whether a patched picomatch exists. An expired entry fails `npm run audit`. Waiver merged in #56 (`fca9160`) | revisit 2026-12-01 |
 | H5 | **`run.test.ts` first-start flake:** one unexplained failure, then green after an explicit 5 s timeout. If it fails again, it becomes a task | watch |
+| H6 | **Second rebuild under `auto`** (2.13a run 5, round 2): a second `A build was asked for` was logged 1.6 s after the publish's own build finished. Not reproduced in run 6 (3 rounds, auto alone). The reason is logged with each ask. Hypothesis, not checked: the publish moves the remote, and the next poll starts a rebuild the CMS does not recognise as its own. If it appears again, it becomes a bug task | watch |
 | H6 | **PR #62, `.vitest/` ignored:** done 2026-11-21, merge `3c3d00e`. Adds `.vitest/` to `.gitignore`; the JSON report folder blocked clean commits | done |
 | H7 | **PR #63, dependency group bump:** done 2026-11-21, merge `6431732`. Dependabot's minor and patch group (15 updates, including Biome 2.6.8, vitest 5.1.1 and playwright 1.65.1). No code change | done |
 | H8 | **Untraced failure, watch:** `syncNow on a real clone (a)` times out at 30 s on this machine, and on main too. Not traced. If it fails in CI or repeats, it becomes a task | watch |
@@ -155,7 +156,7 @@ The proposals miss five things, and this plan adds them:
 | U6 | **Regions** (A13): freeze them (keep the code, add nothing to the sample) or mark two or three regions on the sample | at 2.13b | **Freeze, decided 2026-11-23 (user):** keep the code, add nothing to the sample |
 | U7 | **Per-package mutation floors** (2.13c): keep one pooled threshold plus the per-file 80 on changed files, or add per-package gates | wave 14 | **Keep pooled, decided 2026-11-23 (user):** one pooled threshold plus the per-file 80 on changed files |
 | U8 | **Key format of the UI hints** in the site config (2.14c item 4) | before 2.14c | **Decided 2026-11-23 (user):** `'<collection>.<path>': { label?, widget?, hidden? }`, with the path rules in 2.14c item 4 |
-| R8 | **Memory proof for row R8** (section 1.1): (A) the manual script; (B) a budget in the script, run weekly; (C) an e2e test on every check; (D) assert that growth levels off | before the phase close | **B, decided 2026-11-23 (user):** `measure:cms-memory` fails above 200 MB rss after 50 saves (157 MB on 2026-11-17) and runs in the weekly Windows or canary job. 2.13a carries it |
+| R8 | **Memory proof for row R8** (section 1.1): (A) the manual script; (B) a budget in the script, run weekly; (C) an e2e test on every check; (D) assert that growth levels off | before the phase close | **B, decided 2026-11-23 (user):** `measure:cms-memory` fails above 200 MB rss after 50 saves (157 MB on 2026-11-17) and runs in the weekly Windows or canary job. 2.13a carries it. **Metric changed 2026-11-25 (user approved, per the architect):** the budget is the commit charge of the cms-server process, not rss. Rss is the working set, which Windows trims under load: run 5 read 133 to 146 MB and run 6 read 30 to 52 MB with the same code, while commit stayed at 320 to 350 MB. The budget fails when commit charge grows more than 30 MB from save 10 to save 50, or exceeds 450 MB at save 50. The 2026-11-17 rss value above stays as the record |
 
 The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to-focus, reload mode, editor language) are in [PHASE-3-DESIGN-PROPOSAL.md](../Designs/PHASE-3-DESIGN-PROPOSAL.md) section 10. They are asked when phase 3 starts, not here.
 
@@ -168,7 +169,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
 | 11 | 2.14m `[ci]`, then 2.14d, then 2.11c (after 2.14d). Beside them: 2.10k, 2.13d, 2.12a `[build]`, then 2.13e `[build]` | 2.12a, 2.13e |
 | 12 | 2.14e (code) first, then 2.11d. 2.10e is split into 2.10l `[build]` and then 2.10m `[build]` (2.10e stays as their umbrella; the table was approved, U2). 2.12d `[user]` as soon as 2.11d merges | 2.10l, 2.10m |
 | 13 | 2.10f `[build]`, then 2.12d-1 `[build]` (its first step can start beside 2.10f; it merges after), then 2.10m-1 `[build]`, then 2.12b `[build]`, 2.14a `[build]` (closed), then 2.14a-1, 2.14a-2 `[build]` and 2.14a-3 `[build]` (from 2.14a). Beside them: 2.12d-2 `[build]`, 2.12d-3 `[build]` (after 2.12d-1), 2.14e spike `[user]`, 2.14f `[ci]`, 2.14g `[ci]`, 2.14n `[ci]`, 2.14j | 2.10f, 2.12d-1, 2.10m-1, 2.12b, 2.14a, 2.14a-1, 2.14a-2, 2.14a-3, 2.12d-2, 2.12d-3 |
-| 14 (close) | 2.14c `[build]` first, then 2.12c `[user]`, 2.13a `[build]`, 2.14a-4 `[user]` (after 2.14a-1 to 2.14a-3 merge, before 2.13b), 2.13b, decisions U3 to U7, then the phase close (section 7) | 2.14c, 2.13a |
+| 14 (close) | 2.14c `[build]` first, then 2.12c `[user]`, 2.13a `[build]`, then 2.13a-1 `[build]` (the re-apply measurement, split out of 2.13a on 2026-11-24), 2.14a-4 `[user]` (after 2.14a-1 to 2.14a-3 merge, before 2.13b), 2.13b, decisions U3 to U7, then the phase close (section 7) | 2.14c, 2.13a, 2.13a-1 |
 
 ```text
  wave 11  2.14m   2.14d ──▶ 2.11c ─────────┐     2.10k ─────┐    2.13d    2.12a ─▶ 2.13e
@@ -176,7 +177,7 @@ The phase 3 design questions (MVP scope, Preact, page-first navigation, click-to
  wave 13  2.10f ──▶ 2.12b      2.14a ─▶ (U3)     2.14e spike   2.14f  2.14g  2.14j  2.14n
           2.10f ──▶ 2.12d-1 ──▶ 2.10m-1   2.12d-2
                     2.12d-1 ──▶ 2.12d-3
- wave 14  2.14c ──▶ 2.12c [user]   2.13a   2.13b   U3..U7   ──▶ phase close
+ wave 14  2.14c ──▶ 2.12c [user]   2.13a ─▶ 2.13a-1   2.13b   U3..U7   ──▶ phase close
 ```
 
 **Critical path:** 2.10k → 2.10l → 2.10m → 2.10f → 2.12b → 2.12c → phase close. A second chain, 2.14d → 2.11c → 2.11d → 2.12d, gets the product in front of the user by the end of wave 12.
@@ -605,11 +606,17 @@ Detail added 2026-11-23 (architect, approved by the user).
 #### 2.13a Measurements — after 2.12b · `[build]`
 
 - Measure publish latency under `never`, `auto` without a trigger, and `always`.
-- Measure the re-apply time on the 200-post sample, and the swap time from a finished build to the new node serving.
+- Measure the swap time from a finished build to the new node serving. The re-apply time on the 200-post sample is 2.13a-1 (split out on 2026-11-24, architect: its harness is a task of its own).
 - Measure the rss after a publish, to complete 2.13e.
 - **Method (architect, approved by the user 2026-11-23):** a new script `scripts/measure-cms-publish.mjs`, merged through a PR. Sample-site, the real builder (not `--bundle`), a local bare remote, three runs each, mean and range. It measures publish latency under `never`, `auto` with no trigger, and `always`; the swap time from `Build finished` to the node reporting `ready`; and the rss after a publish. The 200-post re-apply uses the generator of `measure-listing-routes.mjs --posts=200`. Section 8 records that a local remote leaves out network time.
-- **R8 budget (decision R8, option B):** `measure:cms-memory` fails above 200 MB rss after 50 saves, and the weekly Windows or canary job runs it.
+- **R8 budget (decision R8, option B; metric changed 2026-11-25 to commit charge):** `measure:cms-memory` fails when commit charge grows more than 30 MB from save 10 to save 50, or is over 450 MB at save 50. Rss is printed for information only. The weekly Windows job runs it.
 - **Done when:** section 8 has values, each with its date and method; the R8 budget is in `measure:cms-memory` and runs in a weekly job.
+
+#### 2.13a-1 Re-apply time on the 200-post sample — after 2.13a · `[build]`
+
+- Split out of 2.13a on 2026-11-24 (architect): the harness builds a real bundle from a 200-post copy, seeds a remote, and times the re-apply step, which takes more than the hour the architect allowed for 2.13a.
+- Method: a direct harness, not the poll loop. Generate 200 posts with the generator of `measure-listing-routes.mjs --posts=200`, make a few saves on `cms/work`, move `origin/main` forward with a developer push, then time `tx.reapply` under `locked('reapply')` (as `ops.test.ts` does). Three runs, mean and range.
+- **Done when:** section 8 has the re-apply row with its date, method, runs and range.
 
 #### 2.14a-4 Re-run the second site — after 2.14a-1 to 2.14a-3 · `[user]`
 
@@ -655,11 +662,13 @@ Phase 2 is closed when all of these hold:
 
 | | Value | Date, method |
 |---|---|---|
-| `cms-server` rss at rest, and after a session of saves (2.13e) | rss 128.0 MB at rest (127.4 to 128.8), 157.1 MB after 50 saves (156.5 to 157.9); private 73.7 MB and 102.4 MB | 2026-11-17, `npm run measure:cms-memory`: sample-site bundle with `--bundle`, a local bare repo, three runs, mean and range. Rss is the working set, private is the OS private working set |
-| `cms-server` rss after a publish (2.13a) | | |
-| Publish latency: `buildCheck` `never`, `auto` without a trigger, `always` | | |
-| Re-apply time, 200-post sample | | |
-| Swap time, build done to new node serving | | |
+| `cms-server` rss at rest, and after a session of saves (2.13e) | rss 128.0 MB at rest (127.4 to 128.8), 157.1 MB after 50 saves (156.5 to 157.9); private 73.7 MB and 102.4 MB | 2026-11-17, `npm run measure:cms-memory`: sample-site bundle with `--bundle`, a local bare repo, three runs, mean and range. Rss is the working set, private is the OS private working set. The R8 budget moved to commit charge on 2026-11-25; these rss values are the 2026-11-17 record |
+| `cms-server` commit charge under the R8 budget (2.13e, 2026-11-25) | commit charge 320.7 MB after 10 saves (311.2 to 333.1), 340.3 MB after 50 saves (331.5 to 352.7). Growth from save 10 to save 50: 19.6 MB (18.7 to 20.4) against the 30 MB limit; the 450 MB ceiling at save 50 is passed (352.7 MB highest). rss for information: 157.5 MB after 50 saves (156.7 to 158.6) | 2026-11-25, `npm run measure:cms-memory`, three runs, mean and range. Commit charge is `PrivateMemorySize64` of the cms-server process (Windows), read from outside it |
+| `cms-server` commit charge after publishes (2.13a) | highest commit charge per mode: never 351.1 MB, auto 331.5 MB (run 6; run 5 gave 328.0 MB), always 351.2 MB. Commit charge is the value, as the R8 metric (changed 2026-11-25). The R8 budget is set for the 50-save scenario, not for publishes, so this row is not compared with it. Rss is a note only: run 5 read 133 to 146 MB and run 6 read 30 to 52 MB with the same code, so rss is not stable on Windows. The 55 to 60 MB readings of runs 3 and 4 are not recorded as values | 2026-11-24 and 2026-11-25: runs 5 and 6 of `scripts/measure-cms-publish.mjs`, one cms-server per mode, commit charge and rss read once after each publish settled, three publishes per mode. At the start, run 5 had 12 CPUs, 32% busy and 5.1 GB free; run 6 (auto alone) 7% busy and 2.4 GB free |
+| Publish latency (the POST `/api/publish` response): `buildCheck` `never`, `auto`, `always` | never 1.92 s (1.59 to 2.45), auto 1.93 s (1.92 to 1.94) in run 5 and 1.83 s (1.70 to 2.00) in run 6, always 19.7 s (17.6 to 22.4). Under `always` the response waits for the candidate build (mean 15.7 s, 14.0 to 18.4 s), then 2.4 to 2.6 s from `Build finished` to the response. Under `never` and `auto` the response does not wait for the rebuild that follows it. All nine publishes settled, and no ask was left without a finished build | 2026-11-24, run 5 of `scripts/measure-cms-publish.mjs`: real builder, sample-site, a local bare remote, three rounds per mode, each after the previous publish settled. Mean and range. A local remote leaves out network time. Runs 3 and 4 are not recorded (run 3 came from an intermediate working copy; run 4 overlapped a memory run) |
+| Rebuild after a publish (`never`, `auto`): build time | never 18.3 s (16.9 to 19.3), auto 16.3 s (16.1 to 16.6) in run 5, and 13.6 s (12.7 to 14.6) in run 6 (auto alone; at its start 7% busy and 2.4 GB free, against 32% busy and 5.1 GB free in run 5). Under `always` no rebuild follows an adopted candidate; a rebuild follows only a candidate that is not adopted. Under `auto`, round 2 of run 5 logged a second rebuild, asked 1.6 s after the publish's own build finished; the figures are the own build, and the second one is counted as a later rebuild. Run 6 (3 rounds) had no later rebuild, so the cause is still not known. Earlier runs gave 11.1 s (run 3) and 23.3 s (run 4) for `never`, so the spread across runs is wider than the gap between modes: not comparable across runs until a quiet run | 2026-11-24, runs 5 and 6: from the publish's own `A build was asked for` to its `Build finished` |
+| Swap, `Build finished` to the node serving the new bundle: rebuild after a publish, and candidate adopted under `always` | rebuild: never 4.1 s (2.2 to 5.8), auto 2.5 s (2.1 to 3.0) in run 5 and 2.8 s (1.8 to 4.6) in run 6. candidate (`always`): 2.6 s (2.5 to 2.7). Under `always` the node starts on the candidate about 0.5 s after `Build finished` and is ready on it about 2.5 to 2.7 s after, so the response comes at about the same moment | 2026-11-24, run 5: the first `/api/status` sample with the node `ready` on that bundle, polled every 25 ms |
+| Re-apply time, 200-post sample | not measured in 2.13a | Moved to 2.13a-1 (wave 14): no route times a re-apply, and the harness that does is a task of its own |
 
 ## 9. Moved out of phase 2
 

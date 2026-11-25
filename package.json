@@ -36,6 +36,7 @@
     "graph": "node scripts/graph.ts",
     "measure:memory": "node scripts/measure-memory.mjs",
     "measure:cms-memory": "node scripts/measure-cms-memory.mjs",
+    "measure:cms-publish": "node scripts/measure-cms-publish.mjs",
     "measure:listing": "node scripts/measure-listing-routes.mjs",
     "deps": "depcruise preview-render-server/src preview-protocol/src preview-contract/src cms-contract/src cms-server/src --config .dependency-cruiser-graph.cjs -T text"
   }
