@@ -88,7 +88,7 @@ These are the rules builders keep needing. Each is in the log under the task nam
 | H1 | **2.1p verification:** done 2026-11-18. Ten green scheduled nightly runs (2026-11-09 to 2026-11-18); each has a live `nightly-measurements` artifact. 2.1p is marked verified. The T3 reminder can go after 2026-12-01 | done |
 | H2 | **2.1t Result:** done 2026-11-18. Run `43491378803`: `cms-git-ops` 7 min 18 s, `cms-git` 20 min 10 s. 2.1t is DONE (merged as `20dc360`) | done |
 | H3 | **osv-scanner ignore** `GHSA-g3hv-75wg-m249` expires 2026-12-15. An expired entry fails `npm run audit` | revisit 2026-12-01 |
-| H3b | **osv-scanner ignore** `GHSA-fc5q-39xc-vjpf` (picomatch) expires 2026-12-17. Check first whether a patched picomatch exists. An expired entry fails `npm run audit`. Waiver merged in #56 (`fca9160`) | revisit 2026-12-01 |
+| H3b | **osv-scanner ignore** `GHSA-fc5q-39xc-vjpf` (picomatch): done 2026-11-25. GitHub withdrew the advisory, so osv-scanner reported the waiver as unused, and it is removed from `osv-scanner.toml` (the waiver was merged in #56, `fca9160`) | done |
 | H5 | **`run.test.ts` first-start flake:** one unexplained failure, then green after an explicit 5 s timeout. If it fails again, it becomes a task | watch |
 | H6 | **PR #62, `.vitest/` ignored:** done 2026-11-21, merge `3c3d00e`. Adds `.vitest/` to `.gitignore`; the JSON report folder blocked clean commits | done |
 | H7 | **PR #63, dependency group bump:** done 2026-11-21, merge `6431732`. Dependabot's minor and patch group (15 updates, including Biome 2.6.8, vitest 5.1.1 and playwright 1.65.1). No code change | done |

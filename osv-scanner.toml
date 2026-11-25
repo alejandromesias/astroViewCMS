@@ -11,17 +11,6 @@ id = "GHSA-g3hv-75wg-m249"
 ignoreUntil = 2026-12-15
 reason = "minimatch 10.2.6 via @stryker-mutator/core 10.1.1 (pins ~10.2.4; fix 11.0.1 is major and out of range). Dev only, not shipped; globs come from our own Stryker config"
 
-# picomatch 4.0.7 and 2.3.2 (ReDoS through repeated extglobs). No patched release exists.
-# Production tree (npm ls picomatch --omit=dev): astro and @astrojs/node, both in
-# preview-render-server, pull picomatch 4.0.7; astro also pulls 2.3.2 via unstorage/anymatch;
-# sample-site's vite pulls 4.0.7. Dev tools (vitest, knip, dependency-cruiser) add more.
-# Verified: astro's content glob loader passes config-authored patterns to picomatch.
-# Not verified: whether any request-time path passes untrusted input to picomatch. The
-# waiver assumes it does not.
-# IgnoredVulns matches by advisory ID, so this also covers any picomatch <= 4.0.7 added later.
-# Recheck when a patched picomatch is released, or when astro, @astrojs/node or vite move
-# to a newer picomatch.
-[[IgnoredVulns]]
-id = "GHSA-fc5q-39xc-vjpf"
-ignoreUntil = 2026-12-17
-reason = "picomatch 4.0.7 and 2.3.2 via astro and @astrojs/node (production, preview-render-server), sample-site vite, and dev tools. No patched release. Verified: astro's glob loader takes config-authored patterns. Not verified: request-time input"
+# GHSA-fc5q-39xc-vjpf (picomatch, ReDoS through repeated extglobs) was waived here until this was removed. GitHub
+# withdrew the advisory (2026-11), so osv-scanner no longer reports it and the waiver was unused (WORKPLAN H3b, 2026-11-25).
+# A new picomatch advisory will fail the audit, as it should; the picomatch 4.0.7 in the tree is not waived.
