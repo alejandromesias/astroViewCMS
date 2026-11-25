@@ -13,9 +13,6 @@ type Step =
   | { readonly kind: 'property'; readonly name: string }
   | { readonly kind: 'items' };
 
-/** The list keywords a union uses. A path through a union continues into each of its branches. */
-const UNION_KEYWORDS = ['oneOf', 'anyOf'] as const;
-
 /**
  * Copies each hint onto the schema node of the field it names. A key is `<collection>.<path>`: the path is dot separated,
  * and `[]` after a name steps into that array's items (`landing.blocks[].title`). A path through a union applies to every
@@ -29,27 +26,26 @@ export function applyUiHints(
   const result = new Map<string, CollectionSchema>(Object.entries(collections));
   for (const [key, hint] of Object.entries(hints)) {
     const parsed = parseKey(key);
-    const entry =
-      parsed === undefined ? undefined : result.get(parsed.collection);
-    const applied =
-      entry !== undefined && isNode(entry.schema) && parsed !== undefined
-        ? applyAt(entry.schema, parsed.steps, hint)
-        : undefined;
-    if (
-      parsed !== undefined &&
-      entry?.schema === undefined &&
-      entry?.error !== undefined
-    ) {
+    if (parsed === undefined) throw unmatched(key);
+    const entry = result.get(parsed.collection);
+    if (entry === undefined) throw unmatched(key);
+    if (entry.schema === undefined && entry.error !== undefined) {
       throw new Error(
         `ui hint "${key}" cannot be checked: the schema of "${parsed.collection}" did not export (${entry.error})`,
       );
     }
-    if (parsed === undefined || entry === undefined || applied === undefined) {
-      throw new Error(`ui hint "${key}" matches no field`);
-    }
+    const applied = isNode(entry.schema)
+      ? applyAt(entry.schema, parsed.steps, hint)
+      : undefined;
+    if (applied === undefined) throw unmatched(key);
     result.set(parsed.collection, { ...entry, schema: applied });
   }
   return Object.fromEntries(result);
+}
+
+/** The error of a hint that names no field. */
+function unmatched(key: string): Error {
+  return new Error(`ui hint "${key}" matches no field`);
 }
 
 /** Splits a hint key into its collection and the steps of its path, or undefined when the key is malformed. */
@@ -86,23 +82,23 @@ function applyAt(
   let matched = false;
   if (step.kind === 'property') {
     const properties: unknown = node.properties;
-    const child: unknown =
-      isNode(properties) && Object.hasOwn(properties, step.name)
-        ? properties[step.name]
-        : undefined;
-    const applied = isNode(child) ? applyAt(child, rest, hint) : undefined;
-    if (isNode(properties) && applied !== undefined) {
-      next = { ...next, properties: { ...properties, [step.name]: applied } };
-      matched = true;
+    if (isNode(properties) && Object.hasOwn(properties, step.name)) {
+      const child: unknown = properties[step.name];
+      const applied = isNode(child) ? applyAt(child, rest, hint) : undefined;
+      if (applied !== undefined) {
+        next = { ...next, properties: { ...properties, [step.name]: applied } };
+        matched = true;
+      }
     }
-  } else if (isNode(node.items)) {
+  } else if (step.kind === 'items' && isNode(node.items)) {
     const applied = applyAt(node.items, rest, hint);
     if (applied !== undefined) {
       next = { ...next, items: applied };
       matched = true;
     }
   }
-  for (const keyword of UNION_KEYWORDS) {
+  // The list keywords a union uses. A path through a union continues into each of its branches.
+  for (const keyword of ['oneOf', 'anyOf'] as const) {
     const branches: unknown = node[keyword];
     if (!Array.isArray(branches)) continue;
     const applied = branches.map((branch: unknown): unknown => {
