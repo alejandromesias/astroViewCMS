@@ -47,7 +47,7 @@ export function childEnv(extra = {}) {
   return env;
 }
 
-function git(cwd, args) {
+export function git(cwd, args) {
   execFileSync('git', [...GIT_SETTINGS, ...args], {
     cwd,
     stdio: 'pipe',
@@ -55,13 +55,13 @@ function git(cwd, args) {
   });
 }
 
-/** A bare repo under `work` whose main holds the sample-site files, seeded as dev-remote.ts does. */
-export function seedRemote(work) {
+/** A bare repo under `work` whose main holds the files of `source` (sample-site by default), seeded as dev-remote.ts does. */
+export function seedRemote(work, source = path.join(ROOT, 'sample-site')) {
   const remote = path.join(work, 'remote.git');
   const seed = path.join(work, 'seed');
   fs.mkdirSync(remote);
   git(remote, ['init', '--bare']);
-  fs.cpSync(path.join(ROOT, 'sample-site'), seed, {
+  fs.cpSync(source, seed, {
     recursive: true,
     filter: (source) => !NOT_COPIED.has(path.basename(source)),
   });
