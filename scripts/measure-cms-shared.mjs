@@ -63,7 +63,7 @@ export function seedRemote(work, source = path.join(ROOT, 'sample-site')) {
   git(remote, ['init', '--bare']);
   fs.cpSync(source, seed, {
     recursive: true,
-    filter: (source) => !NOT_COPIED.has(path.basename(source)),
+    filter: (file) => !NOT_COPIED.has(path.basename(file)),
   });
   git(seed, ['init']);
   git(seed, ['add', '--all']);
