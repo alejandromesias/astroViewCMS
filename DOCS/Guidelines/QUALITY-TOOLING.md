@@ -156,7 +156,7 @@ build in CI; see [CI-PIPELINE.md](CI-PIPELINE.md)). "Report" means the output ne
 | Memory of one preview process (manual) | `npm run measure:memory` (see [Memory metric](#memory-metric)) | ~21 s |
 | Memory of cms-server (manual) | `npm run measure:cms-memory` (see [Memory metric](#memory-metric)) | ~2.5 min |
 | Publish timing of cms-server (manual) | `npm run measure:cms-publish`, by hand only (not in CI): before a phase close, or after a change to publish, build or swap | the last line of the output gives the total time |
-| Re-apply time on a 200-post site (manual) | `npm run measure:reapply`, by hand only (not in CI): before a phase close, or after a change to the re-apply | the output gives the mean and range of the rounds |
+| Re-apply time on a 200-post site (manual) | `npm run measure:reapply`, by hand only (not in CI): before a phase close, or after a change to the re-apply | ~1 min |
 | Audit | `npm run audit` (needs `osv-scanner`, see below) | ~3 s |
 | Knip | `npm run knip` | ~2 s |
 | dependency-cruiser | `npm run depcruise` (rules: [Annex](#annex-dependency-cruiser-rules)) | ~3 s |
