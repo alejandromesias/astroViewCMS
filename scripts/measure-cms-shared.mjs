@@ -47,7 +47,7 @@ export function childEnv(extra = {}) {
   return env;
 }
 
-export function git(cwd, args) {
+function git(cwd, args) {
   execFileSync('git', [...GIT_SETTINGS, ...args], {
     cwd,
     stdio: 'pipe',
