@@ -2,15 +2,17 @@
 // close or after a change to publish, build or swap. For each buildCheck mode (never, auto, always) it starts cms-server
 // with the real builder on a local bare repo seeded from sample-site (no --bundle), waits for its node, and makes RUNS
 // rounds. A round saves one content document, publishes it, and waits until the publish has settled before the next save.
-// A publish settles when the build is idle, the node serves the bundle of the last finished build, and SETTLE_GRACE_MS
-// has passed since the response. A publish that pushes also asks for a rebuild after its response, under every mode, and
-// `always` builds a candidate before it.
+// A publish settles when the build is not running (idle, or failed), the node serves the bundle of the last successful
+// build, and SETTLE_GRACE_MS has passed since the response. A publish that pushes also asks for a rebuild after its
+// response, under every mode, and `always` builds a candidate before it. A failed build leaves the node on its previous
+// bundle; the report counts failed builds and the rebuilds asked after the response (later rebuilds).
 // Per publish it reports: the latency of POST /api/publish (ms); the candidate build (under `always`); the rebuild after
 // the response (build ms); its swap, from the `Build finished` log line to the first /api/status sample with the node
 // `ready` on that bundle (ms); the time to settle; the asks that never finished; and the rss and commit charge of
 // cms-server after the settle. Per mode it reports the highest rss and commit charge across the rounds. Commit charge
 // (PrivateMemorySize64) is the private memory the process has committed, which working-set trimming does not lower.
-// The start prints the machine's load; a busy machine gets a warning, and the run goes on.
+// The start prints the machine's load; a busy machine gets a warning, and the run goes on. The run prints its total
+// time at the end. `node scripts/measure-cms-publish.mjs auto` runs one mode; no argument runs all three.
 // /api/status is polled every POLL_MS from before each publish. A local remote leaves out network time (section 8 of
 // WORKPLAN-PHASE-2-CLOSE.md).
 import { spawnSync } from 'node:child_process';
@@ -33,7 +35,23 @@ import {
   waitForReady,
 } from './measure-cms-shared.mjs';
 
-const MODES = ['never', 'auto', 'always'];
+const ALL_MODES = ['never', 'auto', 'always'];
+const MODES = process.argv.length > 2 ? process.argv.slice(2) : ALL_MODES;
+const unknownModes = MODES.filter((mode) => !ALL_MODES.includes(mode));
+if (unknownModes.length > 0) {
+  console.error(
+    `unknown mode ${unknownModes.join(', ')}; use ${ALL_MODES.join(', ')}`,
+  );
+  process.exit(2);
+}
+// The commit charge is read on Windows only. Checked here, before any server is started and built.
+if (process.platform !== 'win32') {
+  console.error(
+    'measure-cms-publish reads the commit charge on Windows only; run it there.',
+  );
+  process.exit(2);
+}
+const runStart = Date.now();
 const RUNS = 3;
 const SITE = 'publish-measure';
 const DOCUMENT = 'landing/home-v2';
@@ -154,6 +172,13 @@ function logLines(text) {
     });
 }
 
+/** The events list's text after a log line's message: the bundle and outcome of a build, or the reason of a request. */
+function detailOf(line) {
+  if (line.message === 'Build finished')
+    return ` ${line.entry.bundleId.slice(-8)} ok ${line.entry.ok}`;
+  return line.entry.reason === undefined ? '' : ` ${line.entry.reason}`;
+}
+
 /** The builds in log order, each paired with the request that asked for it (the first unpaired request). */
 function pairBuilds(lines) {
   const pending = [];
@@ -170,6 +195,7 @@ function pairBuilds(lines) {
         asked: start?.asked,
         finished: line.at,
         bundleId: line.entry.bundleId,
+        ok: line.entry.ok === true,
       });
     }
   }
@@ -178,8 +204,8 @@ function pairBuilds(lines) {
 
 /**
  * One publish and the work it starts. The timeline keeps each change of build state, node state and bundle, from before
- * the request on. The publish is settled when every build the log asked for has finished, the build state is idle, and
- * the node is ready on the bundle of the last build that finished. Times are wall-clock milliseconds.
+ * the request on. The publish is settled when the build is not running (idle or failed), and the node is ready on the
+ * bundle of the last successful build. Times are wall-clock milliseconds.
  */
 async function publishOnce(base, mode, run, output) {
   const timeline = [];
@@ -229,15 +255,18 @@ async function publishOnce(base, mode, run, output) {
     ) {
       const latest = timeline.at(-1);
       const lines = logLines(output()).filter((line) => line.at >= startedAt);
+      // The last successful build is the bundle the node serves: a failed build leaves the node on its previous bundle.
       const served = lines
-        .filter((line) => line.message === 'Build finished')
+        .filter(
+          (line) => line.message === 'Build finished' && line.entry.ok === true,
+        )
         .at(-1)?.entry.bundleId;
       // The state decides, not a count of asks: an ask can finish without a `Build finished` line (an adopted candidate
       // that already serves the head, or a shared build), and such a publish would otherwise wait out SETTLE_MS.
       if (
         Date.now() >= endedAt + SETTLE_GRACE_MS &&
         latest !== undefined &&
-        latest.build === 'idle' &&
+        (latest.build === 'idle' || latest.build === 'failed') &&
         latest.node === 'ready' &&
         (served === undefined || latest.bundleId === served)
       )
@@ -252,8 +281,15 @@ async function publishOnce(base, mode, run, output) {
 
   const lines = logLines(output()).filter((line) => line.at >= startedAt);
   const builds = pairBuilds(lines);
-  const candidate = builds.find((build) => build.kind === 'candidate');
-  const rebuild = builds.filter((build) => build.kind === 'rebuild').at(-1);
+  const candidate = builds.find(
+    (build) => build.kind === 'candidate' && build.ok,
+  );
+  const rebuilds = builds.filter((build) => build.kind === 'rebuild');
+  // The publish's own rebuild is the first one asked at or before the response. Any other one is a later rebuild, and
+  // the report counts it apart. A failed own rebuild has no swap or build time; it is counted as a failed build.
+  const own = rebuilds.find((build) => build.asked <= endedAt);
+  const rebuild = own?.ok ? own : undefined;
+  const later = rebuilds.filter((build) => build !== own);
   // The node's first ready sample on a build's own bundle, after that build finished: its swap (a candidate the node
   // adopts is served, and a rebuild is served after it finishes).
   const servedAt = (build) =>
@@ -286,9 +322,10 @@ async function publishOnce(base, mode, run, output) {
       lines.filter((line) => ASKED.has(line.message)).length -
         lines.filter((line) => line.message === 'Build finished').length,
     ),
+    later: later.map((build) => build.finished - build.asked),
+    failedBuilds: builds.filter((build) => !build.ok).length,
     events: lines.map(
-      (line) =>
-        `${line.message} +${line.at - startedAt}${line.message === 'Build finished' ? ` ${line.entry.bundleId.slice(-8)}` : ''}`,
+      (line) => `${line.message} +${line.at - startedAt}${detailOf(line)}`,
     ),
     transitions: timeline.map(
       (sample) =>
@@ -372,6 +409,8 @@ console.log(
   'rss MB max'.padStart(11),
   'commit MB max'.padStart(14),
   'unfinished'.padStart(11),
+  'later rebuilds'.padStart(15),
+  'failed builds'.padStart(14),
 );
 for (const { mode, rows } of results) {
   console.log(
@@ -385,6 +424,8 @@ for (const { mode, rows } of results) {
     highestMb(rows, 'rss').padStart(11),
     highestMb(rows, 'commit').padStart(14),
     String(rows.reduce((sum, row) => sum + row.unfinished, 0)).padStart(11),
+    String(rows.reduce((sum, row) => sum + row.later.length, 0)).padStart(15),
+    String(rows.reduce((sum, row) => sum + row.failedBuilds, 0)).padStart(14),
   );
 }
 console.log(
@@ -405,7 +446,10 @@ console.log(
         skipped: row.skipped,
         events: row.events,
         transitions: row.transitions,
+        later: row.later.map((ms) => Math.round(ms)),
+        failedBuilds: row.failedBuilds,
       })),
     })),
   ),
 );
+console.log(`total ${((Date.now() - runStart) / 60_000).toFixed(1)} min`);

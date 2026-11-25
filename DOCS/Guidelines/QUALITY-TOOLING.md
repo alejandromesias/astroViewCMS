@@ -155,7 +155,7 @@ build in CI; see [CI-PIPELINE.md](CI-PIPELINE.md)). "Report" means the output ne
 | Browser tests, cms-server | `npm run test:browser -w cms-server` (Chromium on `cms.localhost` drives the editor and its preview iframe on `preview.localhost`; one file: append `-- <file>`) | ~91 s (1 file, 2 tests, measured 2026-11-22; includes the sample-site build of the global setup) |
 | Memory of one preview process (manual) | `npm run measure:memory` (see [Memory metric](#memory-metric)) | ~21 s |
 | Memory of cms-server (manual) | `npm run measure:cms-memory` (see [Memory metric](#memory-metric)) | ~2.5 min |
-| Publish timing of cms-server (manual) | `npm run measure:cms-publish`, by hand only (not in CI): before a phase close, or after a change to publish, build or swap | ~6 min |
+| Publish timing of cms-server (manual) | `npm run measure:cms-publish`, by hand only (not in CI): before a phase close, or after a change to publish, build or swap | the last line of the output gives the total time |
 | Audit | `npm run audit` (needs `osv-scanner`, see below) | ~3 s |
 | Knip | `npm run knip` | ~2 s |
 | dependency-cruiser | `npm run depcruise` (rules: [Annex](#annex-dependency-cruiser-rules)) | ~3 s |
