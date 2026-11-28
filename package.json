@@ -11,12 +11,12 @@
     "sample-site"
   ],
   "devDependencies": {
-    "@biomejs/biome": "2.6.8",
+    "@biomejs/biome": "2.6.9",
     "@stryker-mutator/core": "^10.1.1",
     "@stryker-mutator/vitest-runner": "^10.1.1",
     "@swc/core": "1.16.22",
-    "dependency-cruiser": "18.8.0",
-    "knip": "6.45.1",
+    "dependency-cruiser": "18.9.0",
+    "knip": "6.48.0",
     "typescript": "~6.0.3"
   },
   "overrides": {
